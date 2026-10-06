@@ -1,0 +1,17 @@
+[tool.uv.workspace]
+members = ["apps/server"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "RUF"]
+# ASYNC109/110/240: deliberate (subprocess timeouts, reconnect loop, tiny mkdirs)
+ignore = ["E501", "RUF012", "ASYNC109", "ASYNC110", "ASYNC240"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.File"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["studio"]

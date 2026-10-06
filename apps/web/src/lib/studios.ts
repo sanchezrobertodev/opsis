@@ -1,0 +1,102 @@
+import {
+  Box,
+  Clapperboard,
+  Film,
+  Globe2,
+  ImageIcon,
+  LayoutGrid,
+  type LucideIcon,
+  MessageCircle,
+  Mic,
+  Move3d,
+  PersonStanding,
+  Replace,
+  Scissors,
+  Settings,
+  UserRound,
+} from "lucide-react";
+
+export type Studio = {
+  slug: string;
+  name: string;
+  href: string;
+  icon: LucideIcon;
+  /** Roadmap phase that ships it (docs/PLAN.md). Ready studios have none. */
+  phase?: string;
+  summary: string;
+  group: "create" | "studios" | "manage";
+};
+
+export const STUDIOS: Studio[] = [
+  {
+    slug: "create-video", name: "Create video", href: "/create/video", icon: Clapperboard, group: "create",
+    summary: "Text, image or first-and-last frame to video across Veo, Kling, Seedance and more.",
+  },
+  {
+    slug: "create-image", name: "Create image", href: "/create/image", icon: ImageIcon, group: "create",
+    summary: "Keyframes and references for your shots.",
+  },
+  {
+    slug: "edit", name: "Edit video", href: "/soon/edit", icon: Scissors, phase: "P3", group: "studios",
+    summary: "Change footage by instruction: restyle, relight, extend, reframe, upscale, remove backgrounds. " +
+      "Runs on Kling Omni Edit, Runway Aleph 2.0, Luma Modify, Seedance edit and Gemini Omni.",
+  },
+  {
+    slug: "motion", name: "Motion control", href: "/soon/motion", icon: Move3d, phase: "P2–P3", group: "studios",
+    summary: "A library of 65 camera moves (crash zoom, dolly zoom, bullet time, FPV, 360 orbit) you can stack, " +
+      "plus drawn trajectories that steer how things move.",
+  },
+  {
+    slug: "motion-transfer", name: "Motion transfer", href: "/soon/motion-transfer", icon: PersonStanding,
+    phase: "P3", group: "studios",
+    summary: "Make a character image perform a reference clip. Kling Motion Control 3.0, Wan Animate and " +
+      "Seedance omni references, with a library of driving clips.",
+  },
+  {
+    slug: "swap", name: "Object swap", href: "/soon/swap", icon: Replace, phase: "P4", group: "studios",
+    summary: "Click an object in a frame, track it through the clip, and replace or remove it while the " +
+      "camera, lighting and motion stay as filmed.",
+  },
+  {
+    slug: "characters", name: "Characters", href: "/soon/characters", icon: UserRound, phase: "P2", group: "studios",
+    summary: "Reusable characters, locations and props. Mention them with @name in any prompt and their " +
+      "references attach automatically. Character sheets and optional trained identities.",
+  },
+  {
+    slug: "worlds", name: "Worlds", href: "/soon/worlds", icon: Globe2, phase: "P7", group: "studios",
+    summary: "360° panoramas and explorable Gaussian-splat worlds. Fly a camera path and turn it into " +
+      "start frames and camera references for video models.",
+  },
+  {
+    slug: "faceless", name: "Faceless studio", href: "/soon/faceless", icon: Mic, phase: "P4", group: "studios",
+    summary: "Topic or script to a finished narrated video: style, cast, script, clips or narrated stills, " +
+      "voiceover, music, captions and a thumbnail.",
+  },
+  {
+    slug: "cinema", name: "Cinema studio", href: "/soon/cinema", icon: Film, phase: "P5", group: "studios",
+    summary: "Scenes and shots on a storyboard, with camera body, lens, aperture, genre, era, lighting and " +
+      "palette controls. Hero frames, multi-shot takes and a timeline export.",
+  },
+  {
+    slug: "jutsu3d", name: "3D blocking", href: "/soon/jutsu3d", icon: Box, phase: "P7", group: "studios",
+    summary: "Block a scene in 3D with mannequins, props and a camera path, then turn the render into " +
+      "photoreal angles and animate them.",
+  },
+  {
+    slug: "lipsync", name: "Lipsync", href: "/soon/lipsync", icon: MessageCircle, phase: "P6", group: "studios",
+    summary: "Make an image or clip speak a script or recording: Sync lipsync-3, Kling Avatar, OmniHuman, " +
+      "VEED Fabric and InfiniteTalk.",
+  },
+  {
+    slug: "library", name: "Library", href: "/library", icon: LayoutGrid, group: "manage",
+    summary: "Every upload and generated take.",
+  },
+  {
+    slug: "settings", name: "Settings", href: "/settings", icon: Settings, group: "manage",
+    summary: "Spending limits and provider status.",
+  },
+];
+
+export function studioBySlug(slug: string) {
+  return STUDIOS.find((s) => s.slug === slug);
+}

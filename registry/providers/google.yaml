@@ -1,0 +1,8 @@
+id: google
+name: Google Gemini API
+kind: direct
+adapter: google_genai
+key_setting: gemini_api_key
+concurrency: 4
+docs: https://ai.google.dev/gemini-api/docs/veo
+notes: Veo outputs are deleted after 2 days; ingest immediately.

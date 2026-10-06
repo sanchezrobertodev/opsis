@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: kling-3.0
+name: Kling 3.0
+family: kling
+vendor: kuaishou
+description: Strong motion and physics, start/end frames, optional native audio. Multi-shot arrives with the director (P2).
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [motion, physics, first-last-frame, audio]
+prompt: {max_chars: 2500, dialect: kling, supports_negative: true}
+aspect_ratios: ["16:9", "9:16", "1:1"]
+duration: {min: 3, max: 15, default: 5}
+
+parameters:
+  - {name: duration, label: Duration (s), type: int, min: 3, max: 15, default: 5, ui: slider}
+  - {name: resolution, type: enum, options: ["720p", "1080p"], default: "1080p", ui: segmented}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "1:1"], default: "16:9", ui: aspect, modes: [t2v]}
+  - {name: generate_audio, label: Native audio, type: bool, default: false}
+  - {name: cfg_scale, label: Prompt adherence, type: float, min: 0, max: 1, step: 0.05, default: 0.5, group: advanced}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: t2v
+    label: Text to video
+    ops: [t2v]
+  - id: i2v
+    label: Image to video
+    ops: [i2v, flf2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+      - {role: end_image, kinds: [image], label: End frame (optional)}
+
+elements: {strategy: keyframe_first}
+
+routes:
+  - id: kling-3.0@fal
+    provider: fal
+    modes:
+      t2v: {endpoint: fal-ai/kling-video/v3/pro/text-to-video}
+      i2v: {endpoint: fal-ai/kling-video/v3/pro/image-to-video}
+    map:
+      params:
+        duration: {to: duration, transform: str}
+        cfg_scale: cfg_scale
+        generate_audio: generate_audio
+        resolution: {to: null}
+        seed: {to: null}
+      media: {start_image: image_url, end_image: tail_image_url}
+    constraints:
+      resolution: {options: ["1080p"]}
+    pricing:
+      basis: per_output_second
+      rates:
+        - {usd: 0.112}
+        - {when: {generate_audio: true}, usd: 0.168}
+      verified: 2026-10-06
+      source: https://fal.ai/models/fal-ai/kling-video/v3/pro/image-to-video
+    output: {path: video.url, kind: video}
+    notes: fal's Pro tier renders 1080p. Endpoint ids re-verified in P1.
+
+examples:
+  - name: t2v_smoke
+    mode: t2v
+    prompt: A red fox trots through fresh snow in a birch forest, morning light, slow tracking shot.
+    params: {duration: 5, resolution: "1080p"}
+    smoke: true
+    expect: {cost_usd_range: [0.4, 1.0]}

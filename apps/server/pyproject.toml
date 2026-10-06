@@ -1,0 +1,49 @@
+[project]
+name = "studio"
+version = "0.1.0"
+description = "AI Media Studio API and worker"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "procrastinate>=3.0",
+    "psycopg[binary,pool]>=3.2",
+    "sse-starlette>=2.1",
+    "httpx>=0.27",
+    "anyio>=4.4",
+    "pyyaml>=6.0",
+    "watchfiles>=0.24",
+    "simpleeval>=1.0",
+    "uuid-utils>=0.9",
+    "pillow>=10.4",
+    "python-multipart>=0.0.12",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "hypothesis>=6.112",
+    "ruff>=0.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/studio"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = [
+    "db: needs the Postgres from infra/docker-compose.yml",
+]

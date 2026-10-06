@@ -1,0 +1,69 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: nano-banana-2
+name: Nano Banana 2
+family: nano-banana
+vendor: google
+description: Gemini 3.1 Flash Image. Fast keyframes and reference-driven edits for start/end frames.
+output_type: image
+status: active
+license_tier: commercial_api
+tags: [keyframes, edit, references, fast]
+prompt: {max_chars: 4000, dialect: nano-banana}
+aspect_ratios: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"]
+
+parameters:
+  - {name: resolution, type: enum, options: ["1k", "2k", "4k"], default: "1k", ui: segmented}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"], default: "16:9", ui: aspect}
+  - {name: num_images, label: Images, type: int, min: 1, max: 4, default: 1, ui: slider}
+
+modes:
+  - id: t2i
+    label: Text to image
+    ops: [t2i]
+  - id: edit
+    label: Edit with references
+    ops: [i2i, multi_ref]
+    medias:
+      - {role: image_references, kinds: [image], label: Images, required: true, min: 1, max: 10}
+
+routes:
+  - id: nano-banana-2@google
+    provider: google
+    modes:
+      t2i: {endpoint: gemini-3.1-flash-image}
+      edit: {endpoint: gemini-3.1-flash-image}
+    map:
+      media: {image_references: images}
+    pricing:
+      basis: per_image
+      rates:
+        - {when: {resolution: "1k"}, usd: 0.067}
+        - {when: {resolution: "2k"}, usd: 0.101}
+        - {when: {resolution: "4k"}, usd: 0.151}
+      verified: 2026-10-06
+      source: https://ai.google.dev/gemini-api/docs/pricing
+    output: {path: images, kind: image, multiple: true}
+  - id: nano-banana-2@fal
+    provider: fal
+    modes:
+      t2i: {endpoint: fal-ai/nano-banana-2}
+      edit: {endpoint: fal-ai/nano-banana-2/edit}
+    map:
+      media: {image_references: image_urls}
+    pricing:
+      basis: per_image
+      rates:
+        - {when: {resolution: "1k"}, usd: 0.067}
+        - {when: {resolution: "2k"}, usd: 0.101}
+        - {when: {resolution: "4k"}, usd: 0.151}
+      verified: 2026-10-06
+      source: https://fal.ai/models/fal-ai/nano-banana-2
+    output: {path: images, kind: image, multiple: true}
+
+examples:
+  - name: t2i_smoke
+    mode: t2i
+    prompt: A cozy ramen shop at night, steam rising, cinematic still, 35mm.
+    params: {resolution: "1k", num_images: 1}
+    smoke: true
+    expect: {cost_usd_range: [0.05, 0.1]}

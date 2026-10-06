@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: seedance-2.5
+name: Seedance 2.5
+family: seedance
+vendor: bytedance
+description: >-
+  ByteDance's single-take model (4-30 s) with native audio, omni references, edit and extension.
+  Engine behind Higgsfield Cinema Studio 4.0. Rejects real human faces in reference images.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [cinematic, long, references, edit, extend, audio]
+prompt: {max_chars: 3000, dialect: seedance, supports_negative: false}
+aspect_ratios: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
+duration: {min: 4, max: 30, default: 5}
+
+parameters:
+  - {name: duration, label: Duration (s), type: int, min: 4, max: 30, default: 5, ui: slider, modes: [t2v, i2v, omni_reference]}
+  - {name: resolution, type: enum, options: ["480p", "720p"], default: "720p", ui: segmented}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], default: "16:9", ui: aspect, modes: [t2v, omni_reference]}
+  - {name: generate_audio, label: Native audio, type: bool, default: true}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: t2v
+    label: Text to video
+    ops: [t2v]
+  - id: i2v
+    label: Image to video
+    ops: [i2v, flf2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+      - {role: end_image, kinds: [image], label: End frame (optional)}
+  - id: omni_reference
+    label: Omni reference
+    ops: [multi_ref]
+    medias:
+      - {role: image_references, kinds: [image], label: Image refs, max: 9}
+      - {role: video_references, kinds: [video], label: Video refs, max: 3, max_duration_s: 15}
+      - {role: audio_references, kinds: [audio], label: Audio refs, max: 3}
+
+elements: {strategy: refs_native, ref_role: image_references, token: "[Image {n}]"}
+
+routes:
+  - id: seedance-2.5@replicate
+    provider: replicate
+    modes:
+      t2v: {endpoint: bytedance/seedance-2.5}
+      i2v: {endpoint: bytedance/seedance-2.5}
+    map:
+      media: {start_image: image, end_image: last_frame_image}
+    pricing:
+      basis: per_output_second
+      rates:
+        - {when: {resolution: "480p"}, usd: 0.1028}
+        - {when: {resolution: "720p"}, usd: 0.2312}
+      verified: 2026-10-06
+      source: https://replicate.com/bytedance/seedance-2.5
+    output: {path: output, kind: video}
+    notes: Cheapest route for t2v/i2v. Outputs vanish after 1 hour.
+  - id: seedance-2.5@fal
+    provider: fal
+    modes:
+      t2v: {endpoint: bytedance/seedance-2.5/text-to-video}
+      i2v: {endpoint: bytedance/seedance-2.5/image-to-video}
+      omni_reference: {endpoint: bytedance/seedance-2.5/reference-to-video}
+    map:
+      params:
+        duration: {to: duration, transform: str}
+      media: {start_image: image_url, end_image: end_image_url, image_references: reference_image_urls,
+              video_references: reference_video_urls, audio_references: reference_audio_urls}
+    pricing:
+      basis: per_output_second
+      rates:
+        - {when: {resolution: "480p"}, usd: 0.2205}
+        - {when: {resolution: "720p"}, usd: 0.473}
+      verified: 2026-10-06
+      source: https://fal.ai/models/bytedance/seedance-2.5/image-to-video
+    output: {path: video.url, kind: video}
+    notes: About 2x Replicate for t2v/i2v, but the only route here for omni references.
+
+examples:
+  - name: t2v_smoke
+    mode: t2v
+    prompt: Slow push-in on a lighthouse during a storm, waves crashing, thunder rumbling.
+    params: {duration: 4, resolution: "480p"}
+    smoke: true
+    expect: {cost_usd_range: [0.3, 1.0]}

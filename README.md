@@ -5,7 +5,27 @@ Motion Transfer, Object Swap, Character Creation, World Creation, Faceless Studi
 Lipsync). It gives access to the same model families through commercial APIs, open models on RunPod, and an
 optional local ComfyUI.
 
-**Status:** planning complete; implementation starts at phase P0. See [docs/PLAN.md](docs/PLAN.md).
+**Status:** P0 (foundations) is done: the full create → live progress → library loop runs on a free mock
+provider. P1 adds the live providers (fal.ai, Google, Runway, Replicate). See [docs/PLAN.md](docs/PLAN.md).
+
+## Run it
+
+Prerequisites: Docker Desktop, Node 22+ with pnpm, Python 3.12 with uv, and ffmpeg on PATH.
+
+```bash
+pnpm db:up
+```
+
+```bash
+uv sync && pnpm i && pnpm db:migrate
+```
+
+```bash
+pnpm dev
+```
+
+Open http://localhost:3000. Everything runs in mock mode by default (`PROVIDER_MODE=mock` in `.env`), so
+generations are labelled test clips and nothing is billed.
 
 | Doc | What's inside |
 |---|---|

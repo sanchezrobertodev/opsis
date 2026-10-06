@@ -1,0 +1,169 @@
+"""Route selection: which vendor runs a request, and in what failover order.
+
+A route is the same model weights through a different vendor, so failover never changes quality.
+Pure function of (spec, request, environment, health) to keep it unit-testable.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any, Literal
+
+from studio.registry.loader import MOCK_PROVIDER, Registry
+from studio.registry.pricing import CostEstimate, estimate
+from studio.registry.schema import ModelSpec, Route
+from studio.registry.validate import NormalizedRequest
+
+ProviderMode = Literal["mock", "mixed", "live"]
+
+
+@dataclass
+class RouteHealth:
+    breaker_open_until: datetime | None = None
+    success_24h: int = 0
+    failure_24h: int = 0
+    p50_latency_ms: int | None = None
+
+    @property
+    def failure_rate(self) -> float:
+        total = self.success_24h + self.failure_24h
+        return self.failure_24h / total if total else 0.0
+
+    def breaker_open(self, now: datetime) -> bool:
+        return self.breaker_open_until is not None and self.breaker_open_until > now
+
+
+@dataclass
+class RoutingEnv:
+    provider_mode: ProviderMode
+    live_allowlist: set[str]
+    has_key: Callable[[str], bool]  # provider id -> key configured?
+    has_adapter: Callable[[str], bool]  # adapter key -> implemented?
+    health: dict[str, RouteHealth] = field(default_factory=dict)
+    now: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass
+class Candidate:
+    route: Route
+    estimate: CostEstimate | None
+    eligible: bool
+    reason: str | None = None
+    provider_name: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "route_id": self.route.id,
+            "provider": self.route.provider,
+            "provider_name": self.provider_name or self.route.provider,
+            "eligible": self.eligible,
+            "reason": self.reason,
+            "estimate_usd": float(self.estimate.usd) if self.estimate else None,
+            "pricing_basis": self.estimate.basis if self.estimate else None,
+            "is_mock": self.route.provider == MOCK_PROVIDER,
+        }
+
+
+def _constraint_violation(route: Route, req: NormalizedRequest) -> str | None:
+    for name, rule in route.constraints.items():
+        if name.startswith("media."):
+            role = name.removeprefix("media.")
+            count = sum(1 for m in req.media if m.role == role)
+            if "max" in rule and count > rule["max"]:
+                return f"accepts at most {rule['max']} {role}"
+            continue
+        value = req.params.get(name)
+        if value is None:
+            continue
+        if "options" in rule and value not in rule["options"] and str(value) not in map(str, rule["options"]):
+            return f"{name}={value} not offered on this route ({rule['options']})"
+        if "min" in rule and value < rule["min"]:
+            return f"{name} below route minimum {rule['min']}"
+        if "max" in rule and value > rule["max"]:
+            return f"{name} above route maximum {rule['max']}"
+    return None
+
+
+def _mode_gate(route: Route, env: RoutingEnv, model_has_allowlisted: bool) -> str | None:
+    is_mock = route.provider == MOCK_PROVIDER
+    if env.provider_mode == "mock":
+        return None if is_mock else "PROVIDER_MODE=mock (live routes disabled)"
+    if env.provider_mode == "live":
+        return "mock routes are off in live mode" if is_mock else None
+    # mixed: allowlisted live routes run live; everything else stays mocked.
+    if model_has_allowlisted:
+        return None if route.id in env.live_allowlist else "not in LIVE_ROUTE_ALLOWLIST"
+    return None if is_mock else "not in LIVE_ROUTE_ALLOWLIST"
+
+
+def candidates(
+    reg: Registry,
+    spec: ModelSpec,
+    req: NormalizedRequest,
+    env: RoutingEnv,
+    policy: str = "cheapest_healthy",
+) -> list[Candidate]:
+    """Every route for the model with eligibility, reason and estimate. Eligible ones first, in order."""
+    model_has_allowlisted = any(r.id in env.live_allowlist for r in spec.routes)
+    out: list[Candidate] = []
+    for route in spec.routes:
+        est: CostEstimate | None = None
+        reason: str | None = None
+        provider = reg.providers.get(route.provider)
+        if req.mode not in route.modes:
+            reason = f"does not support mode {req.mode}"
+        else:
+            try:
+                est = estimate(route.pricing, req.params, req.prompt)
+            except ValueError as exc:
+                reason = f"pricing error: {exc}"
+        if reason is None and not route.enabled:
+            reason = "disabled in registry"
+        if reason is None and provider is None:
+            reason = f"unknown provider {route.provider}"
+        if reason is None:
+            reason = _mode_gate(route, env, model_has_allowlisted)
+        if reason is None and provider and not env.has_adapter(provider.adapter):
+            reason = f"{provider.name} adapter not implemented yet"
+        if reason is None and provider and provider.key_setting and not env.has_key(route.provider):
+            reason = f"no API key for {provider.name}"
+        if reason is None:
+            health = env.health.get(route.id)
+            if health and health.breaker_open(env.now):
+                reason = "circuit breaker open"
+        if reason is None:
+            reason = _constraint_violation(route, req)
+        if reason is None:
+            for name in route.unsupported_params:
+                param = spec.param(name)
+                if name in req.params and param is not None and req.params[name] != param.default:
+                    reason = f"does not support {name}"
+                    break
+        out.append(Candidate(route=route, estimate=est, eligible=reason is None, reason=reason,
+                             provider_name=provider.name if provider else None))
+
+    def sort_key(c: Candidate) -> tuple:
+        h = env.health.get(c.route.id) or RouteHealth()
+        usd = float(c.estimate.usd) if c.estimate else float("inf")
+        if policy == "fastest":
+            return (not c.eligible, h.p50_latency_ms or 10**9, usd)
+        return (not c.eligible, usd, h.failure_rate, h.p50_latency_ms or 10**9)
+
+    out.sort(key=sort_key)
+    if policy.startswith("pinned:"):
+        pinned = policy.removeprefix("pinned:")
+        for c in out:
+            if c.route.id != pinned and c.eligible:
+                c.eligible = False
+                c.reason = f"route pinned to {pinned}"
+        out.sort(key=sort_key)
+    return out
+
+
+def cheapest_live_estimate(cands: list[Candidate]) -> Candidate | None:
+    """What this would cost on the cheapest real route, regardless of keys/adapters. Shown next to mock runs."""
+    # estimate is None when the route lacks the requested mode, so this keeps only comparable routes
+    live = [c for c in cands if c.route.provider != MOCK_PROVIDER and c.estimate is not None and c.route.enabled]
+    return min(live, key=lambda c: c.estimate.usd) if live else None

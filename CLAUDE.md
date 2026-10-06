@@ -11,7 +11,10 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   re-verify before relying on them.
 
 ## Stack
-- `apps/web`: Next.js App Router, React 19, strict TypeScript, Tailwind v4, shadcn/ui, TanStack Query, Zustand.
+- `apps/web`: Next.js 16 App Router (Turbopack, async `params`), React 19, strict TypeScript, Tailwind v4,
+  TanStack Query, Zustand, sonner. UI primitives are hand-built in `src/components/ui/controls.tsx` (native
+  elements, no shadcn) to keep the grading-suite look; see the tokens in `src/app/globals.css`.
+  Next 16 differs from older versions: read `apps/web/node_modules/next/dist/docs/` before using a new API.
 - `apps/server`: one Python 3.12 package `studio` (uv) with two entrypoints: `api` (FastAPI) and `worker`
   (procrastinate). SQLAlchemy 2 (asyncpg) + Alembic on Postgres 18.
 - `apps/gpu-worker`: stub only. Do not install local models unless the user asks.
@@ -45,15 +48,19 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 4. Optional live check: `uv run python scripts/smoke_live.py --routes <route-id> --cap 0.50 --confirm-spend`.
 5. Run `pnpm gen` if the API schema changed.
 
-## Commands (once P0 is scaffolded)
+## Commands
 ```
-docker compose -f infra/docker-compose.yml up -d
+pnpm db:up      # Postgres 18 in Docker on :5433
 uv sync && pnpm i && pnpm db:migrate
-pnpm dev        # api :8000, worker, web :3000
-pnpm gen        # OpenAPI -> packages/api-client types; registry JSON Schemas
-pnpm test       # pytest + vitest
-pnpm e2e        # Playwright against mock providers
+pnpm dev        # API :8400 (reload), worker, web :3000
+pnpm gen        # OpenAPI -> packages/api-client/src/schema.d.ts (run after API schema changes)
+pnpm test       # pytest: unit, registry contract, DB integration (uses a separate studio_test database)
+pnpm e2e        # Playwright against the mock provider (reuses a running `pnpm dev`)
+pnpm lint       # ruff + eslint + tsc
 ```
+- The API runs on **8400**, not 8000 (other local containers publish 8000). Web reads `NEXT_PUBLIC_API_URL`.
+- Run the API via `python -m studio.api`, not bare uvicorn: on Windows it must use `asyncio:SelectorEventLoop`.
+- Media is served by the API at `/media/{key}` with Range support; files live under `data/media/`.
 
 ## Reusable assets elsewhere on this machine
 - `C:\Dev\AI\RunpodVideos\runpod_video_client.py`: RunPod `/run` + status polling + base64 video handling.

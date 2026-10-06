@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+/*
+  Grading-suite palette: neutral graphite surfaces so the footage carries the color.
+  Tungsten (the colour of practical film lights) is the only accent, kept for the primary action
+  and progress. Muted red is reserved for failures.
+*/
+@theme {
+  --color-bay: #222326;
+  --color-panel: #2d2e32;
+  --color-raised: #37383d;
+  --color-line: #45464c;
+  --color-line-soft: #36373c;
+  --color-chalk: #ecebe7;
+  --color-muted: #a3a39e;
+  --color-faint: #76767a;
+  --color-tungsten: #f0a93b;
+  --color-tungsten-dim: #8a6a33;
+  --color-fault: #e5484d;
+  --color-done: #8fbfa8;
+
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-frame: 3px;
+  --radius-control: 6px;
+  --radius-panel: 12px;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--color-bay);
+    color: var(--color-chalk);
+    font-family: var(--font-sans);
+    font-variation-settings: "wdth" 100;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-tungsten);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--color-tungsten) 35%, transparent);
+  }
+}
+
+@layer utilities {
+  /* Archivo's width axis: credits-style titles without a second typeface */
+  .type-title {
+    font-variation-settings: "wdth" 118;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .type-condensed {
+    font-variation-settings: "wdth" 82;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .scrollbar-quiet {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

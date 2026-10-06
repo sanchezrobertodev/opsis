@@ -1,0 +1,7 @@
+id: runway
+name: Runway API
+kind: direct
+adapter: runway
+key_setting: runway_api_key
+concurrency: 2
+docs: https://docs.dev.runwayml.com/guides/pricing/

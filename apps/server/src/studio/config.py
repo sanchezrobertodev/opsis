@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+import uuid
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# apps/server/src/studio/config.py -> repo root is four parents up
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
+# Fixed id of the single seeded owner. Auth later replaces deps.current_user(), not this id.
+DEFAULT_OWNER_ID = uuid.UUID("00000000-0000-7000-8000-000000000001")
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=REPO_ROOT / ".env", extra="ignore")
+
+    database_url: str = "postgresql+asyncpg://studio:studio@localhost:5433/studio"
+    # procrastinate uses psycopg 3, which wants a plain libpq URL
+    queue_database_url: str = "postgresql://studio:studio@localhost:5433/studio"
+
+    provider_mode: Literal["mock", "mixed", "live"] = "mock"
+    live_route_allowlist: str = ""
+
+    media_root: Path = REPO_ROOT / "data" / "media"
+    registry_dir: Path = REPO_ROOT / "registry"
+    web_origin: str = "http://localhost:3000"
+    owner_user_id: uuid.UUID = DEFAULT_OWNER_ID
+
+    # Mock provider timing (seconds). Tests shrink these.
+    mock_queue_seconds: float = 2.0
+    mock_run_seconds: float = 5.0
+
+    # Worker polling backoff
+    poll_initial_seconds: float = 2.0
+    poll_max_seconds: float = 20.0
+
+    fal_key: str = Field(default="", repr=False)
+    gemini_api_key: str = Field(default="", repr=False)
+    runway_api_key: str = Field(default="", repr=False)
+    replicate_api_token: str = Field(default="", repr=False)
+    anthropic_api_key: str = Field(default="", repr=False)
+
+    @property
+    def live_routes(self) -> set[str]:
+        return {r.strip() for r in self.live_route_allowlist.split(",") if r.strip()}
+
+    def provider_key(self, provider: str) -> str:
+        return {
+            "fal": self.fal_key,
+            "google": self.gemini_api_key,
+            "runway": self.runway_api_key,
+            "replicate": self.replicate_api_token,
+        }.get(provider, "")
+
+    def resolve_media_root(self) -> Path:
+        root = self.media_root if self.media_root.is_absolute() else REPO_ROOT / self.media_root
+        return root.resolve()
+
+    def resolve_registry_dir(self) -> Path:
+        d = self.registry_dir if self.registry_dir.is_absolute() else REPO_ROOT / self.registry_dir
+        return d.resolve()
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

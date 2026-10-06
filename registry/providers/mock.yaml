@@ -1,0 +1,6 @@
+id: mock
+name: Mock
+kind: mock
+adapter: mock
+concurrency: 8
+notes: Local ffmpeg/Pillow test media at $0. Default in development (PROVIDER_MODE=mock).

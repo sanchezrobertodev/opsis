@@ -1,0 +1,8 @@
+id: replicate
+name: Replicate
+kind: aggregator
+adapter: replicate
+key_setting: replicate_api_token
+concurrency: 4
+docs: https://replicate.com/docs/topics/predictions/rate-limits
+notes: API outputs are deleted after 1 hour; ingest immediately.

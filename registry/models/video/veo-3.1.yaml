@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: veo-3.1
+name: Veo 3.1
+family: veo
+vendor: google
+description: Google's flagship cinematic model with native audio. Up to 3 reference images; first/last frame.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [cinematic, audio, references, first-last-frame, 4k]
+prompt: {max_chars: 4000, dialect: veo, supports_negative: true}
+aspect_ratios: ["16:9", "9:16"]
+duration: {min: 4, max: 8, default: 8}
+
+parameters:
+  - {name: duration, label: Duration (s), type: enum, options: [4, 6, 8], default: 8, ui: segmented}
+  - {name: resolution, type: enum, options: ["720p", "1080p", "4k"], default: "720p", ui: segmented}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16"], default: "16:9", ui: aspect}
+  - {name: generate_audio, label: Native audio, type: bool, default: true}
+  - {name: seed, type: seed, group: advanced}
+
+rules:
+  - when: {resolution: ["1080p", "4k"]}
+    require: {duration: [8]}
+    message: Veo 3.1 renders 1080p and 4K only at 8 seconds.
+
+modes:
+  - id: t2v
+    label: Text to video
+    ops: [t2v]
+  - id: i2v
+    label: Image to video
+    ops: [i2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+  - id: flf2v
+    label: First and last frame
+    ops: [flf2v]
+    medias:
+      - {role: start_image, kinds: [image], label: First frame, required: true}
+      - {role: end_image, kinds: [image], label: Last frame, required: true}
+  - id: reference
+    label: Reference images
+    ops: [multi_ref]
+    medias:
+      - {role: image_references, kinds: [image], label: References, required: true, min: 1, max: 3}
+
+elements: {strategy: refs_native, ref_role: image_references, max_refs: 3}
+
+routes:
+  - id: veo-3.1@google
+    provider: google
+    modes:
+      t2v: {endpoint: veo-3.1-generate-preview}
+      i2v: {endpoint: veo-3.1-generate-preview}
+      flf2v: {endpoint: veo-3.1-generate-preview}
+      reference: {endpoint: veo-3.1-generate-preview}
+    map:
+      params:
+        duration: {to: duration_seconds, transform: int}
+        aspect_ratio: aspect_ratio
+        resolution: resolution
+        generate_audio: generate_audio
+        seed: seed
+      media: {start_image: image, end_image: last_frame, image_references: reference_images}
+    pricing:
+      basis: per_output_second
+      rates:
+        - {usd: 0.40}
+        - {when: {resolution: "4k"}, usd: 0.60}
+      verified: 2026-10-06
+      source: https://ai.google.dev/gemini-api/docs/pricing
+    timeout_s: 900
+    notes: Google SDK adapter (P1). Copy outputs out within 2 days.
+  - id: veo-3.1@fal
+    provider: fal
+    modes:
+      t2v: {endpoint: fal-ai/veo3.1}
+      i2v: {endpoint: fal-ai/veo3.1/image-to-video}
+      flf2v: {endpoint: fal-ai/veo3.1/first-last-frame-to-video}
+      reference: {endpoint: fal-ai/veo3.1/reference-to-video}
+    map:
+      params:
+        duration: {to: duration, transform: suffix, args: {suffix: "s"}}
+        aspect_ratio: aspect_ratio
+        resolution: resolution
+        generate_audio: generate_audio
+        seed: seed
+      media: {start_image: image_url, end_image: last_frame_url, image_references: image_urls}
+    pricing:
+      basis: per_output_second
+      rates:
+        - {usd: 0.40}
+        - {when: {resolution: "4k"}, usd: 0.60}
+        - {when: {generate_audio: false}, usd: 0.20}
+      verified: 2026-10-06
+      source: https://fal.ai/models/fal-ai/veo3.1
+    output: {path: video.url, kind: video}
+    notes: Endpoint ids to be re-verified against fal's OpenAPI in P1.
+
+examples:
+  - name: t2v_smoke
+    mode: t2v
+    prompt: A paper boat drifts down a rain-soaked city gutter at dusk, neon reflections, gentle rain sounds.
+    params: {duration: 4, resolution: "720p", generate_audio: true}
+    smoke: true
+    expect: {cost_usd_range: [1.0, 2.0]}

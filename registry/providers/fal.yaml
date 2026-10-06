@@ -1,0 +1,7 @@
+id: fal
+name: fal.ai
+kind: aggregator
+adapter: fal
+key_setting: fal_key
+concurrency: 2   # fal starts accounts at 2 concurrent; raise as the account limit grows
+docs: https://fal.ai/docs/documentation/model-apis/inference/queue
