@@ -1,0 +1,18 @@
+id: fpv-dive
+name: FPV dive
+category: camera
+summary: A racing-drone flight that skims, dives and threads through a place.
+model_id: veo-3.1
+mode: t2v
+fields:
+  - key: place
+    label: Where to fly
+    placeholder: a canyon river at sunrise
+prompt: >-
+  A fast first-person drone flight through {place}, skimming surfaces, diving over an edge and
+  threading through a narrow gap, rushing wind
+params: {duration: 8, generate_audio: true}
+direction:
+  camera_moves: [{id: fpv_drone, speed: fast}]
+  pacing: dynamic
+tags: [aerial, sound]

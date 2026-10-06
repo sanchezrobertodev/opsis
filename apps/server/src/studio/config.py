@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     replicate_api_token: str = Field(default="", repr=False)
     anthropic_api_key: str = Field(default="", repr=False)
 
+    # Claude (prompt enhancement, scripts, shot plans). `mock` returns canned results and never bills.
+    llm_mode: Literal["mock", "live"] = "mock"
+    llm_fast_model: str = "claude-sonnet-5-5"  # interactive: enhance, vision review
+    llm_smart_model: str = "claude-opus-5-5"  # scripts, shot plans
+
+    # Local ComfyUI (C:/Dev/AI/VideoStudio). Empty disables the local route.
+    comfyui_url: str = ""
+    comfyui_workflows_dir: Path = REPO_ROOT / "workflows" / "comfy"
+
     @property
     def live_routes(self) -> set[str]:
         return {r.strip() for r in self.live_route_allowlist.split(",") if r.strip()}

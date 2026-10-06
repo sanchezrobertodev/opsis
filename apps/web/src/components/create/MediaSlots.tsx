@@ -7,7 +7,7 @@ import { type MediaSlot, mediaUrl } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { SlotAsset } from "@/lib/draft";
 import { uploadFile, useAssets } from "@/lib/queries";
-import { Dialog } from "@/components/ui/controls";
+import { Button, Dialog } from "@/components/ui/controls";
 
 const ACCEPT: Record<string, string> = { image: "image/*", video: "video/*", audio: "audio/*" };
 
@@ -141,8 +141,10 @@ export function MediaSlotField({
       <LibraryPicker
         open={picking}
         kinds={slot.kinds}
+        picked={max > 1 ? value.map((v) => v.id) : undefined}
         onClose={() => setPicking(false)}
         onPick={(a) => {
+          if (value.some((v) => v.id === a.id)) return onRemove(a.id);
           onAdd(a);
           if (value.length + 1 >= max) setPicking(false);
         }}
@@ -154,11 +156,14 @@ export function MediaSlotField({
 function LibraryPicker({
   open,
   kinds,
+  picked,
   onClose,
   onPick,
 }: {
   open: boolean;
   kinds: string[];
+  /** Set for slots that take several items: the picker stays open and marks what's chosen. */
+  picked?: string[];
   onClose: () => void;
   onPick: (a: SlotAsset) => void;
 }) {
@@ -166,7 +171,19 @@ function LibraryPicker({
   const { data, isLoading } = useAssets({ kind });
   const items = (data?.items ?? []).filter((a) => kinds.includes(a.kind));
   return (
-    <Dialog open={open} onClose={onClose} title="Choose from your library" wide>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Choose from your library"
+      wide
+      footer={
+        picked && (
+          <Button type="button" tone="primary" onClick={onClose}>
+            Done{picked.length ? `, ${picked.length} chosen` : ""}
+          </Button>
+        )
+      }
+    >
       {isLoading ? (
         <p>Loading your library…</p>
       ) : items.length === 0 ? (
@@ -178,7 +195,11 @@ function LibraryPicker({
               <button
                 type="button"
                 onClick={() => onPick({ id: a.id, kind: a.kind, thumb: a.thumb_url, url: a.url, title: a.title })}
-                className="block aspect-square w-full overflow-hidden rounded-[var(--radius-frame)] bg-raised outline-offset-2 hover:opacity-85"
+                aria-pressed={picked ? picked.includes(a.id) : undefined}
+                className={cn(
+                  "block aspect-square w-full overflow-hidden rounded-[var(--radius-frame)] bg-raised outline-offset-2 hover:opacity-85",
+                  picked?.includes(a.id) && "ring-2 ring-tungsten ring-offset-2 ring-offset-panel",
+                )}
                 title={a.title ?? undefined}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}

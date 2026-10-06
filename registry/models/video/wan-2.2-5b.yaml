@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: wan-2.2-5b
+name: Wan 2.2 5B (local)
+family: wan
+vendor: alibaba
+description: >-
+  Open-weights Wan 2.2 TI2V 5B on your own GPU. Free, no account needed, draft quality.
+  Draft clips take about a minute; standard 720p takes about seven.
+output_type: video
+status: active
+license_tier: open_permissive   # Apache 2.0
+tags: [local, free, open-weights, draft]
+prompt: {max_chars: 2000, dialect: wan, supports_negative: true}
+aspect_ratios: ["16:9", "9:16"]
+duration: {min: 2, max: 5, default: 3}
+
+parameters:
+  - {name: quality, type: enum, options: [draft, standard], default: draft, ui: segmented,
+     help: "Draft is 768×448 in about a minute. Standard is 1280×704 in about seven."}
+  - {name: duration, label: Duration (s), type: int, min: 2, max: 5, default: 3, ui: slider}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16"], default: "16:9", ui: aspect}
+  - {name: steps, type: int, min: 8, max: 30, default: 20, group: advanced, help: Fewer steps render faster and look rougher.}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: t2v
+    label: Text to video
+    ops: [t2v]
+  - id: i2v
+    label: Image to video
+    ops: [i2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+
+routes:
+  - id: wan-2.2-5b@comfy_local
+    provider: comfy_local
+    modes:
+      t2v: {endpoint: wan22_ti2v_5b}
+      i2v: {endpoint: wan22_ti2v_5b}
+    transform: studio.providers.transforms.comfy:wan_size
+    map:
+      params:
+        duration: {to: length, transform: seconds_to_frames, args: {fps: 24, plus: 1}}
+        quality: {to: null}
+        aspect_ratio: {to: null}
+      media: {start_image: start_image}
+    pricing:
+      basis: per_request
+      rates: [{usd: 0}]
+      verified: 2026-10-06
+      source: local GPU (C:/Dev/AI/VideoStudio/docs/performance.md)
+    # Benchmarks: draft 3 s ~70 s, standard 5 s ~430 s; scale with length and steps.
+    eta: "(70 / 3 if quality == 'draft' else 430 / 5) * duration * steps / 20"
+    timeout_s: 3600
+    output: {path: outputs, kind: video}
+
+examples:
+  - name: t2v_draft
+    mode: t2v
+    prompt: A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.
+    params: {quality: draft, duration: 3}
+    smoke: true
+    expect: {cost_usd_range: [0, 0]}

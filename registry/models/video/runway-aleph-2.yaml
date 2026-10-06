@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# aleph2 replaced gen4_aleph in the Runway API (verified 2026-10-06).
+id: runway-aleph-2
+name: Runway Aleph 2
+family: runway
+vendor: runway
+description: >-
+  Edit an existing clip by instruction: change the weather, relight, restyle, add or remove things, or
+  reframe to a new aspect ratio. Clips up to 30 s; billed by the input clip's length.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [edit, video-to-video, restyle, relight, reframe]
+prompt: {max_chars: 1000, dialect: runway}
+
+parameters:
+  - {name: target_aspect_ratio, label: Reframe to, type: enum, options: ["16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16", "21:9"],
+     group: advanced, help: Leave unset to keep the clip's shape. Setting it outpaints to the new shape.}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: edit
+    label: Edit a video
+    ops: [instruction_edit, restyle, reframe]
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 30}
+
+routes:
+  - id: runway-aleph-2@runway
+    provider: runway
+    modes:
+      edit: {endpoint: video_to_video, fixed: {model: aleph2}}
+    map:
+      prompt: promptText
+      negative_prompt: null
+      params:
+        target_aspect_ratio: targetAspectRatio
+        seed: seed
+      media: {input_video: videoUri}
+    pricing:
+      basis: per_output_second
+      quantity: "max(input_video_seconds, 2)"   # 28 credits/s, 56-credit minimum
+      rates: [{usd: 0.28}]
+      verified: 2026-10-06
+      source: https://docs.dev.runwayml.com/guides/pricing
+    output: {path: output, kind: video}
+
+examples:
+  - name: edit_smoke
+    mode: edit
+    prompt: Make it snow heavily, everything dusted white.
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.5, 1.0]}

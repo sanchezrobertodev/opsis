@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: runway-gen-4-turbo
+name: Runway Gen-4 Turbo
+family: runway
+vendor: runway
+description: Fast, affordable image-to-video from Runway. Animate a keyframe in 2-10 s.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [fast, budget, image-to-video]
+prompt: {max_chars: 1000, dialect: runway}
+aspect_ratios: ["16:9", "9:16", "4:3", "1:1", "3:4", "21:9"]
+duration: {min: 2, max: 10, default: 5}
+
+parameters:
+  - {name: duration, label: Duration (s), type: int, min: 2, max: 10, default: 5, ui: slider}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "4:3", "1:1", "3:4", "21:9"], default: "16:9", ui: aspect}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: i2v
+    label: Image to video
+    ops: [i2v]
+    prompt: optional
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+
+routes:
+  - id: runway-gen-4-turbo@runway
+    provider: runway
+    modes:
+      i2v: {endpoint: image_to_video, fixed: {model: gen4_turbo}}
+    map:
+      prompt: promptText
+      negative_prompt: null
+      params:
+        duration: {to: duration, transform: int}
+        aspect_ratio: {to: ratio, transform: enum_map, args: {values:
+          {"16:9": "1280:720", "9:16": "720:1280", "4:3": "1104:832", "1:1": "960:960", "3:4": "832:1104", "21:9": "1584:672"}}}
+        seed: seed
+      media: {start_image: promptImage}
+    pricing:
+      basis: per_output_second
+      rates: [{usd: 0.05}]   # 5 credits/s
+      verified: 2026-10-06
+      source: https://docs.dev.runwayml.com/guides/pricing
+    output: {path: output, kind: video}
+
+examples:
+  - name: i2v_smoke
+    mode: i2v
+    prompt: Gentle wind moves through the scene.
+    params: {duration: 2}
+    media: {start_image: "fixture:images/keyframe.png"}
+    smoke: true
+    expect: {cost_usd_range: [0.05, 0.2]}

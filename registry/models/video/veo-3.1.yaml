@@ -1,4 +1,5 @@
 # yaml-language-server: $schema=../../schema/model.schema.json
+# Field names verified 2026-10-06 against fal's per-endpoint OpenAPI and the google-genai 2.28 SDK.
 id: veo-3.1
 name: Veo 3.1
 family: veo
@@ -23,6 +24,9 @@ rules:
   - when: {resolution: ["1080p", "4k"]}
     require: {duration: [8]}
     message: Veo 3.1 renders 1080p and 4K only at 8 seconds.
+  - when: {mode: reference}
+    require: {duration: [8]}
+    message: Veo 3.1 with reference images renders 8-second clips.
 
 modes:
   - id: t2v
@@ -50,19 +54,23 @@ elements: {strategy: refs_native, ref_role: image_references, max_refs: 3}
 routes:
   - id: veo-3.1@google
     provider: google
+    # Gemini API retires the Veo 3.1 preview models on 2026-10-22 (earliest date; Gemini Omni is the successor).
+    sunset: 2026-10-22
     modes:
-      t2v: {endpoint: veo-3.1-generate-preview}
-      i2v: {endpoint: veo-3.1-generate-preview}
-      flf2v: {endpoint: veo-3.1-generate-preview}
-      reference: {endpoint: veo-3.1-generate-preview}
+      t2v: {endpoint: veo-3.1-generate-preview, fixed: {person_generation: allow_all}}
+      i2v: {endpoint: veo-3.1-generate-preview, fixed: {person_generation: allow_adult}}
+      flf2v: {endpoint: veo-3.1-generate-preview, fixed: {person_generation: allow_adult}}
+      reference: {endpoint: veo-3.1-generate-preview, fixed: {person_generation: allow_adult}}
     map:
       params:
         duration: {to: duration_seconds, transform: int}
         aspect_ratio: aspect_ratio
         resolution: resolution
-        generate_audio: generate_audio
-        seed: seed
+        # The SDK rejects these in Gemini API mode: audio is always on, and seed isn't accepted.
+        generate_audio: {to: null}
+        seed: {to: null}
       media: {start_image: image, end_image: last_frame, image_references: reference_images}
+    unsupported_params: [generate_audio]   # can't turn audio off here; silent requests go to fal
     pricing:
       basis: per_output_second
       rates:
@@ -71,14 +79,15 @@ routes:
       verified: 2026-10-06
       source: https://ai.google.dev/gemini-api/docs/pricing
     timeout_s: 900
-    notes: Google SDK adapter (P1). Copy outputs out within 2 days.
+    notes: Copy outputs out within 2 days. Not charged when a video is blocked.
   - id: veo-3.1@fal
     provider: fal
     modes:
       t2v: {endpoint: fal-ai/veo3.1}
       i2v: {endpoint: fal-ai/veo3.1/image-to-video}
-      flf2v: {endpoint: fal-ai/veo3.1/first-last-frame-to-video}
-      reference: {endpoint: fal-ai/veo3.1/reference-to-video}
+      flf2v: {endpoint: fal-ai/veo3.1/first-last-frame-to-video,
+              media: {start_image: first_frame_url, end_image: last_frame_url}}
+      reference: {endpoint: fal-ai/veo3.1/reference-to-video, drop: [seed, negative_prompt], fixed: {duration: "8s"}}
     map:
       params:
         duration: {to: duration, transform: suffix, args: {suffix: "s"}}
@@ -86,7 +95,7 @@ routes:
         resolution: resolution
         generate_audio: generate_audio
         seed: seed
-      media: {start_image: image_url, end_image: last_frame_url, image_references: image_urls}
+      media: {start_image: image_url, image_references: image_urls}
     pricing:
       basis: per_output_second
       rates:
@@ -96,7 +105,6 @@ routes:
       verified: 2026-10-06
       source: https://fal.ai/models/fal-ai/veo3.1
     output: {path: video.url, kind: video}
-    notes: Endpoint ids to be re-verified against fal's OpenAPI in P1.
 
 examples:
   - name: t2v_smoke

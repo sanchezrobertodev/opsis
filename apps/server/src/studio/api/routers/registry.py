@@ -108,5 +108,6 @@ async def post_estimate(
         negative_prompt=body.negative_prompt, params=body.params,
         media=[{"role": m.role, "asset_id": str(m.asset_id)} for m in body.media],
         route_policy=body.route_policy,
+        direction=body.direction.model_dump(exclude_none=True) if body.direction else None,
     ))
     return EstimateOut.model_validate(p.as_dict())

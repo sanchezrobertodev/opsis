@@ -41,12 +41,13 @@ routes:
       i2v: {endpoint: fal-ai/kling-video/v3/pro/image-to-video}
     map:
       params:
-        duration: {to: duration, transform: str}
+        duration: {to: duration, transform: str}   # fal takes "3".."15"
         cfg_scale: cfg_scale
         generate_audio: generate_audio
-        resolution: {to: null}
-        seed: {to: null}
-      media: {start_image: image_url, end_image: tail_image_url}
+        resolution: {to: null}   # the pro endpoint renders 1080p
+        seed: {to: null}         # not accepted by Kling v3 on fal
+      # field names verified 2026-10-06 against fal's per-endpoint OpenAPI
+      media: {start_image: start_image_url, end_image: end_image_url}
     constraints:
       resolution: {options: ["1080p"]}
     pricing:
@@ -57,7 +58,7 @@ routes:
       verified: 2026-10-06
       source: https://fal.ai/models/fal-ai/kling-video/v3/pro/image-to-video
     output: {path: video.url, kind: video}
-    notes: fal's Pro tier renders 1080p. Endpoint ids re-verified in P1.
+    notes: fal's Pro tier renders 1080p. Multi-shot (multi_prompt) and elements arrive with Cinema Studio.
 
 examples:
   - name: t2v_smoke

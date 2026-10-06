@@ -1,0 +1,22 @@
+id: neon-noir
+name: Neon noir
+category: look
+summary: Rain, reflections and hard neon. A detective-film night.
+model_id: seedance-2.5
+mode: t2v
+fields:
+  - key: subject
+    label: Who
+    placeholder: a woman in a trench coat
+  - key: place
+    label: Where
+    placeholder: a rain-soaked alley behind a ramen bar
+prompt: >-
+  {subject} walks slowly through {place}, rain on the pavement, steam rising, reflections everywhere
+params: {duration: 6, aspect_ratio: "21:9"}
+direction:
+  camera_moves: [{id: dolly_left, speed: slow}]
+  lighting: neon_noir
+  palette: hyper_neon
+  genre: noir
+tags: [cinematic]

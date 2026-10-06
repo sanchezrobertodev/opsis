@@ -1,0 +1,14 @@
+# FLUX.2 klein base 4B (fp8) with a 4x Siax upscale scaled back to 1.5x.
+# Source: C:/Dev/AI/VideoStudio/setup/api/flux2-image-gen-wide.json (validated in VideoStudio).
+description: FLUX.2 klein 4B text-to-image, upscaled 1.5x
+inputs:
+  prompt: [{node: "4", input: text}]
+  negative_prompt: [{node: "5", input: text}]
+  seed: [{node: "6", input: noise_seed}]
+  steps: [{node: "9", input: steps}]
+  width: [{node: "9", input: width}, {node: "10", input: width}]
+  height: [{node: "9", input: height}, {node: "10", input: height}]
+  num_images: [{node: "10", input: batch_size}]
+  filename_prefix: [{node: "16", input: filename_prefix}]
+outputs:
+  - {node: "16", kind: image}

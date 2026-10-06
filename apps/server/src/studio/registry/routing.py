@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from studio.registry.loader import MOCK_PROVIDER, Registry
-from studio.registry.pricing import CostEstimate, estimate
+from studio.registry.pricing import CostEstimate, estimate, eta_seconds
 from studio.registry.schema import ModelSpec, Route
 from studio.registry.validate import NormalizedRequest
 
@@ -42,6 +42,7 @@ class RoutingEnv:
     has_key: Callable[[str], bool]  # provider id -> key configured?
     has_adapter: Callable[[str], bool]  # adapter key -> implemented?
     health: dict[str, RouteHealth] = field(default_factory=dict)
+    reachable: Callable[[str], bool] = lambda _provider: True  # local engines: is the server up?
     now: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -52,12 +53,16 @@ class Candidate:
     eligible: bool
     reason: str | None = None
     provider_name: str | None = None
+    provider_kind: str | None = None
+    eta_seconds: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "route_id": self.route.id,
             "provider": self.route.provider,
             "provider_name": self.provider_name or self.route.provider,
+            "provider_kind": self.provider_kind,
+            "eta_seconds": self.eta_seconds,
             "eligible": self.eligible,
             "reason": self.reason,
             "estimate_usd": float(self.estimate.usd) if self.estimate else None,
@@ -86,8 +91,15 @@ def _constraint_violation(route: Route, req: NormalizedRequest) -> str | None:
     return None
 
 
-def _mode_gate(route: Route, env: RoutingEnv, model_has_allowlisted: bool) -> str | None:
+def _mode_gate(
+    route: Route, kind: str | None, env: RoutingEnv, model_has_allowlisted: bool, local_configured: bool
+) -> str | None:
     is_mock = route.provider == MOCK_PROVIDER
+    if kind == "local":
+        return None  # free and offline: allowed in every provider mode
+    if is_mock and local_configured:
+        # A real local engine exists for this model; never swap its output for a test pattern.
+        return "this model runs on the local engine"
     if env.provider_mode == "mock":
         return None if is_mock else "PROVIDER_MODE=mock (live routes disabled)"
     if env.provider_mode == "live":
@@ -107,6 +119,15 @@ def candidates(
 ) -> list[Candidate]:
     """Every route for the model with eligibility, reason and estimate. Eligible ones first, in order."""
     model_has_allowlisted = any(r.id in env.live_allowlist for r in spec.routes)
+
+    def local_ready(r: Route) -> bool:
+        p = reg.providers.get(r.provider)
+        return bool(
+            p and p.kind == "local" and r.enabled and req.mode in r.modes and env.has_adapter(p.adapter)
+            and (not p.key_setting or env.has_key(r.provider))
+        )
+
+    local_configured = any(local_ready(r) for r in spec.routes)
     out: list[Candidate] = []
     for route in spec.routes:
         est: CostEstimate | None = None
@@ -116,19 +137,24 @@ def candidates(
             reason = f"does not support mode {req.mode}"
         else:
             try:
-                est = estimate(route.pricing, req.params, req.prompt)
+                est = estimate(route.pricing, req.params, req.prompt, req.media)
             except ValueError as exc:
                 reason = f"pricing error: {exc}"
         if reason is None and not route.enabled:
             reason = "disabled in registry"
+        if reason is None and route.sunset and env.now.date() >= route.sunset:
+            reason = f"retired by the provider on {route.sunset.isoformat()}"
         if reason is None and provider is None:
             reason = f"unknown provider {route.provider}"
+        kind = provider.kind if provider else None
         if reason is None:
-            reason = _mode_gate(route, env, model_has_allowlisted)
+            reason = _mode_gate(route, kind, env, model_has_allowlisted, local_configured)
         if reason is None and provider and not env.has_adapter(provider.adapter):
             reason = f"{provider.name} adapter not implemented yet"
         if reason is None and provider and provider.key_setting and not env.has_key(route.provider):
-            reason = f"no API key for {provider.name}"
+            reason = (f"{provider.name} isn't configured" if kind == "local" else f"no API key for {provider.name}")
+        if reason is None and kind == "local" and not env.reachable(route.provider):
+            reason = f"{provider.name} isn't running. Start it, then try again."
         if reason is None:
             health = env.health.get(route.id)
             if health and health.breaker_open(env.now):
@@ -142,7 +168,8 @@ def candidates(
                     reason = f"does not support {name}"
                     break
         out.append(Candidate(route=route, estimate=est, eligible=reason is None, reason=reason,
-                             provider_name=provider.name if provider else None))
+                             provider_name=provider.name if provider else None, provider_kind=kind,
+                             eta_seconds=eta_seconds(route.eta, req.params) if est else None))
 
     def sort_key(c: Candidate) -> tuple:
         h = env.health.get(c.route.id) or RouteHealth()

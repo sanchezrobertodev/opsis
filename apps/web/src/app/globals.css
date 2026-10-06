@@ -68,6 +68,24 @@
   }
 }
 
+/* Camera-move glyphs: a dot that moves like the category moves. Plays on hover of the card. */
+@keyframes glyph-push { from { transform: scale(1); } to { transform: scale(3); } }
+@keyframes glyph-orbit { from { transform: rotate(0deg) translateX(9px) rotate(0deg); } to { transform: rotate(360deg) translateX(9px) rotate(-360deg); } }
+@keyframes glyph-lateral { from { transform: translateX(-12px); } to { transform: translateX(12px); } }
+@keyframes glyph-vertical { from { transform: translateY(8px); } to { transform: translateY(-8px); } }
+@keyframes glyph-handheld { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(2px, -1px); } 50% { transform: translate(-1px, 2px); } 75% { transform: translate(-2px, -1px); } }
+@keyframes glyph-vehicle { from { transform: translateX(-16px); opacity: 0.2; } to { transform: translateX(16px); opacity: 1; } }
+@keyframes glyph-time { 0%, 100% { opacity: 1; filter: blur(0); } 50% { opacity: 0.3; filter: blur(2px); } }
+@keyframes glyph-lens { from { transform: scaleX(1); } to { transform: scaleX(3.5); } }
+.group:hover .glyph-push { animation: glyph-push 1.2s ease-in-out infinite alternate; }
+.group:hover .glyph-orbit { animation: glyph-orbit 1.6s linear infinite; }
+.group:hover .glyph-lateral { animation: glyph-lateral 1.2s ease-in-out infinite alternate; }
+.group:hover .glyph-vertical { animation: glyph-vertical 1.2s ease-in-out infinite alternate; }
+.group:hover .glyph-handheld { animation: glyph-handheld 0.35s linear infinite; }
+.group:hover .glyph-vehicle { animation: glyph-vehicle 0.7s ease-in infinite; }
+.group:hover .glyph-time { animation: glyph-time 1s ease-in-out infinite; }
+.group:hover .glyph-lens { animation: glyph-lens 1.2s ease-in-out infinite alternate; }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

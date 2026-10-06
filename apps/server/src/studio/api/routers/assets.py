@@ -13,11 +13,12 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.api.deps import current_user, get_session
-from studio.api.schemas import AssetLineageOut, AssetOut, AssetPage, AssetPatch, LineageEdge
+from studio.api.schemas import AssetLineageOut, AssetOut, AssetPage, AssetPatch, FrameIn, LineageEdge
 from studio.api.serializers import asset_out
 from studio.db.base import uuid7
 from studio.db.models import Asset, AssetLineage, User
 from studio.domain import fsm
+from studio.domain.derived import frame_of
 from studio.domain.enums import AssetKind, AssetSource, AssetStatus
 from studio.media.ffmpeg import FFmpegError, probe
 from studio.storage.base import asset_key
@@ -172,3 +173,20 @@ async def lineage(asset_id: uuid.UUID, session: AsyncSession = Depends(get_sessi
 
     return AssetLineageOut(parents=[edge(e) for e in parents], children=[edge(e) for e in children])
 
+
+
+@router.post("/assets/{asset_id}/frames", response_model=AssetOut)
+async def grab_frame(asset_id: uuid.UUID, body: FrameIn, session: AsyncSession = Depends(get_session),
+                     user: User = Depends(current_user)) -> AssetOut:
+    """Save one frame of a video as an image, e.g. the last frame to continue a shot from. Idempotent."""
+    video = await _owned(session, user, asset_id)
+    if video.kind != AssetKind.video:
+        raise HTTPException(422, "frames come from videos; this asset is not a video")
+    try:
+        frame, created = await frame_of(session, video, body.at)
+    except FFmpegError as exc:
+        raise HTTPException(422, f"could not read a frame from this clip: {str(exc)[-200:]}") from exc
+    await session.commit()
+    if created:
+        await defer_derive(frame.id)
+    return asset_out(frame)

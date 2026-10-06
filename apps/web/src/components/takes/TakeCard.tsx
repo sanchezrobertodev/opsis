@@ -1,12 +1,19 @@
 "use client";
 
-import { Download, ImageUp, RotateCcw, Star, X } from "lucide-react";
+import { Download, ImageUp, RotateCcw, Star, StepForward, UserRoundPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { type Asset, type Generation, isActive, mediaUrl } from "@/lib/api";
 import { cn, seconds, timecode, usd } from "@/lib/cn";
 import { useDraft } from "@/lib/draft";
-import { useCancelGeneration, useCreateGeneration, usePatchAsset, useResolveUnknown } from "@/lib/queries";
+import {
+  useCancelGeneration,
+  useContinueFromLastFrame,
+  useCreateGeneration,
+  usePatchAsset,
+  useResolveUnknown,
+} from "@/lib/queries";
+import { SaveAsElement } from "@/components/characters/SaveAsElement";
 
 const STATUS_TEXT: Record<string, string> = {
   queued: "Waiting for a worker",
@@ -24,13 +31,15 @@ function aspectOf(gen: Generation, asset?: Asset): string {
   return "16 / 9";
 }
 
-function useTick(active: boolean) {
-  const [, setNow] = useState(0);
+/** Current time, refreshed every second while `active`; keeps render pure (no Date.now() in render). */
+function useNow(active: boolean) {
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!active) return;
-    const t = setInterval(() => setNow((n) => n + 1), 1000);
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [active]);
+  return now;
 }
 
 export function TakeCard({
@@ -45,7 +54,7 @@ export function TakeCard({
   onOpen?: (asset: Asset) => void;
 }) {
   const active = isActive(gen.status);
-  useTick(active);
+  const now = useNow(active);
   const assets = gen.assets ?? [];
   const prompt = String(gen.request.prompt ?? "");
 
@@ -61,7 +70,7 @@ export function TakeCard({
           ))}
         </div>
       ) : active ? (
-        <Slate gen={gen} takeNumber={takeNumber} modelName={modelName} aspect={aspectOf(gen)} />
+        <Slate gen={gen} takeNumber={takeNumber} modelName={modelName} aspect={aspectOf(gen)} now={now} />
       ) : (
         <Fault gen={gen} aspect={aspectOf(gen)} />
       )}
@@ -76,23 +85,36 @@ function Slate({
   takeNumber,
   modelName,
   aspect,
+  now,
 }: {
   gen: Generation;
   takeNumber: number;
   modelName: string;
   aspect: string;
+  now: number;
 }) {
   const cancel = useCancelGeneration();
   const resolve = useResolveUnknown();
   const pct = Math.round((gen.progress ?? 0) * 100);
+  const routing = gen.routing as { chosen?: string; candidates?: { route_id: string; eta_seconds?: number | null; provider_kind?: string | null }[] };
+  const chosen = routing.candidates?.find((c) => c.route_id === routing.chosen);
+  const local = chosen?.provider_kind === "local";
+  const remaining =
+    chosen?.eta_seconds && gen.started_at
+      ? chosen.eta_seconds - (now - new Date(gen.started_at).getTime()) / 1000
+      : null;
   const waiting = gen.status_reason === "provider_queue" || gen.status === "queued";
   const statusText =
     gen.status === "in_progress" && !waiting
-      ? `${STATUS_TEXT.in_progress}${pct > 0 ? ` ${pct}%` : ""}`
+      ? local
+        ? `Rendering on your GPU${remaining != null && remaining > 5 ? `, about ${remainingText(remaining)} left` : ""}`
+        : `${STATUS_TEXT.in_progress}${pct > 0 ? ` ${pct}%` : ""}`
       : gen.status_reason === "provider_concurrency"
         ? "Waiting for a free provider slot"
         : waiting && gen.status === "in_progress"
-          ? "In the provider's queue"
+          ? local
+            ? "Waiting for your GPU"
+            : "In the provider's queue"
           : (STATUS_TEXT[gen.status] ?? gen.status);
 
   return (
@@ -116,7 +138,7 @@ function Slate({
           <p className="truncate text-xs text-muted" aria-live="polite">
             {statusText}
           </p>
-          <p className="type-title tabular text-3xl leading-none text-chalk">{timecode(gen.created_at)}</p>
+          <p className="type-title tabular text-3xl leading-none text-chalk">{timecode(gen.created_at, now)}</p>
         </div>
         {gen.status === "unknown" ? (
           <button
@@ -151,6 +173,10 @@ function Slate({
       </div>
     </div>
   );
+}
+
+function remainingText(seconds: number) {
+  return seconds < 90 ? `${Math.max(5, Math.round(seconds / 5) * 5)} s` : `${Math.round(seconds / 60)} min`;
 }
 
 function Fault({ gen, aspect }: { gen: Generation; aspect: string }) {
@@ -214,6 +240,8 @@ function TakeFooter({
   const addMedia = useDraft((s) => s.addMedia);
   const create = useCreateGeneration();
   const patch = usePatchAsset();
+  const [saving, setSaving] = useState(false);
+  const continueShot = useContinueFromLastFrame();
   const first = assets[0];
   const cost = gen.actual_cost_usd ?? gen.estimated_cost_usd;
   const duration = first?.duration_ms ? seconds(first.duration_ms) : null;
@@ -269,6 +297,24 @@ function TakeFooter({
                 <ImageUp className="size-4" aria-hidden />
               </IconButton>
             )}
+            {first.kind === "video" && (
+              <IconButton
+                label="Continue from the last frame"
+                onClick={() =>
+                  void continueShot
+                    .run(first.id)
+                    .then(() => toast("Last frame set as the start frame. Describe what happens next."))
+                    .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "Could not grab the frame"))
+                }
+              >
+                <StepForward className="size-4" aria-hidden />
+              </IconButton>
+            )}
+            {first.kind === "image" && (
+              <IconButton label="Save as character" onClick={() => setSaving(true)}>
+                <UserRoundPlus className="size-4" aria-hidden />
+              </IconButton>
+            )}
             <a
               href={mediaUrl(first.url)}
               download
@@ -292,6 +338,9 @@ function TakeFooter({
           <span className="text-2xs">Aa</span>
         </IconButton>
       </div>
+      {first?.kind === "image" && (
+        <SaveAsElement asset={first} prompt={prompt} open={saving} onClose={() => setSaving(false)} />
+      )}
     </div>
   );
 }

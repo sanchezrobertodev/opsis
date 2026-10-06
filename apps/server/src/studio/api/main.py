@@ -10,7 +10,17 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from studio.api.routers import assets, generations, misc, registry
+from studio.api.routers import (
+    assets,
+    director,
+    elements,
+    generations,
+    llm,
+    misc,
+    pipelines,
+    presets,
+    registry,
+)
 from studio.api.schemas import CandidateOut, ConfirmationProblem, ValidationProblem
 from studio.api.sse import hub
 from studio.config import get_settings
@@ -85,6 +95,11 @@ async def _illegal(_: Request, exc: IllegalTransition) -> JSONResponse:
 
 
 app.include_router(registry.router)
+app.include_router(director.router)
+app.include_router(elements.router)
+app.include_router(presets.router)
+app.include_router(llm.router)
+app.include_router(pipelines.router)
 app.include_router(generations.router)
 app.include_router(assets.router)
 app.include_router(misc.router)

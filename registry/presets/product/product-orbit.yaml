@@ -1,0 +1,20 @@
+id: product-orbit
+name: Product orbit
+category: product
+summary: A slow, glossy turn around a product on a clean set.
+model_id: veo-3.1
+mode: i2v
+inputs:
+  - {role: start_image, label: Product photo}
+fields:
+  - key: product
+    label: What it is
+    placeholder: a matte black wireless headphone
+prompt: >-
+  {product} on a seamless studio set, light gliding across its surfaces, subtle reflections
+params: {duration: 6}
+direction:
+  camera_moves: [{id: arc_right, speed: slow}]
+  lighting: high_key
+  lens: macro
+tags: [ads]

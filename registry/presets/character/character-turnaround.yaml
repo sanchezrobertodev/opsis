@@ -1,0 +1,19 @@
+id: character-turnaround
+name: Character turnaround
+category: character
+summary: A front, side and back sheet from a few photos, ready to save as a character.
+model_id: nano-banana-2
+mode: edit
+inputs:
+  - {role: image_references, label: Photos of the character}
+fields:
+  - key: notes
+    label: Anything to keep or change
+    placeholder: keep the scar, swap the jacket for a grey hoodie
+    required: false
+prompt: >-
+  Character turnaround sheet of the person in the reference images: front, three-quarter, side and back
+  views, full body, neutral standing pose, plain light grey studio background, identical face, hair and
+  outfit in every view, {notes}
+params: {aspect_ratio: "16:9", resolution: 2k}
+tags: [consistency]

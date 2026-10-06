@@ -1,4 +1,5 @@
 # yaml-language-server: $schema=../../schema/model.schema.json
+# Field names verified 2026-10-06: fal per-endpoint OpenAPI and Replicate's bytedance/seedance-2.5 schema.
 id: seedance-2.5
 name: Seedance 2.5
 family: seedance
@@ -39,14 +40,15 @@ modes:
       - {role: video_references, kinds: [video], label: Video refs, max: 3, max_duration_s: 15}
       - {role: audio_references, kinds: [audio], label: Audio refs, max: 3}
 
-elements: {strategy: refs_native, ref_role: image_references, token: "[Image {n}]"}
+elements: {strategy: refs_native, ref_role: image_references, token: "@Image{n}"}
 
 routes:
   - id: seedance-2.5@replicate
     provider: replicate
     modes:
       t2v: {endpoint: bytedance/seedance-2.5}
-      i2v: {endpoint: bytedance/seedance-2.5}
+      # frames require aspect_ratio "adaptive" (the output follows the image)
+      i2v: {endpoint: bytedance/seedance-2.5, fixed: {aspect_ratio: adaptive}}
     map:
       media: {start_image: image, end_image: last_frame_image}
     pricing:
@@ -57,25 +59,25 @@ routes:
       verified: 2026-10-06
       source: https://replicate.com/bytedance/seedance-2.5
     output: {path: output, kind: video}
-    notes: Cheapest route for t2v/i2v. Outputs vanish after 1 hour.
+    notes: Cheapest route for t2v/i2v. Outputs vanish after 1 hour. Reference inputs cost ~4x per second here.
   - id: seedance-2.5@fal
     provider: fal
     modes:
-      t2v: {endpoint: bytedance/seedance-2.5/text-to-video}
-      i2v: {endpoint: bytedance/seedance-2.5/image-to-video}
-      omni_reference: {endpoint: bytedance/seedance-2.5/reference-to-video}
+      t2v: {endpoint: bytedance/seedance-2.5/text-to-video, drop: [seed]}
+      i2v: {endpoint: bytedance/seedance-2.5/image-to-video, drop: [seed]}
+      omni_reference: {endpoint: bytedance/seedance-2.5/reference-to-video, fixed: {task: reference}}
     map:
       params:
-        duration: {to: duration, transform: str}
-      media: {start_image: image_url, end_image: end_image_url, image_references: reference_image_urls,
-              video_references: reference_video_urls, audio_references: reference_audio_urls}
+        duration: {to: duration, transform: str}   # fal takes "auto" | "4".."30"
+      media: {start_image: image_url, end_image: end_image_url, image_references: image_urls,
+              video_references: video_urls, audio_references: audio_urls}
     pricing:
       basis: per_output_second
       rates:
         - {when: {resolution: "480p"}, usd: 0.2205}
         - {when: {resolution: "720p"}, usd: 0.473}
       verified: 2026-10-06
-      source: https://fal.ai/models/bytedance/seedance-2.5/image-to-video
+      source: https://fal.ai/models/bytedance/seedance-2.5/text-to-video
     output: {path: video.url, kind: video}
     notes: About 2x Replicate for t2v/i2v, but the only route here for omni references.
 

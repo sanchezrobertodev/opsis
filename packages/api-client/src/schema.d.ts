@@ -55,6 +55,324 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/director/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Library
+         * @description Camera moves and cinema looks for the director panel.
+         */
+        get: operations["library_director_library_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/director/compile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compile Preview
+         * @description Preview the exact prompt a model will receive for this prompt and direction. Free; no generation.
+         */
+        post: operations["compile_preview_director_compile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Elements */
+        get: operations["list_elements_elements_get"];
+        put?: never;
+        /** Create Element */
+        post: operations["create_element_elements_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elements/{element_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Element */
+        get: operations["get_element_elements__element_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Element */
+        delete: operations["delete_element_elements__element_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Element */
+        patch: operations["patch_element_elements__element_id__patch"];
+        trace?: never;
+    };
+    "/elements/{element_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Images */
+        post: operations["add_images_elements__element_id__images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elements/{element_id}/images/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Image */
+        delete: operations["remove_image_elements__element_id__images__asset_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Presets
+         * @description The effects and presets gallery.
+         */
+        get: operations["list_presets_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/presets/{preset_id}/render": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Render Preset
+         * @description Fill a preset with the user's answers and media; returns the generation request it makes. Free.
+         */
+        post: operations["render_preset_presets__preset_id__render_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/llm/enhance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Enhance
+         * @description Rewrite a prompt for the chosen model with Claude. Billed to your budget in live LLM mode.
+         */
+        post: operations["post_enhance_llm_enhance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/recipes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Recipes */
+        get: operations["list_recipes_pipelines_recipes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Estimate Run
+         * @description What a run would cost, without starting it.
+         */
+        post: operations["estimate_run_pipelines_estimate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_pipelines_get"];
+        put?: never;
+        /** Start Run */
+        post: operations["start_run_pipelines_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_pipelines__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancel_pipelines__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{run_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry
+         * @description Try the failed steps again. Finished steps are kept, so only what failed is redone (and paid for).
+         */
+        post: operations["retry_pipelines__run_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{run_id}/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revise
+         * @description Change a run's input (e.g. rewrite shot 3). Steps whose inputs are unchanged keep their results;
+         *     only the changed ones, and whatever depends on them, run again.
+         */
+        post: operations["revise_pipelines__run_id__revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{run_id}/checkpoints/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer Checkpoint */
+        post: operations["answer_checkpoint_pipelines__run_id__checkpoints__key__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/generations": {
         parameters: {
             query?: never;
@@ -200,6 +518,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/assets/{asset_id}/frames": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grab Frame
+         * @description Save one frame of a video as an image, e.g. the last frame to continue a shot from. Idempotent.
+         */
+        post: operations["grab_frame_assets__asset_id__frames_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/stream": {
         parameters: {
             query?: never;
@@ -236,6 +574,26 @@ export interface paths {
         head?: never;
         /** Patch Budget */
         patch: operations["patch_budget_budget_patch"];
+        trace?: never;
+    };
+    "/budget/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Spend History
+         * @description Charges and refunds, newest first, with what each paid for.
+         */
+        get: operations["spend_history_budget_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/health": {
@@ -407,6 +765,44 @@ export interface components {
             /** Live Enabled */
             live_enabled?: boolean | null;
         };
+        /** CameraMove */
+        CameraMove: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "push" | "orbit" | "lateral" | "vertical" | "handheld" | "vehicle" | "time" | "lens" | "static";
+            /** Prompt */
+            prompt: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Speeds
+             * @default false
+             */
+            speeds: boolean;
+            /**
+             * Dialects
+             * @default {}
+             */
+            dialects: {
+                [key: string]: string;
+            };
+            /**
+             * Native
+             * @default {}
+             */
+            native: {
+                [key: string]: unknown;
+            };
+        };
         /** CandidateOut */
         CandidateOut: {
             /** Route Id */
@@ -415,6 +811,10 @@ export interface components {
             provider: string;
             /** Provider Name */
             provider_name?: string | null;
+            /** Provider Kind */
+            provider_kind?: string | null;
+            /** Eta Seconds */
+            eta_seconds?: number | null;
             /** Eligible */
             eligible: boolean;
             /** Reason */
@@ -425,6 +825,43 @@ export interface components {
             pricing_basis: string | null;
             /** Is Mock */
             is_mock: boolean;
+        };
+        /** CheckpointAnswer */
+        CheckpointAnswer: {
+            /** Choice */
+            choice: string;
+        };
+        /** CompileIn */
+        CompileIn: {
+            /** Model Id */
+            model_id: string;
+            /**
+             * Prompt
+             * @default
+             */
+            prompt: string;
+            direction?: components["schemas"]["ShotDirection"] | null;
+            /**
+             * Mode
+             * @description Resolve @mentions as this mode would (reference slots, tokens)
+             */
+            mode?: string | null;
+            /**
+             * Media
+             * @default []
+             */
+            media: components["schemas"]["MediaInput"][];
+        };
+        /** CompileOut */
+        CompileOut: {
+            /** Prompt */
+            prompt: string;
+            /** Warnings */
+            warnings: string[];
+            /** Dialect */
+            dialect: string;
+            /** Max Chars */
+            max_chars: number;
         };
         /** ConfirmationProblem */
         ConfirmationProblem: {
@@ -443,6 +880,33 @@ export interface components {
             /** Threshold Usd */
             threshold_usd: number;
         };
+        /** DirectorLibraryOut */
+        DirectorLibraryOut: {
+            /** Moves */
+            moves: components["schemas"]["CameraMove"][];
+            /** Shot Sizes */
+            shot_sizes: components["schemas"]["LookItem"][];
+            /** Angles */
+            angles: components["schemas"]["LookItem"][];
+            /** Lenses */
+            lenses: components["schemas"]["LookItem"][];
+            /** Apertures */
+            apertures: components["schemas"]["LookItem"][];
+            /** Camera Bodies */
+            camera_bodies: components["schemas"]["LookItem"][];
+            /** Eras */
+            eras: components["schemas"]["LookItem"][];
+            /** Lighting */
+            lighting: components["schemas"]["LookItem"][];
+            /** Palettes */
+            palettes: components["schemas"]["LookItem"][];
+            /** Genres */
+            genres: components["schemas"]["LookItem"][];
+            /** Pacing */
+            pacing: components["schemas"]["LookItem"][];
+            /** Emotions */
+            emotions: components["schemas"]["LookItem"][];
+        };
         /** DurationSpec */
         DurationSpec: {
             /** Min */
@@ -451,6 +915,135 @@ export interface components {
             max: number;
             /** Default */
             default: number;
+        };
+        /** ElementCreate */
+        ElementCreate: {
+            /**
+             * Kind
+             * @default character
+             * @enum {string}
+             */
+            kind: "character" | "location" | "prop" | "style" | "voice";
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Attributes
+             * @default {}
+             */
+            attributes: {
+                [key: string]: unknown;
+            };
+            /**
+             * Images
+             * @default []
+             */
+            images: components["schemas"]["ElementImageIn"][];
+        };
+        /** ElementImageIn */
+        ElementImageIn: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /**
+             * View
+             * @default front
+             * @enum {string}
+             */
+            view: "front" | "three_quarter" | "side" | "back" | "face" | "full_body" | "sheet" | "wide" | "detail" | "style";
+        };
+        /** ElementImageOut */
+        ElementImageOut: {
+            asset: components["schemas"]["AssetOut"];
+            /** View */
+            view: string;
+            /** Is Primary */
+            is_primary: boolean;
+        };
+        /** ElementOut */
+        ElementOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "character" | "location" | "prop" | "style" | "voice";
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Handle */
+            handle: string;
+            /** Description */
+            description: string;
+            /** Attributes */
+            attributes: {
+                [key: string]: unknown;
+            };
+            cover: components["schemas"]["AssetOut"] | null;
+            /** Images */
+            images: components["schemas"]["ElementImageOut"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** ElementPatch */
+        ElementPatch: {
+            /** Kind */
+            kind?: ("character" | "location" | "prop" | "style" | "voice") | null;
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Attributes */
+            attributes?: {
+                [key: string]: unknown;
+            } | null;
+            /** Cover Asset Id */
+            cover_asset_id?: string | null;
+        };
+        /** EnhanceIn */
+        EnhanceIn: {
+            /** Model Id */
+            model_id: string;
+            /** Mode */
+            mode: string;
+            /** Prompt */
+            prompt: string;
+            direction?: components["schemas"]["ShotDirection"] | null;
+        };
+        /** EnhanceOut */
+        EnhanceOut: {
+            /** Prompt */
+            prompt: string;
+            /** Changes */
+            changes: string[];
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
+            /** Model */
+            model: string;
+            /**
+             * Mock
+             * @description LLM_MODE=mock: a canned rewrite, nothing was billed
+             */
+            mock: boolean;
+            /** Cost Usd */
+            cost_usd: number;
         };
         /** EnumParam */
         EnumParam: {
@@ -499,6 +1092,8 @@ export interface components {
             params: {
                 [key: string]: unknown;
             };
+            /** Compiled Prompt */
+            compiled_prompt?: string | null;
         };
         /** FloatParam */
         FloatParam: {
@@ -539,6 +1134,15 @@ export interface components {
             /** Default */
             default?: number | null;
         };
+        /** FrameIn */
+        FrameIn: {
+            /**
+             * At
+             * @description 'first', 'last', or seconds into the clip
+             * @default last
+             */
+            at: ("first" | "last") | number;
+        };
         /** GenerationCreate */
         GenerationCreate: {
             /** Model Id */
@@ -578,6 +1182,8 @@ export interface components {
             group_id?: string | null;
             /** Parent Generation Id */
             parent_generation_id?: string | null;
+            /** @description Camera moves and cinema look, compiled into the prompt */
+            direction?: components["schemas"]["ShotDirection"] | null;
         };
         /** GenerationOut */
         GenerationOut: {
@@ -668,6 +1274,14 @@ export interface components {
             ffmpeg: boolean;
             /** Media Root */
             media_root: string;
+            local_engine: components["schemas"]["LocalEngineOut"];
+            /**
+             * Llm Mode
+             * @description mock or live (Claude prompt enhancement, scripts)
+             */
+            llm_mode: string;
+            /** Llm Key Set */
+            llm_key_set: boolean;
         };
         /** IntParam */
         IntParam: {
@@ -724,6 +1338,32 @@ export interface components {
             relation: string;
             /** Generation Id */
             generation_id: string | null;
+        };
+        /** LocalEngineOut */
+        LocalEngineOut: {
+            /** Configured */
+            configured: boolean;
+            /** Online */
+            online: boolean;
+            /** Url */
+            url: string | null;
+            /** Gpu */
+            gpu?: string | null;
+            /** Vram Total Gb */
+            vram_total_gb?: number | null;
+            /** Vram Free Gb */
+            vram_free_gb?: number | null;
+            /** Comfyui Version */
+            comfyui_version?: string | null;
+        };
+        /** LookItem */
+        LookItem: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Prompt */
+            prompt: string;
         };
         /** MediaInput */
         MediaInput: {
@@ -870,6 +1510,147 @@ export interface components {
              */
             runnable: boolean;
         };
+        /** MoveChoice */
+        MoveChoice: {
+            /** Id */
+            id: string;
+            /**
+             * Speed
+             * @default normal
+             * @enum {string}
+             */
+            speed: "slow" | "normal" | "fast";
+        };
+        /**
+         * PresetField
+         * @description A blank the user fills in; the prompt template refers to it as {key}.
+         */
+        PresetField: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Placeholder
+             * @default
+             */
+            placeholder: string;
+            /**
+             * Default
+             * @default
+             */
+            default: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /**
+             * Max Chars
+             * @default 300
+             */
+            max_chars: number;
+        };
+        /** PresetInputOut */
+        PresetInputOut: {
+            /** Role */
+            role: string;
+            /** Label */
+            label: string;
+            slot: components["schemas"]["MediaSlot"];
+        };
+        /** PresetMoveOut */
+        PresetMoveOut: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Category */
+            category: string;
+        };
+        /** PresetOut */
+        PresetOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Category */
+            category: string;
+            /** Summary */
+            summary: string;
+            /** Tags */
+            tags: string[];
+            /** Model Id */
+            model_id: string;
+            /** Model Name */
+            model_name: string;
+            /** Output Type */
+            output_type: string;
+            /** Mode */
+            mode: string;
+            /** Mode Label */
+            mode_label: string;
+            /**
+             * Aspect Ratio
+             * @description Shape of the result, for drawing the card
+             */
+            aspect_ratio: string;
+            /** Fields */
+            fields: components["schemas"]["PresetField"][];
+            /** Inputs */
+            inputs: components["schemas"]["PresetInputOut"][];
+            /** Moves */
+            moves: components["schemas"]["PresetMoveOut"][];
+            /**
+             * Look
+             * @description Labels of the cinema-look choices the preset applies
+             */
+            look: string[];
+            /**
+             * Local
+             * @description Runs free on the local GPU
+             */
+            local: boolean;
+            /**
+             * Live Price Usd
+             * @description Cheapest paid route with the preset's settings
+             */
+            live_price_usd?: number | null;
+        };
+        /** PresetRenderIn */
+        PresetRenderIn: {
+            /**
+             * Fields
+             * @default {}
+             */
+            fields: {
+                [key: string]: string;
+            };
+            /**
+             * Media
+             * @default []
+             */
+            media: components["schemas"]["MediaInput"][];
+        };
+        /**
+         * PresetRenderOut
+         * @description An ordinary generation request: post it to /generations, or load it into Create.
+         */
+        PresetRenderOut: {
+            /** Model Id */
+            model_id: string;
+            /** Mode */
+            mode: string;
+            /** Prompt */
+            prompt: string;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Media */
+            media: components["schemas"]["MediaInput"][];
+            direction?: components["schemas"]["ShotDirection"] | null;
+        };
         /** PromptSpec */
         PromptSpec: {
             /**
@@ -887,6 +1668,19 @@ export interface components {
              * @default false
              */
             supports_negative: boolean;
+        };
+        /** RecipeOut */
+        RecipeOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Summary */
+            summary: string;
+            /** Input Schema */
+            input_schema: {
+                [key: string]: unknown;
+            };
         };
         /** RegistryOut */
         RegistryOut: {
@@ -941,6 +1735,143 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** RunCreate */
+        RunCreate: {
+            /** Recipe */
+            recipe: string;
+            /** Input */
+            input: {
+                [key: string]: unknown;
+            };
+            /** Title */
+            title?: string | null;
+            /**
+             * Cap Usd
+             * @description Most the run may spend; defaults to your run cap
+             */
+            cap_usd?: number | null;
+            /**
+             * Confirm Cost Usd
+             * @description Echo the estimate to confirm an expensive run
+             */
+            confirm_cost_usd?: number | null;
+        };
+        /** RunEstimateOut */
+        RunEstimateOut: {
+            /**
+             * Estimate Usd
+             * @description On the routes that would run now (mock routes are free)
+             */
+            estimate_usd: number;
+            /**
+             * Live Estimate Usd
+             * @description On the cheapest paid routes
+             */
+            live_estimate_usd?: number | null;
+            /** Generations */
+            generations: number;
+            /** Cap Usd */
+            cap_usd: number;
+        };
+        /** RunOut */
+        RunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Recipe */
+            recipe: string;
+            /** Recipe Name */
+            recipe_name: string;
+            /** Title */
+            title: string;
+            /** Status */
+            status: string;
+            /** Error */
+            error: string | null;
+            /** Estimate Usd */
+            estimate_usd: number | null;
+            /** Cap Usd */
+            cap_usd: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            output_asset?: components["schemas"]["AssetOut"] | null;
+            /**
+             * Steps Done
+             * @default 0
+             */
+            steps_done: number;
+            /**
+             * Steps Total
+             * @default 0
+             */
+            steps_total: number;
+            /** Input */
+            input: {
+                [key: string]: unknown;
+            };
+            /** Output */
+            output: {
+                [key: string]: unknown;
+            };
+            /** Spent Usd */
+            spent_usd: number;
+            /** Steps */
+            steps: components["schemas"]["StepOut"][];
+        };
+        /** RunRevise */
+        RunRevise: {
+            /** Input */
+            input: {
+                [key: string]: unknown;
+            };
+        };
+        /** RunSummary */
+        RunSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Recipe */
+            recipe: string;
+            /** Recipe Name */
+            recipe_name: string;
+            /** Title */
+            title: string;
+            /** Status */
+            status: string;
+            /** Error */
+            error: string | null;
+            /** Estimate Usd */
+            estimate_usd: number | null;
+            /** Cap Usd */
+            cap_usd: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            output_asset?: components["schemas"]["AssetOut"] | null;
+            /**
+             * Steps Done
+             * @default 0
+             */
+            steps_done: number;
+            /**
+             * Steps Total
+             * @default 0
+             */
+            steps_total: number;
+        };
         /** SeedParam */
         SeedParam: {
             /** Name */
@@ -970,6 +1901,138 @@ export interface components {
             type: "seed";
             /** Default */
             default?: number | null;
+        };
+        /**
+         * ShotDirection
+         * @description What the director panel sends. Every field is optional; empty means "let the model decide".
+         */
+        ShotDirection: {
+            /**
+             * Subject
+             * @description Who or what the camera moves relative to
+             */
+            subject?: string | null;
+            /** Camera Moves */
+            camera_moves?: components["schemas"]["MoveChoice"][];
+            /** Shot Size */
+            shot_size?: string | null;
+            /** Angle */
+            angle?: string | null;
+            /** Lens */
+            lens?: string | null;
+            /** Aperture */
+            aperture?: string | null;
+            /** Camera Body */
+            camera_body?: string | null;
+            /** Era */
+            era?: string | null;
+            /** Lighting */
+            lighting?: string | null;
+            /** Palette */
+            palette?: string | null;
+            /** Genre */
+            genre?: string | null;
+            /** Pacing */
+            pacing?: string | null;
+            /** Emotion */
+            emotion?: string | null;
+        };
+        /** SpendBreakdown */
+        SpendBreakdown: {
+            /** Provider */
+            provider: string;
+            /** Usd */
+            usd: number;
+            /** Count */
+            count: number;
+        };
+        /** SpendEntryOut */
+        SpendEntryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Amount Usd */
+            amount_usd: number;
+            /** Entry Type */
+            entry_type: string;
+            /** Provider */
+            provider: string | null;
+            /** Route Id */
+            route_id: string | null;
+            /** Estimated */
+            estimated: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "generation" | "claude" | "other";
+            /**
+             * Label
+             * @description What it paid for: the take's prompt, or the Claude task
+             */
+            label: string;
+            /** Model Id */
+            model_id?: string | null;
+            /** Generation Id */
+            generation_id?: string | null;
+        };
+        /** SpendHistoryOut */
+        SpendHistoryOut: {
+            /** Entries */
+            entries: components["schemas"]["SpendEntryOut"][];
+            /**
+             * By Provider
+             * @description This month's charges per provider
+             */
+            by_provider: components["schemas"]["SpendBreakdown"][];
+        };
+        /** StepOut */
+        StepOut: {
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Status */
+            status: string;
+            /** Depends On */
+            depends_on: string[];
+            /** Error */
+            error: string | null;
+            /** Output */
+            output: {
+                [key: string]: unknown;
+            };
+            /**
+             * Options
+             * @description Checkpoint choices
+             */
+            options?: {
+                [key: string]: unknown;
+            }[];
+            /** Generation Id */
+            generation_id: string | null;
+            /** Generation Status */
+            generation_status?: string | null;
+            /** Progress */
+            progress?: number | null;
+            /**
+             * Assets
+             * @default []
+             */
+            assets: components["schemas"]["AssetOut"][];
+            /** Started At */
+            started_at: string | null;
+            /** Finished At */
+            finished_at: string | null;
         };
         /** TextParam */
         TextParam: {
@@ -1112,6 +2175,683 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EstimateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_director_library_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectorLibraryOut"];
+                };
+            };
+        };
+    };
+    compile_preview_director_compile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompileIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_elements_elements_get: {
+        parameters: {
+            query?: {
+                kind?: ("character" | "location" | "prop" | "style" | "voice") | null;
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_element_elements_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ElementCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_element_elements__element_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_element_elements__element_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_element_elements__element_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ElementPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_images_elements__element_id__images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ElementImageIn"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_image_elements__element_id__images__asset_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_presets_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetOut"][];
+                };
+            };
+        };
+    };
+    render_preset_presets__preset_id__render_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                preset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresetRenderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresetRenderOut"];
+                };
+            };
+            /** @description Missing answers or inputs */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_enhance_llm_enhance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnhanceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnhanceOut"];
+                };
+            };
+            /** @description Spending limit */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Claude failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No Anthropic key */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_recipes_pipelines_recipes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipeOut"][];
+                };
+            };
+        };
+    };
+    estimate_run_pipelines_estimate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunEstimateOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblem"];
+                };
+            };
+        };
+    };
+    list_runs_pipelines_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_run_pipelines_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfirmationProblem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblem"];
+                };
+            };
+        };
+    };
+    get_run_pipelines__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_pipelines__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_pipelines__run_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_pipelines__run_id__revise_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunRevise"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblem"];
+                };
+            };
+        };
+    };
+    answer_checkpoint_pipelines__run_id__checkpoints__key__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckpointAnswer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
                 };
             };
             /** @description Validation Error */
@@ -1490,6 +3230,41 @@ export interface operations {
             };
         };
     };
+    grab_frame_assets__asset_id__frames_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FrameIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     events_events_stream_get: {
         parameters: {
             query?: never;
@@ -1561,6 +3336,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BudgetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    spend_history_budget_history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpendHistoryOut"];
                 };
             };
             /** @description Validation Error */

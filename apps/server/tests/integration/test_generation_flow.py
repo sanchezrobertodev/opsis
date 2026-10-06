@@ -232,3 +232,22 @@ async def test_files_land_under_media_root(client):
         asset = (await s.execute(select(Asset).where(Asset.generation_id == uuid.UUID(out["id"])))).scalar_one()
     path = get_storage().path_for(asset.storage_key)
     assert path.is_file() and get_storage().root in path.parents
+
+
+async def test_director_compiles_into_the_provider_prompt(client):
+    out = await create(client, model_id="kling-3.0", mode="t2v", prompt="a lighthouse at night",
+                       direction={"camera_moves": [{"id": "crane_up"}], "lighting": "blue_hour"})
+    assert out["request"]["prompt"] == "a lighthouse at night"
+    assert out["request"]["compiled_prompt"].startswith("a lighthouse at night, camera: crane shot")
+    gen = await drive(uuid.UUID(out["id"]))
+    assert gen.status == GenStatus.succeeded
+    asset = (await client.get(f"/generations/{out['id']}")).json()["assets"][0]
+    assert asset["metadata"]["prompt"] == "a lighthouse at night"
+    assert "blue-hour" in asset["metadata"]["compiled_prompt"]
+    assert asset["metadata"]["direction"]["lighting"] == "blue_hour"
+
+
+async def test_bad_direction_is_a_validation_error(client):
+    r = await client.post("/generations", json={"model_id": "kling-3.0", "mode": "t2v", "prompt": "x",
+                                                "direction": {"camera_moves": [{"id": "a"}] * 4}})
+    assert r.status_code == 422

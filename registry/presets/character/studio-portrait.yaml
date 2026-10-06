@@ -1,0 +1,15 @@
+id: studio-portrait
+name: Studio portrait
+category: character
+summary: A clean, softly lit portrait to start a new character.
+model_id: flux-2-klein-4b
+mode: t2i
+fields:
+  - key: who
+    label: Describe them
+    placeholder: a 40-year-old fisherman with a grey beard and a knitted cap
+prompt: >-
+  Studio portrait of {who}, waist-up, facing the camera, soft key light with gentle fill, plain charcoal
+  backdrop, sharp focus on the eyes, natural skin texture
+params: {aspect_ratio: "3:4", num_images: 2}
+tags: [free]

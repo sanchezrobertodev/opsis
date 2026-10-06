@@ -15,7 +15,7 @@ export function useConnection() {
 
 type EventMessage = {
   id: number | null;
-  topic: "generation" | "asset" | "system";
+  topic: "generation" | "asset" | "pipeline" | "system";
   type: string;
   subject_id: string | null;
   payload: Record<string, unknown>;
@@ -66,6 +66,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         const known = patchGeneration(qc, msg.subject_id, patch);
         if (!known || msg.type === "generation.succeeded") invalidate("generations");
         if (msg.type === "generation.succeeded" || msg.type === "generation.failed") invalidate("budget");
+        if (msg.type !== "generation.progress") invalidate("run");
+      } else if (msg.topic === "pipeline") {
+        invalidate("runs", "run");
       } else if (msg.topic === "asset") {
         invalidate("assets", "generations", "asset");
       } else if (msg.type === "system.registry_reloaded") {

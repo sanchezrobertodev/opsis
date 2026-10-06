@@ -1,0 +1,20 @@
+id: hero-orbit
+name: Hero orbit
+category: camera
+summary: A full circle around your subject, low and heroic.
+model_id: kling-3.0
+mode: i2v
+inputs:
+  - {role: start_image, label: Your photo}
+fields:
+  - key: subject
+    label: Who is in the photo
+    placeholder: a knight in battered armour
+prompt: >-
+  {subject} stands tall and still as wind moves their hair and clothes, a determined look
+params: {duration: 5}
+direction:
+  camera_moves: [{id: orbit_360, speed: normal}]
+  angle: low
+  emotion: determination
+tags: [hero]

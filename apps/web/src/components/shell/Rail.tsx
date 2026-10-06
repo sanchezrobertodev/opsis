@@ -54,7 +54,7 @@ export function Rail() {
         ))}
       </div>
 
-      <p className="mt-6 mb-2 hidden px-3 text-2xs text-faint lg:block">Studios in the roadmap</p>
+      <p className="mt-6 mb-2 hidden px-3 text-2xs text-faint lg:block">Studios</p>
       <div className="mt-4 flex flex-col gap-0.5 lg:mt-0">
         {group("studios").map((s) => (
           <RailItem key={s.slug} studio={s} active={isActive(s)} />

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import Generation, JobEvent
 from studio.domain.enums import ErrorClass, GenStatus
+from studio.pipelines.hooks import mark_run
 
 CHANNEL = "studio_events"
 NOTIFY_LIMIT = 7000  # Postgres caps NOTIFY payloads at 8000 bytes
@@ -131,6 +132,8 @@ async def transition(
         gen.progress = 1.0
     if new.terminal:
         gen.finished_at = now
+        if gen.pipeline_step_id and gen.group_id:
+            mark_run(session.sync_session, gen.group_id)  # its run advances once this commits
 
     await session.flush()
     await emit(

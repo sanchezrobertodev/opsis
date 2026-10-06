@@ -1,0 +1,20 @@
+id: crash-zoom-reveal
+name: Crash zoom reveal
+category: camera
+summary: The camera slams in on someone the moment they notice something.
+model_id: kling-3.0
+mode: i2v
+inputs:
+  - {role: start_image, label: Your photo}
+fields:
+  - key: subject
+    label: Who is in the photo
+    placeholder: a woman in a red coat
+prompt: >-
+  {subject} turns sharply toward the camera, eyes widening in sudden recognition, hair and clothes
+  catching the movement
+params: {duration: 5}
+direction:
+  camera_moves: [{id: crash_zoom_in, speed: fast}]
+  emotion: surprise
+tags: [reaction, trending]

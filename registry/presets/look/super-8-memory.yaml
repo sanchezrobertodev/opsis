@@ -1,0 +1,22 @@
+id: super-8-memory
+name: Super 8 memory
+category: look
+summary: Turn a photo into a warm, handheld home movie.
+model_id: wan-2.2-5b
+mode: i2v
+inputs:
+  - {role: start_image, label: Your photo}
+fields:
+  - key: moment
+    label: What happens
+    placeholder: kids running through a sprinkler
+    required: false
+prompt: >-
+  {moment}, a fleeting family memory, gentle natural movement
+params: {duration: 5, quality: standard}
+direction:
+  camera_moves: [{id: handheld, speed: slow}]
+  camera_body: super_8
+  era: new_hollywood_1970s
+  palette: bleached_warm
+tags: [free, nostalgia]

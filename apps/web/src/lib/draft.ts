@@ -15,6 +15,8 @@ type Draft = {
   /** Media chosen per role. Roles the current mode lacks are kept but not sent. */
   media: Record<string, SlotAsset[]>;
   takes: number;
+  /** Camera moves and cinema look (see DirectorPanel). */
+  direction: Record<string, unknown>;
 };
 
 type DraftState = Record<"video" | "image", Draft> & {
@@ -24,7 +26,7 @@ type DraftState = Record<"video" | "image", Draft> & {
   removeMedia: (studio: "video" | "image", role: string, id: string) => void;
 };
 
-const empty: Draft = { prompt: "", negativePrompt: "", params: {}, media: {}, takes: 1 };
+const empty: Draft = { prompt: "", negativePrompt: "", params: {}, media: {}, takes: 1, direction: {} };
 
 export const useDraft = create<DraftState>()(
   persist(
@@ -56,7 +58,15 @@ export const useDraft = create<DraftState>()(
     }),
     {
       name: "studio-drafts",
-      version: 1,
+      version: 2,
+      // v2 added `direction`
+      migrate: (persisted) => {
+        const s = (persisted ?? {}) as Partial<Record<"video" | "image", Partial<Draft>>>;
+        return {
+          video: { ...empty, ...s.video, direction: s.video?.direction ?? {} },
+          image: { ...empty, ...s.image, direction: s.image?.direction ?? {} },
+        } as DraftState;
+      },
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({ video: s.video, image: s.image }),
     },

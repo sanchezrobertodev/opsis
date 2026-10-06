@@ -1,14 +1,15 @@
 "use client";
 
-import { Download, ImageUp, Star, Trash2, X } from "lucide-react";
+import { Download, ImageUp, Star, StepForward, Trash2, UserRoundPlus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type Asset, mediaUrl } from "@/lib/api";
 import { cn, seconds } from "@/lib/cn";
 import { useDraft } from "@/lib/draft";
-import { useAsset, useDeleteAsset, useLineage, usePatchAsset } from "@/lib/queries";
+import { useAsset, useContinueFromLastFrame, useDeleteAsset, useLineage, usePatchAsset } from "@/lib/queries";
 import { Button } from "@/components/ui/controls";
+import { SaveAsElement } from "@/components/characters/SaveAsElement";
 
 const RELATION_LABEL: Record<string, string> = {
   start_image: "Start frame",
@@ -30,6 +31,8 @@ export function AssetViewer({ asset: initial, onClose }: { asset: Asset | null; 
   const addMedia = useDraft((s) => s.addMedia);
   const setDraft = useDraft((s) => s.set);
   const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const continueShot = useContinueFromLastFrame();
 
   useEffect(() => {
     const el = ref.current;
@@ -49,7 +52,7 @@ export function AssetViewer({ asset: initial, onClose }: { asset: Asset | null; 
   return (
     <dialog
       ref={ref}
-      onClose={onClose}
+      onClose={(e) => e.target === e.currentTarget && onClose()}
       onClick={(e) => e.target === ref.current && onClose()}
       aria-label={asset?.title ?? "Asset"}
       className="m-auto h-[min(90dvh,860px)] w-[min(96vw,1280px)] max-w-none overflow-hidden rounded-[var(--radius-panel)] border border-line bg-panel p-0 text-chalk backdrop:bg-black/70"
@@ -174,6 +177,31 @@ export function AssetViewer({ asset: initial, onClose }: { asset: Asset | null; 
                   Animate this image
                 </Button>
               )}
+              {asset.kind === "video" && (
+                <Button
+                  tone="primary"
+                  size="sm"
+                  disabled={continueShot.isPending}
+                  onClick={() =>
+                    void continueShot
+                      .run(asset.id)
+                      .then(() => {
+                        onClose();
+                        router.push("/create/video");
+                      })
+                      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "Could not grab the frame"))
+                  }
+                >
+                  <StepForward className="size-4" aria-hidden />
+                  Continue from the last frame
+                </Button>
+              )}
+              {asset.kind === "image" && (
+                <Button size="sm" onClick={() => setSaving(true)}>
+                  <UserRoundPlus className="size-4" aria-hidden />
+                  Save as character
+                </Button>
+              )}
               <Button size="sm" onClick={() => patch.mutate({ id: asset.id, favorite: !asset.favorite })}>
                 <Star className={cn("size-4", asset.favorite && "fill-tungsten text-tungsten")} aria-hidden />
                 {asset.favorite ? "Favorited" : "Favorite"}
@@ -204,6 +232,9 @@ export function AssetViewer({ asset: initial, onClose }: { asset: Asset | null; 
               </Button>
             </div>
           </aside>
+          {asset.kind === "image" && (
+            <SaveAsElement asset={asset} prompt={meta.prompt} open={saving} onClose={() => setSaving(false)} />
+          )}
         </div>
       )}
     </dialog>

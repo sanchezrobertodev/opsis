@@ -1,0 +1,10 @@
+id: comfy_local
+name: Local Video Studio
+kind: local
+adapter: comfy_local
+key_setting: comfyui_url   # the ComfyUI address; empty turns the local route off
+concurrency: 1             # one job at a time on a 12 GB GPU
+docs: C:/Dev/AI/VideoStudio/README.md
+notes: >-
+  The ComfyUI install in C:/Dev/AI/VideoStudio (Wan 2.2 TI2V 5B, FLUX.2 klein 4B). Free and offline.
+  Start it with the Local Video Studio shortcut.

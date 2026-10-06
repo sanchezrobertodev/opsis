@@ -1,0 +1,17 @@
+id: timelapse-sky
+name: Day-to-night timelapse
+category: effects
+summary: Clouds race and lights come on as a place goes from day to night.
+model_id: wan-2.2-5b
+mode: t2v
+fields:
+  - key: place
+    label: The place
+    placeholder: a city skyline seen from a rooftop
+prompt: >-
+  Timelapse of {place} from late afternoon into night, clouds streaming across the sky, shadows
+  sweeping, windows and streetlights switching on
+params: {duration: 5, quality: standard}
+direction:
+  camera_moves: [{id: timelapse_landscape, speed: normal}]
+tags: [free, timelapse]

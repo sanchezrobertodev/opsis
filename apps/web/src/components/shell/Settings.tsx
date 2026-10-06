@@ -1,7 +1,9 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import { api, unwrap } from "@/lib/api";
 import { usd } from "@/lib/cn";
 import { useBudget, useHealth, useRegistry, useUpdateBudget } from "@/lib/queries";
 import { Button, Field, Switch } from "@/components/ui/controls";
@@ -77,6 +79,24 @@ export function Settings() {
               <dd className="tabular">
                 {registry?.models.length ?? 0} models, version {health.registry_hash.slice(0, 8)}
               </dd>
+              <dt className="text-muted">Local engine</dt>
+              <dd>
+                {!health.local_engine.configured
+                  ? "Off (set COMFYUI_URL in .env)"
+                  : health.local_engine.online
+                    ? `Running${health.local_engine.gpu ? ` on ${health.local_engine.gpu.replace(/^cuda:\d+\s*/, "").split(" : ")[0]}` : ""}${
+                        health.local_engine.vram_free_gb != null ? `, ${health.local_engine.vram_free_gb} GB free` : ""
+                      }`
+                    : "Not running. Start Local Video Studio to use the local models."}
+              </dd>
+              <dt className="text-muted">Claude</dt>
+              <dd>
+                {health.llm_mode === "mock"
+                  ? "Mock writer (set LLM_MODE=live and ANTHROPIC_API_KEY in .env for Claude)"
+                  : health.llm_key_set
+                    ? "Live. Enhancements are billed to your budget."
+                    : "Live mode, but ANTHROPIC_API_KEY is missing from .env"}
+              </dd>
               <dt className="text-muted">Media folder</dt>
               <dd className="truncate text-xs" title={health.media_root}>
                 {health.media_root}
@@ -94,8 +114,75 @@ export function Settings() {
             </div>
           )}
         </section>
+
+        <SpendHistory />
       </div>
     </div>
+  );
+}
+
+const DAY = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
+const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+
+/** Every charge, newest first, grouped by day, with this month's split by provider. */
+function SpendHistory() {
+  const { data } = useQuery({ queryKey: ["spend-history"], queryFn: () => unwrap(api.GET("/budget/history")) });
+  if (!data) return null;
+  const days = new Map<string, typeof data.entries>();
+  for (const e of data.entries) {
+    const day = DAY.format(new Date(e.created_at));
+    days.set(day, [...(days.get(day) ?? []), e]);
+  }
+  return (
+    <section className="space-y-5 lg:col-span-2">
+      <h2 className="type-title text-xl">Spend history</h2>
+      {data.entries.length === 0 ? (
+        <p className="text-sm text-muted">
+          Nothing billed yet. Paid generations and Claude enhancements show up here with what they cost.
+        </p>
+      ) : (
+        <>
+          {data.by_provider.length > 0 && (
+            <p className="tabular text-xs text-muted">
+              This month:{" "}
+              {data.by_provider.map((p, i) => (
+                <span key={p.provider}>
+                  {i > 0 && ", "}
+                  <span className="text-chalk">{usd(p.usd)}</span> on {p.provider} ({p.count})
+                </span>
+              ))}
+            </p>
+          )}
+          <div className="space-y-6">
+            {[...days].map(([day, entries]) => (
+              <div key={day}>
+                <h3 className="mb-2 flex justify-between text-xs text-muted">
+                  {day}
+                  <span className="tabular">{usd(entries.reduce((sum, e) => sum + e.amount_usd, 0))}</span>
+                </h3>
+                <ul className="divide-y divide-line-soft rounded-[var(--radius-panel)] bg-panel">
+                  {entries.map((e) => (
+                    <li key={e.id} className="flex items-baseline gap-4 px-4 py-2.5 text-xs">
+                      <span className="tabular w-16 shrink-0 text-faint">{TIME.format(new Date(e.created_at))}</span>
+                      <span className="min-w-0 flex-1 truncate text-chalk" title={e.label}>
+                        {e.label}
+                      </span>
+                      <span className="hidden shrink-0 text-faint sm:inline">{e.route_id}</span>
+                      <span className="tabular w-16 shrink-0 text-right text-chalk">
+                        {e.amount_usd < 0 ? "−" : ""}
+                        {usd(Math.abs(e.amount_usd))}
+                        {e.estimated && <span className="text-faint" title="Estimated from the provider's price list">*</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <p className="text-2xs text-faint">* Estimated from the provider&rsquo;s published price; the provider didn&rsquo;t report the exact cost.</p>
+        </>
+      )}
+    </section>
   );
 }
 

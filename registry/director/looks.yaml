@@ -1,0 +1,112 @@
+# Cinema "look" vocabulary for the director panel (Cinema Studio-style controls). Each item is a phrase the
+# dialects weave into the prompt. Generic descriptors on purpose: no camera or film brand names.
+shot_sizes:
+  - {id: extreme_wide, label: Extreme wide, prompt: "extreme wide shot"}
+  - {id: wide, label: Wide, prompt: "wide shot"}
+  - {id: full, label: Full, prompt: "full shot showing the whole body"}
+  - {id: medium_wide, label: Medium wide, prompt: "medium wide shot from the knees up"}
+  - {id: medium, label: Medium, prompt: "medium shot from the waist up"}
+  - {id: medium_close, label: Medium close-up, prompt: "medium close-up"}
+  - {id: close_up, label: Close-up, prompt: "close-up"}
+  - {id: extreme_close_up, label: Extreme close-up, prompt: "extreme close-up"}
+  - {id: insert, label: Insert detail, prompt: "insert shot of a small detail"}
+
+angles:
+  - {id: eye_level, label: Eye level, prompt: "eye-level angle"}
+  - {id: low, label: Low angle, prompt: "low angle looking up"}
+  - {id: high, label: High angle, prompt: "high angle looking down"}
+  - {id: birds_eye, label: Bird's eye, prompt: "bird's-eye view from directly above"}
+  - {id: worms_eye, label: Worm's eye, prompt: "worm's-eye view from the ground"}
+  - {id: over_shoulder, label: Over the shoulder, prompt: "over-the-shoulder angle"}
+  - {id: pov, label: Point of view, prompt: "first-person point of view"}
+  - {id: profile, label: Profile, prompt: "side profile angle"}
+
+lenses:
+  - {id: ultra_wide_14, label: 14 mm ultra wide, prompt: "14mm ultra-wide lens"}
+  - {id: wide_24, label: 24 mm wide, prompt: "24mm wide-angle lens"}
+  - {id: normal_35, label: 35 mm, prompt: "35mm lens"}
+  - {id: normal_50, label: 50 mm, prompt: "50mm lens with natural perspective"}
+  - {id: portrait_85, label: 85 mm portrait, prompt: "85mm portrait lens"}
+  - {id: tele_135, label: 135 mm telephoto, prompt: "135mm telephoto lens with compressed background"}
+  - {id: anamorphic, label: Anamorphic, prompt: "anamorphic lens with oval bokeh and horizontal flares"}
+  - {id: macro, label: Macro, prompt: "macro lens, tiny details magnified"}
+  - {id: tilt_shift, label: Tilt-shift, prompt: "tilt-shift lens, miniature effect"}
+
+apertures:
+  - {id: f1_4, label: f/1.4 very shallow, prompt: "very shallow depth of field at f/1.4 with creamy bokeh"}
+  - {id: f2_8, label: f/2.8 shallow, prompt: "shallow depth of field"}
+  - {id: f5_6, label: f/5.6, prompt: "moderate depth of field"}
+  - {id: f11, label: f/11 deep, prompt: "deep focus, everything sharp"}
+
+camera_bodies:
+  - {id: digital_cinema, label: Digital cinema, prompt: "shot on a high-end digital cinema camera, clean and detailed"}
+  - {id: film_35, label: 35 mm film, prompt: "shot on 35mm film with natural grain"}
+  - {id: film_16, label: 16 mm film, prompt: "shot on 16mm film, heavy grain and soft contrast"}
+  - {id: super_8, label: Super 8, prompt: "Super 8 home-movie film with flicker and light leaks"}
+  - {id: imax_70, label: 70 mm large format, prompt: "shot on 70mm large-format film, immense detail"}
+  - {id: vhs, label: VHS camcorder, prompt: "VHS camcorder footage with tracking noise and soft colors"}
+  - {id: dv, label: Early digital camcorder, prompt: "early-2000s digital camcorder footage, slightly blown highlights"}
+  - {id: phone, label: Phone camera, prompt: "smartphone footage, handheld and vertical-friendly"}
+
+eras:
+  - {id: silent_1920s, label: 1920s silent film, prompt: "1920s silent-film look, black and white with vignetting"}
+  - {id: technicolor_1950s, label: 1950s Technicolor-style, prompt: "saturated 1950s three-strip color look"}
+  - {id: new_hollywood_1970s, label: 1970s, prompt: "1970s film look, warm and grainy"}
+  - {id: eighties, label: 1980s, prompt: "1980s look with neon accents and soft diffusion"}
+  - {id: nineties, label: 1990s, prompt: "1990s film look, slightly desaturated"}
+  - {id: modern, label: Modern, prompt: "contemporary look"}
+  - {id: near_future, label: Near future, prompt: "sleek near-future look"}
+
+lighting:
+  - {id: golden_hour, label: Golden hour, prompt: "warm golden-hour sunlight"}
+  - {id: blue_hour, label: Blue hour, prompt: "cool blue-hour twilight"}
+  - {id: soft_cross, label: Soft cross light, prompt: "soft cross lighting from two sides"}
+  - {id: contre_jour, label: Backlit, prompt: "strong backlight with a glowing rim around the subject"}
+  - {id: overhead_fall, label: Overhead pool, prompt: "hard overhead light falling in a pool"}
+  - {id: window, label: Window light, prompt: "soft natural window light"}
+  - {id: practicals, label: Practical lights, prompt: "lit by practical lamps visible in the scene"}
+  - {id: silhouette, label: Silhouette, prompt: "subject in silhouette against a bright background"}
+  - {id: neon_noir, label: Neon noir, prompt: "neon signs casting colored light in a dark wet street"}
+  - {id: high_key, label: High key, prompt: "bright high-key lighting with few shadows"}
+  - {id: low_key, label: Low key, prompt: "dramatic low-key lighting with deep shadows"}
+  - {id: overcast, label: Overcast, prompt: "soft overcast daylight"}
+
+palettes:
+  - {id: naturalistic, label: Naturalistic, prompt: "naturalistic, true-to-life color"}
+  - {id: teal_orange, label: Teal and orange, prompt: "teal-and-orange blockbuster color grade"}
+  - {id: bleached_warm, label: Bleached warm, prompt: "bleached, warm, sun-faded color grade"}
+  - {id: bleach_bypass, label: Bleach bypass, prompt: "bleach-bypass grade, desaturated with crushed contrast"}
+  - {id: cold_steel, label: Cold steel, prompt: "cold steel-blue color grade"}
+  - {id: sodium_decay, label: Sodium vapor, prompt: "sickly sodium-vapor orange and green grade"}
+  - {id: hyper_neon, label: Hyper neon, prompt: "hyper-saturated neon magenta and cyan grade"}
+  - {id: pastel, label: Pastel, prompt: "soft pastel color palette"}
+  - {id: black_white, label: Black and white, prompt: "rich black-and-white"}
+
+genres:
+  - {id: action, label: Action, prompt: "high-energy action film"}
+  - {id: horror, label: Horror, prompt: "tense horror film atmosphere"}
+  - {id: comedy, label: Comedy, prompt: "lighthearted comedy tone"}
+  - {id: noir, label: Noir, prompt: "moody film-noir atmosphere"}
+  - {id: drama, label: Drama, prompt: "intimate character drama"}
+  - {id: epic, label: Epic, prompt: "grand epic scale"}
+  - {id: western, label: Western, prompt: "dusty western atmosphere"}
+  - {id: scifi, label: Sci-fi, prompt: "science-fiction atmosphere"}
+  - {id: documentary, label: Documentary, prompt: "observational documentary style"}
+  - {id: romance, label: Romance, prompt: "tender romantic tone"}
+  - {id: thriller, label: Thriller, prompt: "suspenseful thriller tone"}
+
+pacing:
+  - {id: calm, label: Calm, prompt: "calm, unhurried pacing"}
+  - {id: dynamic, label: Dynamic, prompt: "dynamic, energetic pacing"}
+  - {id: chaotic, label: Chaotic, prompt: "frantic, chaotic pacing"}
+  - {id: single_take, label: Single take, prompt: "one continuous take with no cuts"}
+
+emotions:
+  - {id: joy, label: Joy, prompt: "{subject} radiates joy"}
+  - {id: sadness, label: Sadness, prompt: "{subject} is quietly sad"}
+  - {id: anger, label: Anger, prompt: "{subject} seethes with anger"}
+  - {id: fear, label: Fear, prompt: "{subject} is gripped by fear"}
+  - {id: surprise, label: Surprise, prompt: "{subject} reacts with surprise"}
+  - {id: love, label: Love, prompt: "{subject} looks on with tenderness"}
+  - {id: calm, label: Calm, prompt: "{subject} is serene and calm"}
+  - {id: determination, label: Determination, prompt: "{subject} is fiercely determined"}

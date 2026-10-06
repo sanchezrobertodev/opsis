@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,10 +15,13 @@ from studio.budget import guard
 from studio.config import get_settings
 from studio.db.base import uuid7
 from studio.db.models import Asset, Generation, GenerationAttempt
+from studio.director.compiler import Compiled, ShotDirection, compile_prompt
+from studio.director.elements import resolve_mentions
 from studio.domain import fsm
 from studio.domain.enums import AssetStatus, AttemptStatus, GenStatus
 from studio.domain.health import load_health
 from studio.providers.factory import adapter_implemented
+from studio.providers.local_status import local_reachability
 from studio.registry.loader import Registry, get_registry
 from studio.registry.routing import Candidate, RoutingEnv, candidates, cheapest_live_estimate
 from studio.registry.validate import MediaRef, NormalizedRequest, RequestError, normalize
@@ -51,6 +55,8 @@ class CreateRequest:
     idempotency_key: str | None = None
     group_id: uuid.UUID | None = None
     parent_generation_id: uuid.UUID | None = None
+    direction: dict[str, Any] | None = None
+    pipeline_step_id: uuid.UUID | None = None
 
 
 @dataclass
@@ -61,6 +67,8 @@ class Plan:
     candidates: list[Candidate]
     chosen: Candidate | None
     live_reference: Candidate | None
+    compiled: Compiled
+    mentions: list[dict[str, Any]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -68,8 +76,9 @@ class Plan:
             "estimate_usd": float(self.chosen.estimate.usd) if self.chosen and self.chosen.estimate else None,
             "live_reference": self.live_reference.as_dict() if self.live_reference else None,
             "candidates": [c.as_dict() for c in self.candidates],
-            "warnings": self.request.warnings,
+            "warnings": self.request.warnings + self.compiled.warnings,
             "params": self.request.params,
+            "compiled_prompt": self.compiled.prompt,
         }
 
 
@@ -80,12 +89,14 @@ async def routing_env(session: AsyncSession, reg: Registry) -> RoutingEnv:
         provider = reg.providers.get(provider_id)
         return bool(provider and provider.key_setting and getattr(settings, provider.key_setting, ""))
 
+    reach = await local_reachability(reg)
     return RoutingEnv(
         provider_mode=settings.provider_mode,
         live_allowlist=settings.live_routes,
         has_key=has_key,
         has_adapter=adapter_implemented,
         health=await load_health(session),
+        reachable=lambda provider_id: reach.get(provider_id, True),
     )
 
 
@@ -111,7 +122,8 @@ async def resolve_media_kinds(session: AsyncSession, user_id: uuid.UUID, media: 
         if asset.status != AssetStatus.ready:
             errors.append(f"asset {asset_id} is not ready ({asset.status})")
             continue
-        refs.append(MediaRef(role=m.get("role", ""), asset_id=str(asset_id), kind=asset.kind.value))
+        refs.append(MediaRef(role=m.get("role", ""), asset_id=str(asset_id), kind=asset.kind.value,
+                             duration_ms=asset.duration_ms))
     if errors:
         raise GenerationRequestError(errors)
     return refs
@@ -122,15 +134,25 @@ async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, r
     spec = reg.model(body.model_id)
     if spec is None:
         raise GenerationRequestError([f"unknown model {body.model_id!r}"])
-    refs = await resolve_media_kinds(session, user_id, body.media)
+    # @mentions of saved characters/locations/props may attach reference images, so resolve them before
+    # validation: the attached images count against the model's slot limits like any other input.
+    mention = await resolve_mentions(session, user_id, spec, body.mode, body.prompt, body.media)
+    refs = await resolve_media_kinds(session, user_id, [*body.media, *mention.media])
     try:
         req = normalize(spec, body.mode, body.prompt, body.params, refs, body.negative_prompt)
+        direction = ShotDirection.model_validate(body.direction) if body.direction else None
     except RequestError as exc:
         raise GenerationRequestError(exc.errors) from None
+    except ValidationError as exc:
+        raise GenerationRequestError(
+            [f"direction: {e['msg']} at {'.'.join(map(str, e['loc']))}" for e in exc.errors()]) from None
+    req.warnings.extend(mention.warnings)
+    compiled = compile_prompt(spec, mention.prompt, direction)
     env = await routing_env(session, reg)
     cands = candidates(reg, spec, req, env, body.route_policy)
     chosen = next((c for c in cands if c.eligible), None)
-    return Plan(request=req, candidates=cands, chosen=chosen, live_reference=cheapest_live_estimate(cands))
+    return Plan(request=req, candidates=cands, chosen=chosen, live_reference=cheapest_live_estimate(cands),
+                compiled=compiled, mentions=mention.elements)
 
 
 async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest) -> tuple[Generation, bool]:
@@ -164,11 +186,19 @@ async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: Cre
         user_id=user_id,
         group_id=body.group_id,
         parent_generation_id=body.parent_generation_id,
+        pipeline_step_id=body.pipeline_step_id,
         model_id=spec.id,
         mode=p.request.mode,
         output_type=spec.output_type,
         status=GenStatus.draft,
-        request={**p.request.as_dict(), "route_policy": body.route_policy},
+        request={
+            **p.request.as_dict(),
+            "route_policy": body.route_policy,
+            "direction": body.direction,
+            "compiled_prompt": p.compiled.prompt,
+            "mentions": p.mentions,
+        },
+        compiled=p.compiled.as_dict(),
         routing={
             "policy": body.route_policy,
             "planned": p.chosen.route.id,
@@ -185,6 +215,36 @@ async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: Cre
     await session.flush()
     await fsm.transition(session, gen, GenStatus.queued)
     return gen, True
+
+
+async def quick_estimate(
+    session: AsyncSession, model_id: str, mode: str, params: dict[str, Any], roles: list[str], reg: Registry | None = None,
+) -> tuple[Decimal, Decimal | None]:
+    """(cost on the route that would run now, cost on the cheapest live route) without real inputs.
+
+    For planning runs whose inputs don't exist yet (a later shot's start frame). Media are stand-ins of the
+    slot's first kind; pricing that depends on input length (Aleph) uses its minimum.
+    """
+    reg = reg or get_registry()
+    spec = reg.model(model_id)
+    if spec is None:
+        raise GenerationRequestError([f"unknown model {model_id!r}"])
+    m = spec.mode(mode)
+    if m is None:
+        raise GenerationRequestError([f"{spec.name} has no mode {mode!r}"])
+    refs = [MediaRef(role=r, asset_id=f"planned-{i}", kind=slot.kinds[0])
+            for i, r in enumerate(roles) if (slot := m.slot(r))]
+    try:
+        req = normalize(spec, mode, "planned", params, refs)
+    except RequestError as exc:
+        raise GenerationRequestError([f"{spec.name}: {e}" for e in exc.errors]) from None
+    cands = candidates(reg, spec, req, await routing_env(session, reg))
+    chosen = next((c for c in cands if c.eligible), None)
+    if chosen is None:
+        raise GenerationRequestError([f"no route can run {spec.name} {m.label.lower()} right now"])
+    live = cheapest_live_estimate(cands)
+    return (chosen.estimate.usd if chosen.estimate else Decimal("0"),
+            live.estimate.usd if live and live.estimate else None)
 
 
 async def inflight_attempt(session: AsyncSession, gen_id: uuid.UUID) -> GenerationAttempt | None:

@@ -1,0 +1,12 @@
+id: make-it-night
+name: Make it night
+category: edit
+summary: Relight daytime footage as night, with practical lights switched on.
+model_id: runway-aleph-2
+mode: edit
+inputs:
+  - {role: input_video, label: Your clip}
+prompt: >-
+  Change the time of day to night: dark blue sky, streetlights and windows lit, cool moonlight on
+  surfaces, everything else exactly the same
+tags: [relight]

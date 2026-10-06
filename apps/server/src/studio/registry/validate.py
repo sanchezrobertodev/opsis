@@ -28,6 +28,7 @@ class MediaRef:
     role: str
     asset_id: str
     kind: str | None = None  # filled by the API from the asset row
+    duration_ms: int | None = None  # for video/audio inputs; some routes bill by input length
 
 
 @dataclass
@@ -47,7 +48,8 @@ class NormalizedRequest:
             "prompt": self.prompt,
             "negative_prompt": self.negative_prompt,
             "params": self.params,
-            "media": [{"role": m.role, "asset_id": m.asset_id, "kind": m.kind} for m in self.media],
+            "media": [{"role": m.role, "asset_id": m.asset_id, "kind": m.kind, "duration_ms": m.duration_ms}
+                      for m in self.media],
             "warnings": self.warnings,
         }
 
@@ -141,8 +143,9 @@ def normalize(
         errors.append(f"aspect_ratio must be one of {spec.aspect_ratios}")
 
     for rule in spec.rules:
+        context = {**out, "mode": mode_id}  # rules may depend on the mode as well as params
         applies = all(
-            out.get(k) in (v if isinstance(v, list) else [v]) for k, v in rule.when.items()
+            context.get(k) in (v if isinstance(v, list) else [v]) for k, v in rule.when.items()
         )
         if applies:
             for key, options in rule.require.items():

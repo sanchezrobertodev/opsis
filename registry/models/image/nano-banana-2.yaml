@@ -1,4 +1,5 @@
 # yaml-language-server: $schema=../../schema/model.schema.json
+# Verified 2026-10-06: Gemini model id gemini-3.1-flash-image (GA; the -preview id is retired) and fal's OpenAPI.
 id: nano-banana-2
 name: Nano Banana 2
 family: nano-banana
@@ -26,6 +27,8 @@ modes:
     medias:
       - {role: image_references, kinds: [image], label: Images, required: true, min: 1, max: 10}
 
+elements: {strategy: refs_native, ref_role: image_references}
+
 routes:
   - id: nano-banana-2@google
     provider: google
@@ -49,13 +52,16 @@ routes:
       t2i: {endpoint: fal-ai/nano-banana-2}
       edit: {endpoint: fal-ai/nano-banana-2/edit}
     map:
+      params:
+        resolution: {to: resolution, transform: enum_map, args: {values: {"1k": "1K", "2k": "2K", "4k": "4K"}}}
       media: {image_references: image_urls}
     pricing:
       basis: per_image
+      # fal's page: $0.08/image, 1.5x at 2K, 2x at 4K (from a listing; re-check on first live run)
       rates:
-        - {when: {resolution: "1k"}, usd: 0.067}
-        - {when: {resolution: "2k"}, usd: 0.101}
-        - {when: {resolution: "4k"}, usd: 0.151}
+        - {when: {resolution: "1k"}, usd: 0.08}
+        - {when: {resolution: "2k"}, usd: 0.12}
+        - {when: {resolution: "4k"}, usd: 0.16}
       verified: 2026-10-06
       source: https://fal.ai/models/fal-ai/nano-banana-2
     output: {path: images, kind: image, multiple: true}

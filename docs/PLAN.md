@@ -229,6 +229,14 @@ CLAUDE.md                         conventions + "how to add a model" checklist
   layering). Copy no code.
 
 ## Phased roadmap (video-first; each phase ships something usable)
+
+**Status (2026-10-06):** P0 done. P1 built and tested against recorded provider contracts but not yet run
+live (waiting for API keys): fal, Google, Runway and Replicate adapters, routing/failover, spend guard and
+history, last-frame continue, compare-across-models. The pipeline engine (planned for P4) landed early with the
+sequence, compare and keyframe recipes plus ffmpeg assembly. P2 done except the Cinema Studio virtual model
+(folded into P5): director and camera moves, Motion control page, Elements/characters with @mentions,
+presets gallery, Claude enhance (mock until a key is added). The opt-in local ComfyUI route (Wan 2.2 5B,
+FLUX.2 klein) runs on the RTX 5070.
 - **Step 0 — Handoff (this session, after approval):**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

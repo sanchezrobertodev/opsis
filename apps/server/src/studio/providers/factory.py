@@ -14,9 +14,43 @@ def _mock() -> ProviderAdapter:
     return MockAdapter()
 
 
-# Live adapters (fal, google_genai, replicate, runway, …) are added in P1.
+def _comfy_local() -> ProviderAdapter:
+    from studio.providers.comfy_local import ComfyLocalAdapter
+
+    return ComfyLocalAdapter()
+
+
+def _fal() -> ProviderAdapter:
+    from studio.providers.fal import FalAdapter
+
+    return FalAdapter()
+
+
+def _google() -> ProviderAdapter:
+    from studio.providers.google_genai import GoogleGenAIAdapter
+
+    return GoogleGenAIAdapter()
+
+
+def _replicate() -> ProviderAdapter:
+    from studio.providers.replicate import ReplicateAdapter
+
+    return ReplicateAdapter()
+
+
+def _runway() -> ProviderAdapter:
+    from studio.providers.runway import RunwayAdapter
+
+    return RunwayAdapter()
+
+
 _FACTORIES: dict[str, Callable[[], ProviderAdapter]] = {
     "mock": _mock,
+    "comfy_local": _comfy_local,
+    "fal": _fal,
+    "google_genai": _google,
+    "replicate": _replicate,
+    "runway": _runway,
 }
 
 

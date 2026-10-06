@@ -26,6 +26,8 @@ def main() -> None:
         reload=args.reload,
         reload_dirs=[str(src)] if args.reload else None,
         loop="asyncio:SelectorEventLoop" if sys.platform == "win32" else "auto",
+        # Browsers hold the SSE stream open forever; without a cap a --reload restart waits on it indefinitely.
+        timeout_graceful_shutdown=3,
         log_level="info",
     )
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useDraft } from "./draft";
 import { api, API_URL, ApiError, unwrap, type Asset, type Generation } from "./api";
 
 export const keys = {
@@ -84,6 +85,7 @@ export type CreateBody = {
   params: Record<string, unknown>;
   media: { role: string; asset_id: string }[];
   route_policy?: string;
+  direction?: Record<string, unknown> | null;
   confirm_cost_usd?: number | null;
   group_id?: string | null;
 };
@@ -134,6 +136,32 @@ export function usePatchAsset() {
       qc.invalidateQueries({ queryKey: ["assets"] });
     },
   });
+}
+
+/** Save a frame of a video (default: the last one) as an image asset. Idempotent per clip and position. */
+export function useGrabFrame() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, at = "last" }: { id: string; at?: "first" | "last" | number }) =>
+      unwrap(api.POST("/assets/{asset_id}/frames", { params: { path: { asset_id: id } }, body: { at } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["assets"] }),
+  });
+}
+
+/** Grab a clip's last frame and make it the start frame in Create video. */
+export function useContinueFromLastFrame() {
+  const grab = useGrabFrame();
+  const addMedia = useDraft((s) => s.addMedia);
+  const setDraft = useDraft((s) => s.set);
+  return {
+    isPending: grab.isPending,
+    run: async (videoId: string) => {
+      const f = await grab.mutateAsync({ id: videoId });
+      addMedia("video", "start_image", { id: f.id, kind: "image", thumb: f.thumb_url, url: f.url, title: f.title }, 1);
+      setDraft("video", { mode: "i2v" });
+      return f;
+    },
+  };
 }
 
 export function useDeleteAsset() {

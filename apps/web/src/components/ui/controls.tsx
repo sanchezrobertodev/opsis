@@ -273,7 +273,8 @@ export function Dialog({
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      onClose={onClose}
+      // React re-dispatches a nested <dialog>'s close to every ancestor dialog; only react to our own
+      onClose={(e) => e.target === e.currentTarget && onClose()}
       onClick={(e) => e.target === ref.current && onClose()}
       className={cn(
         "m-auto w-[calc(100%-2rem)] rounded-[var(--radius-panel)] border border-line bg-panel p-0 text-chalk backdrop:bg-black/60",

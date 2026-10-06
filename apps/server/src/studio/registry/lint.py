@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING
 
 from studio.registry.schema import EnumParam, FloatParam, IntParam
@@ -54,6 +55,15 @@ def lint(reg: Registry) -> tuple[list[str], list[str]]:
             for role in route.map.media:
                 if role not in all_roles:
                     errors.append(f"{rwhere}: map references unknown media role {role!r}")
+            if route.sunset and route.enabled:
+                days = (route.sunset - date.today()).days
+                if days <= 30:
+                    warnings.append(f"{rwhere}: provider retires it on {route.sunset} ({max(days, 0)} days)")
+            for mode_id, rm in route.modes.items():
+                mode = spec.mode(mode_id)
+                for role in rm.media:
+                    if mode and not mode.slot(role):
+                        errors.append(f"{rwhere}: mode {mode_id} maps unknown media role {role!r}")
             if route.provider != "mock":
                 if route.pricing.verified is None:
                     errors.append(f"{rwhere}: pricing needs a `verified` date")

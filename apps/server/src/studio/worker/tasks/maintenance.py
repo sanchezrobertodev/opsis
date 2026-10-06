@@ -7,12 +7,13 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
 
-from studio.db.models import Generation, GenerationAttempt, JobEvent
+from studio.db.models import Generation, GenerationAttempt, JobEvent, PipelineRun, RunStatus
 from studio.db.session import session_scope
 from studio.domain import fsm
 from studio.domain.enums import AttemptStatus, ErrorClass, GenStatus
 from studio.worker.app import Q_MAINT, app
 from studio.worker.tasks.generation import defer_ingest, defer_poll, defer_submit
+from studio.worker.tasks.pipeline import defer_advance
 
 log = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ STALE_QUEUED = timedelta(seconds=60)
 STALE_POLL = timedelta(minutes=2)
 STUCK_SUBMIT = timedelta(minutes=2)
 STALE_INGEST = timedelta(minutes=5)
+STALE_RUN = timedelta(minutes=2)
 EVENT_RETENTION = timedelta(days=7)
 
 
@@ -30,7 +32,7 @@ async def maint_reap(timestamp: int) -> None:
 
 
 async def reap(now: datetime) -> dict[str, int]:
-    counts = {"resubmitted": 0, "repolled": 0, "unknown": 0, "reingested": 0}
+    counts = {"resubmitted": 0, "repolled": 0, "unknown": 0, "reingested": 0, "runs": 0}
     async with session_scope() as s:
         # API committed `queued` but died before deferring, or a deferred job was lost
         queued = (await s.execute(select(Generation.id).where(
@@ -59,6 +61,10 @@ async def reap(now: datetime) -> dict[str, int]:
                                      error=(ErrorClass.transient, "submit outcome unknown after a worker restart"))
                 counts["unknown"] += 1
 
+        # a run whose wake-up was lost (process died between commit and defer)
+        runs = (await s.execute(select(PipelineRun.id).where(
+            PipelineRun.status == RunStatus.running, PipelineRun.updated_at < now - STALE_RUN))).scalars().all()
+
         await s.execute(delete(JobEvent).where(JobEvent.created_at < now - EVENT_RETENTION))
 
     for gid in queued:
@@ -70,6 +76,9 @@ async def reap(now: datetime) -> dict[str, int]:
     for aid in ingest_attempts:
         await defer_ingest(aid)
         counts["reingested"] += 1
+    for rid in runs:
+        await defer_advance(rid)
+        counts["runs"] += 1
     if any(counts.values()):
         log.info("reaper: %s", counts)
     return counts

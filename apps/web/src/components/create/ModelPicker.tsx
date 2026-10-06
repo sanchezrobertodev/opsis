@@ -23,6 +23,12 @@ export function vendorName(id: string) {
   return VENDORS[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
 }
 
+function priceNote(m: ModelSummary) {
+  if (m.tags.includes("local")) return ", free on your GPU";
+  const unit = m.output_type === "image" ? "an image" : "a clip";
+  return m.from_price_usd != null ? `, live from ${usd(m.from_price_usd)} ${unit}` : "";
+}
+
 export function ModelPicker({
   models,
   value,
@@ -48,7 +54,7 @@ export function ModelPicker({
           {current && (
             <span className="block truncate text-2xs text-faint">
               {vendorName(current.vendor)}
-              {current.from_price_usd != null && `, live from ${usd(current.from_price_usd)} a clip`}
+              {priceNote(current)}
             </span>
           )}
         </span>
@@ -73,9 +79,9 @@ export function ModelPicker({
               >
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="type-title text-[15px] text-chalk">{m.name}</span>
-                  {m.from_price_usd != null && (
-                    <span className="tabular text-2xs text-faint">from {usd(m.from_price_usd)}</span>
-                  )}
+                  <span className="tabular text-2xs text-faint">
+                    {m.tags.includes("local") ? "free, on your GPU" : m.from_price_usd != null ? `from ${usd(m.from_price_usd)}` : ""}
+                  </span>
                 </span>
                 <span className="text-xs leading-relaxed text-muted">{m.description}</span>
                 <span className="mt-auto text-2xs text-faint">

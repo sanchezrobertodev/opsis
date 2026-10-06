@@ -11,7 +11,16 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from studio.registry.schema import ModelSpec, OutputSpec, Pricing, ProviderSpec, Rate, Route, RouteMode
+from studio.registry.schema import (
+    ModelSpec,
+    OutputSpec,
+    PresetSpec,
+    Pricing,
+    ProviderSpec,
+    Rate,
+    Route,
+    RouteMode,
+)
 
 log = logging.getLogger(__name__)
 
@@ -23,6 +32,7 @@ class Registry:
     models: dict[str, ModelSpec]
     providers: dict[str, ProviderSpec]
     hash: str
+    presets: dict[str, PresetSpec] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -95,11 +105,23 @@ def load_registry(root: Path) -> Registry:
             spec.routes.append(mock_route(spec))
         models[spec.id] = spec
 
-    from studio.registry.lint import lint  # local import: lint depends on Registry
+    presets: dict[str, PresetSpec] = {}
+    for path, data in _read_yaml_dir(root / "presets"):
+        try:
+            preset = PresetSpec.model_validate(data)
+        except ValidationError as exc:
+            errors.append(f"{path.relative_to(root).as_posix()}: {exc}")
+            continue
+        if preset.id in presets:
+            errors.append(f"{path.name}: duplicate preset id {preset.id}")
+        presets[preset.id] = preset
 
-    reg = Registry(models=models, providers=providers, hash=_digest(root))
+    from studio.registry.lint import lint  # local import: lint depends on Registry
+    from studio.registry.presets import lint_presets
+
+    reg = Registry(models=models, providers=providers, hash=_digest(root), presets=presets)
     lint_errors, lint_warnings = lint(reg)
-    reg.errors = errors + lint_errors
+    reg.errors = errors + lint_errors + lint_presets(reg)
     reg.warnings = lint_warnings
     if reg.errors:
         raise RegistryError(reg.errors)

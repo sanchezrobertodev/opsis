@@ -42,6 +42,7 @@ from studio.providers.base import (
 from studio.providers.factory import get_adapter
 from studio.registry.loader import get_registry
 from studio.registry.mapping import build_payload
+from studio.registry.pricing import eta_seconds
 from studio.registry.routing import candidates
 from studio.registry.schema import ModelSpec, Route
 from studio.registry.validate import MediaRef, NormalizedRequest
@@ -93,10 +94,12 @@ async def defer_cancel_remote(attempt_id: uuid.UUID) -> None:
 
 def request_from(gen: Generation) -> NormalizedRequest:
     r = gen.request
+    # The director's compiled prompt is what the provider gets; the user's own words stay in r["prompt"].
     return NormalizedRequest(
-        model_id=r["model_id"], mode=r["mode"], prompt=r.get("prompt", ""),
+        model_id=r["model_id"], mode=r["mode"], prompt=r.get("compiled_prompt") or r.get("prompt", ""),
         negative_prompt=r.get("negative_prompt"), params=dict(r.get("params", {})),
-        media=[MediaRef(role=m["role"], asset_id=m["asset_id"], kind=m.get("kind")) for m in r.get("media", [])],
+        media=[MediaRef(role=m["role"], asset_id=m["asset_id"], kind=m.get("kind"), duration_ms=m.get("duration_ms"))
+               for m in r.get("media", [])],
         warnings=list(r.get("warnings", [])),
     )
 
@@ -116,10 +119,11 @@ def _scrub(value: Any) -> Any:
     return value
 
 
-def _poll_delay(attempt: GenerationAttempt, output_type: str) -> float:
+def _poll_delay(attempt: GenerationAttempt, output_type: str, floor: float | None = None) -> float:
     s = get_settings()
     cap = 5.0 if output_type == "image" else s.poll_max_seconds
-    return min(s.poll_initial_seconds * (1.5 ** max(0, attempt.poll_count - 1)), cap)
+    delay = min(s.poll_initial_seconds * (1.5 ** max(0, attempt.poll_count - 1)), cap)
+    return max(delay, floor or 0.0)  # some providers (Runway: 5 s) ask not to be polled faster
 
 
 async def _resolve_media(req: NormalizedRequest) -> list[ResolvedMedia]:
@@ -305,7 +309,8 @@ async def run_submit(gen_id: uuid.UUID) -> None:
             attempt.last_response = _scrub(result.raw)
             attempt.next_poll_at = datetime.now(UTC) + timedelta(seconds=get_settings().poll_initial_seconds)
             await fsm.transition(s, gen, GenStatus.in_progress, reason="provider_queue",
-                                 compiled={"endpoint": endpoint, "prompt": req.prompt, "warnings": warnings})
+                                 compiled={**(gen.compiled or {}), "endpoint": endpoint, "prompt": req.prompt,
+                                           "payload_warnings": warnings})
             poll_after = get_settings().poll_initial_seconds
         elif ambiguous is not None:
             # The provider may have accepted (and may bill) this job. Keep the reservation; a human decides.
@@ -333,9 +338,10 @@ async def gen_poll(attempt_id: str) -> None:
     await run_poll(uuid.UUID(attempt_id))
 
 
-def _estimated_progress(elapsed_s: float, output_type: str) -> float:
-    expected = 15.0 if output_type == "image" else 90.0
-    return round(min(0.95, elapsed_s / expected), 3)
+def _estimated_progress(elapsed_s: float, output_type: str, route: Route, params: dict[str, Any]) -> float:
+    """Providers that report no percentage (ComfyUI over HTTP, many APIs): elapsed time against the route ETA."""
+    expected = eta_seconds(route.eta, params) or (15.0 if output_type == "image" else 90.0)
+    return round(min(0.95, elapsed_s / max(expected, 1.0)), 3)
 
 
 async def run_poll(attempt_id: uuid.UUID) -> None:
@@ -403,10 +409,13 @@ async def run_poll(attempt_id: uuid.UUID) -> None:
                         if abs(res.progress - gen.progress) >= 0.01:
                             await fsm.report_progress(s, gen, res.progress, estimated=False)
                     elif res.status == "running":
-                        await fsm.report_progress(s, gen, _estimated_progress(elapsed, gen.output_type), estimated=True)
+                        await fsm.report_progress(
+                            s, gen, _estimated_progress(elapsed, gen.output_type, route, gen.request.get("params", {})),
+                            estimated=True,
+                        )
                 else:
                     log.warning("poll %s transient error: %s", attempt_id, transient_error)
-                next_poll = _poll_delay(attempt, gen.output_type)
+                next_poll = _poll_delay(attempt, gen.output_type, provider.poll_min_seconds)
                 attempt.next_poll_at = now + timedelta(seconds=next_poll)
         elif res.status == "succeeded":
             attempt.status = AttemptStatus.succeeded
@@ -493,6 +502,8 @@ async def run_ingest(attempt_id: uuid.UUID) -> None:
         provider = reg.providers.get(attempt.provider)
         outputs = [ProviderOutput(**o) for o in (attempt.last_response or {}).get("outputs", [])]
         req = request_from(gen)
+        user_prompt = gen.request.get("prompt", "")
+        direction = gen.request.get("direction")
         user_id, gen_id = gen.user_id, gen.id
     if route is None or provider is None:
         raise RuntimeError(f"route {attempt.route_id} is no longer in the registry")
@@ -530,8 +541,9 @@ async def run_ingest(attempt_id: uuid.UUID) -> None:
                     source=AssetSource.generation, mime=mime, storage_key=key, size_bytes=size,
                     content_hash=digest, width=info.width, height=info.height, duration_ms=info.duration_ms,
                     fps=info.fps, has_audio=info.has_audio, codec=info.codec, generation_id=gen_id,
-                    output_index=out.index, title=(req.prompt or gen_id.hex)[:120],
-                    metadata_={"model_id": req.model_id, "mode": req.mode, "prompt": req.prompt,
+                    output_index=out.index, title=(user_prompt or gen_id.hex)[:120],
+                    metadata_={"model_id": req.model_id, "mode": req.mode, "prompt": user_prompt,
+                               "compiled_prompt": req.prompt, "direction": direction,
                                "params": req.params, "route_id": attempt.route_id},
                 ))
                 await s.flush()

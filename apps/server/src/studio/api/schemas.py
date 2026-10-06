@@ -8,7 +8,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from studio.registry.schema import DurationSpec, Mode, Param, PromptSpec, Rule
+from studio.director.compiler import ShotDirection
+from studio.director.library import CameraMove, LookItem
+from studio.registry.schema import DurationSpec, MediaSlot, Mode, Param, PresetField, PromptSpec, Rule
 
 
 class ApiModel(BaseModel):
@@ -99,12 +101,15 @@ class GenerationCreate(ApiModel):
     confirm_cost_usd: float | None = Field(None, description="Echo the estimate to confirm an expensive run")
     group_id: uuid.UUID | None = None
     parent_generation_id: uuid.UUID | None = None
+    direction: ShotDirection | None = Field(None, description="Camera moves and cinema look, compiled into the prompt")
 
 
 class CandidateOut(ApiModel):
     route_id: str
     provider: str
     provider_name: str | None = None
+    provider_kind: str | None = None
+    eta_seconds: float | None = None
     eligible: bool
     reason: str | None
     estimate_usd: float | None
@@ -119,6 +124,37 @@ class EstimateOut(ApiModel):
     candidates: list[CandidateOut]
     warnings: list[str]
     params: dict[str, Any]
+    compiled_prompt: str | None = None
+
+
+class DirectorLibraryOut(ApiModel):
+    moves: list[CameraMove]
+    shot_sizes: list[LookItem]
+    angles: list[LookItem]
+    lenses: list[LookItem]
+    apertures: list[LookItem]
+    camera_bodies: list[LookItem]
+    eras: list[LookItem]
+    lighting: list[LookItem]
+    palettes: list[LookItem]
+    genres: list[LookItem]
+    pacing: list[LookItem]
+    emotions: list[LookItem]
+
+
+class CompileIn(ApiModel):
+    model_id: str
+    prompt: str = ""
+    direction: ShotDirection | None = None
+    mode: str | None = Field(None, description="Resolve @mentions as this mode would (reference slots, tokens)")
+    media: list[MediaInput] = []
+
+
+class CompileOut(ApiModel):
+    prompt: str
+    warnings: list[str]
+    dialect: str
+    max_chars: int
 
 
 class AssetOut(ApiModel):
@@ -182,6 +218,10 @@ class AssetPage(ApiModel):
     next_cursor: str | None
 
 
+class FrameIn(ApiModel):
+    at: Literal["first", "last"] | float = Field("last", description="'first', 'last', or seconds into the clip")
+
+
 class AssetPatch(ApiModel):
     title: str | None = None
     tags: list[str] | None = None
@@ -230,11 +270,46 @@ class BudgetOut(ApiModel):
     live_enabled: bool
 
 
+class SpendEntryOut(ApiModel):
+    id: uuid.UUID
+    created_at: datetime
+    amount_usd: float
+    entry_type: str
+    provider: str | None
+    route_id: str | None
+    estimated: bool
+    kind: Literal["generation", "claude", "other"]
+    label: str = Field(description="What it paid for: the take's prompt, or the Claude task")
+    model_id: str | None = None
+    generation_id: uuid.UUID | None = None
+
+
+class SpendBreakdown(ApiModel):
+    provider: str
+    usd: float
+    count: int
+
+
+class SpendHistoryOut(ApiModel):
+    entries: list[SpendEntryOut]
+    by_provider: list[SpendBreakdown] = Field(description="This month's charges per provider")
+
+
 class BudgetUpdate(ApiModel):
     daily_cap_usd: float | None = Field(None, ge=0)
     monthly_cap_usd: float | None = Field(None, ge=0)
     confirm_over_usd: float | None = Field(None, ge=0)
     live_enabled: bool | None = None
+
+
+class LocalEngineOut(ApiModel):
+    configured: bool
+    online: bool
+    url: str | None
+    gpu: str | None = None
+    vram_total_gb: float | None = None
+    vram_free_gb: float | None = None
+    comfyui_version: str | None = None
 
 
 class HealthOut(ApiModel):
@@ -245,3 +320,149 @@ class HealthOut(ApiModel):
     registry_errors: list[str] | None
     ffmpeg: bool
     media_root: str
+    local_engine: LocalEngineOut
+    llm_mode: str = Field(description="mock or live (Claude prompt enhancement, scripts)")
+    llm_key_set: bool
+
+
+# ---------------------------------------------------------------- presets
+
+
+class PresetInputOut(ApiModel):
+    role: str
+    label: str
+    slot: MediaSlot
+
+
+class PresetMoveOut(ApiModel):
+    id: str
+    label: str
+    category: str
+
+
+class PresetOut(ApiModel):
+    id: str
+    name: str
+    category: str
+    summary: str
+    tags: list[str]
+    model_id: str
+    model_name: str
+    output_type: str
+    mode: str
+    mode_label: str
+    aspect_ratio: str = Field(description="Shape of the result, for drawing the card")
+    fields: list[PresetField]
+    inputs: list[PresetInputOut]
+    moves: list[PresetMoveOut]
+    look: list[str] = Field(description="Labels of the cinema-look choices the preset applies")
+    local: bool = Field(description="Runs free on the local GPU")
+    live_price_usd: float | None = Field(None, description="Cheapest paid route with the preset's settings")
+
+
+class PresetRenderIn(ApiModel):
+    fields: dict[str, str] = {}
+    media: list[MediaInput] = []
+
+
+class PresetRenderOut(ApiModel):
+    """An ordinary generation request: post it to /generations, or load it into Create."""
+
+    model_id: str
+    mode: str
+    prompt: str
+    params: dict[str, Any]
+    media: list[MediaInput]
+    direction: ShotDirection | None = None
+
+
+# ---------------------------------------------------------------- Claude
+
+
+class EnhanceIn(ApiModel):
+    model_id: str
+    mode: str
+    prompt: str = Field(min_length=1, max_length=4000)
+    direction: ShotDirection | None = None
+
+
+class EnhanceOut(ApiModel):
+    prompt: str
+    changes: list[str]
+    warnings: list[str] = []
+    model: str
+    mock: bool = Field(description="LLM_MODE=mock: a canned rewrite, nothing was billed")
+    cost_usd: float
+
+
+# ---------------------------------------------------------------- pipelines
+
+
+class RecipeOut(ApiModel):
+    id: str
+    name: str
+    summary: str
+    input_schema: dict[str, Any]
+
+
+class RunCreate(ApiModel):
+    recipe: str
+    input: dict[str, Any]
+    title: str | None = Field(None, max_length=200)
+    cap_usd: float | None = Field(None, ge=0, description="Most the run may spend; defaults to your run cap")
+    confirm_cost_usd: float | None = Field(None, description="Echo the estimate to confirm an expensive run")
+
+
+class RunEstimateOut(ApiModel):
+    estimate_usd: float = Field(description="On the routes that would run now (mock routes are free)")
+    live_estimate_usd: float | None = Field(None, description="On the cheapest paid routes")
+    generations: int
+    cap_usd: float
+
+
+class StepOut(ApiModel):
+    key: str
+    kind: str
+    label: str
+    status: str
+    depends_on: list[str]
+    error: str | None
+    output: dict[str, Any]
+    options: list[dict[str, Any]] = Field(default_factory=list, description="Checkpoint choices")
+    generation_id: uuid.UUID | None
+    generation_status: str | None = None
+    progress: float | None = None
+    assets: list[AssetOut] = []
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class RunSummary(ApiModel):
+    id: uuid.UUID
+    recipe: str
+    recipe_name: str
+    title: str
+    status: str
+    error: str | None
+    estimate_usd: float | None
+    cap_usd: float | None
+    created_at: datetime
+    finished_at: datetime | None
+    output_asset: AssetOut | None = None
+    steps_done: int = 0
+    steps_total: int = 0
+
+
+class RunOut(RunSummary):
+    input: dict[str, Any]
+    output: dict[str, Any]
+    spent_usd: float
+    steps: list[StepOut]
+
+
+class RunRevise(ApiModel):
+    input: dict[str, Any]
+
+
+class CheckpointAnswer(ApiModel):
+    choice: str

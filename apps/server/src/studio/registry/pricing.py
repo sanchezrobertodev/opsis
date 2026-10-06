@@ -59,7 +59,23 @@ def _matches(when: dict[str, Scalar | list[Scalar]], values: dict[str, Any]) -> 
     return True
 
 
-def pricing_variables(params: dict[str, Any], prompt: str = "", num_outputs: int | None = None) -> dict[str, Any]:
+def media_variables(media: list[Any] | None) -> dict[str, float]:
+    """Totals over input media, for routes that bill by input (video edits bill by input length)."""
+    out = {"input_video_seconds": 0.0, "input_audio_seconds": 0.0, "input_images": 0.0}
+    for m in media or []:
+        kind = getattr(m, "kind", None) or (m.get("kind") if isinstance(m, dict) else None)
+        ms = getattr(m, "duration_ms", None) if not isinstance(m, dict) else m.get("duration_ms")
+        if kind == "video":
+            out["input_video_seconds"] += (ms or 0) / 1000
+        elif kind == "audio":
+            out["input_audio_seconds"] += (ms or 0) / 1000
+        elif kind == "image":
+            out["input_images"] += 1
+    return out
+
+
+def pricing_variables(params: dict[str, Any], prompt: str = "", num_outputs: int | None = None,
+                      media: list[Any] | None = None) -> dict[str, Any]:
     width, height = dims_for(params.get("resolution"), params.get("aspect_ratio"))
     duration = float(params.get("duration") or 0)
     n = num_outputs or int(params.get("num_outputs") or params.get("num_images") or 1)
@@ -72,6 +88,7 @@ def pricing_variables(params: dict[str, Any], prompt: str = "", num_outputs: int
         "fps": float(params.get("fps") or 24),
         "megapixels": width * height / 1_000_000,
         "prompt_chars": len(prompt or ""),
+        **media_variables(media),
     }
 
 
@@ -97,8 +114,9 @@ def _evaluate(expr: str, names: dict[str, Any]) -> float:
     return float(EvalWithCompoundTypes(names=names, functions={"max": max, "min": min, "round": round}).eval(expr))
 
 
-def estimate(pricing: Pricing, params: dict[str, Any], prompt: str = "") -> CostEstimate:
-    values = pricing_variables(params, prompt)
+def estimate(pricing: Pricing, params: dict[str, Any], prompt: str = "",
+             media: list[Any] | None = None) -> CostEstimate:
+    values = pricing_variables(params, prompt, media=media)
 
     if pricing.basis == "formula":
         usd = _evaluate(pricing.formula or "0", values)
@@ -132,3 +150,13 @@ def _finish(usd: float, pricing: Pricing, basis: str, quantity: float, rate: flo
         rate_usd=rate,
         detail={"verified": pricing.verified.isoformat() if pricing.verified else None},
     )
+
+
+def eta_seconds(expression: str | None, params: dict[str, Any]) -> float | None:
+    """Expected run time for a route (local GPUs especially), from the route's `eta` expression."""
+    if not expression:
+        return None
+    try:
+        return max(0.0, _evaluate(expression, pricing_variables(params)))
+    except Exception:
+        return None

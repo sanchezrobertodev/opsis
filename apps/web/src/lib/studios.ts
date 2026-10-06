@@ -2,6 +2,7 @@ import {
   Box,
   Clapperboard,
   Film,
+  GalleryHorizontalEnd,
   Globe2,
   ImageIcon,
   LayoutGrid,
@@ -13,7 +14,9 @@ import {
   Replace,
   Scissors,
   Settings,
+  Sparkles,
   UserRound,
+  Workflow,
 } from "lucide-react";
 
 export type Studio = {
@@ -37,14 +40,22 @@ export const STUDIOS: Studio[] = [
     summary: "Keyframes and references for your shots.",
   },
   {
+    slug: "sequence", name: "Shot sequence", href: "/sequence", icon: GalleryHorizontalEnd, group: "create",
+    summary: "Shots that continue from each other's last frame, joined into one cut.",
+  },
+  {
+    slug: "presets", name: "Presets", href: "/presets", icon: Sparkles, group: "create",
+    summary: "One-click camera moves, effects, looks and edits. Fill in a blank or two and generate.",
+  },
+  {
     slug: "edit", name: "Edit video", href: "/soon/edit", icon: Scissors, phase: "P3", group: "studios",
     summary: "Change footage by instruction: restyle, relight, extend, reframe, upscale, remove backgrounds. " +
       "Runs on Kling Omni Edit, Runway Aleph 2.0, Luma Modify, Seedance edit and Gemini Omni.",
   },
   {
-    slug: "motion", name: "Motion control", href: "/soon/motion", icon: Move3d, phase: "P2–P3", group: "studios",
-    summary: "A library of 65 camera moves (crash zoom, dolly zoom, bullet time, FPV, 360 orbit) you can stack, " +
-      "plus drawn trajectories that steer how things move.",
+    slug: "motion", name: "Motion control", href: "/motion", icon: Move3d, group: "studios",
+    summary: "A library of 65 camera moves (crash zoom, dolly zoom, bullet time, FPV, 360 orbit) you can stack. " +
+      "Drawn trajectories that steer how things move arrive with the open models in P3.",
   },
   {
     slug: "motion-transfer", name: "Motion transfer", href: "/soon/motion-transfer", icon: PersonStanding,
@@ -58,7 +69,7 @@ export const STUDIOS: Studio[] = [
       "camera, lighting and motion stay as filmed.",
   },
   {
-    slug: "characters", name: "Characters", href: "/soon/characters", icon: UserRound, phase: "P2", group: "studios",
+    slug: "characters", name: "Characters", href: "/characters", icon: UserRound, group: "studios",
     summary: "Reusable characters, locations and props. Mention them with @name in any prompt and their " +
       "references attach automatically. Character sheets and optional trained identities.",
   },
@@ -90,6 +101,10 @@ export const STUDIOS: Studio[] = [
   {
     slug: "library", name: "Library", href: "/library", icon: LayoutGrid, group: "manage",
     summary: "Every upload and generated take.",
+  },
+  {
+    slug: "runs", name: "Runs", href: "/runs", icon: Workflow, group: "manage",
+    summary: "Multi-step jobs: sequences and model comparisons, with their steps and results.",
   },
   {
     slug: "settings", name: "Settings", href: "/settings", icon: Settings, group: "manage",

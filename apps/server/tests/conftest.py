@@ -24,6 +24,11 @@ os.environ.update({
     "MOCK_QUEUE_SECONDS": "0",
     "MOCK_RUN_SECONDS": "0",
     "POLL_INITIAL_SECONDS": "0",
+    # Tests never talk to a real ComfyUI; adapter tests point at a fake one explicitly.
+    "COMFYUI_URL": "",
+    # Claude is mocked; live-mode tests swap in a fake client explicitly.
+    "LLM_MODE": "mock",
+    "ANTHROPIC_API_KEY": "",
 })
 
 import pytest  # noqa: E402

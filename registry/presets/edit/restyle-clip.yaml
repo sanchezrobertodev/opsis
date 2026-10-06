@@ -1,0 +1,16 @@
+id: restyle-clip
+name: Restyle a clip
+category: edit
+summary: Keep the motion and timing of your footage, change its whole look.
+model_id: runway-aleph-2
+mode: edit
+inputs:
+  - {role: input_video, label: Your clip}
+fields:
+  - key: style
+    label: New look
+    placeholder: a hand-painted watercolour
+prompt: >-
+  Restyle the entire clip as {style}, keeping the camera motion, timing, composition and the people's
+  movements exactly the same
+tags: [restyle]

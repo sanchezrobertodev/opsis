@@ -1,0 +1,19 @@
+id: bullet-time
+name: Bullet time
+category: camera
+summary: Freeze a moment mid-action while the camera sweeps around it.
+model_id: seedance-2.5
+mode: i2v
+inputs:
+  - {role: start_image, label: The moment to freeze}
+fields:
+  - key: action
+    label: What is happening
+    placeholder: a skateboarder in mid-air above a staircase
+prompt: >-
+  {action}, time nearly frozen, debris and droplets hanging in the air, only the camera moves
+params: {duration: 5}
+direction:
+  camera_moves: [{id: bullet_time, speed: normal}]
+  genre: action
+tags: [action]

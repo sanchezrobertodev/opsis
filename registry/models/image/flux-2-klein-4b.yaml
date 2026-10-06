@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: flux-2-klein-4b
+name: FLUX.2 klein 4B (local)
+family: flux
+vendor: bfl
+description: Open-weights FLUX.2 klein on your own GPU, upscaled 1.5x. Free keyframes and stills.
+output_type: image
+status: active
+license_tier: open_permissive   # the 4B checkpoint is Apache 2.0 (the 9B is not)
+tags: [local, free, open-weights, keyframes]
+prompt: {max_chars: 2000, dialect: flux, supports_negative: true}
+aspect_ratios: ["1:1", "16:9", "9:16", "4:3", "3:4"]
+
+parameters:
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["1:1", "16:9", "9:16", "4:3", "3:4"], default: "16:9", ui: aspect}
+  - {name: num_images, label: Images, type: int, min: 1, max: 4, default: 1, ui: slider}
+  - {name: steps, type: int, min: 8, max: 30, default: 20, group: advanced}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: t2i
+    label: Text to image
+    ops: [t2i]
+
+routes:
+  - id: flux-2-klein-4b@comfy_local
+    provider: comfy_local
+    modes:
+      t2i: {endpoint: flux2_klein_4b}
+    transform: studio.providers.transforms.comfy:flux_size
+    map:
+      params:
+        aspect_ratio: {to: null}
+    pricing:
+      basis: per_request
+      rates: [{usd: 0}]
+      verified: 2026-10-06
+      source: local GPU
+    eta: "(25 + 15 * num_images) * steps / 20"
+    timeout_s: 1800
+    output: {path: outputs, kind: image, multiple: true}
+
+examples:
+  - name: t2i_local
+    mode: t2i
+    prompt: A cozy ramen shop at night, steam rising, cinematic still, 35mm.
+    params: {aspect_ratio: "16:9", num_images: 1}
+    smoke: true
+    expect: {cost_usd_range: [0, 0]}

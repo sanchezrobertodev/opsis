@@ -16,6 +16,7 @@ app = App(
         "studio.worker.tasks.generation",
         "studio.worker.tasks.assets",
         "studio.worker.tasks.maintenance",
+        "studio.worker.tasks.pipeline",
     ],
 )
 

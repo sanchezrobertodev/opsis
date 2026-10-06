@@ -195,6 +195,8 @@ class ParamMap(_Strict):
 class RouteMode(_Strict):
     endpoint: str
     fixed: dict[str, Any] = {}
+    media: dict[str, str] = {}  # per-mode media field names, overriding the route map (APIs differ per endpoint)
+    drop: list[str] = []  # canonical params this endpoint doesn't accept (e.g. no seed on reference mode)
 
 
 class OutputSpec(_Strict):
@@ -213,6 +215,8 @@ class Route(_Strict):
     constraints: dict[str, dict[str, Any]] = {}  # param -> {options|min|max}
     unsupported_params: list[str] = []
     pricing: Pricing
+    sunset: date | None = None  # provider retires this route on this date; routing skips it from then on
+    eta: str | None = None  # simpleeval expression -> expected seconds, e.g. "70 if quality == 'draft' else 430"
     timeout_s: int = 1800
     charges_on_failure: bool = False
     output: OutputSpec = OutputSpec()
@@ -273,5 +277,45 @@ class ProviderSpec(_Strict):
     adapter: str  # adapter key in studio.providers.factory
     key_setting: str | None = None  # Settings attribute holding the API key
     concurrency: int = 2
+    poll_min_seconds: float | None = None  # provider asks clients not to poll faster than this
     docs: str | None = None
     notes: str | None = None
+
+
+# ---------------------------------------------------------------- presets (effects gallery)
+
+
+class PresetField(_Strict):
+    """A blank the user fills in; the prompt template refers to it as {key}."""
+
+    key: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    label: str
+    placeholder: str = ""
+    default: str = ""
+    required: bool = True
+    max_chars: int = 300
+
+
+class PresetInput(_Strict):
+    """Media the user brings. The role must be a slot on the preset's mode."""
+
+    role: MediaRole
+    label: str | None = None
+
+
+class PresetSpec(_Strict):
+    """A one-click recipe over one model: prompt template + params + direction + required inputs."""
+
+    id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    name: str
+    category: Literal["camera", "effects", "look", "character", "product", "social", "edit"]
+    summary: str
+    model_id: str
+    mode: str
+    prompt: str
+    fields: list[PresetField] = []
+    params: dict[str, Any] = {}
+    direction: dict[str, Any] | None = None
+    inputs: list[PresetInput] = []
+    tags: list[str] = []
+    status: Literal["active", "hidden"] = "active"

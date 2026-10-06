@@ -81,10 +81,12 @@ def build_payload(
 
     if req.prompt and m.prompt:
         _set_path(payload, m.prompt, req.prompt)
-    if req.negative_prompt and m.negative_prompt:
+    if req.negative_prompt and m.negative_prompt and "negative_prompt" not in route_mode.drop:
         _set_path(payload, m.negative_prompt, req.negative_prompt)
 
     for name, value in req.params.items():
+        if name in route_mode.drop:
+            continue
         entry = m.params.get(name)
         if name in route.unsupported_params:
             warnings.append(f"{route.id} ignores {name}")
@@ -104,7 +106,7 @@ def build_payload(
         _set_path(payload, entry.to, value)
 
     for role, ref in inputs.items():
-        field_name = m.media.get(role, role)
+        field_name = route_mode.media.get(role) or m.media.get(role, role)
         slot = spec.mode(req.mode).slot(role) if spec.mode(req.mode) else None
         if slot and slot.max > 1 and not isinstance(ref, list):
             ref = [ref]

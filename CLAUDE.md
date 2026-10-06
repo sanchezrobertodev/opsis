@@ -48,6 +48,32 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 4. Optional live check: `uv run python scripts/smoke_live.py --routes <route-id> --cap 0.50 --confirm-spend`.
 5. Run `pnpm gen` if the API schema changed.
 
+## Adding a preset (effects gallery)
+- One YAML per preset in `registry/presets/<category>/<id>.yaml`: `model_id`, `mode`, a `prompt` template with
+  `{key}` blanks declared in `fields`, `params`, optional `direction` (camera moves and look ids from
+  `registry/director/`), and `inputs` (media roles the user must bring). The registry lint rejects unknown
+  models/modes/params/moves, undeclared or unused blanks, and missing required inputs.
+- Rendering returns an ordinary generation request, so presets get the same routing and spend guard.
+
+## Pipelines (recipe runs)
+- `studio/pipelines/`: a recipe is a **pure planner**. `plan(input, settled_outputs)` returns every step it can
+  define now (`generate`, `local`, `llm`, `checkpoint`), keyed by stable keys like `shot[02]`. The engine
+  (`engine.reconcile`) diffs that against stored `pipeline_steps` by input hash: new keys are added, changed
+  inputs are redone, finished work is kept. Editing a run (`POST /pipelines/{id}/revise`) reruns only what changed.
+- Generate steps are normal Generations (`group_id` = run id, `pipeline_step_id` set), capped by the run's
+  `cap_usd`. When one finishes, `fsm.transition()` marks the run and `pipeline.advance` is deferred after commit
+  (`pipelines/hooks.py`); the reaper re-advances runs that look stuck. Local ops live in `pipelines/ops.py`.
+- Add a recipe: subclass `Recipe` in `pipelines/recipes/`, register it in `recipes/__init__.py`, and test it with
+  the in-memory `drain()` helper in `tests/integration/test_pipelines.py`. Use `recipes/common.py` to pick
+  modes by what they need, never by model id.
+- Built-in: `sequence` (last-frame chaining + ffmpeg join; also how any model "extends"), `compare` (fan-out +
+  pick checkpoint), `keyframe` (render a start frame from @character refs, then animate; for Kling).
+
+## Claude
+- `LLM_MODE=mock` (default) returns canned results and never bills; `live` needs `ANTHROPIC_API_KEY`.
+- Call Claude only through `studio/llm/client.structured()`: Pydantic structured output, refusal fallback,
+  a budget pre-check, and a `spend_ledger` charge per call (prices in `llm/pricing.py`, with a verified date).
+
 ## Commands
 ```
 pnpm db:up      # Postgres 18 in Docker on :5433
@@ -61,6 +87,17 @@ pnpm lint       # ruff + eslint + tsc
 - The API runs on **8400**, not 8000 (other local containers publish 8000). Web reads `NEXT_PUBLIC_API_URL`.
 - Run the API via `python -m studio.api`, not bare uvicorn: on Windows it must use `asyncio:SelectorEventLoop`.
 - Media is served by the API at `/media/{key}` with Range support; files live under `data/media/`.
+
+## Local engine (ComfyUI)
+- `comfy_local` provider = the VideoStudio ComfyUI at `COMFYUI_URL` (default http://127.0.0.1:8188). Start it with
+  `C:/Dev/AI/VideoStudio/ComfyUI_windows_portable/python_embeded/python.exe C:/Dev/AI/VideoStudio/setup/launcher.py --no-browser`
+  (stop with `--stop`). Local models: `wan-2.2-5b` (t2v/i2v) and `flux-2-klein-4b` (t2i).
+- Local routes are free and run in every PROVIDER_MODE. A model with a configured local route never falls back to
+  the mock; if ComfyUI is off, routing reports "isn't running" instead.
+- Workflows live in `workflows/comfy/<name>.json` (API graph) + `<name>.map.yaml` (which node inputs to fill,
+  optional nodes, outputs). Routes name the template as their endpoint; `transform` hooks in
+  `studio/providers/transforms/` map quality/aspect to pixel sizes. Route `eta` expressions drive time estimates.
+- One job at a time (12 GB). Draft Wan ≈ 70–90 s, standard ≈ 7 min.
 
 ## Reusable assets elsewhere on this machine
 - `C:\Dev\AI\RunpodVideos\runpod_video_client.py`: RunPod `/run` + status polling + base64 video handling.

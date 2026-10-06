@@ -1,0 +1,20 @@
+id: dolly-zoom-dread
+name: Dolly zoom dread
+category: camera
+summary: The Vertigo shot. The background stretches while your subject stays put.
+model_id: veo-3.1
+mode: i2v
+inputs:
+  - {role: start_image, label: Your photo}
+fields:
+  - key: subject
+    label: Who is in the photo
+    placeholder: a man in a hallway
+prompt: >-
+  {subject} freezes as the realisation hits, the world behind them stretching away
+params: {duration: 6}
+direction:
+  camera_moves: [{id: dolly_zoom_in, speed: slow}]
+  genre: thriller
+  emotion: fear
+tags: [cinematic]

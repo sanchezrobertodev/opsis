@@ -1,0 +1,16 @@
+id: through-the-keyhole
+name: Through the keyhole
+category: effects
+summary: Push through a keyhole into the scene behind it.
+model_id: wan-2.2-5b
+mode: t2v
+fields:
+  - key: scene
+    label: What is on the other side
+    placeholder: a candlelit library where an old man reads
+prompt: >-
+  The camera pushes through a small brass keyhole into {scene}
+params: {duration: 5, quality: standard}
+direction:
+  camera_moves: [{id: through_object_in, speed: normal}]
+tags: [free, transition]

@@ -1,0 +1,20 @@
+id: vertical-hook
+name: Vertical hook
+category: social
+summary: A punchy 9:16 opener with a whip pan, made for the first second of a short.
+model_id: kling-3.0
+mode: t2v
+fields:
+  - key: subject
+    label: Who or what
+    placeholder: a chef
+  - key: action
+    label: Doing what
+    placeholder: flipping a flaming wok toward the camera
+prompt: >-
+  {subject} {action}, high energy, bold colours
+params: {duration: 5, aspect_ratio: "9:16", generate_audio: true}
+direction:
+  camera_moves: [{id: whip_pan, speed: fast}]
+  pacing: dynamic
+tags: [vertical, sound]
