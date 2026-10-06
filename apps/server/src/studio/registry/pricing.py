@@ -6,11 +6,12 @@ basis used, so the number shown on the Generate button can be explained and re-c
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from simpleeval import EvalWithCompoundTypes
+from simpleeval import EvalWithCompoundTypes, NameNotDefined
 
 from studio.registry.schema import Multiplier, Pricing, Rate, Scalar
 
@@ -59,23 +60,36 @@ def _matches(when: dict[str, Scalar | list[Scalar]], values: dict[str, Any]) -> 
     return True
 
 
+DEFAULT_FPS = 24.0  # for inputs whose frame rate is unknown
+AGGREGATES = {"input_video_seconds", "input_audio_seconds"}
+
+
 def media_variables(media: list[Any] | None) -> dict[str, float]:
-    """Totals over input media, for routes that bill by input (video edits bill by input length)."""
-    out = {"input_video_seconds": 0.0, "input_audio_seconds": 0.0, "input_images": 0.0}
+    """Totals over input media, for routes that bill by input (video edits bill by input length):
+    `input_video_seconds`, `input_video_frames`, `input_audio_seconds`, `input_images`, and per role
+    `<role>_seconds` (e.g. `driving_video_seconds`) so a route can price one input and ignore another."""
+    out = {"input_video_seconds": 0.0, "input_video_frames": 0.0, "input_audio_seconds": 0.0, "input_images": 0.0}
     for m in media or []:
-        kind = getattr(m, "kind", None) or (m.get("kind") if isinstance(m, dict) else None)
-        ms = getattr(m, "duration_ms", None) if not isinstance(m, dict) else m.get("duration_ms")
+        def get(name: str, m: Any = m) -> Any:
+            return m.get(name) if isinstance(m, dict) else getattr(m, name, None)
+
+        kind, role = get("kind"), get("role")
+        seconds = (get("duration_ms") or 0) / 1000
         if kind == "video":
-            out["input_video_seconds"] += (ms or 0) / 1000
+            out["input_video_seconds"] += seconds
+            out["input_video_frames"] += seconds * float(get("fps") or DEFAULT_FPS)
         elif kind == "audio":
-            out["input_audio_seconds"] += (ms or 0) / 1000
+            out["input_audio_seconds"] += seconds
         elif kind == "image":
             out["input_images"] += 1
+        key = f"{role}_seconds"
+        if role and seconds and key not in AGGREGATES:  # roles named input_video/input_audio are the totals
+            out[key] = out.get(key, 0.0) + seconds
     return out
 
 
 def pricing_variables(params: dict[str, Any], prompt: str = "", num_outputs: int | None = None,
-                      media: list[Any] | None = None) -> dict[str, Any]:
+                      media: list[Any] | None = None, mode: str | None = None) -> dict[str, Any]:
     width, height = dims_for(params.get("resolution"), params.get("aspect_ratio"))
     duration = float(params.get("duration") or 0)
     n = num_outputs or int(params.get("num_outputs") or params.get("num_images") or 1)
@@ -88,6 +102,7 @@ def pricing_variables(params: dict[str, Any], prompt: str = "", num_outputs: int
         "fps": float(params.get("fps") or 24),
         "megapixels": width * height / 1_000_000,
         "prompt_chars": len(prompt or ""),
+        "mode": mode or "",
         **media_variables(media),
     }
 
@@ -110,13 +125,24 @@ def _apply_multipliers(multipliers: list[Multiplier], values: dict[str, Any]) ->
     return factor
 
 
+# Functions price/ETA expressions may use; ceil prices billed in blocks (e.g. per started 3 seconds).
+FUNCTIONS = {"max": max, "min": min, "round": round, "ceil": math.ceil}
+
+
 def _evaluate(expr: str, names: dict[str, Any]) -> float:
-    return float(EvalWithCompoundTypes(names=names, functions={"max": max, "min": min, "round": round}).eval(expr))
+    def lookup(node: Any) -> Any:
+        if node.id in names:
+            return names[node.id]
+        if node.id.endswith(("_seconds", "_frames")):
+            return 0.0  # an input that wasn't given, or whose length isn't known yet
+        raise NameNotDefined(node.id, expr)
+
+    return float(EvalWithCompoundTypes(names=lookup, functions=FUNCTIONS).eval(expr))
 
 
 def estimate(pricing: Pricing, params: dict[str, Any], prompt: str = "",
-             media: list[Any] | None = None) -> CostEstimate:
-    values = pricing_variables(params, prompt, media=media)
+             media: list[Any] | None = None, mode: str | None = None) -> CostEstimate:
+    values = pricing_variables(params, prompt, media=media, mode=mode)
 
     if pricing.basis == "formula":
         usd = _evaluate(pricing.formula or "0", values)
@@ -152,11 +178,13 @@ def _finish(usd: float, pricing: Pricing, basis: str, quantity: float, rate: flo
     )
 
 
-def eta_seconds(expression: str | None, params: dict[str, Any]) -> float | None:
-    """Expected run time for a route (local GPUs especially), from the route's `eta` expression."""
+def eta_seconds(expression: str | None, params: dict[str, Any], media: list[Any] | None = None,
+                mode: str | None = None) -> float | None:
+    """Expected run time for a route (local GPUs especially), from the route's `eta` expression. It sees the
+    params, input media totals (`input_video_seconds`...) and `mode`."""
     if not expression:
         return None
     try:
-        return max(0.0, _evaluate(expression, pricing_variables(params)))
+        return max(0.0, _evaluate(expression, pricing_variables(params, media=media, mode=mode)))
     except Exception:
         return None

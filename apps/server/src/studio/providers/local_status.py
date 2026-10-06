@@ -32,12 +32,16 @@ async def comfy_stats(url: str) -> dict[str, Any] | None:
 
 
 async def local_reachability(reg: Registry) -> dict[str, bool]:
-    """provider id -> reachable, for every local provider in the registry."""
+    """provider id -> reachable, for every local provider in the registry (each adapter decides how)."""
+    from studio.providers.factory import adapter_implemented, get_adapter
+
     settings = get_settings()
     out: dict[str, bool] = {}
     for provider in reg.providers.values():
-        if provider.kind != "local":
+        if provider.kind != "local" or not adapter_implemented(provider.adapter):
             continue
-        url = getattr(settings, provider.key_setting or "", "") if provider.key_setting else ""
-        out[provider.id] = bool(url) and (await comfy_stats(url)) is not None
+        if not provider.configured(settings):
+            out[provider.id] = False  # configured off (e.g. COMFYUI_URL empty)
+            continue
+        out[provider.id] = await get_adapter(provider.adapter).reachable()
     return out

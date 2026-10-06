@@ -92,6 +92,11 @@ class ProviderAdapter(ABC):
     async def download(self, route: Route, output: ProviderOutput, dest: Path, workdir: Path) -> str:
         """Write the output to `dest`; return its MIME type."""
 
+    async def reachable(self) -> bool:
+        """For local engines: can this machine run jobs right now? Remote APIs are assumed up (health
+        tracking and the circuit breaker handle outages)."""
+        return True
+
     def classify(self, exc: BaseException) -> ErrorClass:
         if isinstance(exc, ProviderError):
             return exc.error_class

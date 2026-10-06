@@ -24,12 +24,14 @@ MediaRole = Literal[
     "control_video",
     "style_image",
     "replacement_image",
+    "character_image",  # motion transfer: who performs
+    "driving_video",  # motion transfer: whose movement is copied
 ]
 MediaKind = Literal["image", "video", "audio"]
 OpTag = Literal[
     "t2v", "i2v", "flf2v", "multi_ref", "multi_shot", "extend", "instruction_edit", "restyle", "reframe",
     "upscale", "interpolate", "bg_remove", "motion_transfer", "object_replace", "lipsync", "avatar",
-    "t2i", "i2i",
+    "t2i", "i2i", "relight", "add_sound", "trim", "retime", "reverse", "loop", "stabilize",
 ]
 OutputType = Literal["video", "image", "audio", "3d", "lora", "mask", "text"]
 Scalar = str | int | float | bool
@@ -275,11 +277,21 @@ class ProviderSpec(_Strict):
     name: str
     kind: Literal["aggregator", "direct", "selfhosted", "local", "mock"]
     adapter: str  # adapter key in studio.providers.factory
-    key_setting: str | None = None  # Settings attribute holding the API key
+    # Settings attribute(s) that must be set to use the provider: the API key, plus e.g. a self-hosted endpoint id
+    key_setting: str | list[str] | None = None
     concurrency: int = 2
     poll_min_seconds: float | None = None  # provider asks clients not to poll faster than this
     docs: str | None = None
     notes: str | None = None
+    # Self-hosted endpoints (our own RunPod workers): the Settings attribute holding the endpoint id, and
+    # serverless GPU prices (USD/hour, matched by substring of the GPU name the worker reports).
+    endpoint_setting: str | None = None
+    gpu_usd_per_hour: dict[str, float] = {}
+
+    def configured(self, settings: Any) -> bool:
+        """True when every setting in `key_setting` has a value (providers without one are always configured)."""
+        names = [self.key_setting] if isinstance(self.key_setting, str) else (self.key_setting or [])
+        return all(getattr(settings, n, "") for n in names)
 
 
 # ---------------------------------------------------------------- presets (effects gallery)

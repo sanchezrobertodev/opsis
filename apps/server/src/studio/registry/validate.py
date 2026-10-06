@@ -29,6 +29,7 @@ class MediaRef:
     asset_id: str
     kind: str | None = None  # filled by the API from the asset row
     duration_ms: int | None = None  # for video/audio inputs; some routes bill by input length
+    fps: float | None = None  # for video inputs; some routes bill per input frame
 
 
 @dataclass
@@ -48,8 +49,8 @@ class NormalizedRequest:
             "prompt": self.prompt,
             "negative_prompt": self.negative_prompt,
             "params": self.params,
-            "media": [{"role": m.role, "asset_id": m.asset_id, "kind": m.kind, "duration_ms": m.duration_ms}
-                      for m in self.media],
+            "media": [{"role": m.role, "asset_id": m.asset_id, "kind": m.kind, "duration_ms": m.duration_ms,
+                       "fps": m.fps} for m in self.media],
             "warnings": self.warnings,
         }
 
@@ -107,6 +108,7 @@ def normalize(
         errors.append("prompt is required")
     if mode.prompt == "none" and prompt:
         warnings.append("this mode ignores the prompt")
+        prompt = ""
     if len(prompt) > spec.prompt.max_chars:
         errors.append(f"prompt exceeds {spec.prompt.max_chars} characters")
     if negative_prompt and not spec.prompt.supports_negative:

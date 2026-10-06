@@ -87,7 +87,7 @@ async def routing_env(session: AsyncSession, reg: Registry) -> RoutingEnv:
 
     def has_key(provider_id: str) -> bool:
         provider = reg.providers.get(provider_id)
-        return bool(provider and provider.key_setting and getattr(settings, provider.key_setting, ""))
+        return bool(provider and provider.key_setting and provider.configured(settings))
 
     reach = await local_reachability(reg)
     return RoutingEnv(
@@ -123,10 +123,20 @@ async def resolve_media_kinds(session: AsyncSession, user_id: uuid.UUID, media: 
             errors.append(f"asset {asset_id} is not ready ({asset.status})")
             continue
         refs.append(MediaRef(role=m.get("role", ""), asset_id=str(asset_id), kind=asset.kind.value,
-                             duration_ms=asset.duration_ms))
+                             duration_ms=asset.duration_ms, fps=asset.fps))
     if errors:
         raise GenerationRequestError(errors)
     return refs
+
+
+def native_params(spec: Any, native: dict[str, Any]) -> dict[str, Any]:
+    """Keep the director's native controls the model actually has as params (with an allowed value)."""
+    out = {}
+    for name, value in native.items():
+        param = spec.param(name)
+        if param is not None and value in (getattr(param, "options", None) or [value]):
+            out[name] = value
+    return out
 
 
 async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, reg: Registry | None = None) -> Plan:
@@ -139,15 +149,17 @@ async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, r
     mention = await resolve_mentions(session, user_id, spec, body.mode, body.prompt, body.media)
     refs = await resolve_media_kinds(session, user_id, [*body.media, *mention.media])
     try:
-        req = normalize(spec, body.mode, body.prompt, body.params, refs, body.negative_prompt)
         direction = ShotDirection.model_validate(body.direction) if body.direction else None
+        compiled = compile_prompt(spec, mention.prompt, direction)
+        # A camera move with a native control on this model (Wan Fun Camera) sets that param unless the user did.
+        params = {**native_params(spec, compiled.native_params), **(body.params or {})}
+        req = normalize(spec, body.mode, body.prompt, params, refs, body.negative_prompt)
     except RequestError as exc:
         raise GenerationRequestError(exc.errors) from None
     except ValidationError as exc:
         raise GenerationRequestError(
             [f"direction: {e['msg']} at {'.'.join(map(str, e['loc']))}" for e in exc.errors()]) from None
     req.warnings.extend(mention.warnings)
-    compiled = compile_prompt(spec, mention.prompt, direction)
     env = await routing_env(session, reg)
     cands = candidates(reg, spec, req, env, body.route_policy)
     chosen = next((c for c in cands if c.eligible), None)

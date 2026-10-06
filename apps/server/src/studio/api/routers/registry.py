@@ -37,7 +37,7 @@ def _from_price(spec: ModelSpec) -> float | None:
             if route.provider == MOCK_PROVIDER or not route.enabled or mode.id not in route.modes:
                 continue
             try:
-                prices.append(float(estimate(route.pricing, params).usd))
+                prices.append(float(estimate(route.pricing, params, mode=mode.id).usd))
             except ValueError:
                 continue
     return min(prices) if prices else None

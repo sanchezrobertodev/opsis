@@ -16,7 +16,7 @@ aspect_ratios: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
 duration: {min: 4, max: 30, default: 5}
 
 parameters:
-  - {name: duration, label: Duration (s), type: int, min: 4, max: 30, default: 5, ui: slider, modes: [t2v, i2v, omni_reference]}
+  - {name: duration, label: Duration (s), type: int, min: 4, max: 30, default: 5, ui: slider, modes: [t2v, i2v, omni_reference, extend]}
   - {name: resolution, type: enum, options: ["480p", "720p"], default: "720p", ui: segmented}
   - {name: aspect_ratio, label: Aspect, type: enum, options: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], default: "16:9", ui: aspect, modes: [t2v, omni_reference]}
   - {name: generate_audio, label: Native audio, type: bool, default: true}
@@ -39,6 +39,17 @@ modes:
       - {role: image_references, kinds: [image], label: Image refs, max: 9}
       - {role: video_references, kinds: [video], label: Video refs, max: 3, max_duration_s: 15}
       - {role: audio_references, kinds: [audio], label: Audio refs, max: 3}
+  - id: video_edit
+    label: Edit a video
+    ops: [instruction_edit, restyle, relight]
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 30, max_mb: 200}
+      - {role: image_references, kinds: [image], label: Reference images (optional), max: 9}
+  - id: extend
+    label: Extend
+    ops: [extend]
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to continue, required: true, max_duration_s: 30, max_mb: 200}
 
 elements: {strategy: refs_native, ref_role: image_references, token: "@Image{n}"}
 
@@ -66,18 +77,32 @@ routes:
       t2v: {endpoint: bytedance/seedance-2.5/text-to-video, drop: [seed]}
       i2v: {endpoint: bytedance/seedance-2.5/image-to-video, drop: [seed]}
       omni_reference: {endpoint: bytedance/seedance-2.5/reference-to-video, fixed: {task: reference}}
+      # edits and extensions are tasks on the reference endpoint; editing forces auto length and shape
+      video_edit: {endpoint: bytedance/seedance-2.5/reference-to-video, drop: [aspect_ratio],
+                   fixed: {task: editing, duration: auto, aspect_ratio: auto}, media: {input_video: "video_urls[]"}}
+      extend: {endpoint: bytedance/seedance-2.5/reference-to-video, drop: [aspect_ratio],
+               fixed: {task: extension, aspect_ratio: auto}, media: {input_video: "video_urls[]"}}
     map:
       params:
         duration: {to: duration, transform: str}   # fal takes "auto" | "4".."30"
       media: {start_image: image_url, end_image: end_image_url, image_references: image_urls,
               video_references: video_urls, audio_references: audio_urls}
     pricing:
+      # Generation: per output second. Edit/extend are token-priced on input + output seconds (video inputs at
+      # 0.6x): about $0.126/s at 480p and $0.284/s at 720p of input plus output.
       basis: per_output_second
+      quantity: >-
+        input_video_seconds * 2 if mode == 'video_edit'
+        else (input_video_seconds + duration if mode == 'extend' else duration * num_outputs)
       rates:
         - {when: {resolution: "480p"}, usd: 0.2205}
         - {when: {resolution: "720p"}, usd: 0.473}
+        - {when: {mode: video_edit, resolution: "480p"}, usd: 0.126}
+        - {when: {mode: video_edit, resolution: "720p"}, usd: 0.2838}
+        - {when: {mode: extend, resolution: "480p"}, usd: 0.126}
+        - {when: {mode: extend, resolution: "720p"}, usd: 0.2838}
       verified: 2026-10-06
-      source: https://fal.ai/models/bytedance/seedance-2.5/text-to-video
+      source: https://fal.ai/models/bytedance/seedance-2.5/reference-to-video
     output: {path: video.url, kind: video}
     notes: About 2x Replicate for t2v/i2v, but the only route here for omni references.
 

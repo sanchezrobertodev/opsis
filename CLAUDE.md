@@ -48,6 +48,18 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 4. Optional live check: `uv run python scripts/smoke_live.py --routes <route-id> --cap 0.50 --confirm-spend`.
 5. Run `pnpm gen` if the API schema changed.
 
+## Registry expressions and mapping (generic features; use these before writing code)
+- Price `quantity`/`formula` and route `eta` see the params, `mode`, `duration`, `input_video_seconds`,
+  `input_video_frames`, `input_audio_seconds`, `input_images`, and `<role>_seconds` per input (e.g.
+  `driving_video_seconds`; missing inputs count as 0). Functions: `max`, `min`, `round`, `ceil`. Rates can
+  match on `mode` too (`when: {mode: video_edit, resolution: "720p"}`; the most specific match wins).
+- Endpoints can template params: `fal-ai/kling-video/v3/{tier}/motion-control` (map the param `to: null`).
+- A media field ending in `[]` is always sent as a list (`media: {input_video: "video_urls[]"}`).
+- Adapters that learn the real charge return `usage.cost_usd` (RunPod `output.cost`, Runway credits x $0.01);
+  ingest charges that instead of the estimate.
+- Studios that share the Create form (Create video/image, Edit video, Motion transfer) pick models and modes
+  by op tags; see `apps/web/src/lib/studioKinds.ts`. Tag a new model's modes and it shows up in the right studio.
+
 ## Adding a preset (effects gallery)
 - One YAML per preset in `registry/presets/<category>/<id>.yaml`: `model_id`, `mode`, a `prompt` template with
   `{key}` blanks declared in `fields`, `params`, optional `direction` (camera moves and look ids from
@@ -87,6 +99,19 @@ pnpm lint       # ruff + eslint + tsc
 - The API runs on **8400**, not 8000 (other local containers publish 8000). Web reads `NEXT_PUBLIC_API_URL`.
 - Run the API via `python -m studio.api`, not bare uvicorn: on Windows it must use `asyncio:SelectorEventLoop`.
 - Media is served by the API at `/media/{key}` with Range support; files live under `data/media/`.
+
+## Providers without a model
+- `local_tools`: the `video-tools` model's modes (reframe, trim, retime, reverse, loop, interpolate, upscale,
+  stabilize) run on this machine's ffmpeg (`studio/media/tools.py`). Free; local routes check
+  `adapter.reachable()`.
+- `runpod`: Public Endpoints now (`/run` + `/status`, `RUNPOD_API_KEY`). Inputs must be web links, so files are
+  hosted through fal storage (needs `FAL_KEY`); small images go inline without it. Never call `/retry`.
+- `runpod_wan_core` (adapter `runpod_comfy`): our own serverless endpoint, `infra/runpod/wan-core` (worker-comfyui
+  5.10.0 = ComfyUI 0.34, models on a network volume). Routes name `workflows/comfy/runpod_*.json` templates, like
+  `comfy_local`; the lint checks every field a ComfyUI route sends has an input in its template. Needs
+  `RUNPOD_API_KEY` + `RUNPOD_WAN_CORE_ENDPOINT` (a provider's `key_setting` may list several settings). Cost is the
+  worker's `executionTime` at the provider's `gpu_usd_per_hour`, kept flagged as an estimate. Check new graphs
+  against the local ComfyUI 0.34 (same version) before pushing: `/prompt` validates them without the models.
 
 ## Local engine (ComfyUI)
 - `comfy_local` provider = the VideoStudio ComfyUI at `COMFYUI_URL` (default http://127.0.0.1:8188). Start it with

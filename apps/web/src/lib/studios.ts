@@ -48,9 +48,9 @@ export const STUDIOS: Studio[] = [
     summary: "One-click camera moves, effects, looks and edits. Fill in a blank or two and generate.",
   },
   {
-    slug: "edit", name: "Edit video", href: "/soon/edit", icon: Scissors, phase: "P3", group: "studios",
-    summary: "Change footage by instruction: restyle, relight, extend, reframe, upscale, remove backgrounds. " +
-      "Runs on Kling Omni Edit, Runway Aleph 2.0, Luma Modify, Seedance edit and Gemini Omni.",
+    slug: "edit", name: "Edit video", href: "/edit", icon: Scissors, group: "studios",
+    summary: "Change footage by instruction, restyle, relight, extend, reframe, upscale, smooth motion, " +
+      "remove backgrounds, add sound, or trim, retime, reverse, loop and stabilize on this computer.",
   },
   {
     slug: "motion", name: "Motion control", href: "/motion", icon: Move3d, group: "studios",
@@ -58,10 +58,10 @@ export const STUDIOS: Studio[] = [
       "Drawn trajectories that steer how things move arrive with the open models in P3.",
   },
   {
-    slug: "motion-transfer", name: "Motion transfer", href: "/soon/motion-transfer", icon: PersonStanding,
-    phase: "P3", group: "studios",
-    summary: "Make a character image perform a reference clip. Kling Motion Control 3.0, Wan Animate and " +
-      "Seedance omni references, with a library of driving clips.",
+    slug: "motion-transfer", name: "Motion transfer", href: "/motion-transfer", icon: PersonStanding,
+    group: "studios",
+    summary: "Make a character image perform a reference clip, or put your character into it. Kling Motion " +
+      "Control, Wan Animate and Runway Act-Two, with a library of the movement clips you've used.",
   },
   {
     slug: "swap", name: "Object swap", href: "/soon/swap", icon: Replace, phase: "P4", group: "studios",

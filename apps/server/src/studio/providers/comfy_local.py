@@ -43,6 +43,11 @@ class ComfyLocalAdapter(ProviderAdapter):
         self.base = (base_url or settings.comfyui_url).rstrip("/")
         self.workflows_dir = workflows_dir or settings.comfyui_workflows_dir
 
+    async def reachable(self) -> bool:
+        from studio.providers.local_status import comfy_stats
+
+        return bool(self.base) and (await comfy_stats(self.base)) is not None
+
     # ------------------------------------------------------------------ http
 
     def _client(self, timeout: float = 30.0) -> httpx.AsyncClient:

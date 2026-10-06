@@ -41,7 +41,7 @@ def test_examples_normalize_price_and_map(spec, example):
     routes = [r for r in spec.routes if example.mode in r.modes and r.provider != MOCK_PROVIDER]
     assert routes, f"{spec.id}: example {example.name} has no live route"
     for route in routes:
-        usd = float(estimate(route.pricing, req.params, req.prompt).usd)
+        usd = float(estimate(route.pricing, req.params, req.prompt, req.media, req.mode).usd)
         low, high = example.expect.get("cost_usd_range", [0, 1e9])
         violates = [k for k, v in route.constraints.items() if not k.startswith("media.")
                     and "options" in v and req.params.get(k) not in v["options"]]

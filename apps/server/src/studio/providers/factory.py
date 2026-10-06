@@ -20,6 +20,12 @@ def _comfy_local() -> ProviderAdapter:
     return ComfyLocalAdapter()
 
 
+def _local_tools() -> ProviderAdapter:
+    from studio.providers.local_tools import LocalToolsAdapter
+
+    return LocalToolsAdapter()
+
+
 def _fal() -> ProviderAdapter:
     from studio.providers.fal import FalAdapter
 
@@ -38,6 +44,18 @@ def _replicate() -> ProviderAdapter:
     return ReplicateAdapter()
 
 
+def _runpod() -> ProviderAdapter:
+    from studio.providers.runpod import RunPodAdapter
+
+    return RunPodAdapter()
+
+
+def _runpod_comfy() -> ProviderAdapter:
+    from studio.providers.runpod_comfy import RunPodComfyAdapter
+
+    return RunPodComfyAdapter()
+
+
 def _runway() -> ProviderAdapter:
     from studio.providers.runway import RunwayAdapter
 
@@ -47,10 +65,13 @@ def _runway() -> ProviderAdapter:
 _FACTORIES: dict[str, Callable[[], ProviderAdapter]] = {
     "mock": _mock,
     "comfy_local": _comfy_local,
+    "local_tools": _local_tools,
     "fal": _fal,
     "google_genai": _google,
     "replicate": _replicate,
     "runway": _runway,
+    "runpod": _runpod,
+    "runpod_comfy": _runpod_comfy,
 }
 
 

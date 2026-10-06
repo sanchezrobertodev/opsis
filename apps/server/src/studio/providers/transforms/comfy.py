@@ -34,3 +34,21 @@ def wan_size(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -> dic
 def flux_size(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -> dict[str, Any]:
     payload["width"], payload["height"] = FLUX_SIZES.get(str(req.params.get("aspect_ratio", "1:1")), FLUX_SIZES["1:1"])
     return payload
+
+
+# Wan 2.2 14B on the wan-core RunPod endpoint: 480p and 720p buckets (multiples of 16).
+WAN14B_SIZES = {
+    ("480p", "16:9"): (832, 480),
+    ("480p", "9:16"): (480, 832),
+    ("480p", "1:1"): (624, 624),
+    ("720p", "16:9"): (1280, 720),
+    ("720p", "9:16"): (720, 1280),
+    ("720p", "1:1"): (960, 960),
+}
+
+
+def wan14b_size(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    quality = str(req.params.get("quality", "720p"))
+    aspect = str(req.params.get("aspect_ratio", "16:9"))
+    payload["width"], payload["height"] = WAN14B_SIZES.get((quality, aspect), WAN14B_SIZES[("720p", "16:9")])
+    return payload

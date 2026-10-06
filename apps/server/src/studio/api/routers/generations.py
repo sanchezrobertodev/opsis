@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.api.deps import current_user, get_session
@@ -22,6 +22,7 @@ from studio.db.models import Asset, Generation, User
 from studio.domain import fsm
 from studio.domain.enums import ACTIVE_STATUSES, ErrorClass, GenStatus
 from studio.domain.generations import CreateRequest, cancel_generation, create_generation, inflight_attempt
+from studio.registry.loader import get_registry
 from studio.worker.tasks.generation import defer_cancel_remote, defer_submit
 
 router = APIRouter(prefix="/generations", tags=["generations"])
@@ -78,6 +79,8 @@ async def create(
 async def list_generations(
     status: Literal["active", "all", "succeeded", "failed"] = "all",
     output_type: Literal["video", "image", "audio"] | None = None,
+    ops: str | None = Query(None, description="Comma-separated op tags (e.g. instruction_edit,upscale): only takes "
+                                              "whose model mode does one of these"),
     limit: int = Query(30, ge=1, le=100),
     cursor: str | None = None,
     session: AsyncSession = Depends(get_session),
@@ -90,6 +93,12 @@ async def list_generations(
         stmt = stmt.where(Generation.status == GenStatus(status))
     if output_type:
         stmt = stmt.where(Generation.output_type == output_type)
+    if ops:
+        wanted = {o.strip() for o in ops.split(",") if o.strip()}
+        pairs = [(spec.id, m.id) for spec in get_registry().models.values() for m in spec.modes if wanted & set(m.ops)]
+        if not pairs:
+            return GenerationPage(items=[], next_cursor=None)
+        stmt = stmt.where(tuple_(Generation.model_id, Generation.mode).in_(pairs))
     if cursor:
         ts, gid = _parse_cursor(cursor)
         stmt = stmt.where(or_(Generation.created_at < ts, and_(Generation.created_at == ts, Generation.id < gid)))

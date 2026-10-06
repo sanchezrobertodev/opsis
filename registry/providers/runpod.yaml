@@ -1,0 +1,11 @@
+id: runpod
+name: RunPod
+kind: aggregator
+adapter: runpod
+key_setting: runpod_api_key
+concurrency: 4
+poll_min_seconds: 3
+docs: https://docs.runpod.io/public-endpoints/overview
+notes: >-
+  Public Endpoints (pay-per-use model APIs) now; our own worker-comfyui endpoints for open models later.
+  Inputs are hosted through fal storage, so set FAL_KEY too. Media links expire after 7 days.

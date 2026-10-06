@@ -23,6 +23,8 @@ class CompareInput(BaseModel):
     entries: list[CompareEntry] = Field(min_length=2, max_length=4)
     media: list[dict[str, str]] = Field(default_factory=list, description="[{role, asset_id}], shared by every model")
     direction: dict[str, Any] | None = None
+    ops: list[str] = Field(default_factory=list, description="What the compared modes do (e.g. restyle); picks "
+                                                           "each model's matching mode")
     pick: bool = Field(True, description="Ask which take is best once they are all done")
 
 
@@ -45,7 +47,13 @@ class CompareRecipe(Recipe):
             return None
         if entry.mode:
             return entry.mode if spec.mode(entry.mode) else None
-        m = mode_for(spec, {x["role"] for x in inp.media})
+        roles = {x["role"] for x in inp.media}
+        if inp.ops:
+            # same job, and every required input is on hand
+            fits = [m for m in spec.modes if set(m.ops) & set(inp.ops)
+                    and all(s.role in roles for s in m.medias if s.required)]
+            return fits[0].id if fits else None
+        m = mode_for(spec, roles)
         return m.id if m else None
 
     def _media(self, inp: CompareInput, reg: Registry, entry: CompareEntry, mode_id: str) -> list[dict[str, str]]:

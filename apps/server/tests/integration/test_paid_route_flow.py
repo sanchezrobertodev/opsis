@@ -161,3 +161,37 @@ async def test_rejected_key_fails_over_and_explains(client, http):
     assert "no API key for fal.ai" in done["error_message"]
     budget = (await client.get("/budget")).json()
     assert budget["reserved_usd"] == 0  # the failed attempt's reservation was released
+
+
+async def test_runpod_public_endpoint_charges_what_runpod_reports(client, http, mp4_bytes, monkeypatch):
+    """Wan 2.2 14B on a RunPod public endpoint: the input image goes inline (no FAL_KEY), and the take is
+    charged RunPod's reported `cost` rather than the price-list estimate."""
+    monkeypatch.setattr(get_settings(), "runpod_api_key", "rp-key")
+    RP = "https://api.runpod.ai/v2/wan-2-2-i2v-720"
+    video = "https://video.runpod.ai/test/output.mp4"
+    run_route = http.post(f"{RP}/run").respond(200, json={"id": "job-9", "status": "IN_QUEUE"})
+    http.get(f"{RP}/status/job-9").respond(200, json={
+        "status": "COMPLETED", "output": {"video_url": video, "cost": 0.29}})
+    http.get(video).respond(200, content=mp4_bytes, headers={"content-type": "video/mp4"})
+
+    image_id = await upload_image(client)
+    body = {"model_id": "wan-2.2-14b", "mode": "i2v", "prompt": "grass sways", "params": {"duration": 5},
+            "media": [{"role": "start_image", "asset_id": image_id}], "route_policy": "cheapest_healthy"}
+    est = (await client.post("/registry/estimate", json=body)).json()
+    assert est["chosen_route_id"] == "wan-2.2-14b@runpod" and est["estimate_usd"] == pytest.approx(0.30)
+
+    gen = (await client.post("/generations", json=body)).json()
+    await run(uuid.UUID(gen["id"]))
+    done = (await client.get(f"/generations/{gen['id']}")).json()
+    assert done["status"] == "succeeded", done["error_message"]
+    assert done["actual_cost_usd"] == pytest.approx(0.29)
+
+    sent = json.loads(run_route.calls.last.request.content)["input"]
+    assert sent["image"].startswith("data:image/png;base64,") and sent["size"] == "1280*720"
+    assert sent["duration"] == 5 and sent["num_inference_steps"] == 30
+    async with session_scope() as s:
+        attempt = (await s.execute(select(GenerationAttempt).where(
+            GenerationAttempt.generation_id == uuid.UUID(gen["id"])))).scalar_one()
+        charge = (await s.execute(select(SpendLedger).where(
+            SpendLedger.generation_attempt_id == attempt.id, SpendLedger.entry_type == "charge"))).scalar_one()
+    assert charge.amount_usd == Decimal("0.290000") and charge.estimated is False

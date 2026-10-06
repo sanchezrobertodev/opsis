@@ -338,3 +338,165 @@ async def test_nano_banana_block_is_moderation(tmp_path):
 def test_output_ref_shape_for_veo():
     out = ProviderOutput(index=0, kind="video", ref="https://generativelanguage.googleapis.com/x")
     assert out.ref.startswith("http")
+
+
+# ---------------------------------------------------------------- RunPod
+
+RP = "https://api.runpod.ai/v2"
+
+
+@pytest.fixture
+def runpod_key(monkeypatch):
+    monkeypatch.setattr(get_settings(), "runpod_api_key", "rp-key")
+
+
+@respx.mock
+async def test_runpod_lifecycle_reports_cost(runpod_key):
+    from studio.providers.runpod import RunPodAdapter
+
+    submit = respx.post(f"{RP}/wan-2-2-i2v-720/run").respond(200, json={"id": "job-1", "status": "IN_QUEUE"})
+    status = respx.get(f"{RP}/wan-2-2-i2v-720/status/job-1")
+    status.side_effect = [
+        httpx.Response(200, json={"id": "job-1", "status": "IN_QUEUE"}),
+        httpx.Response(200, json={"id": "job-1", "status": "IN_PROGRESS"}),
+        httpx.Response(200, json={"id": "job-1", "status": "COMPLETED", "executionTime": 90000,
+                                  "output": {"video_url": "https://video.runpod.ai/x/output.mp4", "cost": 0.3}}),
+    ]
+    a, rt = RunPodAdapter(), route(path="output.video_url")
+    res = await a.submit(rt, "wan-2-2-i2v-720", {"prompt": "x", "image": "https://f/i.png"}, client_ref="c")
+    assert res.job_id == "wan-2-2-i2v-720::job-1"
+    req = submit.calls.last.request
+    assert req.headers["authorization"] == "Bearer rp-key"
+    assert json.loads(req.content) == {"input": {"prompt": "x", "image": "https://f/i.png"}}
+    assert (await a.poll(rt, res.job_id)).status == "queued"
+    assert (await a.poll(rt, res.job_id)).status == "running"
+    done = await a.poll(rt, res.job_id)
+    assert done.status == "succeeded" and done.outputs[0].url.endswith("output.mp4")
+    assert done.usage == {"cost_usd": 0.3}
+
+
+@respx.mock
+async def test_runpod_failures_and_cancel(runpod_key):
+    from studio.providers.runpod import RunPodAdapter
+
+    a = RunPodAdapter()
+    respx.get(f"{RP}/e/status/j1").respond(200, json={"status": "FAILED", "error": "NSFW content detected"})
+    assert (await a.poll(route(), "e::j1")).error_class == ErrorClass.moderation
+    respx.get(f"{RP}/e/status/j2").respond(200, json={"status": "TIMED_OUT"})
+    assert (await a.poll(route(), "e::j2")).error_class == ErrorClass.timeout
+    respx.get(f"{RP}/e/status/j3").respond(404)
+    gone = await a.poll(route(), "e::j3")
+    assert gone.status == "failed" and "30 minutes" in gone.error_message
+    respx.get(f"{RP}/e/status/j4").respond(200, json={"status": "COMPLETED", "output": {"cost": 0.1}})
+    assert (await a.poll(route(path="output.video_url"), "e::j4")).error_class == ErrorClass.internal
+    respx.post(f"{RP}/e/cancel/j5").respond(200, json={"id": "j5", "status": "CANCELLED"})
+    assert await a.cancel(route(), "e::j5")
+
+    respx.post(f"{RP}/e/run").mock(side_effect=httpx.ReadTimeout("slow"))
+    with pytest.raises(AmbiguousSubmitError):
+        await a.submit(route(), "e", {}, client_ref="c")
+    respx.post(f"{RP}/bad/run").respond(401, json={"error": "unauthorized"})
+    with pytest.raises(ProviderError) as err:
+        await a.submit(route(), "bad", {}, client_ref="c")
+    assert err.value.error_class == ErrorClass.route_unavailable
+
+
+async def test_runpod_hosts_inputs_on_fal_or_inlines_small_images(runpod_key, tmp_path, monkeypatch):
+    from studio.providers import factory
+    from studio.providers.base import ResolvedMedia
+    from studio.providers.runpod import RunPodAdapter
+
+    img = tmp_path / "i.png"
+    img.write_bytes(bytes([0x89]) + b"PNG" + b"0" * 64)
+    clip = tmp_path / "c.mp4"
+    clip.write_bytes(b"0" * 64)
+    monkeypatch.setattr(get_settings(), "fal_key", "")
+    staged = await RunPodAdapter().stage_inputs(route(), [ResolvedMedia("start_image", "a", img, "image/png", "image")])
+    assert staged["start_image"][0].startswith("data:image/png;base64,")
+    with pytest.raises(ProviderError, match="FAL_KEY"):
+        await RunPodAdapter().stage_inputs(route(), [ResolvedMedia("input_video", "v", clip, "video/mp4", "video")])
+
+    class FakeFal:
+        async def stage_inputs(self, route, media):
+            return {m.role: [f"https://v3.fal.media/files/{m.path.name}"] for m in media}
+
+    monkeypatch.setattr(get_settings(), "fal_key", "fal-key")
+    monkeypatch.setattr(factory, "get_adapter", lambda key: FakeFal())
+    staged = await RunPodAdapter().stage_inputs(route(), [ResolvedMedia("input_video", "v", clip, "video/mp4", "video")])
+    assert staged["input_video"] == ["https://v3.fal.media/files/c.mp4"]
+
+
+# ---------------------------------------------------------------- our own RunPod ComfyUI endpoints (wan-core)
+
+
+@pytest.fixture
+def wan_core(runpod_key, tmp_path, monkeypatch):
+    """A RunPodComfyAdapter with a one-node template and a provider spec priced per GPU hour."""
+    from studio.providers.runpod_comfy import RunPodComfyAdapter
+    from studio.registry.schema import ProviderSpec
+
+    (tmp_path / "t.json").write_text(json.dumps({
+        "1": {"class_type": "LoadImage", "inputs": {"image": "x.png"}},
+        "2": {"class_type": "CLIPTextEncode", "inputs": {"text": ""}},
+        "3": {"class_type": "SaveVideo", "inputs": {"filename_prefix": "out"}},
+    }))
+    (tmp_path / "t.map.yaml").write_text(
+        "inputs:\n  prompt: [{node: '2', input: text}]\n  start_image: [{node: '1', input: image}]\n"
+        "  filename_prefix: [{node: '3', input: filename_prefix}]\noutputs:\n  - {node: '3', kind: video}\n")
+    spec = ProviderSpec(id="p", name="Wan core", kind="selfhosted", adapter="runpod_comfy",
+                        key_setting=["runpod_api_key", "runpod_wan_core_endpoint"],
+                        endpoint_setting="runpod_wan_core_endpoint",
+                        gpu_usd_per_hour={"RTX PRO 6000": 3.6, "H100": 7.2})
+    monkeypatch.setattr(get_settings(), "runpod_wan_core_endpoint", "ep1")
+    monkeypatch.setattr(RunPodComfyAdapter, "_spec", lambda self, route: spec)
+    return RunPodComfyAdapter(workflows_dir=tmp_path)
+
+
+@respx.mock
+async def test_runpod_comfy_sends_the_rendered_workflow_and_prices_run_time(wan_core, tmp_path):
+    import base64
+
+    submit = respx.post(f"{RP}/ep1/run").respond(200, json={"id": "j1", "status": "IN_QUEUE"})
+    video = base64.b64encode(b"mp4-bytes").decode()
+    done = {"status": "COMPLETED", "executionTime": 100_000, "output": {
+        "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition", "seconds": 98.0,
+        "outputs": [{"node": "3", "filename": "a.mp4", "kind": "video", "mime": "video/mp4", "data": video}]}}
+    respx.get(f"{RP}/ep1/status/j1").mock(side_effect=[
+        httpx.Response(200, json={"status": "IN_QUEUE", "delayTime": 4000}),
+        httpx.Response(200, json=done), httpx.Response(200, json=done)])
+
+    payload = {"prompt": "a fox", "start_image": "https://v3.fal.media/files/k.png#name=asset1.png",
+               "inline": "data:image/png;base64,iVBO"}
+    res = await wan_core.submit(route(endpoint="t"), "t", payload, client_ref="abcdef123456")
+    body = json.loads(submit.calls.last.request.content)["input"]
+    assert res.job_id == "ep1::j1"
+    graph = body["workflow"]
+    assert graph["1"]["inputs"]["image"] == "asset1.png" and graph["2"]["inputs"]["text"] == "a fox"
+    assert graph["3"]["inputs"]["filename_prefix"].endswith("/abcdef12")
+    assert body["inputs"][0] == {"name": "asset1.png", "url": "https://v3.fal.media/files/k.png"}
+
+    assert (await wan_core.poll(route(), res.job_id)).status == "queued"
+    finished = await wan_core.poll(route(), res.job_id)
+    assert finished.status == "succeeded" and finished.outputs[0].ref == "ep1::j1#0"
+    # 100 s on a PRO 6000 at $3.60/h = $0.10, flagged as an estimate (cold starts are billed per worker)
+    assert finished.usage["cost_usd"] == pytest.approx(0.1) and finished.usage["cost_estimated"] is True
+
+    dest = tmp_path / "out.mp4"
+    mime = await wan_core.download(route(), finished.outputs[0], dest, tmp_path)
+    assert dest.read_bytes() == b"mp4-bytes" and mime == "video/mp4"
+
+
+@respx.mock
+async def test_runpod_comfy_failures_still_report_gpu_time(wan_core, monkeypatch):
+    respx.get(f"{RP}/ep1/status/j2").respond(200, json={
+        "status": "FAILED", "executionTime": 36_000, "error": "KSamplerAdvanced: CUDA out of memory"})
+    failed = await wan_core.poll(route(), "ep1::j2")
+    # unknown GPU on failure -> priced at the dearest configured rate (H100 $7.20/h): 36 s = $0.072
+    assert failed.status == "failed" and failed.usage["cost_usd"] == pytest.approx(0.072)
+    respx.get(f"{RP}/ep1/status/j3").respond(200, json={"status": "COMPLETED", "output": {
+        "error": "ComfyUI rejected the workflow: node 4 missing"}})
+    assert (await wan_core.poll(route(), "ep1::j3")).error_class == ErrorClass.invalid_request
+
+    monkeypatch.setattr(get_settings(), "runpod_wan_core_endpoint", "")
+    with pytest.raises(ProviderError, match="RUNPOD_WAN_CORE_ENDPOINT"):
+        await wan_core.submit(route(), "t", {"prompt": "x"}, client_ref="c")

@@ -107,13 +107,13 @@ function Slate({
   const statusText =
     gen.status === "in_progress" && !waiting
       ? local
-        ? `Rendering on your GPU${remaining != null && remaining > 5 ? `, about ${remainingText(remaining)} left` : ""}`
+        ? `Working on this computer${remaining != null && remaining > 5 ? `, about ${remainingText(remaining)} left` : ""}`
         : `${STATUS_TEXT.in_progress}${pct > 0 ? ` ${pct}%` : ""}`
       : gen.status_reason === "provider_concurrency"
         ? "Waiting for a free provider slot"
         : waiting && gen.status === "in_progress"
           ? local
-            ? "Waiting for your GPU"
+            ? "Waiting for this computer"
             : "In the provider's queue"
           : (STATUS_TEXT[gen.status] ?? gen.status);
 

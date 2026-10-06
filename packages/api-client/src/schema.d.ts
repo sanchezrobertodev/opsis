@@ -694,8 +694,16 @@ export interface components {
         AssetPatch: {
             /** Title */
             title?: string | null;
-            /** Tags */
+            /**
+             * Tags
+             * @description Replace the tags
+             */
             tags?: string[] | null;
+            /**
+             * Add Tags
+             * @description Add tags, keeping the others
+             */
+            add_tags?: string[] | null;
             /** Favorite */
             favorite?: boolean | null;
         };
@@ -1381,7 +1389,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image";
+            role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image" | "character_image" | "driving_video";
             /** Kinds */
             kinds: ("image" | "video" | "audio")[];
             /** Label */
@@ -1416,7 +1424,7 @@ export interface components {
              * Ops
              * @default []
              */
-            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i")[];
+            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize")[];
             /**
              * Prompt
              * @default required
@@ -2870,6 +2878,8 @@ export interface operations {
             query?: {
                 status?: "active" | "all" | "succeeded" | "failed";
                 output_type?: ("video" | "image" | "audio") | null;
+                /** @description Comma-separated op tags (e.g. instruction_edit,upscale): only takes whose model mode does one of these */
+                ops?: string | null;
                 limit?: number;
                 cursor?: string | null;
             };
@@ -3075,6 +3085,8 @@ export interface operations {
                 kind?: ("video" | "image" | "audio") | null;
                 source?: ("upload" | "generation") | null;
                 favorite?: boolean | null;
+                /** @description Only assets with this tag (e.g. `driving` for movement clips) */
+                tag?: string | null;
                 limit?: number;
                 cursor?: string | null;
             };

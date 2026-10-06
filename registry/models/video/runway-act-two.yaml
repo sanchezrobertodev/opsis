@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-06 against https://docs.dev.runwayml.com/openapi.json (version 2024-11-06).
+id: runway-act-two
+name: Runway Act-Two
+family: runway
+vendor: runway
+description: >-
+  Performance capture: a character (image or clip) acts out a reference performance, face first, optionally
+  with body gestures. Keep a recognisable face in frame in both.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [motion-transfer, performance]
+prompt: {max_chars: 10}
+
+parameters:
+  - {name: body_control, label: Copy body gestures, type: bool, default: true}
+  - {name: expression_intensity, label: Expression, type: int, min: 1, max: 5, default: 3, ui: slider}
+  - {name: ratio, label: Shape, type: enum, options: ["1280:720", "720:1280", "960:960", "1104:832", "832:1104", "1584:672"],
+     default: "1280:720", ui: segmented}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: perform
+    label: Act it out
+    ops: [motion_transfer]
+    prompt: none
+    medias:
+      - {role: character_image, kinds: [image, video], label: Character (image or clip), required: true}
+      - {role: driving_video, kinds: [video], label: Performance to copy, required: true, max_duration_s: 30}
+
+routes:
+  - id: runway-act-two@runway
+    provider: runway
+    modes:
+      perform: {endpoint: character_performance, fixed: {model: act_two}}
+    transform: studio.providers.transforms.runway:act_two
+    map:
+      params:
+        body_control: bodyControl
+        expression_intensity: expressionIntensity
+        ratio: ratio
+        seed: seed
+      media: {character_image: character, driving_video: reference}
+    pricing:
+      basis: per_output_second
+      quantity: "max(driving_video_seconds, 3)"   # 5 credits per second of the performance
+      rates: [{usd: 0.05}]
+      verified: 2026-10-06
+      source: https://docs.dev.runwayml.com/guides/pricing
+    output: {path: output, kind: video}
+
+examples:
+  - name: perform_smoke
+    mode: perform
+    media: {character_image: "fixture:images/keyframe.png", driving_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.1, 0.3]}

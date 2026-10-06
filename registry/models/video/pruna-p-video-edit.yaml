@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: pruna-p-video-edit
+name: P-Video-Edit
+family: pruna
+vendor: pruna
+description: >-
+  Fast, cheap instruction edits on clips up to 15 seconds, optionally guided by up to four reference images.
+  Good for drafts; the result comes back at about 480p.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [edit, budget, draft]
+prompt: {max_chars: 2000, dialect: default}
+
+parameters:
+  - {name: draft, label: Draft (cheaper), type: bool, default: false}
+  - {name: save_audio, label: Keep the sound, type: bool, default: true}
+  - {name: prompt_upsampling, label: Expand my prompt, type: bool, default: true, group: advanced}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: edit
+    label: Edit a video
+    ops: [instruction_edit, restyle, relight]
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 15}
+      - {role: image_references, kinds: [image], label: Reference images (optional), max: 4}
+
+routes:
+  - id: pruna-p-video-edit@runpod
+    provider: runpod
+    modes:
+      edit: {endpoint: p-video-edit}
+    map:
+      prompt: prompt
+      params: {draft: draft, save_audio: save_audio, prompt_upsampling: prompt_upsampling, seed: seed}
+      media: {input_video: video, image_references: images}
+    pricing:
+      basis: per_output_second
+      quantity: "max(input_video_seconds, 1)"   # billed on output length, which follows the input
+      rates:
+        - {usd: 0.045}
+        - {when: {draft: true}, usd: 0.025}
+      verified: 2026-10-06
+      source: https://www.runpod.io/blog/getting-started-with-pruna-p-video-edit-using-a-public-endpoint
+    timeout_s: 1800
+    output: {path: output.result, kind: video}
+
+examples:
+  - name: edit_draft
+    mode: edit
+    prompt: Make it a snowy winter night.
+    params: {draft: true}
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.02, 0.2]}   # contract tests don't know the clip length (1 s minimum)

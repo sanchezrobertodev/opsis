@@ -2,13 +2,44 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import TYPE_CHECKING
 
-from studio.registry.schema import EnumParam, FloatParam, IntParam
+from studio.registry.schema import EnumParam, FloatParam, IntParam, ModelSpec, Route
 
 if TYPE_CHECKING:
     from studio.registry.loader import Registry
+
+
+COMFY_ADAPTERS = {"comfy_local", "runpod_comfy"}  # routes whose endpoint names a workflows/comfy template
+
+
+def _check_workflows(spec: ModelSpec, route: Route, rwhere: str) -> list[str]:
+    """A ComfyUI route's template must exist, and every field the route sends must have an input in it."""
+    from studio.config import get_settings
+    from studio.providers.comfy_workflows import load_template
+
+    errors: list[str] = []
+    for mode_id, rm in route.modes.items():
+        try:
+            template = load_template(get_settings().comfyui_workflows_dir, rm.endpoint)
+        except (FileNotFoundError, ValueError) as exc:
+            errors.append(f"{rwhere}: {exc}")
+            continue
+        mode = spec.mode(mode_id)
+        sent = {route.map.prompt} if route.map.prompt and mode and mode.prompt != "none" else set()
+        for p in spec.params_for(mode_id):
+            entry = route.map.params.get(p.name)
+            target = entry if isinstance(entry, str) else (entry.to if entry else (p.name if route.map.passthrough else None))
+            if target:
+                sent.add(target)
+        for slot in mode.medias if mode else []:
+            sent.add(rm.media.get(slot.role) or route.map.media.get(slot.role, slot.role))
+        sent |= set(rm.fixed)
+        for key in sorted(k for k in sent if k not in template.map.inputs):
+            errors.append(f"{rwhere}: workflow {rm.endpoint} has no input for {key!r} (mode {mode_id})")
+    return errors
 
 
 def lint(reg: Registry) -> tuple[list[str], list[str]]:
@@ -60,10 +91,16 @@ def lint(reg: Registry) -> tuple[list[str], list[str]]:
                 if days <= 30:
                     warnings.append(f"{rwhere}: provider retires it on {route.sunset} ({max(days, 0)} days)")
             for mode_id, rm in route.modes.items():
+                for name in re.findall(r"\{(\w+)\}", rm.endpoint):
+                    if name not in param_names:
+                        errors.append(f"{rwhere}: endpoint {rm.endpoint!r} uses unknown param {name!r}")
                 mode = spec.mode(mode_id)
                 for role in rm.media:
                     if mode and not mode.slot(role):
                         errors.append(f"{rwhere}: mode {mode_id} maps unknown media role {role!r}")
+            provider = reg.providers.get(route.provider)
+            if provider and provider.adapter in COMFY_ADAPTERS:
+                errors.extend(_check_workflows(spec, route, rwhere))
             if route.provider != "mock":
                 if route.pricing.verified is None:
                     errors.append(f"{rwhere}: pricing needs a `verified` date")

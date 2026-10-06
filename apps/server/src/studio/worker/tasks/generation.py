@@ -98,8 +98,8 @@ def request_from(gen: Generation) -> NormalizedRequest:
     return NormalizedRequest(
         model_id=r["model_id"], mode=r["mode"], prompt=r.get("compiled_prompt") or r.get("prompt", ""),
         negative_prompt=r.get("negative_prompt"), params=dict(r.get("params", {})),
-        media=[MediaRef(role=m["role"], asset_id=m["asset_id"], kind=m.get("kind"), duration_ms=m.get("duration_ms"))
-               for m in r.get("media", [])],
+        media=[MediaRef(role=m["role"], asset_id=m["asset_id"], kind=m.get("kind"), duration_ms=m.get("duration_ms"),
+                        fps=m.get("fps")) for m in r.get("media", [])],
         warnings=list(r.get("warnings", [])),
     )
 
@@ -146,16 +146,24 @@ async def _resolve_media(req: NormalizedRequest) -> list[ResolvedMedia]:
     return out
 
 
+def _reported_cost(usage: dict[str, Any]) -> Decimal | None:
+    cost = (usage or {}).get("cost_usd")
+    return Decimal(str(cost)) if isinstance(cost, int | float) and cost > 0 else None
+
+
 async def _handle_failure(
     s, gen: Generation, attempt: GenerationAttempt, route: Route | None,
-    error: ErrorClass, message: str, *, accepted: bool,
+    error: ErrorClass, message: str, *, accepted: bool, reported: Decimal | None = None,
 ) -> float | None:
-    """Record a failed attempt and decide: retry same route, fail over, or fail. Returns resubmit delay."""
+    """Record a failed attempt and decide: retry same route, fail over, or fail. Returns resubmit delay.
+    `reported` is what the provider says the failed run cost (GPU time is billed even when a job fails)."""
     attempt.status = AttemptStatus.failed
     attempt.error_class = error
     attempt.error_message = message[:4000]
     attempt.finished_at = datetime.now(UTC)
     charge = attempt.estimated_cost_usd if (route and route.charges_on_failure and accepted) else None
+    if reported is not None:
+        charge = reported
     await guard.settle(s, gen.user_id, attempt, charge, estimated=True)
     await record_failure(s, attempt.route_id, attempt.provider, error, message)
 
@@ -338,9 +346,10 @@ async def gen_poll(attempt_id: str) -> None:
     await run_poll(uuid.UUID(attempt_id))
 
 
-def _estimated_progress(elapsed_s: float, output_type: str, route: Route, params: dict[str, Any]) -> float:
+def _estimated_progress(elapsed_s: float, output_type: str, route: Route, request: dict[str, Any]) -> float:
     """Providers that report no percentage (ComfyUI over HTTP, many APIs): elapsed time against the route ETA."""
-    expected = eta_seconds(route.eta, params) or (15.0 if output_type == "image" else 90.0)
+    expected = eta_seconds(route.eta, request.get("params", {}), request.get("media"), request.get("mode")) or (
+        15.0 if output_type == "image" else 90.0)
     return round(min(0.95, elapsed_s / max(expected, 1.0)), 3)
 
 
@@ -410,7 +419,7 @@ async def run_poll(attempt_id: uuid.UUID) -> None:
                             await fsm.report_progress(s, gen, res.progress, estimated=False)
                     elif res.status == "running":
                         await fsm.report_progress(
-                            s, gen, _estimated_progress(elapsed, gen.output_type, route, gen.request.get("params", {})),
+                            s, gen, _estimated_progress(elapsed, gen.output_type, route, gen.request),
                             estimated=True,
                         )
                 else:
@@ -427,12 +436,12 @@ async def run_poll(attempt_id: uuid.UUID) -> None:
             ingest = True
         elif res.status == "canceled":
             attempt.status = AttemptStatus.canceled
-            await guard.settle(s, gen.user_id, attempt, None, estimated=True)
+            await guard.settle(s, gen.user_id, attempt, _reported_cost(res.usage), estimated=True)
             await fsm.transition(s, gen, GenStatus.canceled, reason="canceled by provider")
         else:
             resubmit = await _handle_failure(
                 s, gen, attempt, route, res.error_class or ErrorClass.internal,
-                res.error_message or "provider reported failure", accepted=True,
+                res.error_message or "provider reported failure", accepted=True, reported=_reported_cost(res.usage),
             )
 
     if cancel_remote:
@@ -563,10 +572,15 @@ async def run_ingest(attempt_id: uuid.UUID) -> None:
         assert gen is not None and attempt is not None
         if gen.status != GenStatus.ingesting:
             return
-        # Usage-based actual cost arrives with the live adapters (P1); until then the estimate is the charge.
-        cost = attempt.estimated_cost_usd or Decimal("0")
+        # Providers that report what they charged (RunPod `cost`, Runway credits) set usage.cost_usd; for the
+        # rest the estimate from the registry price is the charge.
+        # Our own RunPod endpoints price their run time themselves but mark it `cost_estimated`.
+        usage = (attempt.last_response or {}).get("usage") or {}
+        reported = usage.get("cost_usd")
+        cost = Decimal(str(reported)) if reported is not None else attempt.estimated_cost_usd or Decimal("0")
         attempt.actual_cost_usd = cost
-        await guard.settle(s, gen.user_id, attempt, cost, estimated=True, basis=attempt.cost_basis)
+        await guard.settle(s, gen.user_id, attempt, cost, estimated=reported is None or bool(usage.get("cost_estimated")),
+                           basis=attempt.cost_basis)
         await record_success(s, attempt.route_id, attempt.provider, attempt.latency_ms)
         await fsm.transition(s, gen, GenStatus.succeeded, actual_cost_usd=cost)
 

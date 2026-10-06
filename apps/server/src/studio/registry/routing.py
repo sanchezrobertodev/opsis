@@ -137,7 +137,7 @@ def candidates(
             reason = f"does not support mode {req.mode}"
         else:
             try:
-                est = estimate(route.pricing, req.params, req.prompt, req.media)
+                est = estimate(route.pricing, req.params, req.prompt, req.media, req.mode)
             except ValueError as exc:
                 reason = f"pricing error: {exc}"
         if reason is None and not route.enabled:
@@ -169,7 +169,7 @@ def candidates(
                     break
         out.append(Candidate(route=route, estimate=est, eligible=reason is None, reason=reason,
                              provider_name=provider.name if provider else None, provider_kind=kind,
-                             eta_seconds=eta_seconds(route.eta, req.params) if est else None))
+                             eta_seconds=eta_seconds(route.eta, req.params, req.media, req.mode) if est else None))
 
     def sort_key(c: Candidate) -> tuple:
         h = env.health.get(c.route.id) or RouteHealth()

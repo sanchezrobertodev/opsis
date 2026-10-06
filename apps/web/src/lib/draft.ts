@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import type { StudioKind } from "./studioKinds";
 
 export type SlotAsset = { id: string; kind: string; thumb?: string | null; url: string; title?: string | null };
 
@@ -17,14 +18,18 @@ type Draft = {
   takes: number;
   /** Camera moves and cinema look (see DirectorPanel). */
   direction: Record<string, unknown>;
+  /** Edit Video: the chosen operation (an op tag such as `restyle`). */
+  op?: string;
 };
 
-type DraftState = Record<"video" | "image", Draft> & {
-  set: (studio: "video" | "image", patch: Partial<Draft>) => void;
-  setParam: (studio: "video" | "image", modelId: string, name: string, value: unknown) => void;
-  addMedia: (studio: "video" | "image", role: string, asset: SlotAsset, max: number) => void;
-  removeMedia: (studio: "video" | "image", role: string, id: string) => void;
+type DraftState = Record<StudioKind, Draft> & {
+  set: (studio: StudioKind, patch: Partial<Draft>) => void;
+  setParam: (studio: StudioKind, modelId: string, name: string, value: unknown) => void;
+  addMedia: (studio: StudioKind, role: string, asset: SlotAsset, max: number) => void;
+  removeMedia: (studio: StudioKind, role: string, id: string) => void;
 };
+
+const KINDS: StudioKind[] = ["video", "image", "edit", "motion"];
 
 const empty: Draft = { prompt: "", negativePrompt: "", params: {}, media: {}, takes: 1, direction: {} };
 
@@ -33,6 +38,8 @@ export const useDraft = create<DraftState>()(
     (set) => ({
       video: empty,
       image: empty,
+      edit: empty,
+      motion: empty,
       set: (studio, patch) => set((s) => ({ [studio]: { ...s[studio], ...patch } }) as Partial<DraftState>),
       setParam: (studio, modelId, name, value) =>
         set((s) => {
@@ -58,17 +65,16 @@ export const useDraft = create<DraftState>()(
     }),
     {
       name: "studio-drafts",
-      version: 2,
-      // v2 added `direction`
+      version: 3,
+      // v2 added `direction`; v3 added the edit and motion studios
       migrate: (persisted) => {
-        const s = (persisted ?? {}) as Partial<Record<"video" | "image", Partial<Draft>>>;
-        return {
-          video: { ...empty, ...s.video, direction: s.video?.direction ?? {} },
-          image: { ...empty, ...s.image, direction: s.image?.direction ?? {} },
-        } as DraftState;
+        const s = (persisted ?? {}) as Partial<Record<StudioKind, Partial<Draft>>>;
+        return Object.fromEntries(
+          KINDS.map((k) => [k, { ...empty, ...s[k], direction: s[k]?.direction ?? {} }]),
+        ) as unknown as DraftState;
       },
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ video: s.video, image: s.image }),
+      partialize: (s) => ({ video: s.video, image: s.image, edit: s.edit, motion: s.motion }),
     },
   ),
 );

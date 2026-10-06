@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-06 from fal's per-endpoint OpenAPI (fal-ai/wan/v2.2-14b/animate/move, /replace).
+id: wan-2.2-animate
+name: Wan 2.2 Animate
+family: wan
+vendor: alibaba
+description: >-
+  Open-weights motion transfer. Move: your character performs the clip's movement in the image's setting.
+  Replace: your character takes the place of the person in the clip, keeping its scene and lighting.
+output_type: video
+status: active
+license_tier: open_permissive   # Apache 2.0 weights
+tags: [motion-transfer, open-weights]
+prompt: {max_chars: 10, dialect: wan}
+
+parameters:
+  - {name: resolution, type: enum, options: ["480p", "580p", "720p"], default: "480p", ui: segmented}
+  - {name: video_quality, label: Encode quality, type: enum, options: [low, medium, high, maximum], default: high, group: advanced}
+  - {name: steps, type: int, min: 2, max: 40, default: 20, group: advanced, help: Fewer steps render faster and look rougher.}
+  - {name: use_turbo, label: Turbo, type: bool, default: false, group: advanced}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: move
+    label: Animate my character
+    ops: [motion_transfer]
+    prompt: none
+    medias:
+      - {role: character_image, kinds: [image], label: Character, required: true}
+      - {role: driving_video, kinds: [video], label: Movement to copy, required: true}
+  - id: replace
+    label: Put my character in the clip
+    ops: [motion_transfer, object_replace]
+    prompt: none
+    medias:
+      - {role: character_image, kinds: [image], label: Character, required: true}
+      - {role: driving_video, kinds: [video], label: Clip with a person to replace, required: true}
+
+routes:
+  - id: wan-2.2-animate@fal
+    provider: fal
+    modes:
+      move: {endpoint: fal-ai/wan/v2.2-14b/animate/move}
+      replace: {endpoint: fal-ai/wan/v2.2-14b/animate/replace}
+    map:
+      params:
+        resolution: resolution
+        video_quality: video_quality
+        steps: num_inference_steps
+        use_turbo: use_turbo
+        seed: seed
+      media: {character_image: image_url, driving_video: video_url}
+    pricing:
+      # billed per input frame at 16 frames per "video second": lowering the clip's frame rate cuts the cost
+      basis: per_request
+      quantity: "max(input_video_frames, 48) / 16"
+      rates:
+        - {when: {resolution: "480p"}, usd: 0.04}
+        - {when: {resolution: "580p"}, usd: 0.06}
+        - {when: {resolution: "720p"}, usd: 0.08}
+      verified: 2026-10-06
+      source: https://fal.ai/models/fal-ai/wan/v2.2-14b/animate/move
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: move_smoke
+    mode: move
+    params: {resolution: "480p"}
+    media: {character_image: "fixture:images/keyframe.png", driving_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.1, 0.5]}

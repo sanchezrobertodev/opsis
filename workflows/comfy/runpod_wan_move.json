@@ -1,0 +1,256 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "Wan-Move 14B"
+    }
+  },
+  "3": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "lora_name": "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
+      "strength_model": 1.0
+    },
+    "_meta": {
+      "title": "lightx2v distill"
+    }
+  },
+  "5": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": [
+        "3",
+        0
+      ],
+      "shift": 8.0
+    },
+    "_meta": {
+      "title": "Shift"
+    }
+  },
+  "7": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "Text encoder"
+    }
+  },
+  "8": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "_meta": {
+      "title": "VAE"
+    }
+  },
+  "9": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "7",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Prompt"
+    }
+  },
+  "10": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
+      "clip": [
+        "7",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Negative prompt"
+    }
+  },
+  "11": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "start.png"
+    },
+    "_meta": {
+      "title": "Start frame"
+    }
+  },
+  "12": {
+    "class_type": "WanMoveTrackToVideo",
+    "inputs": {
+      "positive": [
+        "9",
+        0
+      ],
+      "negative": [
+        "10",
+        0
+      ],
+      "vae": [
+        "8",
+        0
+      ],
+      "tracks": [
+        "22",
+        0
+      ],
+      "strength": 1.0,
+      "width": 832,
+      "height": 480,
+      "length": 81,
+      "batch_size": 1,
+      "start_image": [
+        "19",
+        0
+      ],
+      "clip_vision_output": [
+        "21",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Image to video along paths"
+    }
+  },
+  "14": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "seed": 0,
+      "steps": 6,
+      "cfg": 1.0,
+      "sampler_name": "er_sde",
+      "scheduler": "simple",
+      "positive": [
+        "12",
+        0
+      ],
+      "negative": [
+        "12",
+        1
+      ],
+      "latent_image": [
+        "12",
+        2
+      ],
+      "denoise": 1.0
+    },
+    "_meta": {
+      "title": "Sample"
+    }
+  },
+  "15": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "14",
+        0
+      ],
+      "vae": [
+        "8",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Decode"
+    }
+  },
+  "16": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "15",
+        0
+      ],
+      "fps": 16
+    },
+    "_meta": {
+      "title": "Frames to video"
+    }
+  },
+  "17": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "16",
+        0
+      ],
+      "filename_prefix": "ai-media-studio/wan-core",
+      "format": "mp4",
+      "codec": "h264"
+    },
+    "_meta": {
+      "title": "Your video"
+    }
+  },
+  "19": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "11",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 832,
+      "height": 480,
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "Fit the start frame"
+    }
+  },
+  "20": {
+    "class_type": "CLIPVisionLoader",
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    },
+    "_meta": {
+      "title": "CLIP vision"
+    }
+  },
+  "21": {
+    "class_type": "CLIPVisionEncode",
+    "inputs": {
+      "clip_vision": [
+        "20",
+        0
+      ],
+      "image": [
+        "19",
+        0
+      ],
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "Encode start frame"
+    }
+  },
+  "22": {
+    "class_type": "WanMoveTracksFromCoords",
+    "inputs": {
+      "track_coords": "[]"
+    },
+    "_meta": {
+      "title": "Motion paths"
+    }
+  }
+}

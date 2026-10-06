@@ -19,6 +19,7 @@ export type AssetFilter = {
   kind?: "video" | "image" | "audio";
   source?: "upload" | "generation";
   favorite?: boolean;
+  tag?: string;
 };
 
 export function useRegistry() {
@@ -38,11 +39,12 @@ export function useModel(id: string | undefined) {
   });
 }
 
-export function useGenerations(outputType?: "video" | "image") {
+export function useGenerations(outputType?: "video" | "image", ops?: string[]) {
+  const opsParam = ops?.length ? ops.join(",") : undefined;
   return useQuery({
-    queryKey: keys.generations(outputType),
+    queryKey: [...keys.generations(outputType), opsParam ?? ""],
     queryFn: () =>
-      unwrap(api.GET("/generations", { params: { query: { output_type: outputType, limit: 60 } } })),
+      unwrap(api.GET("/generations", { params: { query: { output_type: outputType, ops: opsParam, limit: 60 } } })),
   });
 }
 
@@ -129,7 +131,7 @@ export function useResolveUnknown() {
 export function usePatchAsset() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; favorite?: boolean; title?: string }) =>
+    mutationFn: ({ id, ...body }: { id: string; favorite?: boolean; title?: string; add_tags?: string[] }) =>
       unwrap(api.PATCH("/assets/{asset_id}", { params: { path: { asset_id: id } }, body })),
     onSuccess: (asset) => {
       qc.setQueryData(keys.asset(asset.id), asset);
@@ -218,11 +220,17 @@ export function uploadFile(file: File, onProgress?: (fraction: number) => void):
 
 type Page = { items: Generation[]; next_cursor?: string | null };
 
+/** Show a new take at once in every list it belongs to. Op-filtered lists (Edit, Motion) refetch instead,
+ * since only the server knows which modes match their ops. */
 export function prependGeneration(qc: ReturnType<typeof useQueryClient>, gen: Generation) {
-  for (const key of [keys.generations(gen.output_type), keys.generations()]) {
-    qc.setQueryData<Page>(key, (old) =>
-      old && !old.items.some((g) => g.id === gen.id) ? { ...old, items: [gen, ...old.items] } : old,
-    );
+  for (const [key, data] of qc.getQueriesData<Page>({ queryKey: ["generations"] })) {
+    const [, type, ops] = key as [string, string, string?];
+    if (type !== "all" && type !== gen.output_type) continue;
+    if (ops) {
+      void qc.invalidateQueries({ queryKey: key, exact: true });
+      continue;
+    }
+    if (data && !data.items.some((g) => g.id === gen.id)) qc.setQueryData<Page>(key, { ...data, items: [gen, ...data.items] });
   }
 }
 
