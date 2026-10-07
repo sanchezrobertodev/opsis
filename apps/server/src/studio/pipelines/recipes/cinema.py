@@ -14,12 +14,12 @@ tagged with the project and shot) and the editor picks them into the document.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AfterValidator, BaseModel, Field, ValidationError, model_validator
 
 from studio.db.models import StepKind
-from studio.director.compiler import DialogueLine
+from studio.director.compiler import DialogueLine, ShotDirection
 from studio.director.elements import mentions
 from studio.media.speech import CHARS_PER_SECOND
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
@@ -42,6 +42,28 @@ from studio.registry.validate import RequestError
 from studio.registry.virtual import resolve as resolve_virtual
 
 KEY = r"^[a-z][a-z0-9]{2,15}$"
+
+
+def checked_direction(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A shot's direction as sent, checked like a generation would check it (a bad one is a 422 for the run, not a
+    failed take), with dialogue lines still being written (no speaker or words) left out."""
+    if not value:
+        return value
+    d = dict(value)
+    lines = d.get("dialogue")
+    if lines is not None:
+        if not isinstance(lines, list) or not all(isinstance(x, dict) for x in lines):
+            raise ValueError("dialogue must be a list of lines, each {who, text}")
+        d["dialogue"] = [x for x in lines if str(x.get("text") or "").strip() and str(x.get("who") or "").strip()]
+    try:
+        ShotDirection.model_validate(d)
+    except ValidationError as exc:
+        e = exc.errors()[0]
+        raise ValueError(f"{e['msg']} at {'.'.join(map(str, e['loc']))}") from None
+    return d
+
+
+Direction = Annotated[dict[str, Any] | None, AfterValidator(checked_direction)]
 
 
 def frames_key(shot: str, n: int | None = None) -> str:
@@ -77,7 +99,7 @@ LINE_GAP_S = 0.35
 class FrameShot(BaseModel):
     key: str = Field(pattern=KEY)
     prompt: str = Field(min_length=1, max_length=2000)
-    direction: dict[str, Any] | None = None
+    direction: Direction = None
 
 
 class CinemaFramesInput(BaseModel):
@@ -162,10 +184,9 @@ class CinemaFramesRecipe(Recipe):
 # ---------------------------------------------------------------- takes
 
 
-def _lines(shot: TakeShot) -> list[DialogueLine]:
-    """The shot's dialogue, which travels in its direction."""
-    return [DialogueLine.model_validate(x) for x in (shot.direction or {}).get("dialogue") or []
-            if str(x.get("text") or "").strip() and str(x.get("who") or "").strip()]
+def _lines(shot: TakeShot | SceneShot) -> list[DialogueLine]:
+    """The shot's dialogue, which travels in its direction (checked and without blank lines: `checked_direction`)."""
+    return [DialogueLine.model_validate(x) for x in (shot.direction or {}).get("dialogue") or []]
 
 
 def _voice_params(line: DialogueLine) -> dict[str, Any]:
@@ -175,7 +196,7 @@ def _voice_params(line: DialogueLine) -> dict[str, Any]:
 class TakeShot(BaseModel):
     key: str = Field(pattern=KEY)
     prompt: str = Field(min_length=1, max_length=2000)
-    direction: dict[str, Any] | None = None
+    direction: Direction = None
     duration: int | None = Field(None, ge=1, le=30)
     start_asset_id: uuid.UUID | None = Field(None, description="The picked hero frame")
     continue_from: str | None = Field(None, pattern=KEY, description="An earlier shot in this run to continue from")
@@ -424,7 +445,7 @@ def split_key(scene: str, n: int) -> str:
 class SceneShot(BaseModel):
     key: str = Field(pattern=KEY)
     prompt: str = Field(min_length=1, max_length=2000)
-    direction: dict[str, Any] | None = None
+    direction: Direction = None
     duration: float = Field(ge=1, le=30)
 
 
@@ -459,8 +480,10 @@ class CinemaSceneRecipe(Recipe):
             return [f"{spec.name} can't film several shots in one take{frame}"]
         return []
 
-    def _params(self, inp: CinemaSceneInput, spec: ModelSpec, mode: Mode) -> dict[str, Any]:
+    def _params(self, inp: CinemaSceneInput, spec: ModelSpec, mode: Mode, reg: Registry) -> dict[str, Any]:
         params = {k: v for k, v in inp.params.items() if k != "duration"}  # the shots set the length
+        if any(_lines(s) for s in inp.shots) and CinemaTakesRecipe._speaks(spec, mode, params, reg):
+            params = with_param(spec, mode.id, params, "generate_audio", True)  # spoken lines need the sound on
         name = next((p.name for p in spec.params_for(mode.id) if p.type == "shots"), "shots")
         return {**params, name: [{"prompt": s.prompt, "duration": s.duration,
                                   **({"direction": s.direction} if s.direction else {})} for s in inp.shots]}
@@ -470,7 +493,7 @@ class CinemaSceneRecipe(Recipe):
         mode = self._mode(inp, spec)
         assert mode is not None
         roles = ("start_image",) if inp.start_asset_id else ()
-        return [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode), roles)] * inp.takes
+        return [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode, reg), roles)] * inp.takes
 
     def plan(self, inp: CinemaSceneInput, settled: Settled, reg: Registry) -> list[StepSpec]:
         spec = reg.models[inp.model_id]
@@ -483,7 +506,7 @@ class CinemaSceneRecipe(Recipe):
             # the whole take belongs to the scene, not one shot; its pieces become the shots' takes
             specs.append(StepSpec(key, StepKind.generate, f"Scene take {n}", {
                 "model_id": spec.id, "mode": mode.id, "prompt": "", "media": media,
-                "params": self._params(inp, spec, mode), "project_id": str(inp.project_id), "take": n,
+                "params": self._params(inp, spec, mode, reg), "project_id": str(inp.project_id), "take": n,
             }, optional=True))
             take = ok(settled, key)
             if take is not None:

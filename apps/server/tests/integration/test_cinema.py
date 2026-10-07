@@ -379,3 +379,28 @@ async def test_old_free_text_dialogue_becomes_lines(client):
     assert r.json()["document"]["scenes"][0]["shots"][0]["lines"] == [
         {"who": "@nova", "text": "It goes dark.", "voice_id": None},
         {"who": "Kai", "text": "Then we light it.", "voice_id": None}]
+
+
+async def test_a_scene_with_dialogue_turns_the_sound_on(client, in_memory_queue):
+    p = await new_project(client)
+    run = await start(client, "cinema_scene", project_id=p["id"], model_id="kling-3.0", scene_key="cone", shots=[
+        {"key": "sone", "prompt": "Nova at the window", "duration": 4, "direction": {"dialogue": DIALOGUE[:1]}},
+        {"key": "stwo", "prompt": "Kai in the doorway", "duration": 4,
+         "direction": {"dialogue": [*DIALOGUE[1:], {"who": "Kai", "text": " "}]}}])  # a blank line is skipped
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(done["steps"][0]["generation_id"]))
+    assert gen.request["params"]["generate_audio"] is True  # Kling is silent unless asked
+    assert 'Kai says: "Then we light it by hand."' in gen.request["params"]["shots"][1]["prompt"]
+
+
+async def test_a_malformed_direction_is_a_request_error(client):
+    p = await new_project(client)
+    for direction, why in (({"dialogue": ["hello"]}, "list of lines"), ({"framing": "wide"}, "Extra inputs"),
+                           ({"dialogue": [{"who": "Kai", "text": "x" * 600}]}, "at most 500")):
+        r = await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
+            "project_id": p["id"], "model_id": "kling-3.0",
+            "shots": [{"key": "sone", "prompt": "x", "direction": direction}]}})
+        assert r.status_code == 422 and why in r.text, r.text
