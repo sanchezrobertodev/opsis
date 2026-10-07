@@ -262,8 +262,10 @@ Also built: the Cinema Studio virtual model over Seedance 2.5 / Kling 3.0 / Veo 
 multi-shot scenes (Kling multi_prompt, Seedance timed prompt) cut back into per-shot takes, and per-shot extend
 after/before plus whole-take and region edits, each a new take linked to its parent (AMS-41), and the director's
 Cinema Studio 4.0 vocabulary: 58 grades, eras by decade, focal lengths, a two-light console and an emotion wheel per
-cast member, with golden snapshots per dialect (AMS-37). Not yet: a Remotion timeline preview (the cut previews in a
-plain player for now) and live checks of the new multi-shot payloads.
+cast member, with golden snapshots per dialect (AMS-37). Not yet: the AI Director chat that revises a plan as a diff
+(AMS-35); storyboard drag-and-drop, split/duplicate shot and cost badges (AMS-36); an end-frame pick and 3×3 frame
+grids (AMS-39); the Remotion preview, audio tracks and title cards in the cut (AMS-42); and live checks of the
+multi-shot payloads and Cinema Studio routing.
 - **Step 0 — Handoff (this session, after approval):**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.
