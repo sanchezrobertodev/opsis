@@ -248,13 +248,13 @@ worker-comfyui 5.10.0 + our handler, a 118 GB model manifest for a network volum
 Fun Camera value now set its camera control. Deployed 2026-10-06 (endpoint ovktgiubxwld1j). All four workflows ran live through the studio ($0.09
 each on an RTX PRO 6000). Wan-Move has a motion-path editor in the Create form (`type: paths` params: drag to draw,
 tap to pin). Left for later: VACE / Uni3C / Animate-2 graphs (P4 Object Swap and Motion Transfer can add them).
-P4 built (branch `claude/p4-faceless-object-swap`, mock-tested; nothing live yet): ElevenLabs TTS with word timings,
+P4 done (merged 2026-10-07, PR #2; mock-tested, nothing live yet): ElevenLabs TTS with word timings,
 SFX and music; Claude steps in the pipeline engine; the Faceless studio (4 themes, 12 styles with caption looks,
 channels, topic ideas, script approval and editing, narrated stills or animated clips, ducked music, burned-in
 captions plus SRT, thumbnail pick); and the Object swap studio (click to select on a frame with SAM 3, tracking, 1-3
 edit models compared, a composite that keeps every pixel outside the mask, removal). Not done: the Kids song mode,
-prompt rephrasing in the clip retry ladder, and the VACE swap route (needs the VACE weights on wan-core, AMS-11).
-Remaining work is tracked in Jira project AMS.
+prompt rephrasing in the clip retry ladder, and the VACE swap route (AMS-32, blocked on the VACE weights on
+wan-core, AMS-11). Remaining work is tracked in Jira project AMS; P5 (Cinema Studio, AMS-4) is next.
 - **Step 0 — Handoff (this session, after approval):**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.
