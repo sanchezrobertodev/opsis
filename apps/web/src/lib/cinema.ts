@@ -2,6 +2,7 @@
 
 import type { Schemas } from "@studio/api-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import type { Direction } from "@/components/create/DirectorPanel";
 import { api, isActive, unwrap } from "./api";
 
@@ -27,6 +28,7 @@ export type Shot = {
 export type Scene = { id: string; heading: string; summary: string; shots: Shot[] };
 export type CinemaSettings = {
   model_id: string;
+  model_params: Record<string, unknown>;
   image_model_id: string;
   aspect_ratio: string;
   resolution: string;
@@ -119,11 +121,19 @@ export function usePlanShots(id: string) {
 
 /** Hero frames and takes for the project, refreshed while any are being made or a run is still planning them. */
 export function useTakes(id: string, runsActive: boolean) {
-  return useQuery({
+  const qc = useQueryClient();
+  const takes = useQuery({
     queryKey: ["takes", id],
     queryFn: () => unwrap(api.GET("/projects/{project_id}/takes", { params: { path: { project_id: id } } })),
     refetchInterval: (q) => (runsActive || (q.state.data ?? []).some((t) => isActive(t.status)) ? 1500 : false),
   });
+  const was = useRef(runsActive);
+  useEffect(() => {
+    // a take cut or joined by a run's last step has nothing pending to poll for, so look again once runs settle
+    if (was.current && !runsActive) void qc.invalidateQueries({ queryKey: ["takes", id] });
+    was.current = runsActive;
+  }, [runsActive, id, qc]);
+  return takes;
 }
 
 /** Whether any of these runs is still going (polled until they all settle). */
@@ -135,4 +145,14 @@ export function useRunsActive(ids: string[]) {
     refetchInterval: (q) => ((q.state.data ?? []).some((r) => r.status === "running") ? 2000 : false),
   });
   return { active: ids.length > 0 && (!data || data.some((r) => r.status === "running")), runs: data ?? [] };
+}
+
+/** Whether any run for this film is still going, wherever it started (a region edit in Object swap, too). */
+export function useProjectRunsActive(id: string) {
+  const { data } = useQuery({
+    queryKey: ["project-runs", id],
+    queryFn: () => unwrap(api.GET("/pipelines", { params: { query: { project_id: id, status: "running", limit: 20 } } })),
+    refetchInterval: (q) => ((q.state.data ?? []).length ? 2000 : 8000),
+  });
+  return (data ?? []).length > 0;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Asset } from "@/lib/api";
+import { type Asset, viaName } from "@/lib/api";
 import { useGenerations, useRegistry } from "@/lib/queries";
 import { KINDS, modelsFor, type StudioKind } from "@/lib/studioKinds";
 import { AssetViewer } from "@/components/library/AssetViewer";
@@ -70,7 +70,7 @@ export function CreateStudio({
                 key={g.id}
                 gen={g}
                 takeNumber={total - i}
-                modelName={names[g.model_id] ?? g.model_id}
+                modelName={viaName(g, names[g.model_id] ?? g.model_id)}
                 onOpen={setOpen}
               />
             ))}

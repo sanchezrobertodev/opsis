@@ -36,3 +36,37 @@ test("Cinema: script, Claude's shot plan, film every shot, pick takes, export th
   await page.getByRole("button", { name: "Export the film" }).click();
   await expect(page.getByText(/^Exported\./)).toBeVisible({ timeout: 60_000 });
 });
+
+test("Cinema: light and feeling on a shot, a scene in one take, then continue a take", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.goto("/cinema");
+  await page.getByRole("button", { name: "New film" }).click();
+  await page.getByLabel("Title").fill(`e2e one take ${Date.now()}`);
+  await page.getByRole("button", { name: "Create" }).click();
+  await expect(page).toHaveURL(/\/cinema\/[0-9a-f-]+$/);
+
+  await page.getByRole("radio", { name: "Script" }).click();
+  await page.getByLabel("Script").fill("A kite lifts off the beach. It climbs into the wind.");
+  await page.getByRole("button", { name: "Plan shots with Claude" }).click();
+  await page.getByRole("button", { name: "Use this plan" }).click();
+  await expect(page.getByText("Saved, version 2")).toBeVisible();
+
+  // the director's lighting console and emotion wheel on the first shot
+  await page.getByRole("button", { name: /A kite lifts off the beach\./ }).click();
+  await page.getByRole("button", { name: "Lighting", exact: true }).click();
+  await page.getByRole("button", { name: "Light from left" }).click();
+  await expect(page.getByRole("tab", { name: "Key light" })).toBeVisible();
+  await page.getByRole("button", { name: "Performance", exact: true }).click();
+  await page.getByRole("radio", { name: "Joy", exact: true }).click();
+  await expect(page.getByText("the subject feels joy")).toBeVisible();
+
+  // both shots in one multi-shot call, cut back into a take per shot
+  await page.getByRole("button", { name: /^Film as one take/ }).click();
+  await expect(page.getByText(/cut from a scene take/)).toBeVisible({ timeout: 90_000 });
+  await page.getByRole("button", { name: "Use this take" }).first().click();
+  await expect(page.getByRole("button", { name: "In the cut" })).toBeVisible();
+
+  await page.getByLabel("What happens next").fill("It loops once and dives toward the sand");
+  await page.getByRole("button", { name: "Continue the take" }).click();
+  await expect(page.getByText(/continued from take 1/)).toBeVisible({ timeout: 90_000 });
+});

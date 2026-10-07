@@ -60,3 +60,16 @@ export const ACTIVE_STATUSES = new Set([
 export function isActive(status: string) {
   return ACTIVE_STATUSES.has(status);
 }
+
+/** What a take made through a virtual model (Cinema Studio) was asked for: the studio, its mode and engine. */
+export type Via = { model_id: string; name: string; mode: string; engine: string; engine_label: string };
+
+export function viaOf(gen: Pick<Generation, "request">): Via | null {
+  return ((gen.request ?? {}) as { via?: Via | null }).via ?? null;
+}
+
+/** "Cinema Studio on Kling 3.0" for a take made through a virtual model, else the model's own name. */
+export function viaName(gen: Pick<Generation, "request">, modelName: string): string {
+  const via = viaOf(gen);
+  return via ? `${via.name} on ${modelName}` : modelName;
+}

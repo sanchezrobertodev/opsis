@@ -66,8 +66,8 @@ def render(preset: PresetSpec, values: dict[str, str], media: list[dict[str, str
 
 
 def lint_presets(reg: Registry) -> list[str]:
-    from studio.director.compiler import ShotDirection
-    from studio.director.library import FIELD_SECTIONS, get_library
+    from studio.director.compiler import ShotDirection, unknown_ids
+    from studio.director.library import get_library
 
     errors: list[str] = []
     library = get_library()
@@ -113,11 +113,5 @@ def lint_presets(reg: Registry) -> list[str]:
             except ValidationError as exc:
                 errors.append(f"{where}: direction: {exc.errors()[0]['msg']}")
                 continue
-            for mv in d.camera_moves:
-                if library.move(mv.id) is None:
-                    errors.append(f"{where}: unknown camera move {mv.id!r}")
-            for name, section in FIELD_SECTIONS.items():
-                value = getattr(d, name)
-                if value is not None and library.look(section, value) is None:
-                    errors.append(f"{where}: unknown {name.replace('_', ' ')} {value!r}")
+            errors += [f"{where}: {e}" for e in unknown_ids(d, library)]
     return errors

@@ -1,0 +1,113 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# A virtual model: no routes of its own. Each request runs on the chosen engine's base model and mode
+# (studio/registry/virtual.py), so its price and routing are exactly that model's.
+id: cinema-studio
+name: Cinema Studio
+kind: virtual
+family: cinema
+vendor: ai-media-studio
+description: >-
+  A director's camera over Seedance 2.5 (the engine behind Higgsfield Cinema Studio 4.0), Kling 3.0 and Veo 3.1.
+  Era, camera, lens, aperture, tempo, genre, lighting and grade compile into the engine's own prompt style.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [cinematic, director, references, edit, extend, audio]
+prompt: {max_chars: 3000, dialect: seedance}  # the engine's own limit and dialect apply when it runs
+aspect_ratios: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
+duration: {min: 3, max: 15, default: 5}
+wraps: [seedance-2.5, kling-3.0, kling-o3-edit, veo-3.1]
+
+virtual:
+  engine_param: engine
+  engines:
+    - id: seedance
+      label: Seedance 2.5
+      modes: {t2v: seedance-2.5/t2v, i2v: seedance-2.5/i2v, omni_reference: seedance-2.5/omni_reference,
+              video_edit: seedance-2.5/video_edit, video_extension: seedance-2.5/extend,
+              multi_shot: seedance-2.5/multi_shot, multi_shot_frame: seedance-2.5/multi_shot_frame}
+    - id: kling
+      label: Kling 3.0
+      modes: {t2v: kling-3.0/t2v, i2v: kling-3.0/i2v, video_edit: kling-o3-edit/edit,
+              multi_shot: kling-3.0/multi_shot, multi_shot_frame: kling-3.0/multi_shot_frame}
+    - id: veo
+      label: Veo 3.1
+      modes: {t2v: veo-3.1/t2v, i2v: veo-3.1/i2v, omni_reference: veo-3.1/reference}
+  director: [era, camera_body, lens, focal_length, aperture, pacing, genre, lighting, palette]
+
+parameters:
+  - {name: engine, label: Engine, type: enum, options: [seedance, kling, veo], default: seedance, ui: segmented,
+     labels: {seedance: Seedance 2.5, kling: Kling 3.0, veo: Veo 3.1},
+     help: "Seedance does every mode. Kling has no references or extension; Veo has no edit, extension or multi-shot."}
+  - {name: duration, label: Duration (s), type: int, min: 3, max: 15, default: 5, ui: slider,
+     modes: [t2v, i2v, omni_reference, video_extension], help: "Rounded to a length the engine makes."}
+  - {name: shots, label: Shots, type: shots, min_shots: 2, max_shots: 8, min_shot_s: 1, max_shot_s: 30,
+     max_total_s: 30, prompt_budget: shared, modes: [multi_shot, multi_shot_frame],
+     help: "Seedance: up to 30 s in one take. Kling: up to 6 shots and 15 s."}
+  - {name: resolution, type: enum, options: ["480p", "720p", "1080p"], default: "720p", ui: segmented}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+     default: "16:9", ui: aspect, modes: [t2v, omni_reference, multi_shot]}
+  - {name: generate_audio, label: Native audio, type: bool, default: true,
+     modes: [t2v, i2v, omni_reference, video_extension, multi_shot, multi_shot_frame]}
+  - {name: era, label: Era, type: enum, director: eras}
+  - {name: camera_body, label: Camera, type: enum, director: camera_bodies}
+  - {name: lens, label: Lens, type: enum, director: lenses}
+  - {name: focal_length, label: Focal length, type: enum, director: focal_lengths}
+  - {name: aperture, label: Aperture, type: enum, director: apertures}
+  - {name: pacing, label: Tempo, type: enum, director: pacing}
+  - {name: genre, label: Genre, type: enum, director: genres}
+  - {name: lighting, label: Lighting, type: enum, director: lighting}
+  - {name: palette, label: Color grade, type: enum, director: palettes}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: t2v
+    label: Text to video
+    ops: [t2v]
+  - id: i2v
+    label: Image to video
+    ops: [i2v, flf2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+      - {role: end_image, kinds: [image], label: End frame (optional)}
+  - id: multi_shot
+    label: Multi-shot
+    ops: [multi_shot]
+    prompt: none
+  - id: multi_shot_frame
+    label: Multi-shot from a frame
+    ops: [multi_shot]
+    prompt: none
+    medias:
+      - {role: start_image, kinds: [image], label: First frame, required: true}
+  - id: omni_reference
+    label: Omni reference
+    ops: [multi_ref]
+    medias:
+      - {role: image_references, kinds: [image], label: Image refs, max: 9}
+      - {role: video_references, kinds: [video], label: Video refs, max: 3, max_duration_s: 15}
+      - {role: audio_references, kinds: [audio], label: Audio refs, max: 3}
+  - id: video_edit
+    label: Edit a video
+    ops: [instruction_edit, restyle, relight]
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 30, max_mb: 200}
+      - {role: image_references, kinds: [image], label: Reference images (optional), max: 9}
+  - id: video_extension
+    label: Extend
+    ops: [extend]
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to continue, required: true, max_duration_s: 30, max_mb: 200}
+
+examples:
+  - name: cinema_t2v_smoke
+    mode: t2v
+    prompt: A lighthouse keeper climbs a spiral staircase as a storm hits the glass.
+    params: {engine: seedance, duration: 4, resolution: "480p", era: new_hollywood_1970s, lens: anamorphic}
+    smoke: true
+    expect: {cost_usd_range: [0.3, 1.0]}
+  - name: cinema_veo_t2v
+    mode: t2v
+    prompt: Rain on a neon street at night, a figure crosses under a flickering sign.
+    params: {engine: veo, duration: 8, palette: hyper_neon}
+    expect: {cost_usd_range: [0.5, 5.0]}

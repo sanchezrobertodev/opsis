@@ -59,9 +59,11 @@ class _ParamBase(_Strict):
 
 class EnumParam(_ParamBase):
     type: Literal["enum"]
-    options: list[str | int]
+    options: list[str | int] = []
     default: str | int | None = None
     labels: dict[str, str] = {}  # option -> what the user sees, for options that are ids (voices)
+    # options come from this director list (registry/director/looks.yaml), filled in when the registry loads
+    director: str | None = None
 
 
 class IntParam(_ParamBase):
@@ -118,8 +120,24 @@ class PointsParam(_ParamBase):
     default: list[Any] | None = None
 
 
+class ShotsParam(_ParamBase):
+    """Several shots rendered in one call (multi-shot): [{"prompt": str, "duration": seconds}] in order, each shot
+    optionally with its own `direction`. The clip is as long as its shots together (it sets `duration`). Routes
+    send the shots as the provider's shot list (`shot_list`) or as one timed prompt (`timed_prompt`)."""
+
+    type: Literal["shots"]
+    min_shots: int = 2
+    max_shots: int = 6
+    min_shot_s: float = 1
+    max_shot_s: float = 15
+    max_total_s: float = 15
+    # each: every shot may use the model's whole prompt limit (a shot list); shared: the shots share one prompt
+    prompt_budget: Literal["each", "shared"] = "each"
+    default: list[Any] | None = None
+
+
 Param = Annotated[
-    EnumParam | IntParam | FloatParam | BoolParam | SeedParam | TextParam | PathsParam | PointsParam,
+    EnumParam | IntParam | FloatParam | BoolParam | SeedParam | TextParam | PathsParam | PointsParam | ShotsParam,
     Field(discriminator="type"),
 ]
 
@@ -262,6 +280,34 @@ class Example(_Strict):
     expect: dict[str, Any] = {}
 
 
+class VirtualEngine(_Strict):
+    """One engine a virtual model can run on: which base model and mode serves each of its modes."""
+
+    id: str
+    label: str
+    modes: dict[str, str]  # virtual mode id -> "base-model-id/mode-id"
+
+    def target(self, mode_id: str) -> tuple[str, str] | None:
+        ref = self.modes.get(mode_id)
+        if not ref:
+            return None
+        model_id, _, mode = ref.partition("/")
+        return model_id, mode
+
+
+class VirtualSpec(_Strict):
+    """A studio layer over base models (`kind: virtual`). A request names an engine (`engine_param`) and is
+    resolved to that engine's base model and mode before anything else happens, so routing, pricing and the
+    spend guard are the base model's own. Params named in `director` become shot direction instead."""
+
+    engine_param: str = "engine"
+    engines: list[VirtualEngine]
+    director: list[str] = []  # ShotDirection fields offered as params (era, lens...)
+
+    def engine(self, engine_id: str | None) -> VirtualEngine | None:
+        return next((e for e in self.engines if e.id == engine_id), None)
+
+
 class ModelSpec(_Strict):
     id: str
     name: str
@@ -282,6 +328,7 @@ class ModelSpec(_Strict):
     elements: dict[str, Any] | None = None
     camera: dict[str, Any] | None = None
     wraps: list[str] = []
+    virtual: VirtualSpec | None = None
     recipe_id: str | None = None
     routes: list[Route] = []
     examples: list[Example] = []

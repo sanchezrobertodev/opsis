@@ -1,5 +1,7 @@
 # Cinema "look" vocabulary for the director panel (Cinema Studio-style controls). Each item is a phrase the
 # dialects weave into the prompt. Generic descriptors on purpose: no camera or film brand names.
+# Optional per item: `dialects` (a phrase for one model family instead of `prompt`) and `swatch` (hex colors the
+# picker shows for palettes and light colors).
 shot_sizes:
   - {id: extreme_wide, label: Extreme wide, prompt: "extreme wide shot"}
   - {id: wide, label: Wide, prompt: "wide shot"}
@@ -21,92 +23,274 @@ angles:
   - {id: pov, label: Point of view, prompt: "first-person point of view"}
   - {id: profile, label: Profile, prompt: "side profile angle"}
 
+# The glass itself. Focal lengths are their own list below.
 lenses:
-  - {id: ultra_wide_14, label: 14 mm ultra wide, prompt: "14mm ultra-wide lens"}
-  - {id: wide_24, label: 24 mm wide, prompt: "24mm wide-angle lens"}
-  - {id: normal_35, label: 35 mm, prompt: "35mm lens"}
-  - {id: normal_50, label: 50 mm, prompt: "50mm lens with natural perspective"}
-  - {id: portrait_85, label: 85 mm portrait, prompt: "85mm portrait lens"}
-  - {id: tele_135, label: 135 mm telephoto, prompt: "135mm telephoto lens with compressed background"}
+  - {id: spherical, label: Clean spherical, prompt: "clean modern spherical prime lens"}
   - {id: anamorphic, label: Anamorphic, prompt: "anamorphic lens with oval bokeh and horizontal flares"}
+  - {id: vintage, label: Vintage glass, prompt: "vintage lens with soft contrast, gentle glow and warm flares"}
   - {id: macro, label: Macro, prompt: "macro lens, tiny details magnified"}
   - {id: tilt_shift, label: Tilt-shift, prompt: "tilt-shift lens, miniature effect"}
+  - {id: fisheye, label: Fisheye, prompt: "fisheye lens with strong barrel distortion"}
+  - {id: soft_diffusion, label: Diffusion filter, prompt: "diffusion filter softening highlights into a gentle halation"}
+  - {id: split_diopter, label: Split diopter, prompt: "split-diopter framing, foreground and background both in sharp focus"}
+  - {id: probe, label: Probe lens, prompt: "probe lens skimming low and close over surfaces"}
+  - {id: swirl_bokeh, label: Swirl bokeh, prompt: "portrait lens with swirling bokeh around the edges"}
+
+focal_lengths:
+  - {id: ultra_wide_14, label: 14 mm, prompt: "14mm ultra-wide lens"}
+  - {id: wide_18, label: 18 mm, prompt: "18mm wide lens"}
+  - {id: wide_24, label: 24 mm, prompt: "24mm wide-angle lens"}
+  - {id: wide_28, label: 28 mm, prompt: "28mm lens"}
+  - {id: normal_35, label: 35 mm, prompt: "35mm lens"}
+  - {id: normal_40, label: 40 mm, prompt: "40mm lens"}
+  - {id: normal_50, label: 50 mm, prompt: "50mm lens with natural perspective"}
+  - {id: normal_65, label: 65 mm, prompt: "65mm lens"}
+  - {id: portrait_85, label: 85 mm, prompt: "85mm portrait lens"}
+  - {id: tele_100, label: 100 mm, prompt: "100mm short telephoto lens"}
+  - {id: tele_135, label: 135 mm, prompt: "135mm telephoto lens with compressed background"}
+  - {id: tele_200, label: 200 mm, prompt: "200mm telephoto lens, background flattened"}
+  - {id: super_tele_400, label: 400 mm, prompt: "400mm super-telephoto lens, extreme compression and heat shimmer"}
 
 apertures:
-  - {id: f1_4, label: f/1.4 very shallow, prompt: "very shallow depth of field at f/1.4 with creamy bokeh"}
-  - {id: f2_8, label: f/2.8 shallow, prompt: "shallow depth of field"}
+  - {id: f1_2, label: f/1.2, prompt: "razor-thin depth of field at f/1.2"}
+  - {id: f1_4, label: f/1.4, prompt: "very shallow depth of field at f/1.4 with creamy bokeh"}
+  - {id: f2, label: f/2, prompt: "shallow depth of field at f/2"}
+  - {id: f2_8, label: f/2.8, prompt: "shallow depth of field"}
+  - {id: f4, label: f/4, prompt: "moderately shallow depth of field"}
   - {id: f5_6, label: f/5.6, prompt: "moderate depth of field"}
-  - {id: f11, label: f/11 deep, prompt: "deep focus, everything sharp"}
+  - {id: f8, label: f/8, prompt: "deep depth of field"}
+  - {id: f11, label: f/11, prompt: "deep focus, everything sharp"}
+  - {id: f16, label: f/16, prompt: "everything in focus from the foreground to the horizon"}
 
 camera_bodies:
   - {id: digital_cinema, label: Digital cinema, prompt: "shot on a high-end digital cinema camera, clean and detailed"}
+  - {id: large_format_digital, label: Large-format digital, prompt: "shot on a large-format digital cinema camera, wide field of view with shallow depth"}
+  - {id: mirrorless, label: Full-frame mirrorless, prompt: "shot on a full-frame mirrorless camera, crisp and modern"}
   - {id: film_35, label: 35 mm film, prompt: "shot on 35mm film with natural grain"}
+  - {id: film_35_bw, label: 35 mm black-and-white film, prompt: "shot on black-and-white 35mm film with fine grain"}
   - {id: film_16, label: 16 mm film, prompt: "shot on 16mm film, heavy grain and soft contrast"}
   - {id: super_8, label: Super 8, prompt: "Super 8 home-movie film with flicker and light leaks"}
   - {id: imax_70, label: 70 mm large format, prompt: "shot on 70mm large-format film, immense detail"}
+  - {id: broadcast_tv, label: 1980s broadcast video, prompt: "1980s broadcast video camera, interlaced and bright"}
   - {id: vhs, label: VHS camcorder, prompt: "VHS camcorder footage with tracking noise and soft colors"}
+  - {id: hi8, label: Hi8 camcorder, prompt: "Hi8 camcorder footage, soft and warm"}
   - {id: dv, label: Early digital camcorder, prompt: "early-2000s digital camcorder footage, slightly blown highlights"}
   - {id: phone, label: Phone camera, prompt: "smartphone footage, handheld and vertical-friendly"}
+  - {id: action_cam, label: Action camera, prompt: "ultra-wide action camera footage, stabilized"}
+  - {id: drone, label: Drone camera, prompt: "aerial drone camera footage, smooth and stabilized"}
+  - {id: cctv, label: Security camera, prompt: "high-angle security camera footage, low resolution with a timestamp feel"}
+  - {id: webcam, label: Webcam, prompt: "webcam footage, flat lighting and compression artifacts"}
+  - {id: night_vision, label: Night vision, prompt: "green night-vision footage with sensor noise"}
+  - {id: thermal, label: Thermal camera, prompt: "thermal imaging footage in false color"}
 
 eras:
   - {id: silent_1920s, label: 1920s silent film, prompt: "1920s silent-film look, black and white with vignetting"}
-  - {id: technicolor_1950s, label: 1950s Technicolor-style, prompt: "saturated 1950s three-strip color look"}
+  - {id: thirties, label: 1930s, prompt: "1930s studio-era look, glamorous soft key light in black and white"}
+  - {id: forties_noir, label: 1940s, prompt: "1940s look, hard-shadowed black and white"}
+  - {id: technicolor_1950s, label: 1950s, prompt: "saturated 1950s three-strip color look"}
+  - {id: sixties, label: 1960s, prompt: "1960s look with saturated mod colors and soft zooms"}
   - {id: new_hollywood_1970s, label: 1970s, prompt: "1970s film look, warm and grainy"}
   - {id: eighties, label: 1980s, prompt: "1980s look with neon accents and soft diffusion"}
   - {id: nineties, label: 1990s, prompt: "1990s film look, slightly desaturated"}
-  - {id: modern, label: Modern, prompt: "contemporary look"}
+  - {id: y2k, label: 2000s, prompt: "2000s look, glossy digital-intermediate sheen with greenish shadows"}
+  - {id: twenty_tens, label: 2010s, prompt: "2010s look, clean digital with a teal-and-orange lean"}
+  - {id: twenty_twenties, label: 2020s, prompt: "2020s look, natural color and wide dynamic range"}
+  - {id: modern, label: Contemporary, prompt: "contemporary look"}
   - {id: near_future, label: Near future, prompt: "sleek near-future look"}
+  - {id: far_future, label: Far future, prompt: "far-future look, seamless surfaces and soft holographic light"}
 
 lighting:
   - {id: golden_hour, label: Golden hour, prompt: "warm golden-hour sunlight"}
   - {id: blue_hour, label: Blue hour, prompt: "cool blue-hour twilight"}
+  - {id: harsh_noon, label: Harsh noon, prompt: "harsh midday sun with short hard shadows"}
+  - {id: overcast, label: Overcast, prompt: "soft overcast daylight"}
+  - {id: window, label: Window light, prompt: "soft natural window light"}
   - {id: soft_cross, label: Soft cross light, prompt: "soft cross lighting from two sides"}
   - {id: contre_jour, label: Backlit, prompt: "strong backlight with a glowing rim around the subject"}
-  - {id: overhead_fall, label: Overhead pool, prompt: "hard overhead light falling in a pool"}
-  - {id: window, label: Window light, prompt: "soft natural window light"}
-  - {id: practicals, label: Practical lights, prompt: "lit by practical lamps visible in the scene"}
   - {id: silhouette, label: Silhouette, prompt: "subject in silhouette against a bright background"}
+  - {id: rembrandt, label: Rembrandt, prompt: "Rembrandt lighting with a small triangle of light on the shadowed cheek"}
+  - {id: split, label: Split light, prompt: "split lighting, half the face lit and half in shadow"}
+  - {id: butterfly, label: Butterfly, prompt: "butterfly lighting from high in front, a small shadow under the nose"}
+  - {id: chiaroscuro, label: Chiaroscuro, prompt: "chiaroscuro, a single hard source carving figures out of darkness"}
+  - {id: overhead_fall, label: Overhead pool, prompt: "hard overhead light falling in a pool"}
+  - {id: practicals, label: Practical lights, prompt: "lit by practical lamps visible in the scene"}
+  - {id: firelight, label: Firelight, prompt: "flickering firelight"}
+  - {id: candlelight, label: Candlelight, prompt: "dim warm candlelight"}
+  - {id: moonlight, label: Moonlight, prompt: "cool silvery moonlight"}
+  - {id: fluorescent, label: Fluorescent, prompt: "flat greenish fluorescent overhead light"}
   - {id: neon_noir, label: Neon noir, prompt: "neon signs casting colored light in a dark wet street"}
+  - {id: volumetric, label: Volumetric haze, prompt: "shafts of light cutting through haze"}
+  - {id: strobe, label: Strobe, prompt: "stuttering strobe light"}
+  - {id: caustics, label: Water caustics, prompt: "rippling water caustics dancing across surfaces"}
   - {id: high_key, label: High key, prompt: "bright high-key lighting with few shadows"}
   - {id: low_key, label: Low key, prompt: "dramatic low-key lighting with deep shadows"}
-  - {id: overcast, label: Overcast, prompt: "soft overcast daylight"}
+
+# The lighting console: up to two placed sources (studio/director/compiler.py: LightChoice).
+light_sources:
+  - {id: sun, label: Sun, prompt: "sunlight"}
+  - {id: sky, label: Open sky, prompt: "open-sky light"}
+  - {id: window, label: Window, prompt: "window light"}
+  - {id: softbox, label: Softbox, prompt: "softbox"}
+  - {id: spotlight, label: Spotlight, prompt: "spotlight"}
+  - {id: bare_bulb, label: Bare bulb, prompt: "bare bulb"}
+  - {id: practical, label: Practical lamp, prompt: "practical lamp"}
+  - {id: led_panel, label: LED panel, prompt: "LED panel"}
+  - {id: neon, label: Neon sign, prompt: "neon sign"}
+  - {id: streetlight, label: Streetlight, prompt: "streetlight"}
+  - {id: headlights, label: Headlights, prompt: "car headlights"}
+  - {id: flashlight, label: Flashlight, prompt: "flashlight beam"}
+  - {id: screen, label: Screen glow, prompt: "screen glow"}
+  - {id: fire, label: Fire, prompt: "firelight"}
+  - {id: candle, label: Candle, prompt: "candlelight"}
+  - {id: moon, label: Moon, prompt: "moonlight"}
+
+light_positions:
+  - {id: front, label: Front, prompt: "from the front"}
+  - {id: front_left, label: Front left, prompt: "from the front left"}
+  - {id: left, label: Left, prompt: "from the left"}
+  - {id: back_left, label: Back left, prompt: "from behind on the left, edging {subject}"}
+  - {id: back, label: Behind, prompt: "from directly behind, rimming {subject}"}
+  - {id: back_right, label: Back right, prompt: "from behind on the right, edging {subject}"}
+  - {id: right, label: Right, prompt: "from the right"}
+  - {id: front_right, label: Front right, prompt: "from the front right"}
+  - {id: top, label: Overhead, prompt: "from overhead"}
+  - {id: below, label: Below, prompt: "from below"}
+
+light_colors:
+  - {id: warm_tungsten, label: Tungsten, prompt: "warm tungsten", swatch: ["#ffb36b"]}
+  - {id: amber, label: Amber, prompt: "amber", swatch: ["#ffa31a"]}
+  - {id: golden, label: Golden, prompt: "golden", swatch: ["#ffd27a"]}
+  - {id: daylight, label: Daylight, prompt: "neutral daylight", swatch: ["#f5f3ea"]}
+  - {id: cool_blue, label: Cool blue, prompt: "cool blue", swatch: ["#7fb2ff"]}
+  - {id: moon_blue, label: Pale blue, prompt: "pale silver-blue", swatch: ["#a9c4ff"]}
+  - {id: cyan, label: Cyan, prompt: "cyan", swatch: ["#2ee6e6"]}
+  - {id: teal, label: Teal, prompt: "teal", swatch: ["#1fb5a6"]}
+  - {id: green, label: Green, prompt: "green", swatch: ["#47d16c"]}
+  - {id: sodium, label: Sodium orange, prompt: "sodium-orange", swatch: ["#ff8c1a"]}
+  - {id: red, label: Red, prompt: "deep red", swatch: ["#e0262b"]}
+  - {id: magenta, label: Magenta, prompt: "magenta", swatch: ["#ff2fb4"]}
+  - {id: violet, label: Violet, prompt: "violet", swatch: ["#8b5cf6"]}
+  - {id: pink, label: Pink, prompt: "soft pink", swatch: ["#ff9ec8"]}
 
 palettes:
-  - {id: naturalistic, label: Naturalistic, prompt: "naturalistic, true-to-life color"}
-  - {id: teal_orange, label: Teal and orange, prompt: "teal-and-orange blockbuster color grade"}
-  - {id: bleached_warm, label: Bleached warm, prompt: "bleached, warm, sun-faded color grade"}
-  - {id: bleach_bypass, label: Bleach bypass, prompt: "bleach-bypass grade, desaturated with crushed contrast"}
-  - {id: cold_steel, label: Cold steel, prompt: "cold steel-blue color grade"}
-  - {id: sodium_decay, label: Sodium vapor, prompt: "sickly sodium-vapor orange and green grade"}
-  - {id: hyper_neon, label: Hyper neon, prompt: "hyper-saturated neon magenta and cyan grade"}
-  - {id: pastel, label: Pastel, prompt: "soft pastel color palette"}
-  - {id: black_white, label: Black and white, prompt: "rich black-and-white"}
+  - {id: naturalistic, label: Naturalistic, prompt: "naturalistic, true-to-life color", swatch: ["#c9b79c", "#6f8f72", "#4a6a8a"]}
+  - {id: teal_orange, label: Teal and orange, prompt: "teal-and-orange blockbuster color grade", swatch: ["#1f6f78", "#f28c38", "#2a2d34"]}
+  - {id: bleached_warm, label: Bleached warm, prompt: "bleached, warm, sun-faded color grade", swatch: ["#e8d5b0", "#c99a6b", "#8c7a63"]}
+  - {id: bleach_bypass, label: Bleach bypass, prompt: "bleach-bypass grade, desaturated with crushed contrast", swatch: ["#8f9493", "#5b605f", "#c7c9c4"]}
+  - {id: cold_steel, label: Cold steel, prompt: "cold steel-blue color grade", swatch: ["#3b5368", "#8aa1b4", "#1d2a36"]}
+  - {id: sodium_decay, label: Sodium vapor, prompt: "sickly sodium-vapor orange and green grade", swatch: ["#c98a2b", "#6b7a3a", "#2b2a1e"]}
+  - {id: hyper_neon, label: Hyper neon, prompt: "hyper-saturated neon magenta and cyan grade", swatch: ["#ff2fb4", "#21e6ff", "#2a0a3d"]}
+  - {id: pastel, label: Pastel, prompt: "soft pastel color palette", swatch: ["#f6c6d0", "#bfe3d8", "#f3e7b5"]}
+  - {id: black_white, label: Black and white, prompt: "rich black-and-white", swatch: ["#111111", "#7a7a7a", "#eeeeee"]}
+  - {id: noir_silver, label: Silver noir, prompt: "silvery high-contrast monochrome with inky blacks", swatch: ["#0a0a0a", "#9ea3a8", "#f0f0f0"]}
+  - {id: sepia, label: Sepia, prompt: "warm sepia monochrome", swatch: ["#704214", "#b38b59", "#eadbc0"]}
+  - {id: cyanotype, label: Cyanotype, prompt: "cyan-blue monochrome like a cyanotype print", swatch: ["#0d3b66", "#3a7ca5", "#d9e8f5"]}
+  - {id: golden_amber, label: Honey amber, prompt: "honeyed amber and gold grade", swatch: ["#b8741a", "#e0a43a", "#3d2a12"]}
+  - {id: autumn, label: Autumn, prompt: "rust, ochre and deep olive autumn palette", swatch: ["#9c4a1a", "#c98b2b", "#4f5a2a"]}
+  - {id: spring_fresh, label: Spring, prompt: "fresh spring greens with soft blossom pinks", swatch: ["#8cc084", "#f4b6c2", "#f7f3e3"]}
+  - {id: summer_saturated, label: Summer, prompt: "bright saturated summer colors under a clear blue sky", swatch: ["#1e90ff", "#ffd23f", "#ff6b35"]}
+  - {id: winter_blue, label: Winter, prompt: "cold winter whites and pale blues", swatch: ["#e8f1f8", "#a8c5dd", "#5a7d9a"]}
+  - {id: desert, label: Desert, prompt: "sun-baked desert ochres and dusty terracotta", swatch: ["#d9a066", "#b5651d", "#f1d7a8"]}
+  - {id: jungle, label: Jungle, prompt: "dense humid jungle greens with deep shadows", swatch: ["#1f4d2b", "#4c8c4a", "#0e1f12"]}
+  - {id: ocean_deep, label: Deep ocean, prompt: "deep ocean blues and aquamarine", swatch: ["#03396c", "#0f8b8d", "#a7e8e0"]}
+  - {id: arctic_mint, label: Arctic mint, prompt: "icy mint and white with cool cyan shadows", swatch: ["#d8f3ee", "#8fd3c7", "#3e8e8a"]}
+  - {id: crimson_noir, label: Crimson noir, prompt: "black and charcoal with blood-red accents", swatch: ["#0d0d0d", "#3a3a3a", "#b3001b"]}
+  - {id: royal_jewel, label: Jewel tones, prompt: "rich jewel tones of emerald, sapphire and ruby", swatch: ["#046307", "#0f52ba", "#9b111e"]}
+  - {id: velvet_purple, label: Velvet purple, prompt: "deep velvet purples and plum", swatch: ["#3c1a5b", "#6d2e86", "#c39bd3"]}
+  - {id: rose_gold, label: Rose gold, prompt: "soft rose gold and blush tones", swatch: ["#b76e79", "#e8b4b8", "#f6e1d3"]}
+  - {id: candy_pop, label: Candy pop, prompt: "bubblegum pink, mint and sky-blue candy colors", swatch: ["#ff8fc7", "#8ef0c4", "#7cc9ff"]}
+  - {id: retro_70s, label: Retro seventies, prompt: "mustard, burnt orange and avocado green", swatch: ["#d4a017", "#cc5500", "#6b8e23"]}
+  - {id: vaporwave, label: Vaporwave, prompt: "vaporwave pink and turquoise with a purple haze", swatch: ["#ff71ce", "#01cdfe", "#b967ff"]}
+  - {id: synthwave, label: Synthwave, prompt: "synthwave magenta, electric purple and sunset orange", swatch: ["#f72585", "#7209b7", "#ff9e00"]}
+  - {id: cyberpunk, label: Cyberpunk, prompt: "acid green and hot pink against black", swatch: ["#39ff14", "#ff00a0", "#0b0b14"]}
+  - {id: digital_green, label: Digital green, prompt: "sickly green-tinted digital grade", swatch: ["#0f2e12", "#3cb043", "#a8e6a1"]}
+  - {id: day_for_night, label: Day for night, prompt: "day-for-night blue with underexposed highlights", swatch: ["#1b2a49", "#3e5c8a", "#9fb4d6"]}
+  - {id: moonlit, label: Moonlit, prompt: "silver-blue moonlit palette", swatch: ["#2e3a59", "#7b8fb2", "#d6deeb"]}
+  - {id: firelit, label: Firelit, prompt: "flickering orange warmth against darkness", swatch: ["#ff7b00", "#b23a00", "#1a0d05"]}
+  - {id: candlelit, label: Candlelit, prompt: "warm candlelit amber with soft brown shadows", swatch: ["#f2a541", "#8a5a2b", "#2b1a0e"]}
+  - {id: golden_glow, label: Golden glow, prompt: "glowing golden-hour orange and pink", swatch: ["#ffb347", "#ff7f7f", "#ffd9a0"]}
+  - {id: overcast_muted, label: Overcast muted, prompt: "muted overcast greys and greens", swatch: ["#8a8f8a", "#a6ad9f", "#5e6660"]}
+  - {id: nordic, label: Nordic, prompt: "muted slate, moss and cream", swatch: ["#56646f", "#7d8f69", "#ede6d6"]}
+  - {id: earthy, label: Earthy, prompt: "earthy browns, clay and sage", swatch: ["#7b5e3b", "#b07d62", "#9caf88"]}
+  - {id: mono_red, label: Red monochrome, prompt: "monochrome red, everything tinted crimson", swatch: ["#3d0000", "#950101", "#ff0000"]}
+  - {id: mono_blue, label: Blue monochrome, prompt: "monochrome blue tint", swatch: ["#03045e", "#0077b6", "#90e0ef"]}
+  - {id: mono_green, label: Green monochrome, prompt: "monochrome green tint", swatch: ["#081c15", "#2d6a4f", "#95d5b2"]}
+  - {id: duotone, label: Orange-blue duotone, prompt: "duotone of orange highlights and blue shadows", swatch: ["#ff8c42", "#1b3b6f", "#f4f4f4"]}
+  - {id: split_tone, label: Split tone, prompt: "split-toned, warm highlights and cool shadows", swatch: ["#f2c38b", "#3c5a7a", "#2a2a2a"]}
+  - {id: cross_processed, label: Cross-processed, prompt: "cross-processed, yellow-green highlights and magenta shadows, high contrast", swatch: ["#d4e157", "#ad1457", "#263238"]}
+  - {id: faded_film, label: Faded film, prompt: "faded film with lifted blacks and washed-out color", swatch: ["#b9a99a", "#8fa3a6", "#d9cfc1"]}
+  - {id: punchy, label: Punchy, prompt: "punchy high-contrast saturated grade", swatch: ["#e63946", "#1d3557", "#f1faee"]}
+  - {id: low_saturation, label: Low saturation, prompt: "nearly desaturated, quiet color", swatch: ["#9a9a95", "#7d837f", "#c4c2bc"]}
+  - {id: hospital, label: Hospital green, prompt: "sickly fluorescent green-cyan cast", swatch: ["#b8d8c8", "#6aa595", "#e9f2ec"]}
+  - {id: toxic, label: Toxic, prompt: "toxic chartreuse and dirty yellow", swatch: ["#c6d300", "#7f8c00", "#3a3d0f"]}
+  - {id: dusty_western, label: Dusty western, prompt: "dusty tan and faded denim blue", swatch: ["#c2a878", "#8a6a43", "#6c8299"]}
+  - {id: tropical, label: Tropical, prompt: "vivid tropical turquoise, coral and lime", swatch: ["#00b4d8", "#ff6f59", "#b8f35d"]}
+  - {id: storybook, label: Storybook, prompt: "soft storybook watercolor tones", swatch: ["#f7d6bf", "#a3c4bc", "#e8a87c"]}
+  - {id: gothic, label: Gothic, prompt: "gothic black, bruised purple and cold grey", swatch: ["#1a1423", "#4a2c40", "#77727a"]}
+  - {id: sunset_magenta, label: Magenta sunset, prompt: "magenta-and-tangerine sunset sky", swatch: ["#c71585", "#ff7f50", "#ffd1a6"]}
+  - {id: mint_cream, label: Mint cream, prompt: "airy mint and cream", swatch: ["#cdeac0", "#fff8e7", "#9dc3b0"]}
+  - {id: industrial, label: Industrial, prompt: "industrial rust, concrete grey and safety yellow", swatch: ["#8b4513", "#7f7f7f", "#ffcc00"]}
+  - {id: blood_orange, label: Blood orange, prompt: "blood orange against deep teal", swatch: ["#d1495b", "#edae49", "#00798c"]}
 
 genres:
   - {id: action, label: Action, prompt: "high-energy action film"}
-  - {id: horror, label: Horror, prompt: "tense horror film atmosphere"}
+  - {id: adventure, label: Adventure, prompt: "sweeping adventure"}
   - {id: comedy, label: Comedy, prompt: "lighthearted comedy tone"}
-  - {id: noir, label: Noir, prompt: "moody film-noir atmosphere"}
+  - {id: coming_of_age, label: Coming of age, prompt: "tender coming-of-age story"}
+  - {id: disaster, label: Disaster, prompt: "large-scale disaster film"}
+  - {id: documentary, label: Documentary, prompt: "observational documentary style"}
   - {id: drama, label: Drama, prompt: "intimate character drama"}
   - {id: epic, label: Epic, prompt: "grand epic scale"}
-  - {id: western, label: Western, prompt: "dusty western atmosphere"}
-  - {id: scifi, label: Sci-fi, prompt: "science-fiction atmosphere"}
-  - {id: documentary, label: Documentary, prompt: "observational documentary style"}
+  - {id: fairy_tale, label: Fairy tale, prompt: "enchanted fairy-tale atmosphere"}
+  - {id: fantasy, label: Fantasy, prompt: "high-fantasy atmosphere"}
+  - {id: heist, label: Heist, prompt: "slick heist film"}
+  - {id: horror, label: Horror, prompt: "tense horror film atmosphere"}
+  - {id: mockumentary, label: Mockumentary, prompt: "deadpan mockumentary"}
+  - {id: musical, label: Musical, prompt: "joyful movie-musical staging"}
+  - {id: mystery, label: Mystery, prompt: "brooding mystery"}
+  - {id: noir, label: Noir, prompt: "moody film-noir atmosphere"}
+  - {id: period, label: Period piece, prompt: "meticulous period drama"}
+  - {id: psychological, label: Psychological, prompt: "unsettling psychological thriller"}
   - {id: romance, label: Romance, prompt: "tender romantic tone"}
+  - {id: scifi, label: Sci-fi, prompt: "science-fiction atmosphere"}
+  - {id: sports, label: Sports, prompt: "triumphant sports drama"}
+  - {id: superhero, label: Superhero, prompt: "larger-than-life superhero spectacle"}
+  - {id: survival, label: Survival, prompt: "raw survival story"}
   - {id: thriller, label: Thriller, prompt: "suspenseful thriller tone"}
+  - {id: war, label: War, prompt: "gritty war film"}
+  - {id: western, label: Western, prompt: "dusty western atmosphere"}
 
+# Tempo of the action and the camera.
 pacing:
   - {id: calm, label: Calm, prompt: "calm, unhurried pacing"}
   - {id: dynamic, label: Dynamic, prompt: "dynamic, energetic pacing"}
   - {id: chaotic, label: Chaotic, prompt: "frantic, chaotic pacing"}
-  - {id: single_take, label: Single take, prompt: "one continuous take with no cuts"}
+  - {id: single_take, label: Single shot, prompt: "one continuous take with no cuts"}
 
+# The emotion wheel: eight families, each mild (1), plain (2) and intense (3). `{subject}` is the subject, or the
+# @character the emotion is set for.
 emotions:
-  - {id: joy, label: Joy, prompt: "{subject} radiates joy"}
-  - {id: sadness, label: Sadness, prompt: "{subject} is quietly sad"}
-  - {id: anger, label: Anger, prompt: "{subject} seethes with anger"}
-  - {id: fear, label: Fear, prompt: "{subject} is gripped by fear"}
-  - {id: surprise, label: Surprise, prompt: "{subject} reacts with surprise"}
-  - {id: love, label: Love, prompt: "{subject} looks on with tenderness"}
-  - {id: calm, label: Calm, prompt: "{subject} is serene and calm"}
-  - {id: determination, label: Determination, prompt: "{subject} is fiercely determined"}
+  - {id: calm, label: Serenity, family: joy, level: 1, prompt: "{subject} is serene and calm"}
+  - {id: joy, label: Joy, family: joy, level: 2, prompt: "{subject} radiates joy"}
+  - {id: ecstasy, label: Ecstasy, family: joy, level: 3, prompt: "{subject} is overcome with ecstatic delight"}
+  - {id: acceptance, label: Acceptance, family: trust, level: 1, prompt: "{subject} is open and accepting"}
+  - {id: trust, label: Trust, family: trust, level: 2, prompt: "{subject} looks on with trust and warmth"}
+  - {id: love, label: Love, family: trust, level: 3, prompt: "{subject} looks on with deep tenderness"}
+  - {id: apprehension, label: Apprehension, family: fear, level: 1, prompt: "{subject} is uneasy and apprehensive"}
+  - {id: fear, label: Fear, family: fear, level: 2, prompt: "{subject} is gripped by fear"}
+  - {id: terror, label: Terror, family: fear, level: 3, prompt: "{subject} is frozen in terror"}
+  - {id: distraction, label: Distraction, family: surprise, level: 1, prompt: "{subject} is distracted, attention drifting"}
+  - {id: surprise, label: Surprise, family: surprise, level: 2, prompt: "{subject} reacts with surprise"}
+  - {id: amazement, label: Amazement, family: surprise, level: 3, prompt: "{subject} is struck with amazement"}
+  - {id: pensive, label: Pensiveness, family: sadness, level: 1, prompt: "{subject} is pensive and withdrawn"}
+  - {id: sadness, label: Sadness, family: sadness, level: 2, prompt: "{subject} is quietly sad"}
+  - {id: grief, label: Grief, family: sadness, level: 3, prompt: "{subject} is wracked with grief"}
+  - {id: boredom, label: Boredom, family: disgust, level: 1, prompt: "{subject} is bored and listless"}
+  - {id: disgust, label: Disgust, family: disgust, level: 2, prompt: "{subject} recoils in disgust"}
+  - {id: loathing, label: Loathing, family: disgust, level: 3, prompt: "{subject} glares with loathing"}
+  - {id: annoyance, label: Annoyance, family: anger, level: 1, prompt: "{subject} is visibly annoyed"}
+  - {id: anger, label: Anger, family: anger, level: 2, prompt: "{subject} seethes with anger"}
+  - {id: rage, label: Rage, family: anger, level: 3, prompt: "{subject} explodes in rage"}
+  - {id: interest, label: Interest, family: anticipation, level: 1, prompt: "{subject} watches with quiet interest"}
+  - {id: anticipation, label: Anticipation, family: anticipation, level: 2, prompt: "{subject} waits in eager anticipation"}
+  - {id: determination, label: Determination, family: anticipation, level: 3, prompt: "{subject} is fiercely determined"}

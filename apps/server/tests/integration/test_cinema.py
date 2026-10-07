@@ -30,7 +30,7 @@ async def new_project(client, **document) -> dict:
 
 async def test_saves_are_versioned_and_revisions_restore(client):
     p = await new_project(client, logline="A keeper's last night.")
-    assert p["version"] == 1 and p["document"]["settings"]["model_id"] == "seedance-2.5"
+    assert p["version"] == 1 and p["document"]["settings"]["model_id"] == "cinema-studio"
     doc = {**p["document"], "scenes": [{"heading": "EXT. LIGHTHOUSE - DUSK", "shots": [{"action": "Waves hit rocks."}]}]}
     r = await client.put(f"/projects/{p['id']}", json={"version": 1, "document": doc, "note": "first scene"})
     assert r.status_code == 200 and r.json()["version"] == 2
@@ -152,3 +152,122 @@ async def test_frames_for_a_mentioned_character_use_its_pictures(client, in_memo
     async with session_scope() as s:
         gen = await s.get(Generation, uuid.UUID(done["steps"][0]["generation_id"]))
     assert gen.mode == "edit" and [m["role"] for m in gen.request["media"]] == ["image_references"]
+
+
+async def test_cinema_studio_runs_on_its_engine(client, in_memory_queue):
+    r = await client.post("/registry/estimate", json={
+        "model_id": "cinema-studio", "mode": "t2v", "prompt": "A keeper climbs the stairs",
+        "params": {"engine": "veo", "duration": 8, "era": "eighties"}})
+    assert r.status_code == 200, r.text
+    est = r.json()
+    assert (est["model_id"], est["via"]["model_id"], est["via"]["engine"]) == ("veo-3.1", "cinema-studio", "veo")
+    assert "1980s look" in est["compiled_prompt"] and est["chosen_route_id"] == "veo-3.1@mock"
+
+    # a film shot on Cinema Studio: the takes run on the engine and remember the studio they came through
+    p = await new_project(client)
+    run = await start(client, "cinema_takes", project_id=p["id"], model_id="cinema-studio",
+                      params={"engine": "kling", "palette": "sepia"}, takes=1,
+                      shots=[{"key": "saaa", "prompt": "Waves hit the rocks", "duration": 5}])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(done["steps"][0]["generation_id"]))
+    assert (gen.model_id, gen.mode, gen.shot_key) == ("kling-3.0", "t2v", "saaa")
+    assert gen.request["via"]["model_id"] == "cinema-studio" and gen.request["direction"] == {"palette": "sepia"}
+    assert "sepia monochrome" in gen.compiled["prompt"]
+
+    bad = await client.post("/registry/estimate", json={"model_id": "cinema-studio", "mode": "omni_reference",
+                                                        "params": {"engine": "kling"}})
+    assert bad.status_code == 422 and "Seedance 2.5 or Veo 3.1 can" in bad.text
+
+
+async def made_by(client, pid: str, shot: str) -> dict[str, dict]:
+    """The shot's finished video takes, by how they were made (the newest of each)."""
+    out: dict[str, dict] = {}
+    for t in (await client.get(f"/projects/{pid}/takes", params={"shot_key": shot})).json():
+        if t["asset"] and t["output_type"] == "video":
+            out.setdefault(t["made_by"], t)
+    return out
+
+
+async def test_a_scene_in_one_multi_shot_take_becomes_a_take_per_shot(client, in_memory_queue):
+    p = await new_project(client)
+    pid = p["id"]
+    frames = await start(client, "cinema_frames", project_id=pid, count=1, shots=[{"key": "sone", "prompt": "Cliff"}])
+    await drain(in_memory_queue)
+    hero = (await get(client, frames["id"]))["output"]["frames"]["sone"][0]
+
+    shots = [{"key": "sone", "prompt": "Wide on the lighthouse as the storm hits", "duration": 4,
+              "direction": {"shot_size": "wide", "palette": "cold_steel"}},
+             {"key": "stwo", "prompt": "Close on the keeper's hand on the brass key", "duration": 3,
+              "direction": {"shot_size": "close_up"}},
+             {"key": "sthree", "prompt": "The lamp flares and the beam sweeps the sea", "duration": 5}]
+    run = await start(client, "cinema_scene", project_id=pid, model_id="kling-3.0", scene_key="cone",
+                      start_asset_id=hero, shots=shots)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    steps = {s["key"]: s for s in done["steps"]}
+    assert set(steps) == {"scene[cone:1]", "split[cone:1]"}
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(steps["scene[cone:1]"]["generation_id"]))
+    # one call: the shots go as the model's own shot list, each compiled with its direction; 12 s in all
+    assert (gen.mode, gen.shot_key, gen.request["params"]["duration"]) == ("multi_shot_frame", None, 12)
+    sent = gen.request["params"]["shots"]
+    assert [s["duration"] for s in sent] == [4, 3, 5] and "cold steel-blue" in sent[0]["prompt"]
+    assert sent[1]["prompt"].startswith("Close on the keeper's hand on the brass key, close-up")
+    assert gen.request["compiled_prompt"] == "" and gen.compiled["prompt"].startswith("Shot 1: Wide on")
+
+    scene_take = done["output"]["scene_takes"][0]
+    lengths = {}
+    for key in ("sone", "stwo", "sthree"):
+        take = (await made_by(client, pid, key))["multi_shot"]
+        assert take["parent_asset_id"] == scene_take and take["generation_id"] is None
+        assert done["output"]["takes"][key] == [take["asset"]["id"]]
+        lengths[key] = round(take["asset"]["duration_ms"] / 1000)
+    assert lengths == {"sone": 4, "stwo": 3, "sthree": 5}
+
+    too_long = await client.post("/pipelines", json={"recipe": "cinema_scene", "input": {
+        "project_id": pid, "model_id": "kling-3.0", "scene_key": "cone",
+        "shots": [{**s, "duration": 6} for s in shots]}})
+    assert too_long.status_code == 422 and "at most 15 s in one take" in too_long.text
+    no_multi = await client.post("/pipelines", json={"recipe": "cinema_scene", "input": {
+        "project_id": pid, "model_id": "veo-3.1", "scene_key": "cone", "shots": shots}})
+    assert no_multi.status_code == 422 and "can't film several shots in one take" in no_multi.text
+
+
+async def test_extend_a_take_forward_and_backward_and_edit_it(client, in_memory_queue):
+    p = await new_project(client)
+    pid = p["id"]
+    run = await start(client, "cinema_takes", project_id=pid, model_id="kling-3.0", takes=1,
+                      shots=[{"key": "sone", "prompt": "The keeper climbs the stairs", "duration": 5}])
+    await drain(in_memory_queue)
+    take = (await get(client, run["id"]))["output"]["takes"]["sone"][0]
+
+    after = await start(client, "cinema_extend", project_id=pid, shot_key="sone", take_asset_id=take, side="after",
+                        prompt="He reaches the lamp room", model_id="kling-3.0", duration=4)
+    before = await start(client, "cinema_extend", project_id=pid, shot_key="sone", take_asset_id=take,
+                         side="before", prompt="He unlocks the door at the foot of the stairs",
+                         model_id="cinema-studio", params={"engine": "kling"}, duration=3)
+    edit = await start(client, "cinema_edit", project_id=pid, shot_key="sone", take_asset_id=take,
+                       model_id="kling-o3-edit", prompt="Make it snow outside the windows")
+    await drain(in_memory_queue)
+    for r in (after, before, edit):
+        done = await get(client, r["id"])
+        assert done["status"] == "succeeded", (r["recipe"], done["error"])
+    steps = {s["key"] for s in (await get(client, before["id"]))["steps"]}
+    assert steps == {"edge", "lead_frame", "lead", "join"}
+
+    takes = await made_by(client, pid, "sone")
+    assert set(takes) == {"model", "extend_after", "extend_before", "edit"}
+    assert all(takes[k]["parent_asset_id"] == take for k in ("extend_after", "extend_before", "edit"))
+    # the joins drop the one frame the two parts share
+    assert abs(takes["extend_after"]["asset"]["duration_ms"] - 9000) < 200
+    assert abs(takes["extend_before"]["asset"]["duration_ms"] - 8000) < 200
+    assert takes["edit"]["generation_id"] is not None
+
+    veo = await client.post("/pipelines", json={"recipe": "cinema_extend", "input": {
+        "project_id": pid, "shot_key": "sone", "take_asset_id": take, "side": "before", "prompt": "x",
+        "model_id": "wan-2.2-5b"}})
+    assert veo.status_code == 422 and "can't end on a chosen frame" in veo.text

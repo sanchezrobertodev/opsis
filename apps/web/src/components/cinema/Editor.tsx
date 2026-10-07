@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
-import { type CinemaDoc, useProject, useRestoreRevision, useRevisions, useRunsActive, useSaveProject, useTakes } from "@/lib/cinema";
+import { type CinemaDoc, useProject, useRestoreRevision, useRevisions, useProjectRunsActive, useRunsActive, useSaveProject, useTakes } from "@/lib/cinema";
 import { type RunCreate, useStartRun } from "@/lib/runs";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 import { WHEN } from "@/components/runs/Runs";
@@ -28,7 +28,9 @@ export function CinemaEditor({ id }: { id: string }) {
   const [tab, setTab] = useState<Tab>("storyboard");
   const [runIds, setRunIds] = useState<string[]>([]);
   const [history, setHistory] = useState(false);
-  const { active, runs } = useRunsActive(runIds);
+  const { active: mine, runs } = useRunsActive(runIds);
+  const elsewhere = useProjectRunsActive(id);
+  const active = mine || elsewhere;
   const takes = useTakes(id, active);
 
   const doc = edited?.doc ?? (project?.document as CinemaDoc | undefined);

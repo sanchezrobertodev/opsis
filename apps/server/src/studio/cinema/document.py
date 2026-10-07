@@ -45,7 +45,9 @@ class Scene(_Doc):
 
 
 class Settings(_Doc):
-    model_id: str = Field("seedance-2.5", description="The video model shots are filmed on")
+    model_id: str = Field("cinema-studio", description="The video model shots are filmed on")
+    model_params: dict[str, Any] = Field(default_factory=dict,
+                                         description="More params for that model, such as Cinema Studio's engine")
     image_model_id: str = Field("nano-banana-2", description="Renders hero frames")
     aspect_ratio: str = "16:9"
     resolution: str = "720p"
@@ -78,8 +80,7 @@ class CinemaDocument(_Doc):
 
 def merged_direction(settings: Settings, shot: Shot) -> dict[str, Any]:
     """The project's look with the shot's own choices on top (a field the shot sets wins)."""
-    base = settings.direction.model_dump(exclude_none=True)
-    own = shot.direction.model_dump(exclude_none=True)
-    if not own.get("camera_moves"):
-        own.pop("camera_moves", None)
-    return {**base, **own}
+    def chosen(d: ShotDirection) -> dict[str, Any]:  # lists left empty (moves, lights, emotions) choose nothing
+        return {k: v for k, v in d.model_dump(exclude_none=True).items() if v != []}
+
+    return {"camera_moves": [], **chosen(settings.direction), **chosen(shot.direction)}

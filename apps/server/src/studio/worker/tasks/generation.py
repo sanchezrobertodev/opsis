@@ -317,7 +317,9 @@ async def run_submit(gen_id: uuid.UUID) -> None:
             attempt.last_response = _scrub(result.raw)
             attempt.next_poll_at = datetime.now(UTC) + timedelta(seconds=get_settings().poll_initial_seconds)
             await fsm.transition(s, gen, GenStatus.in_progress, reason="provider_queue",
-                                 compiled={**(gen.compiled or {}), "endpoint": endpoint, "prompt": req.prompt,
+                                 compiled={**(gen.compiled or {}), "endpoint": endpoint,
+                                           # a multi-shot take sends its shots, not a prompt; keep their text
+                                           "prompt": req.prompt or (gen.compiled or {}).get("prompt", ""),
                                            "payload_warnings": warnings})
             poll_after = get_settings().poll_initial_seconds
         elif ambiguous is not None:

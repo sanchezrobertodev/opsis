@@ -9,8 +9,17 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from studio.director.compiler import ShotDirection
-from studio.director.library import CameraMove, LookItem
-from studio.registry.schema import DurationSpec, MediaSlot, Mode, Param, PresetField, PromptSpec, Rule
+from studio.director.library import CameraMove, EmotionItem, LookItem
+from studio.registry.schema import (
+    DurationSpec,
+    MediaSlot,
+    Mode,
+    Param,
+    PresetField,
+    PromptSpec,
+    Rule,
+    VirtualSpec,
+)
 
 
 class ApiModel(BaseModel):
@@ -29,6 +38,7 @@ class ModeSummary(ApiModel):
 class ModelSummary(ApiModel):
     id: str
     name: str
+    kind: str = Field("model", description="model, or virtual: a studio layer that runs on other models")
     family: str
     vendor: str
     description: str
@@ -73,6 +83,7 @@ class ModelDetail(ApiModel):
     modes: list[Mode]
     elements: dict[str, Any] | None
     routes: list[RouteSummary]
+    virtual: VirtualSpec | None = Field(None, description="Engines a virtual model runs on, and its director params")
 
 
 class RegistryOut(ApiModel):
@@ -120,6 +131,9 @@ class CandidateOut(ApiModel):
 
 
 class EstimateOut(ApiModel):
+    model_id: str = Field(description="The model that runs (a virtual model's engine)")
+    mode: str
+    via: dict[str, Any] | None = Field(None, description="The virtual model asked for, and its engine")
     chosen_route_id: str | None
     estimate_usd: float | None
     live_reference: CandidateOut | None
@@ -134,14 +148,18 @@ class DirectorLibraryOut(ApiModel):
     shot_sizes: list[LookItem]
     angles: list[LookItem]
     lenses: list[LookItem]
+    focal_lengths: list[LookItem]
     apertures: list[LookItem]
     camera_bodies: list[LookItem]
     eras: list[LookItem]
     lighting: list[LookItem]
+    light_sources: list[LookItem]
+    light_positions: list[LookItem]
+    light_colors: list[LookItem]
     palettes: list[LookItem]
     genres: list[LookItem]
     pacing: list[LookItem]
-    emotions: list[LookItem]
+    emotions: list[EmotionItem]
 
 
 class CompileIn(ApiModel):

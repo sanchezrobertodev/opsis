@@ -258,9 +258,12 @@ wan-core, AMS-11). Remaining work is tracked in Jira project AMS.
 P5 in progress (branch `claude/p5-cinema-studio`, mock-tested): versioned film projects with revisions, Claude shot
 plans, a storyboard with per-shot direction, hero-frame grids, batch takes with last-frame continuity (an edit redoes
 only that shot and the shots chained after it), take picking, and a cut with trims and fades exported by ffmpeg.
-Not yet: the Cinema Studio virtual model (AMS-38), multi-shot and per-shot extend/edit (AMS-41), the director
-panel's extra Cinema Studio 4.0 vocabulary (AMS-37), and a Remotion timeline preview (the cut previews in a plain
-player for now).
+Also built: the Cinema Studio virtual model over Seedance 2.5 / Kling 3.0 / Veo 3.1 (AMS-38; the default film model),
+multi-shot scenes (Kling multi_prompt, Seedance timed prompt) cut back into per-shot takes, and per-shot extend
+after/before plus whole-take and region edits, each a new take linked to its parent (AMS-41), and the director's
+Cinema Studio 4.0 vocabulary: 58 grades, eras by decade, focal lengths, a two-light console and an emotion wheel per
+cast member, with golden snapshots per dialect (AMS-37). Not yet: a Remotion timeline preview (the cut previews in a
+plain player for now) and live checks of the new multi-shot payloads.
 - **Step 0 — Handoff (this session, after approval):**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

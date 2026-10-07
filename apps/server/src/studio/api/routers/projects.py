@@ -93,8 +93,11 @@ class PlanOut(BaseModel):
 
 
 class TakeOut(BaseModel):
-    generation_id: uuid.UUID
+    generation_id: uuid.UUID | None = Field(description="None for a take cut or joined from others")
     shot_key: str
+    made_by: str = Field("model", description="model; multi_shot (cut from a scene take); extend_after or "
+                                              "extend_before (joined with a new part); region_edit")
+    parent_asset_id: uuid.UUID | None = Field(None, description="The take this one was made from")
     output_type: str
     status: str
     progress: float | None
@@ -291,9 +294,12 @@ async def plan(project_id: uuid.UUID, body: PlanIn, session: AsyncSession = Depe
 @router.get("/{project_id}/takes", response_model=list[TakeOut])
 async def list_takes(project_id: uuid.UUID, shot_key: str | None = None, session: AsyncSession = Depends(get_session),
                      user: User = Depends(current_user)) -> list[TakeOut]:
-    """Hero frames and takes made for the project's shots, newest first, finished or not."""
+    """Hero frames and takes made for the project's shots, newest first, finished or not. Besides the generations
+    made for a shot, this lists takes cut from a multi-shot scene take and takes extended or edited from another
+    (derived clips whose metadata names the project and shot), each with the take it came from."""
     p = await _project(session, user, project_id)
-    q = select(Generation).where(Generation.project_id == p.id, Generation.user_id == user.id)
+    q = select(Generation).where(Generation.project_id == p.id, Generation.user_id == user.id,
+                                 Generation.shot_key.is_not(None))
     if shot_key:
         q = q.where(Generation.shot_key == shot_key)
     gens = (await session.execute(q.order_by(Generation.created_at.desc()).limit(400))).scalars().all()
@@ -305,9 +311,23 @@ async def list_takes(project_id: uuid.UUID, shot_key: str | None = None, session
         by_gen.setdefault(a.generation_id, []).append(a)
     out = []
     for g in gens:
+        parent = next((m["asset_id"] for m in g.request.get("media", []) if m.get("role") == "input_video"), None)
         common = {"generation_id": g.id, "shot_key": g.shot_key or "", "output_type": g.output_type,
                   "status": g.status.value, "progress": g.progress, "error": g.error_message,
-                  "prompt": g.request.get("prompt", ""), "created_at": g.created_at}
+                  "prompt": g.request.get("prompt", ""), "created_at": g.created_at,
+                  "made_by": "edit" if parent else "model", "parent_asset_id": parent}
         outs = by_gen.get(g.id) or [None]
         out += [TakeOut(**common, asset=asset_out(a) if a else None) for a in outs]
-    return out
+
+    meta = Asset.metadata_
+    dq = select(Asset).where(Asset.user_id == user.id, Asset.deleted_at.is_(None), Asset.generation_id.is_(None),
+                             meta["project_id"].astext == str(p.id), meta["shot_key"].astext.is_not(None))
+    if shot_key:
+        dq = dq.where(meta["shot_key"].astext == shot_key)
+    for a in (await session.execute(dq.order_by(Asset.created_at.desc()).limit(400))).scalars().all():
+        m = a.metadata_ or {}
+        out.append(TakeOut(generation_id=None, shot_key=m["shot_key"], made_by=m.get("made_by", "derived"),
+                           parent_asset_id=m.get("parent_asset_id"), output_type=a.kind.value, status="succeeded",
+                           progress=1.0, error=None, prompt=m.get("prompt", ""), asset=asset_out(a),
+                           created_at=a.created_at))
+    return sorted(out, key=lambda t: t.created_at, reverse=True)

@@ -17,6 +17,7 @@ const VENDORS: Record<string, string> = {
   bfl: "Black Forest Labs",
   lightricks: "Lightricks",
   xai: "xAI",
+  "ai-media-studio": "Studio layer",
 };
 
 export function vendorName(id: string) {

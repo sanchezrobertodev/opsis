@@ -19,7 +19,16 @@ from pydantic import BaseModel, Field, model_validator
 from studio.db.models import StepKind
 from studio.director.elements import mentions
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
-from studio.pipelines.recipes.common import mode_for, start_frame_mode, text_mode, with_param
+from studio.pipelines.recipes.common import (
+    bridge_mode,
+    edit_mode,
+    fit_duration,
+    mode_for,
+    multi_shot_mode,
+    start_frame_mode,
+    text_mode,
+    with_param,
+)
 from studio.pipelines.recipes.keyframe import ref_mode
 from studio.registry.loader import Registry
 from studio.registry.schema import Mode, ModelSpec
@@ -285,3 +294,286 @@ class CinemaExportRecipe(Recipe):
     def result(self, inp: CinemaExportInput, settled: Settled) -> dict[str, Any] | None:
         cut = ok(settled, "cut")
         return {"asset_id": cut["asset_id"], "duration_ms": cut.get("duration_ms")} if cut else None
+
+
+# ---------------------------------------------------------------- a scene in one take (multi-shot)
+
+
+def scene_take_key(scene: str, n: int) -> str:
+    return f"scene[{scene}:{n}]"
+
+
+def split_key(scene: str, n: int) -> str:
+    return f"split[{scene}:{n}]"
+
+
+class SceneShot(BaseModel):
+    key: str = Field(pattern=KEY)
+    prompt: str = Field(min_length=1, max_length=2000)
+    direction: dict[str, Any] | None = None
+    duration: float = Field(ge=1, le=30)
+
+
+class CinemaSceneInput(BaseModel):
+    project_id: uuid.UUID
+    model_id: str
+    params: dict[str, Any] = {}
+    takes: int = Field(1, ge=1, le=4)
+    scene_key: str = Field(pattern=KEY)
+    shots: list[SceneShot] = Field(min_length=2, max_length=8)
+    start_asset_id: uuid.UUID | None = Field(None, description="The first shot's picked hero frame")
+
+
+class CinemaSceneRecipe(Recipe):
+    id = "cinema_scene"
+    name = "Film a scene in one take"
+    summary = "The scene's shots rendered as one multi-shot take, then cut back into a take per shot."
+    Input = CinemaSceneInput
+
+    def title(self, inp: CinemaSceneInput) -> str:
+        return f"Scene in one take: {len(inp.shots)} shots"
+
+    def _mode(self, inp: CinemaSceneInput, spec: ModelSpec) -> Mode | None:
+        return multi_shot_mode(spec, frame=inp.start_asset_id is not None)
+
+    def validate(self, inp: CinemaSceneInput, reg: Registry) -> list[str]:
+        spec = reg.model(inp.model_id)
+        if spec is None or spec.output_type != "video":
+            return [f"{inp.model_id!r} is not a video model"]
+        if self._mode(inp, spec) is None:
+            frame = " from a hero frame" if inp.start_asset_id else ""
+            return [f"{spec.name} can't film several shots in one take{frame}"]
+        return []
+
+    def _params(self, inp: CinemaSceneInput, spec: ModelSpec, mode: Mode) -> dict[str, Any]:
+        params = {k: v for k, v in inp.params.items() if k != "duration"}  # the shots set the length
+        name = next((p.name for p in spec.params_for(mode.id) if p.type == "shots"), "shots")
+        return {**params, name: [{"prompt": s.prompt, "duration": s.duration,
+                                  **({"direction": s.direction} if s.direction else {})} for s in inp.shots]}
+
+    def jobs(self, inp: CinemaSceneInput, reg: Registry) -> list[PlannedJob]:
+        spec = reg.models[inp.model_id]
+        mode = self._mode(inp, spec)
+        assert mode is not None
+        roles = ("start_image",) if inp.start_asset_id else ()
+        return [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode), roles)] * inp.takes
+
+    def plan(self, inp: CinemaSceneInput, settled: Settled, reg: Registry) -> list[StepSpec]:
+        spec = reg.models[inp.model_id]
+        mode = self._mode(inp, spec)
+        assert mode is not None
+        media = [{"role": "start_image", "asset_id": str(inp.start_asset_id)}] if inp.start_asset_id else []
+        specs: list[StepSpec] = []
+        for n in range(1, inp.takes + 1):
+            key = scene_take_key(inp.scene_key, n)
+            # the whole take belongs to the scene, not one shot; its pieces become the shots' takes
+            specs.append(StepSpec(key, StepKind.generate, f"Scene take {n}", {
+                "model_id": spec.id, "mode": mode.id, "prompt": "", "media": media,
+                "params": self._params(inp, spec, mode), "project_id": str(inp.project_id), "take": n,
+            }, optional=True))
+            take = ok(settled, key)
+            if take is not None:
+                specs.append(StepSpec(split_key(inp.scene_key, n), StepKind.local, f"Cut scene take {n} into shots", {
+                    "op": "split_shots", "asset_id": take["asset_id"], "project_id": str(inp.project_id),
+                    "scene_key": inp.scene_key,
+                    "shots": [{"key": s.key, "duration": s.duration, "prompt": s.prompt} for s in inp.shots],
+                }, (key,)))
+        return specs
+
+    def result(self, inp: CinemaSceneInput, settled: Settled) -> dict[str, Any] | None:
+        out: dict[str, list[str]] = {s.key: [] for s in inp.shots}
+        scenes = []
+        for n in range(1, inp.takes + 1):
+            key = scene_take_key(inp.scene_key, n)
+            if key not in settled:
+                return None
+            if not ok(settled, key):
+                continue
+            split = ok(settled, split_key(inp.scene_key, n))
+            if split is None:
+                return None
+            scenes.append(settled[key]["asset_id"])
+            for shot_key, asset_id in split["assets"].items():
+                out[shot_key].append(asset_id)
+        return {"takes": out, "scene_takes": scenes}
+
+    def failure(self, inp: CinemaSceneInput, settled: Settled) -> str | None:
+        result = self.result(inp, settled)
+        if result is not None and not result["scene_takes"]:
+            return "No take of the scene came out. Check each take's error and try again."
+        return None
+
+
+# ---------------------------------------------------------------- extend a take
+
+
+EDGE = 1 / 24  # the frame two joined clips share, dropped from one of them
+
+
+class CinemaExtendInput(BaseModel):
+    project_id: uuid.UUID
+    shot_key: str = Field(pattern=KEY)
+    take_asset_id: uuid.UUID
+    side: Literal["after", "before"] = Field("after", description="Continue past the end, or lead into the start")
+    prompt: str = Field(min_length=1, max_length=2000, description="What happens in the new part")
+    direction: dict[str, Any] | None = None
+    model_id: str
+    params: dict[str, Any] = {}
+    duration: int = Field(5, ge=1, le=15)
+    image_model_id: str = Field("nano-banana-2", description="Before: draws the frame the new part starts on")
+
+
+def lead_frame_prompt(prompt: str) -> str:
+    return (f"The same scene a few moments earlier: {prompt.strip().rstrip('.')}. Keep the same people, place, "
+            "light and style as the reference frame.")
+
+
+class CinemaExtendRecipe(Recipe):
+    id = "cinema_extend"
+    name = "Extend a take"
+    summary = "More of a shot: continue from its last frame, or lead into its first, joined into a new take."
+    Input = CinemaExtendInput
+
+    def title(self, inp: CinemaExtendInput) -> str:
+        return f"Extend {inp.shot_key} {'forward' if inp.side == 'after' else 'backward'}: {inp.prompt[:60]}"
+
+    def validate(self, inp: CinemaExtendInput, reg: Registry) -> list[str]:
+        spec = reg.model(inp.model_id)
+        if spec is None or spec.output_type != "video":
+            return [f"{inp.model_id!r} is not a video model"]
+        if inp.side == "after" and start_frame_mode(spec) is None:
+            return [f"{spec.name} can't start from a frame, so it can't continue a take"]
+        if inp.side == "before":
+            image = reg.model(inp.image_model_id)
+            if bridge_mode(spec) is None:
+                return [f"{spec.name} can't end on a chosen frame, so it can't lead into a take; "
+                        "pick a model with start and end frames"]
+            if image is None or image.output_type != "image" or ref_mode(image) is None:
+                return [f"{inp.image_model_id!r} can't draw a frame from a reference picture"]
+        return []
+
+    def _video(self, inp: CinemaExtendInput, spec: ModelSpec) -> tuple[Mode, dict[str, Any]]:
+        mode = start_frame_mode(spec) if inp.side == "after" else bridge_mode(spec)
+        assert mode is not None
+        return mode, with_param(spec, mode.id, dict(inp.params), "duration", fit_duration(spec, mode.id, inp.duration))
+
+    def _image(self, inp: CinemaExtendInput, reg: Registry) -> tuple[ModelSpec, Mode, str]:
+        image = reg.models[inp.image_model_id]
+        mode = ref_mode(image)
+        assert mode is not None
+        return image, mode, (image.elements or {}).get("ref_role", "image_references")
+
+    def jobs(self, inp: CinemaExtendInput, reg: Registry) -> list[PlannedJob]:
+        spec = reg.models[inp.model_id]
+        mode, params = self._video(inp, spec)
+        if inp.side == "after":
+            return [PlannedJob(spec.id, mode.id, params, ("start_image",))]
+        image, img_mode, role = self._image(inp, reg)
+        return [PlannedJob(image.id, img_mode.id, {}, (role,)),
+                PlannedJob(spec.id, mode.id, params, ("start_image", "end_image"))]
+
+    def plan(self, inp: CinemaExtendInput, settled: Settled, reg: Registry) -> list[StepSpec]:
+        spec = reg.models[inp.model_id]
+        mode, params = self._video(inp, spec)
+        take, pid = str(inp.take_asset_id), str(inp.project_id)
+        common = {"project_id": pid, "shot_key": inp.shot_key, "prompt": inp.prompt}
+        op = "last_frame" if inp.side == "after" else "first_frame"
+        label = "Last frame of the take" if inp.side == "after" else "First frame of the take"
+        specs = [StepSpec("edge", StepKind.local, label, {"op": op, "asset_id": take})]
+        edge = ok(settled, "edge")
+        if edge is None:
+            return specs
+        # the new part is made for the project but isn't a take of the shot by itself; the joined clip is
+        video_step = {"model_id": spec.id, "mode": mode.id, "prompt": inp.prompt, "params": params,
+                      "direction": inp.direction, "project_id": pid}
+        if inp.side == "after":
+            specs.append(StepSpec("more", StepKind.generate, "What happens next",
+                                  {**video_step, "media": [{"role": "start_image", "asset_id": edge["asset_id"]}]},
+                                  ("edge",)))
+            more = ok(settled, "more")
+            if more is not None:
+                specs.append(StepSpec("join", StepKind.local, "Join into a longer take", {
+                    "op": "join_takes", **common, "made_by": "extend_after", "parent_asset_id": take,
+                    "clips": [{"asset_id": take}, {"asset_id": more["asset_id"], "trim_in": EDGE}]}, ("more",)))
+            return specs
+
+        image, img_mode, role = self._image(inp, reg)
+        specs.append(StepSpec("lead_frame", StepKind.generate, "The frame it starts on", {
+            "model_id": image.id, "mode": img_mode.id, "prompt": lead_frame_prompt(inp.prompt),
+            "media": [{"role": role, "asset_id": edge["asset_id"]}],
+            "params": with_param(image, img_mode.id, {}, "aspect_ratio", inp.params.get("aspect_ratio")),
+            "project_id": pid}, ("edge",)))
+        start = ok(settled, "lead_frame")
+        if start is None:
+            return specs
+        first = (start.get("asset_ids") or [start["asset_id"]])[0]
+        specs.append(StepSpec("lead", StepKind.generate, "What happens just before", {
+            **video_step, "media": [{"role": "start_image", "asset_id": first},
+                                    {"role": "end_image", "asset_id": edge["asset_id"]}]}, ("lead_frame",)))
+        lead = ok(settled, "lead")
+        if lead is not None:
+            seconds = (lead.get("duration_ms") or inp.duration * 1000) / 1000
+            specs.append(StepSpec("join", StepKind.local, "Join into a longer take", {
+                "op": "join_takes", **common, "made_by": "extend_before", "parent_asset_id": take,
+                "clips": [{"asset_id": lead["asset_id"], "trim_out": max(EDGE, seconds - EDGE)}, {"asset_id": take}],
+            }, ("lead",)))
+        return specs
+
+    def result(self, inp: CinemaExtendInput, settled: Settled) -> dict[str, Any] | None:
+        join = ok(settled, "join")
+        return {"asset_id": join["asset_id"], "duration_ms": join.get("duration_ms")} if join else None
+
+
+# ---------------------------------------------------------------- edit a take
+
+
+class CinemaEditInput(BaseModel):
+    project_id: uuid.UUID
+    shot_key: str = Field(pattern=KEY)
+    take_asset_id: uuid.UUID
+    model_id: str
+    prompt: str = Field(min_length=1, max_length=2000, description="What to change")
+    params: dict[str, Any] = {}
+    reference_asset_ids: list[uuid.UUID] = Field(default_factory=list, max_length=4)
+
+
+class CinemaEditRecipe(Recipe):
+    id = "cinema_edit"
+    name = "Edit a take"
+    summary = "Change a whole take by instruction with an Edit Video model; the result is a new take of the shot."
+    Input = CinemaEditInput
+
+    def title(self, inp: CinemaEditInput) -> str:
+        return f"Edit {inp.shot_key}: {inp.prompt[:60]}"
+
+    def validate(self, inp: CinemaEditInput, reg: Registry) -> list[str]:
+        spec = reg.model(inp.model_id)
+        mode = edit_mode(spec) if spec else None
+        if spec is None or mode is None:
+            return [f"{inp.model_id!r} can't edit a clip by instruction"]
+        if inp.reference_asset_ids and mode.slot("image_references") is None:
+            return [f"{spec.name} doesn't take reference pictures for an edit"]
+        return []
+
+    def jobs(self, inp: CinemaEditInput, reg: Registry) -> list[PlannedJob]:
+        spec = reg.models[inp.model_id]
+        mode = edit_mode(spec)
+        assert mode is not None
+        roles = ("input_video", *(["image_references"] if inp.reference_asset_ids else []))
+        return [PlannedJob(spec.id, mode.id, dict(inp.params), roles,
+                           media=(("input_video", str(inp.take_asset_id)),))]
+
+    def plan(self, inp: CinemaEditInput, settled: Settled, reg: Registry) -> list[StepSpec]:
+        spec = reg.models[inp.model_id]
+        mode = edit_mode(spec)
+        assert mode is not None
+        media = [{"role": "input_video", "asset_id": str(inp.take_asset_id)},
+                 *({"role": "image_references", "asset_id": str(a)} for a in inp.reference_asset_ids)]
+        # an ordinary take of the shot; its input video is its parent
+        return [StepSpec("edit", StepKind.generate, f"Edit: {inp.prompt[:60]}", {
+            "model_id": spec.id, "mode": mode.id, "prompt": inp.prompt, "media": media, "params": dict(inp.params),
+            "project_id": str(inp.project_id), "shot_key": inp.shot_key})]
+
+    def result(self, inp: CinemaEditInput, settled: Settled) -> dict[str, Any] | None:
+        edit = ok(settled, "edit")
+        return {"asset_id": edit["asset_id"]} if edit else None

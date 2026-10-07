@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any
 
@@ -24,7 +24,9 @@ from studio.providers.factory import adapter_implemented
 from studio.providers.local_status import local_reachability
 from studio.registry.loader import Registry, get_registry
 from studio.registry.routing import Candidate, RoutingEnv, candidates, cheapest_live_estimate
+from studio.registry.schema import ModelSpec, ShotsParam
 from studio.registry.validate import MediaRef, NormalizedRequest, RequestError, normalize
+from studio.registry.virtual import resolve as resolve_virtual
 
 
 class GenerationRequestError(Exception):
@@ -71,9 +73,15 @@ class Plan:
     live_reference: Candidate | None
     compiled: Compiled
     mentions: list[dict[str, Any]] = field(default_factory=list)
+    spec: ModelSpec | None = None  # the model that runs (a virtual model's engine)
+    direction: dict[str, Any] | None = None  # with a virtual model's director params folded in
+    via: dict[str, Any] | None = None  # the virtual model asked for, if any
 
     def as_dict(self) -> dict[str, Any]:
         return {
+            "model_id": self.request.model_id,
+            "mode": self.request.mode,
+            "via": self.via,
             "chosen_route_id": self.chosen.route.id if self.chosen else None,
             "estimate_usd": float(self.chosen.estimate.usd) if self.chosen and self.chosen.estimate else None,
             "live_reference": self.live_reference.as_dict() if self.live_reference else None,
@@ -151,36 +159,81 @@ def merge_native(spec: Any, params: dict[str, Any] | None, native: dict[str, Any
     return merged, warnings
 
 
+SHOT_BREAK = "\n\u241e\n"  # joins multi-shot prompts so @mentions resolve across all of them at once
+
+
+def _chosen(direction: dict[str, Any] | None) -> dict[str, Any]:
+    return {k: v for k, v in (direction or {}).items() if v not in (None, "", [])}
+
+
+def compile_shots(spec: ModelSpec, param: ShotsParam, shots: list[Any], text: str,
+                  direction: dict[str, Any] | None, names: dict[str, str]) -> tuple[list[dict[str, Any]], Compiled]:
+    """Multi-shot: each shot's prompt (already @mention-resolved, joined by SHOT_BREAK in `text`) compiled with the
+    take's direction under the shot's own. Returns the shots to send and a combined Compiled to store."""
+    out, warnings, native, prompts = [], [], {}, []
+    if param.prompt_budget == "shared":  # one prompt holds every shot, with a short timing label each
+        spec = spec.model_copy(deep=True)
+        spec.prompt.max_chars = max(80, (spec.prompt.max_chars - 80) // max(1, len(shots)) - 24)
+    for i, (shot, prompt) in enumerate(zip(shots, text.split(SHOT_BREAK), strict=True), 1):
+        merged = {**_chosen(direction), **_chosen(shot.get("direction") if isinstance(shot, dict) else None)}
+        c = compile_prompt(spec, prompt, ShotDirection.model_validate(merged) if merged else None, names=names)
+        warnings += [f"shot {i}: {w}" for w in c.warnings]
+        native = native or c.native_params
+        out.append({**{k: v for k, v in shot.items() if k != "direction"}, "prompt": c.prompt})
+        prompts.append(f"Shot {i}: {c.prompt}")
+    return out, Compiled(prompt="\n".join(prompts), warnings=warnings, native_params=native,
+                         dialect=spec.prompt.dialect)
+
+
 async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, reg: Registry | None = None) -> Plan:
     reg = reg or get_registry()
     spec = reg.model(body.model_id)
     if spec is None:
         raise GenerationRequestError([f"unknown model {body.model_id!r}"])
+    # A virtual model (Cinema Studio) becomes its engine's base model first; everything after sees only that.
+    try:
+        virtual = resolve_virtual(reg, spec, body.mode, body.params, body.direction)
+    except RequestError as exc:
+        raise GenerationRequestError(exc.errors) from None
+    spec = virtual.spec
+    body = replace(body, model_id=spec.id, mode=virtual.mode, params=virtual.params, direction=virtual.direction)
+    # Multi-shot: the shots carry the prompts (the mode itself takes none).
+    shots_param = next((p for p in spec.params_for(body.mode) if isinstance(p, ShotsParam)), None)
+    shots = body.params.get(shots_param.name) if shots_param else None
+    shots = shots if isinstance(shots, list) and all(isinstance(s, dict) for s in shots) and shots else None
+    text = SHOT_BREAK.join(str(s.get("prompt") or "") for s in shots) if shots else body.prompt
     # @mentions of saved characters/locations/props may attach reference images, so resolve them before
     # validation: the attached images count against the model's slot limits like any other input.
-    mention = await resolve_mentions(session, user_id, spec, body.mode, body.prompt, body.media)
+    mention = await resolve_mentions(session, user_id, spec, body.mode, text, body.media)
     refs = await resolve_media_kinds(session, user_id, [*body.media, *mention.media])
     mode = spec.mode(body.mode)
     promptless = mode is not None and mode.prompt == "none"
     try:
         direction = ShotDirection.model_validate(body.direction) if body.direction else None
-        # Modes without a prompt (Act-Two, Wan Animate) get no compiled text either: a prompt left over from
-        # another model must not reach the provider.
-        compiled = compile_prompt(spec, "" if promptless else mention.prompt, None if promptless else direction)
+        params = body.params
+        if shots and shots_param:
+            compiled_shots, compiled = compile_shots(spec, shots_param, shots, mention.prompt, body.direction,
+                                                     mention.names)
+            params = {**params, shots_param.name: compiled_shots}
+        else:
+            # Modes without a prompt (Act-Two, Wan Animate) get no compiled text either: a prompt left over from
+            # another model must not reach the provider.
+            compiled = compile_prompt(spec, "" if promptless else mention.prompt,
+                                      None if promptless else direction, names=mention.names)
         # A camera move with a native control on this model (Wan Fun Camera) sets that param.
-        params, native_warnings = merge_native(spec, body.params, compiled.native_params)
+        params, native_warnings = merge_native(spec, params, compiled.native_params)
         req = normalize(spec, body.mode, body.prompt, params, refs, body.negative_prompt)
     except RequestError as exc:
         raise GenerationRequestError(exc.errors) from None
     except ValidationError as exc:
         raise GenerationRequestError(
             [f"direction: {e['msg']} at {'.'.join(map(str, e['loc']))}" for e in exc.errors()]) from None
-    req.warnings.extend(mention.warnings + native_warnings)
+    req.warnings.extend(virtual.warnings + mention.warnings + native_warnings)
     env = await routing_env(session, reg)
     cands = candidates(reg, spec, req, env, body.route_policy)
     chosen = next((c for c in cands if c.eligible), None)
     return Plan(request=req, candidates=cands, chosen=chosen, live_reference=cheapest_live_estimate(cands),
-                compiled=compiled, mentions=mention.elements)
+                compiled=compiled, mentions=mention.elements, spec=spec, direction=body.direction, via=virtual.via)
 
 
 async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest) -> tuple[Generation, bool]:
@@ -211,7 +264,7 @@ async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: Cre
     if guard.needs_confirmation(estimate, policy.confirm_over_usd, body.confirm_cost_usd):
         raise ConfirmationRequired(estimate, p.chosen.route.id, policy.confirm_over_usd)
 
-    spec = reg.model(body.model_id)
+    spec = p.spec
     assert spec is not None
     gen = Generation(
         id=uuid7(),
@@ -228,8 +281,10 @@ async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: Cre
         request={
             **p.request.as_dict(),
             "route_policy": body.route_policy,
-            "direction": body.direction,
-            "compiled_prompt": p.compiled.prompt,
+            "direction": p.direction,
+            "via": p.via,
+            # what the provider gets; a mode without a prompt (multi-shot sends its shots) gets none
+            "compiled_prompt": "" if (m := spec.mode(p.request.mode)) and m.prompt == "none" else p.compiled.prompt,
             "mentions": p.mentions,
         },
         compiled=p.compiled.as_dict(),
@@ -264,6 +319,11 @@ async def quick_estimate(
     spec = reg.model(model_id)
     if spec is None:
         raise GenerationRequestError([f"unknown model {model_id!r}"])
+    try:
+        virtual = resolve_virtual(reg, spec, mode, params, None)
+    except RequestError as exc:
+        raise GenerationRequestError(exc.errors) from None
+    spec, mode, params = virtual.spec, virtual.mode, virtual.params
     m = spec.mode(mode)
     if m is None:
         raise GenerationRequestError([f"{spec.name} has no mode {mode!r}"])

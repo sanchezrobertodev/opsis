@@ -48,7 +48,25 @@ def _t_scale(v: Any, args: dict) -> Any:
     return round(float(v) * float(args.get("factor", 1)))
 
 
+def _t_shot_list(v: Any, args: dict) -> Any:
+    """Multi-shot as the provider's own list: [{prompt, duration}], durations as `args.duration` (str or int)."""
+    as_type = {"str": lambda d: str(round(d)), "int": lambda d: round(d)}.get(args.get("duration", ""), lambda d: d)
+    return [{"prompt": s["prompt"], "duration": as_type(s["duration"])} for s in v]
+
+
+def _t_timed_prompt(v: Any, args: dict) -> Any:
+    """Multi-shot as one prompt for models that cut on cue: "Shot 1 (0-4 s): ...", then a cut to the next."""
+    lines, start = [], 0.0
+    for i, s in enumerate(v, 1):
+        end = start + float(s["duration"])
+        lines.append(f"Shot {i} ({start:g}-{end:g} s): {s['prompt']}")
+        start = end
+    return "\n".join([args.get("intro", "A multi-shot sequence with hard cuts between shots."), *lines])
+
+
 TRANSFORMS: dict[str, Callable[[Any, dict], Any]] = {
+    "shot_list": _t_shot_list,
+    "timed_prompt": _t_timed_prompt,
     "str": _t_str,
     "int": _t_int,
     "float": _t_float,

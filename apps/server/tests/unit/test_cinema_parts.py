@@ -17,7 +17,9 @@ def test_plan_drops_unknown_ids_clamps_and_caps():
         PlannedScene(heading="INT. ROOM", summary="s", shots=[
             PlannedShot(action="A", shot_size="enormous", angle="low", camera_moves=["dolly_in", "warp_drive"],
                         duration=40, continuity="continue"),
-            PlannedShot(action="B", shot_size="close_up", duration=1, continuity="continue"),
+            PlannedShot(action="B", shot_size="close_up", duration=1, continuity="continue",
+                        emotions=[{"who": "Maya", "emotion": "grief"}, {"who": "@maya", "emotion": "joy"},
+                                  {"who": "@kai", "emotion": "smugness"}]),
         ]),
         PlannedScene(heading="EXT. ROAD", summary="t", shots=[PlannedShot(action="C"), PlannedShot(action="D")]),
     ])
@@ -26,6 +28,8 @@ def test_plan_drops_unknown_ids_clamps_and_caps():
     assert a.direction.shot_size is None and a.direction.angle == "low"
     assert [m.id for m in a.direction.camera_moves] == ["dolly_in"] and a.duration == 10
     assert a.continuity == "cut" and b.continuity == "continue" and b.duration == 3  # a scene opens on a cut
+    # one feeling per cast member, as an @handle; unknown emotions are dropped
+    assert [(c.who, c.emotion) for c in b.direction.cast_emotions] == [("@maya", "grief")]
     assert [s.action for s in scenes[1].shots] == ["C"]
     assert warnings == ["the plan had more than 3 shots; the rest were left out", "unknown camera moves dropped: warp_drive"]
 

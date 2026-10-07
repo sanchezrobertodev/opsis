@@ -41,6 +41,15 @@ class ObjectSwapInput(BaseModel):
     feather: float = Field(4.0, ge=0, le=20, description="Softness of the composite's edge, in pixels")
     grow: int = Field(6, ge=0, le=12, description="How far the matte reaches past the object, in pixels")
     review_mask: bool = Field(False, description="Stop to check the tracked mask before editing")
+    # a region edit of a Cinema take: each result becomes a new take of that shot
+    project_id: uuid.UUID | None = None
+    shot_key: str | None = Field(None, pattern=r"^[a-z][a-z0-9]{2,15}$")
+
+    def take_of(self) -> dict[str, Any]:
+        """Step input that tags results as takes of the Cinema shot (nothing when it isn't one)."""
+        if self.project_id is None or self.shot_key is None:
+            return {}
+        return {"cinema": {"project_id": str(self.project_id), "shot_key": self.shot_key, "prompt": self.prompt}}
 
 
 def edit_key(i: int, model_id: str) -> str:
@@ -147,15 +156,20 @@ class ObjectSwapRecipe(Recipe):
                 continue  # this model takes the matte itself; wait for tracking
             key = edit_key(i, spec.id)
             keys.append(key)
+            # with the background kept, the composite is the take; otherwise the edit itself is
+            project = {"project_id": str(inp.project_id)} if inp.project_id else {}
+            if project and not inp.keep_background and inp.shot_key:
+                project["shot_key"] = inp.shot_key
             specs.append(StepSpec(key, StepKind.generate, spec.name, {
                 "model_id": spec.id, "mode": mode.id, "prompt": edit_prompt(inp), "params": entry.params,
-                "media": self._media(inp, mode, matte), "direction": None,
+                "media": self._media(inp, mode, matte), "direction": None, **project,
             }, (*gate, *(("track",) if needs_matte else ())), optional=True))
             edited = ok(settled, key)
             if inp.keep_background and edited and matte:
                 specs.append(StepSpec(keep_key(i, spec.id), StepKind.local, f"{spec.name}: keep the rest as filmed", {
                     "op": "keep_background", "original": str(inp.video_asset_id), "edited": edited["asset_id"],
                     "matte": matte, "feather": inp.feather, "grow": inp.grow, "title": self.title(inp),
+                    **inp.take_of(),
                 }, (key, "track"), optional=True))  # one take failing to composite shouldn't sink the others
 
         takes = self._takes(inp, settled)

@@ -16,11 +16,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.cinema.document import Scene, Shot
 from studio.config import get_settings
-from studio.director.compiler import MoveChoice, ShotDirection
+from studio.director.compiler import MAX_CAST_EMOTIONS, CastEmotion, MoveChoice, ShotDirection
 from studio.director.library import DirectorLibrary, get_library
 from studio.llm.client import LLMResult, structured
 
 MAX_SHOTS = 40
+
+
+class PlannedEmotion(BaseModel):
+    who: str = Field(description="A cast member's @handle")
+    emotion: str = Field(description="An emotion id from the list")
 
 
 class PlannedShot(BaseModel):
@@ -33,6 +38,8 @@ class PlannedShot(BaseModel):
     continuity: Literal["cut", "continue"] = Field(
         "cut", description="continue only when this shot picks up exactly where the previous shot's last frame ends")
     dialogue: str = Field("", description="Spoken lines in this shot, if any, as Name: line")
+    emotions: list[PlannedEmotion] = Field(
+        default_factory=list, description="How each cast member in the shot feels, when it matters")
 
 
 class PlannedScene(BaseModel):
@@ -52,6 +59,7 @@ Each shot is one continuous camera setup of 3 to 10 seconds that a video model r
 - Refer to cast members by their @handle exactly as listed; don't describe their appearance (their reference
   pictures supply it). Describe anyone else briefly the same way every time they appear.
 - Pick the shot size, angle and camera moves from the id lists given; use null or [] when nothing fits.
+- When a cast member's feeling drives the shot, give it as an emotion id for their @handle.
 - Use continuity "continue" only when the shot starts exactly where the previous one ended; otherwise "cut".
 - Vary framing and keep screen direction consistent within a scene.
 Group shots into scenes with a heading and a one-line summary. Stay within the shot budget."""
@@ -62,6 +70,7 @@ def _vocabulary(lib: DirectorLibrary) -> str:
         "Shot sizes: " + ", ".join(f"{i.id} ({i.label})" for i in lib.shot_sizes),
         "Angles: " + ", ".join(f"{i.id} ({i.label})" for i in lib.angles),
         "Camera moves: " + ", ".join(f"{m.id} ({m.label})" for m in lib.moves),
+        "Emotions: " + ", ".join(f"{e.id} ({e.label})" for e in lib.emotions),
     ])
 
 
@@ -103,10 +112,16 @@ def to_scenes(plan: ShotPlan, lib: DirectorLibrary, max_shots: int) -> tuple[lis
             dropped = [m for m in p.camera_moves if not lib.move(m)]
             if dropped:
                 warnings.append(f"unknown camera moves dropped: {', '.join(dropped)}")
+            feelings: dict[str, CastEmotion] = {}
+            for e in p.emotions:
+                who = "@" + e.who.strip().lstrip("@").lower()
+                if lib.look("emotions", e.emotion) and len(who) > 1:
+                    feelings.setdefault(who, CastEmotion(who=who, emotion=e.emotion))
             direction = ShotDirection(
                 shot_size=p.shot_size if lib.look("shot_sizes", p.shot_size) else None,
                 angle=p.angle if lib.look("angles", p.angle) else None,
-                camera_moves=[MoveChoice(id=m) for m in moves])
+                camera_moves=[MoveChoice(id=m) for m in moves],
+                cast_emotions=list(feelings.values())[:MAX_CAST_EMOTIONS])
             shots.append(Shot(action=p.action.strip()[:2000], duration=max(3, min(10, p.duration)),
                               direction=direction, dialogue=p.dialogue.strip()[:1000],
                               continuity="continue" if shots and p.continuity == "continue" else "cut"))

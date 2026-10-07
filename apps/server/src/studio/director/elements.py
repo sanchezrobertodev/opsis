@@ -50,6 +50,8 @@ class Resolution:
     media: list[dict[str, str]] = field(default_factory=list)  # [{role, asset_id}] to attach
     warnings: list[str] = field(default_factory=list)
     elements: list[dict[str, Any]] = field(default_factory=list)  # [{id, slug, name, attached}]
+    # every @slug in the prompt -> how the prompt names it now (for direction that refers to cast members)
+    names: dict[str, str] = field(default_factory=dict)
 
 
 async def resolve_mentions(
@@ -67,7 +69,7 @@ async def resolve_mentions(
     rows = (await session.execute(select(Element).where(
         Element.user_id == user_id, Element.slug.in_(slugs), Element.deleted_at.is_(None)))).scalars().all()
     by_slug = {e.slug: e for e in rows}
-    res = Resolution(prompt=prompt)
+    res = Resolution(prompt=prompt, names={s: f"@{s}" for s in slugs})
     for slug in slugs:
         if slug not in by_slug:
             res.warnings.append(f"no saved character, location or prop called @{slug}; left as written")
@@ -119,6 +121,7 @@ async def resolve_mentions(
         description = (element.description or "").strip()[:DESCRIPTION_LIMIT]
         first = f"{label}, {description}," if description else label
         replacements[element.slug] = (first, label)
+        res.names[element.slug] = label
         res.elements.append({"id": str(element.id), "slug": element.slug, "name": element.name, "attached": attached})
 
     seen: set[str] = set()

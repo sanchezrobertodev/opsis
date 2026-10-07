@@ -1,26 +1,27 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, Film, ImageIcon, Link2, LoaderCircle, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Clapperboard, Film, ImageIcon, Link2, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { type Asset, isActive, mediaUrl } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { allShots, type CinemaDoc, type CinemaSettings, newId, newShot, type Scene, type Shot, type Take } from "@/lib/cinema";
 import { useModel, useRegistry } from "@/lib/queries";
-import { type Direction, DirectorPanel } from "@/components/create/DirectorPanel";
+import { type Direction, DirectorPanel, mentionSlugs } from "@/components/create/DirectorPanel";
 import { AspectPicker, Button, Field, Segmented, Select, Slider } from "@/components/ui/controls";
 import type { Launch } from "./Editor";
+import { TakeActions } from "./TakeActions";
 
 type Update = (fn: (d: CinemaDoc) => CinemaDoc) => void;
 
+/** The choices a direction makes: unset fields and empty lists (moves, lights, feelings) choose nothing. */
 function clean(d: Direction | undefined): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(d ?? {}).filter(([, v]) => v !== null && v !== undefined && v !== ""));
+  return Object.fromEntries(Object.entries(d ?? {}).filter(([, v]) =>
+    v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0)));
 }
 
 /** The project's look with the shot's own choices on top (mirrors cinema/document.py:merged_direction). */
 export function mergedDirection(settings: CinemaSettings, shot: Shot): Record<string, unknown> {
-  const own = clean(shot.direction);
-  if (!(own.camera_moves as unknown[] | undefined)?.length) delete own.camera_moves;
-  return { ...clean(settings.direction), ...own };
+  return { camera_moves: [], ...clean(settings.direction), ...clean(shot.direction) };
 }
 
 type TakeShot = {
@@ -51,6 +52,8 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
   const [selected, setSelected] = useState<string | null>(null);
   const shots = allShots(doc);
   const current = shots.find((x) => x.shot.id === selected);
+  const { data: filmModel } = useModel(doc.settings.model_id);
+  const multiShot = Boolean(filmModel?.modes.some((m) => m.ops.includes("multi_shot")));
   const assets = new Map<string, Asset>(takes.flatMap((t) => (t.asset ? [[t.asset.id, t.asset as Asset]] : [])));
   const byShot = (key: string) => takes.filter((t) => t.shot_key === key);
 
@@ -76,9 +79,17 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
     count: doc.settings.hero_frames,
     shots: shots.filter((x) => ids.includes(x.shot.id)).map((x) => ({
       key: x.shot.id, prompt: x.shot.action.trim(), direction: mergedDirection(doc.settings, x.shot) })) } }, "Hero frames");
+  // a whole scene in one multi-shot call; each shot then gets its piece as a take
+  const sceneShots = (scene: Scene) => scene.shots.filter((s) => s.action.trim());
+  const filmScene = (scene: Scene) => launch({ recipe: "cinema_scene", input: {
+    project_id: projectId, model_id: doc.settings.model_id, scene_key: scene.id, takes: 1,
+    params: { ...doc.settings.model_params, aspect_ratio: doc.settings.aspect_ratio, resolution: doc.settings.resolution },
+    start_asset_id: scene.shots[0]?.hero_asset_id ?? null,
+    shots: sceneShots(scene).map((s) => ({ key: s.id, prompt: s.action.trim(), duration: s.duration ?? 5,
+                                          direction: mergedDirection(doc.settings, s) })) } }, "Filming the scene");
   const filmFor = (ids: string[]) => launch({ recipe: "cinema_takes", input: {
     project_id: projectId, model_id: doc.settings.model_id, takes: doc.settings.takes_per_shot,
-    params: { aspect_ratio: doc.settings.aspect_ratio, resolution: doc.settings.resolution },
+    params: { ...doc.settings.model_params, aspect_ratio: doc.settings.aspect_ratio, resolution: doc.settings.resolution },
     shots: takeShots(doc, ids) } }, "Filming");
 
   return (
@@ -113,6 +124,13 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
                 <input value={scene.summary} onChange={(e) => patchScene(scene.id, { summary: e.target.value })}
                        placeholder="What this scene is for" aria-label="Scene summary"
                        className="min-w-0 flex-1 bg-transparent text-xs text-muted outline-none placeholder:text-faint" />
+                {multiShot && sceneShots(scene).length >= 2 && (
+                  <Button size="sm" tone="ghost" onClick={() => void filmScene(scene)}
+                          title="Renders the scene's shots in one call, then gives each shot its piece as a take">
+                    <Clapperboard className="size-4" aria-hidden />
+                    Film as one take, {sceneShots(scene).reduce((t, s) => t + (s.duration ?? 5), 0)} s
+                  </Button>
+                )}
               </div>
               <ol className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
                 {scene.shots.map((shot) => {
@@ -161,7 +179,8 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
       </div>
       <aside className="min-h-0 overflow-y-auto border-t border-line-soft p-5 scrollbar-quiet lg:border-t-0 lg:border-l">
         {current ? (
-          <ShotInspector key={current.shot.id} doc={doc} number={current.index} scene={current.scene} shot={current.shot}
+          <ShotInspector key={current.shot.id} projectId={projectId} launch={launch} doc={doc} number={current.index}
+                         scene={current.scene} shot={current.shot}
                          takes={byShot(current.shot.id)} patch={(p) => patchShot(current.shot.id, p)} update={update}
                          onFrames={() => void framesFor([current.shot.id])} onFilm={() => void filmFor([current.shot.id])}
                          onRemoved={() => setSelected(null)} />
@@ -173,9 +192,9 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
   );
 }
 
-function ShotInspector({ doc, number, scene, shot, takes, patch, update, onFrames, onFilm, onRemoved }: {
-  doc: CinemaDoc; number: number; scene: Scene; shot: Shot; takes: Take[]; patch: (p: Partial<Shot>) => void;
-  update: Update; onFrames: () => void; onFilm: () => void; onRemoved: () => void;
+function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, patch, update, onFrames, onFilm, onRemoved }: {
+  projectId: string; launch: Launch; doc: CinemaDoc; number: number; scene: Scene; shot: Shot; takes: Take[];
+  patch: (p: Partial<Shot>) => void; update: Update; onFrames: () => void; onFilm: () => void; onRemoved: () => void;
 }) {
   const { data: model } = useModel(doc.settings.model_id);
   const order = allShots(doc).map((x) => x.shot);
@@ -225,7 +244,8 @@ function ShotInspector({ doc, number, scene, shot, takes, patch, update, onFrame
                      render={(v) => (v === "cut" ? "On a cut" : "From last")} onChange={(v) => patch({ continuity: v })} />
         </Field>
       </div>
-      <DirectorPanel direction={shot.direction} onChange={(d) => patch({ direction: d })} stills={false} />
+      <DirectorPanel direction={shot.direction} onChange={(d) => patch({ direction: d })} stills={false}
+                     cast={mentionSlugs(shot.action)} />
 
       {shot.continuity === "cut" && (
         <section className="flex flex-col gap-2">
@@ -257,18 +277,38 @@ function ShotInspector({ doc, number, scene, shot, takes, patch, update, onFrame
         <TakeGrid takes={videos} picked={shot.take_asset_id} onPick={(id) => patch({ take_asset_id: id === shot.take_asset_id ? null : id })}
                   empty="No takes yet." video />
       </section>
+      {shot.take_asset_id ? (
+        <TakeActions projectId={projectId} doc={doc} shot={shot} takeId={shot.take_asset_id} launch={launch} />
+      ) : videos.some((t) => t.asset) ? (
+        <p className="text-2xs text-faint">Put a take in the cut to continue it, lead into it or edit it.</p>
+      ) : null}
     </div>
   );
+}
+
+// how a take came to be: with its parent take in the list ("continued from take 2"), and without
+const MADE_BY: Record<string, [string, string]> = {
+  multi_shot: ["cut from a scene take", "cut from a scene take"], extend_after: ["continued from take", "continued"],
+  extend_before: ["led into take", "with a lead-in"], edit: ["edited from take", "edited"],
+  region_edit: ["object changed in take", "object changed"],
+};
+
+function madeBy(t: Take, number: Map<string, number>): string {
+  const phrase = MADE_BY[t.made_by];
+  if (!phrase) return "";
+  const parent = t.parent_asset_id ? number.get(t.parent_asset_id) : undefined;
+  return parent && t.made_by !== "multi_shot" ? `, ${phrase[0]} ${parent}` : `, ${phrase[1]}`;
 }
 
 function TakeGrid({ takes, picked, onPick, empty, video }: {
   takes: Take[]; picked: string | null; onPick: (assetId: string) => void; empty: string; video?: boolean;
 }) {
   if (!takes.length) return <p className="text-2xs text-faint">{empty}</p>;
+  const number = new Map(takes.flatMap((t, i) => (t.asset ? [[t.asset.id, takes.length - i]] : [])));
   return (
     <ul className="grid grid-cols-2 gap-2">
-      {takes.map((t) => (
-        <li key={`${t.generation_id}-${t.asset?.id ?? "pending"}`} className="flex flex-col gap-1">
+      {takes.map((t, i) => (
+        <li key={`${t.generation_id ?? "derived"}-${t.asset?.id ?? i}`} className="flex flex-col gap-1">
           {t.asset ? (
             video ? (
               <video src={mediaUrl(t.asset.proxy_url ?? t.asset.url)} poster={mediaUrl(t.asset.poster_url)} controls muted playsInline
@@ -286,6 +326,11 @@ function TakeGrid({ takes, picked, onPick, empty, video }: {
               {isActive(t.status) ? <LoaderCircle className="size-4 animate-spin text-tungsten" aria-label="Rendering" /> : (t.error ?? t.status)}
             </span>
           )}
+          {video && (
+            <span className="truncate text-2xs text-faint" title={t.prompt}>
+              Take {takes.length - i}{madeBy(t, number)}
+            </span>
+          )}
           {video && t.asset && (
             <Button size="sm" tone={picked === t.asset.id ? "primary" : "quiet"} onClick={() => onPick(t.asset!.id)}>
               {picked === t.asset.id ? "In the cut" : "Use this take"}
@@ -297,18 +342,37 @@ function TakeGrid({ takes, picked, onPick, empty, video }: {
   );
 }
 
+function engineHint(engine: { modes: Record<string, string> } | undefined): string | undefined {
+  if (!engine) return undefined;
+  const models = [...new Set(Object.values(engine.modes).map((m) => m.split("/")[0]))];
+  return `Runs on ${models.join(" and ")}; prices are that model's own.`;
+}
+
 function FilmSettings({ doc, update }: { doc: CinemaDoc; update: Update }) {
   const { data: registry } = useRegistry();
   const s = doc.settings;
   const set = (p: Partial<CinemaSettings>) => update((d) => ({ ...d, settings: { ...d.settings, ...p } }));
-  const video = (registry?.models ?? []).filter((m) => m.output_type === "video" && m.modes.some((x) => x.ops.includes("i2v")));
+  const { data: model } = useModel(s.model_id);
+  const video = (registry?.models ?? []).filter((m) => m.output_type === "video" && m.modes.some((x) => x.ops.includes("i2v")))
+    .sort((a, b) => Number(b.kind === "virtual") - Number(a.kind === "virtual"));
   const image = (registry?.models ?? []).filter((m) => m.output_type === "image" && m.modes.some((x) => x.ops.includes("t2i")));
+  const virtual = model?.id === s.model_id ? model.virtual : null;
+  const engineParam = virtual?.engine_param ?? "engine";
+  const engine = String(s.model_params?.[engineParam] ?? virtual?.engines[0]?.id ?? "");
   return (
     <div className="flex flex-col gap-5">
       <h2 className="type-title text-base">Film settings</h2>
       <Field label="Filmed on" htmlFor="film-model">
-        <Select id="film-model" value={s.model_id} onChange={(v) => set({ model_id: v })} options={video.map((m) => ({ value: m.id, label: m.name }))} />
+        <Select id="film-model" value={s.model_id} onChange={(v) => set({ model_id: v, model_params: {} })}
+                options={video.map((m) => ({ value: m.id, label: m.name }))} />
       </Field>
+      {virtual && (
+        <Field label="Engine" hint={engineHint(virtual.engines.find((e) => e.id === engine))}>
+          <Segmented label="Engine" value={engine} options={virtual.engines.map((e) => e.id)}
+                     render={(id) => virtual.engines.find((e) => e.id === id)?.label ?? id}
+                     onChange={(id) => set({ model_params: { ...s.model_params, [engineParam]: id } })} />
+        </Field>
+      )}
       <Field label="Opening frames on" htmlFor="frame-model">
         <Select id="frame-model" value={s.image_model_id} onChange={(v) => set({ image_model_id: v })}
                 options={image.map((m) => ({ value: m.id, label: m.name }))} />
@@ -328,7 +392,7 @@ function FilmSettings({ doc, update }: { doc: CinemaDoc; update: Update }) {
       <div className="flex flex-col gap-2">
         <h3 className="text-xs text-muted">The film&rsquo;s look</h3>
         <p className="text-2xs text-faint">Applies to every shot; a shot&rsquo;s own choices win.</p>
-        <DirectorPanel direction={s.direction} onChange={(d) => set({ direction: d })} stills={false} />
+        <DirectorPanel direction={s.direction} onChange={(d) => set({ direction: d })} stills={false} cast={doc.cast} />
       </div>
     </div>
   );

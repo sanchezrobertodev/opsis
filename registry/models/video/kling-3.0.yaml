@@ -3,7 +3,7 @@ id: kling-3.0
 name: Kling 3.0
 family: kling
 vendor: kuaishou
-description: Strong motion and physics, start/end frames, optional native audio. Multi-shot arrives with the director (P2).
+description: Strong motion and physics, start/end frames, optional native audio, and up to 6 shots in one 15 s take.
 output_type: video
 status: active
 license_tier: commercial_api
@@ -13,9 +13,12 @@ aspect_ratios: ["16:9", "9:16", "1:1"]
 duration: {min: 3, max: 15, default: 5}
 
 parameters:
-  - {name: duration, label: Duration (s), type: int, min: 3, max: 15, default: 5, ui: slider}
+  - {name: duration, label: Duration (s), type: int, min: 3, max: 15, default: 5, ui: slider,
+     help: "A multi-shot take is as long as its shots together."}
+  - {name: shots, label: Shots, type: shots, min_shots: 2, max_shots: 6, min_shot_s: 1, max_shot_s: 15,
+     max_total_s: 15, modes: [multi_shot, multi_shot_frame]}
   - {name: resolution, type: enum, options: ["720p", "1080p"], default: "1080p", ui: segmented}
-  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "1:1"], default: "16:9", ui: aspect, modes: [t2v]}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "1:1"], default: "16:9", ui: aspect, modes: [t2v, multi_shot]}
   - {name: generate_audio, label: Native audio, type: bool, default: false}
   - {name: cfg_scale, label: Prompt adherence, type: float, min: 0, max: 1, step: 0.05, default: 0.5, group: advanced}
   - {name: seed, type: seed, group: advanced}
@@ -30,6 +33,16 @@ modes:
     medias:
       - {role: start_image, kinds: [image], label: Start frame, required: true}
       - {role: end_image, kinds: [image], label: End frame (optional)}
+  - id: multi_shot
+    label: Multi-shot
+    ops: [multi_shot]
+    prompt: none  # the shots carry the prompts
+  - id: multi_shot_frame
+    label: Multi-shot from a frame
+    ops: [multi_shot]
+    prompt: none
+    medias:
+      - {role: start_image, kinds: [image], label: First frame, required: true}
 
 elements: {strategy: keyframe_first}
 
@@ -39,9 +52,13 @@ routes:
     modes:
       t2v: {endpoint: fal-ai/kling-video/v3/pro/text-to-video}
       i2v: {endpoint: fal-ai/kling-video/v3/pro/image-to-video}
+      # multi_prompt replaces the prompt; "customize" keeps our shot lengths (verified 2026-10-06, fal OpenAPI)
+      multi_shot: {endpoint: fal-ai/kling-video/v3/pro/text-to-video, fixed: {shot_type: customize}}
+      multi_shot_frame: {endpoint: fal-ai/kling-video/v3/pro/image-to-video, fixed: {shot_type: customize}}
     map:
       params:
         duration: {to: duration, transform: str}   # fal takes "3".."15"
+        shots: {to: multi_prompt, transform: shot_list, args: {duration: str}}   # [{prompt, duration: "1".."15"}]
         cfg_scale: cfg_scale
         generate_audio: generate_audio
         resolution: {to: null}   # the pro endpoint renders 1080p
@@ -58,7 +75,7 @@ routes:
       verified: 2026-10-06
       source: https://fal.ai/models/fal-ai/kling-video/v3/pro/image-to-video
     output: {path: video.url, kind: video}
-    notes: fal's Pro tier renders 1080p. Multi-shot (multi_prompt) and elements arrive with Cinema Studio.
+    notes: fal's Pro tier renders 1080p. Multi-shot sends multi_prompt (up to 6 shots, 15 s in all).
 
 examples:
   - name: t2v_smoke
@@ -67,3 +84,13 @@ examples:
     params: {duration: 5, resolution: "1080p"}
     smoke: true
     expect: {cost_usd_range: [0.4, 1.0]}
+  - name: multi_shot
+    mode: multi_shot
+    prompt: ""
+    params:
+      resolution: "1080p"
+      shots:
+        - {prompt: "Wide shot of a lighthouse on a cliff as a storm rolls in.", duration: 4}
+        - {prompt: "Close-up of the keeper's hand turning the brass key.", duration: 3}
+        - {prompt: "The lamp flares to life, beam sweeping the dark sea.", duration: 5}
+    expect: {cost_usd_range: [1.0, 2.0]}

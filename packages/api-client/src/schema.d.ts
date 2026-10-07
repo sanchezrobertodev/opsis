@@ -556,7 +556,9 @@ export interface paths {
         };
         /**
          * List Takes
-         * @description Hero frames and takes made for the project's shots, newest first, finished or not.
+         * @description Hero frames and takes made for the project's shots, newest first, finished or not. Besides the generations
+         *     made for a shot, this lists takes cut from a multi-shot scene take and takes extended or edited from another
+         *     (derived clips whose metadata names the project and shot), each with the take it came from.
          */
         get: operations["list_takes_projects__project_id__takes_get"];
         put?: never;
@@ -1028,6 +1030,22 @@ export interface components {
             /** Is Mock */
             is_mock: boolean;
         };
+        /**
+         * CastEmotion
+         * @description How one cast member feels in the shot, from the emotion wheel.
+         */
+        CastEmotion: {
+            /**
+             * Who
+             * @description An @mention of a cast member, or a plain name
+             */
+            who: string;
+            /**
+             * Emotion
+             * @description An emotions id
+             */
+            emotion: string;
+        };
         /** CatalogOut */
         CatalogOut: {
             /** Themes */
@@ -1177,6 +1195,8 @@ export interface components {
             angles: components["schemas"]["LookItem"][];
             /** Lenses */
             lenses: components["schemas"]["LookItem"][];
+            /** Focal Lengths */
+            focal_lengths: components["schemas"]["LookItem"][];
             /** Apertures */
             apertures: components["schemas"]["LookItem"][];
             /** Camera Bodies */
@@ -1185,6 +1205,12 @@ export interface components {
             eras: components["schemas"]["LookItem"][];
             /** Lighting */
             lighting: components["schemas"]["LookItem"][];
+            /** Light Sources */
+            light_sources: components["schemas"]["LookItem"][];
+            /** Light Positions */
+            light_positions: components["schemas"]["LookItem"][];
+            /** Light Colors */
+            light_colors: components["schemas"]["LookItem"][];
             /** Palettes */
             palettes: components["schemas"]["LookItem"][];
             /** Genres */
@@ -1192,7 +1218,7 @@ export interface components {
             /** Pacing */
             pacing: components["schemas"]["LookItem"][];
             /** Emotions */
-            emotions: components["schemas"]["LookItem"][];
+            emotions: components["schemas"]["EmotionItem"][];
         };
         /** DurationSpec */
         DurationSpec: {
@@ -1301,6 +1327,40 @@ export interface components {
             /** Cover Asset Id */
             cover_asset_id?: string | null;
         };
+        /**
+         * EmotionItem
+         * @description One cell of the emotion wheel: a family and how strongly it shows (1 mild, 2 plain, 3 intense).
+         */
+        EmotionItem: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Dialects
+             * @default {}
+             */
+            dialects: {
+                [key: string]: string;
+            };
+            /**
+             * Swatch
+             * @default []
+             */
+            swatch: string[];
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "joy" | "trust" | "fear" | "surprise" | "sadness" | "disgust" | "anger" | "anticipation";
+            /**
+             * Level
+             * @enum {integer}
+             */
+            level: 1 | 2 | 3;
+        };
         /** EnhanceIn */
         EnhanceIn: {
             /** Model Id */
@@ -1359,7 +1419,10 @@ export interface components {
              * @enum {string}
              */
             type: "enum";
-            /** Options */
+            /**
+             * Options
+             * @default []
+             */
             options: (string | number)[];
             /** Default */
             default?: string | number | null;
@@ -1370,9 +1433,25 @@ export interface components {
             labels: {
                 [key: string]: string;
             };
+            /** Director */
+            director?: string | null;
         };
         /** EstimateOut */
         EstimateOut: {
+            /**
+             * Model Id
+             * @description The model that runs (a virtual model's engine)
+             */
+            model_id: string;
+            /** Mode */
+            mode: string;
+            /**
+             * Via
+             * @description The virtual model asked for, and its engine
+             */
+            via?: {
+                [key: string]: unknown;
+            } | null;
             /** Chosen Route Id */
             chosen_route_id: string | null;
             /** Estimate Usd */
@@ -1630,6 +1709,40 @@ export interface components {
             /** Default */
             default?: number | null;
         };
+        /**
+         * LightChoice
+         * @description One source on the lighting console.
+         */
+        LightChoice: {
+            /**
+             * Source
+             * @description A light_sources id
+             */
+            source: string;
+            /**
+             * Position
+             * @description A light_positions id
+             * @default front_left
+             */
+            position: string;
+            /**
+             * Color
+             * @description A light_colors id; none keeps the source's own color
+             */
+            color?: string | null;
+            /**
+             * Quality
+             * @default soft
+             * @enum {string}
+             */
+            quality: "soft" | "hard";
+            /**
+             * Intensity
+             * @default normal
+             * @enum {string}
+             */
+            intensity: "dim" | "normal" | "bright";
+        };
         /** LineageEdge */
         LineageEdge: {
             /**
@@ -1672,6 +1785,18 @@ export interface components {
             label: string;
             /** Prompt */
             prompt: string;
+            /**
+             * Dialects
+             * @default {}
+             */
+            dialects: {
+                [key: string]: string;
+            };
+            /**
+             * Swatch
+             * @default []
+             */
+            swatch: string[];
         };
         /** MediaInput */
         MediaInput: {
@@ -1773,7 +1898,7 @@ export interface components {
             aspect_ratios: string[];
             duration: components["schemas"]["DurationSpec"] | null;
             /** Parameters */
-            parameters: (components["schemas"]["EnumParam"] | components["schemas"]["IntParam"] | components["schemas"]["FloatParam"] | components["schemas"]["BoolParam"] | components["schemas"]["SeedParam"] | components["schemas"]["TextParam"] | components["schemas"]["PathsParam"] | components["schemas"]["PointsParam"])[];
+            parameters: (components["schemas"]["EnumParam"] | components["schemas"]["IntParam"] | components["schemas"]["FloatParam"] | components["schemas"]["BoolParam"] | components["schemas"]["SeedParam"] | components["schemas"]["TextParam"] | components["schemas"]["PathsParam"] | components["schemas"]["PointsParam"] | components["schemas"]["ShotsParam"])[];
             /** Rules */
             rules: components["schemas"]["Rule"][];
             /** Modes */
@@ -1784,6 +1909,8 @@ export interface components {
             } | null;
             /** Routes */
             routes: components["schemas"]["RouteSummary"][];
+            /** @description Engines a virtual model runs on, and its director params */
+            virtual?: components["schemas"]["VirtualSpec"] | null;
         };
         /** ModelSummary */
         ModelSummary: {
@@ -1791,6 +1918,12 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /**
+             * Kind
+             * @description model, or virtual: a studio layer that runs on other models
+             * @default model
+             */
+            kind: string;
             /** Family */
             family: string;
             /** Vendor */
@@ -2389,6 +2522,11 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * RunStatus
+         * @enum {string}
+         */
+        RunStatus: "running" | "waiting" | "succeeded" | "failed" | "canceled";
         /** RunSummary */
         RunSummary: {
             /**
@@ -2477,6 +2615,8 @@ export interface components {
             angle?: string | null;
             /** Lens */
             lens?: string | null;
+            /** Focal Length */
+            focal_length?: string | null;
             /** Aperture */
             aperture?: string | null;
             /** Camera Body */
@@ -2485,14 +2625,93 @@ export interface components {
             era?: string | null;
             /** Lighting */
             lighting?: string | null;
+            /**
+             * Lights
+             * @description The lighting console: a key light and an optional second light
+             */
+            lights?: components["schemas"]["LightChoice"][];
             /** Palette */
             palette?: string | null;
             /** Genre */
             genre?: string | null;
             /** Pacing */
             pacing?: string | null;
-            /** Emotion */
+            /**
+             * Emotion
+             * @description How the subject feels
+             */
             emotion?: string | null;
+            /**
+             * Cast Emotions
+             * @description How each @mentioned cast member feels
+             */
+            cast_emotions?: components["schemas"]["CastEmotion"][];
+        };
+        /**
+         * ShotsParam
+         * @description Several shots rendered in one call (multi-shot): [{"prompt": str, "duration": seconds}] in order, each shot
+         *     optionally with its own `direction`. The clip is as long as its shots together (it sets `duration`). Routes
+         *     send the shots as the provider's shot list (`shot_list`) or as one timed prompt (`timed_prompt`).
+         */
+        ShotsParam: {
+            /** Name */
+            name: string;
+            /** Label */
+            label?: string | null;
+            /** Help */
+            help?: string | null;
+            /**
+             * Group
+             * @default basic
+             * @enum {string}
+             */
+            group: "basic" | "advanced";
+            /** Modes */
+            modes?: string[] | null;
+            /** Visible If */
+            visible_if?: {
+                [key: string]: string | number | boolean | (string | number | boolean)[];
+            } | null;
+            /** Ui */
+            ui?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "shots";
+            /**
+             * Min Shots
+             * @default 2
+             */
+            min_shots: number;
+            /**
+             * Max Shots
+             * @default 6
+             */
+            max_shots: number;
+            /**
+             * Min Shot S
+             * @default 1
+             */
+            min_shot_s: number;
+            /**
+             * Max Shot S
+             * @default 15
+             */
+            max_shot_s: number;
+            /**
+             * Max Total S
+             * @default 15
+             */
+            max_total_s: number;
+            /**
+             * Prompt Budget
+             * @default each
+             * @enum {string}
+             */
+            prompt_budget: "each" | "shared";
+            /** Default */
+            default?: unknown[] | null;
         };
         /** SpendBreakdown */
         SpendBreakdown: {
@@ -2610,11 +2829,22 @@ export interface components {
         TakeOut: {
             /**
              * Generation Id
-             * Format: uuid
+             * @description None for a take cut or joined from others
              */
-            generation_id: string;
+            generation_id: string | null;
             /** Shot Key */
             shot_key: string;
+            /**
+             * Made By
+             * @description model; multi_shot (cut from a scene take); extend_after or extend_before (joined with a new part); region_edit
+             * @default model
+             */
+            made_by: string;
+            /**
+             * Parent Asset Id
+             * @description The take this one was made from
+             */
+            parent_asset_id?: string | null;
             /** Output Type */
             output_type: string;
             /** Status */
@@ -2733,6 +2963,40 @@ export interface components {
              * @default []
              */
             candidates: components["schemas"]["CandidateOut"][];
+        };
+        /**
+         * VirtualEngine
+         * @description One engine a virtual model can run on: which base model and mode serves each of its modes.
+         */
+        VirtualEngine: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Modes */
+            modes: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * VirtualSpec
+         * @description A studio layer over base models (`kind: virtual`). A request names an engine (`engine_param`) and is
+         *     resolved to that engine's base model and mode before anything else happens, so routing, pricing and the
+         *     spend guard are the base model's own. Params named in `director` become shot direction instead.
+         */
+        VirtualSpec: {
+            /**
+             * Engine Param
+             * @default engine
+             */
+            engine_param: string;
+            /** Engines */
+            engines: components["schemas"]["VirtualEngine"][];
+            /**
+             * Director
+             * @default []
+             */
+            director: string[];
         };
     };
     responses: never;
@@ -3274,6 +3538,10 @@ export interface operations {
                 recipe?: string | null;
                 /** @description Faceless episodes of one channel */
                 channel_id?: string | null;
+                /** @description Runs for one Cinema project */
+                project_id?: string | null;
+                /** @description Only runs in this status, e.g. running */
+                status?: components["schemas"]["RunStatus"] | null;
             };
             header?: never;
             path?: never;

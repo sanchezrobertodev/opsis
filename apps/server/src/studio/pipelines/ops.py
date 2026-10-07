@@ -18,9 +18,10 @@ from studio.domain.enums import AssetKind, AssetSource
 from studio.faceless.catalog import CaptionLook, get_catalog
 from studio.media.assemble import Block, assemble_episode, frame_size
 from studio.media.captions import burn_captions, cues, fit_words, place_words, to_ass, to_srt
+from studio.media.ffmpeg import probe
 from studio.media.ops import concat_clips
 from studio.media.swap import masked_merge
-from studio.media.timeline import Clip, cut_timeline
+from studio.media.timeline import Clip, cut_timeline, normalize_clip
 from studio.storage.local import get_storage
 
 mimetypes.add_type("application/x-subrip", ".srt")
@@ -45,6 +46,75 @@ async def last_frame(session: AsyncSession, run: PipelineRun, step: PipelineStep
     (video,) = await _assets(session, run, [step.input["asset_id"]])
     frame, _ = await frame_of(session, video, "last", pipeline_run_id=run.id)
     return {"asset_id": str(frame.id), "derive": [str(frame.id)]}
+
+
+async def first_frame(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    (video,) = await _assets(session, run, [step.input["asset_id"]])
+    frame, _ = await frame_of(session, video, "first", pipeline_run_id=run.id)
+    return {"asset_id": str(frame.id), "derive": [str(frame.id)]}
+
+
+def take_metadata(inp: dict[str, Any], made_by: str, parent: uuid.UUID, **extra: Any) -> dict[str, Any]:
+    """Marks a derived clip as a take of a Cinema shot (GET /projects/{id}/takes lists it) with its parent take."""
+    return {"project_id": inp["project_id"], "shot_key": inp["shot_key"], "made_by": made_by,
+            "parent_asset_id": str(parent), "prompt": inp.get("prompt", ""), **extra}
+
+
+async def split_shots(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    """A multi-shot take cut back into one take per shot, at the shot lengths it was asked for (scaled to the
+    clip's real length when the model ran a little long or short)."""
+    inp = step.input
+    (take,) = await _assets(session, run, [inp["asset_id"]])
+    storage = get_storage()
+    src = storage.path_for(take.storage_key)
+    info = await probe(src)
+    asked = [float(s["duration"]) for s in inp["shots"]]
+    scale = ((info.duration_ms or 0) / 1000 / sum(asked)) if info.duration_ms else 1.0
+    size = ((info.width or 1280) // 2 * 2, (info.height or 720) // 2 * 2)
+    work = storage.temp_dir() / f"split-{uuid7().hex}"
+    work.mkdir(parents=True)
+    out: dict[str, str] = {}
+    try:
+        start = 0.0
+        for i, (shot, seconds) in enumerate(zip(inp["shots"], asked, strict=True), 1):
+            end = start + seconds * scale
+            dest = work / f"shot_{i:02d}.mp4"
+            await normalize_clip(Clip(src, start, end), dest, size)
+            part = await save_derived(
+                session, run.user_id, dest, kind=AssetKind.video, source=AssetSource.pipeline,
+                title=f"{run.title}: shot {i}", pipeline_run_id=run.id, parents=[(take.id, "multi_shot_take")],
+                metadata=take_metadata({**inp, "shot_key": shot["key"], "prompt": shot.get("prompt", "")},
+                                       "multi_shot", take.id, scene_key=inp.get("scene_key"),
+                                       start=round(start, 3), end=round(end, 3)),
+            )
+            out[shot["key"]] = str(part.id)
+            start = end
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return {"assets": out, "derive": list(out.values())}
+
+
+async def join_takes(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    """A take extended forward or backward: the clips joined end to end into a new take of the same shot."""
+    inp = step.input
+    assets = await _assets(session, run, [c["asset_id"] for c in inp["clips"]])
+    storage = get_storage()
+    clips = [Clip(storage.path_for(a.storage_key), c.get("trim_in", 0.0), c.get("trim_out"))
+             for a, c in zip(assets, inp["clips"], strict=True)]
+    parent = uuid.UUID(inp["parent_asset_id"])
+    work = storage.temp_dir() / f"join-{uuid7().hex}"
+    try:
+        dest = work / "take.mp4"
+        total = await cut_timeline(clips, dest, work)
+        take = await save_derived(
+            session, run.user_id, dest, kind=AssetKind.video, source=AssetSource.pipeline, title=run.title,
+            pipeline_run_id=run.id,
+            parents=[(a.id, "extended_from" if a.id == parent else "extension") for a in assets],
+            metadata=take_metadata(inp, inp["made_by"], parent),
+        )
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return {"asset_id": str(take.id), "duration_ms": round(total * 1000), "derive": [str(take.id)]}
 
 
 async def concat(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
@@ -154,7 +224,8 @@ async def keep_background(session: AsyncSession, run: PipelineRun, step: Pipelin
             session, run.user_id, dest, kind=AssetKind.video, source=AssetSource.pipeline,
             title=inp.get("title") or edited.title or run.title, pipeline_run_id=run.id,
             parents=[(original.id, "original"), (edited.id, "edited"), (matte.id, "matte")],
-            metadata={**keep, "recipe": run.recipe, "kept_background": True},
+            metadata={**keep, "recipe": run.recipe, "kept_background": True,
+                      **(take_metadata(inp["cinema"], "region_edit", original.id) if inp.get("cinema") else {})},
         )
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -186,6 +257,9 @@ async def timeline_cut(session: AsyncSession, run: PipelineRun, step: PipelineSt
 LOCAL_OPS: dict[str, Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitable[dict[str, Any]]]] = {
     "timeline_cut": timeline_cut,
     "last_frame": last_frame,
+    "first_frame": first_frame,
+    "split_shots": split_shots,
+    "join_takes": join_takes,
     "concat": concat,
     "narrated_cut": narrated_cut,
     "captions": captions,
