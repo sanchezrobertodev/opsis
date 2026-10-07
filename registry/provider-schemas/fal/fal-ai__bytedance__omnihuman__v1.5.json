@@ -1,0 +1,38 @@
+{
+ "endpoint": "fal-ai/bytedance/omnihuman/v1.5",
+ "variant": null,
+ "input": {
+  "audio_url": {
+   "type": "string"
+  },
+  "image_url": {
+   "type": "string"
+  },
+  "mask_url": {
+   "type": "null|string"
+  },
+  "prompt": {
+   "type": "null|string"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "720p",
+    "1080p"
+   ],
+   "default": "1080p"
+  },
+  "turbo_mode": {
+   "type": "boolean"
+  }
+ },
+ "required": [
+  "audio_url",
+  "image_url"
+ ],
+ "output": [
+  "duration",
+  "video"
+ ],
+ "deprecated": false
+}

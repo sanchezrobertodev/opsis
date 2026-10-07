@@ -1,0 +1,84 @@
+{
+ "endpoint": "fal-ai/wan/v2.2-14b/animate/replace",
+ "variant": null,
+ "input": {
+  "enable_output_safety_checker": {
+   "type": "boolean"
+  },
+  "enable_safety_checker": {
+   "type": "boolean"
+  },
+  "guidance_scale": {
+   "type": "number",
+   "default": 1,
+   "minimum": 1,
+   "maximum": 10
+  },
+  "image_url": {
+   "type": "string"
+  },
+  "num_inference_steps": {
+   "type": "integer",
+   "default": 20,
+   "minimum": 2,
+   "maximum": 40
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "480p",
+    "580p",
+    "720p"
+   ],
+   "default": "480p"
+  },
+  "return_frames_zip": {
+   "type": "boolean"
+  },
+  "seed": {
+   "type": "integer|null"
+  },
+  "shift": {
+   "type": "number",
+   "default": 5,
+   "minimum": 1,
+   "maximum": 10
+  },
+  "use_turbo": {
+   "type": "boolean"
+  },
+  "video_quality": {
+   "type": "string",
+   "enum": [
+    "low",
+    "medium",
+    "high",
+    "maximum"
+   ],
+   "default": "high"
+  },
+  "video_url": {
+   "type": "string"
+  },
+  "video_write_mode": {
+   "type": "string",
+   "enum": [
+    "fast",
+    "balanced",
+    "small"
+   ],
+   "default": "balanced"
+  }
+ },
+ "required": [
+  "image_url",
+  "video_url"
+ ],
+ "output": [
+  "frames_zip",
+  "prompt",
+  "seed",
+  "video"
+ ],
+ "deprecated": false
+}

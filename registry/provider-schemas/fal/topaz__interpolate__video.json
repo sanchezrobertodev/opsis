@@ -1,0 +1,40 @@
+{
+ "endpoint": "topaz/interpolate/video",
+ "variant": null,
+ "input": {
+  "H264_output": {
+   "type": "boolean"
+  },
+  "model": {
+   "type": "string",
+   "enum": [
+    "Apollo",
+    "Chronos",
+    "Aion"
+   ],
+   "default": "Apollo"
+  },
+  "slowdown_factor": {
+   "type": "integer",
+   "default": 1,
+   "minimum": 1,
+   "maximum": 8
+  },
+  "target_fps": {
+   "type": "integer",
+   "default": 60,
+   "minimum": 16,
+   "maximum": 120
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "video_url"
+ ],
+ "output": [
+  "video"
+ ],
+ "deprecated": false
+}

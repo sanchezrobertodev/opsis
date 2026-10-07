@@ -1,0 +1,191 @@
+{
+ "endpoint": "fal-ai/trellis-2",
+ "variant": null,
+ "input": {
+  "decimation_target": {
+   "type": "integer",
+   "default": 500000,
+   "minimum": 5000,
+   "maximum": 2000000
+  },
+  "image_url": {
+   "type": "string"
+  },
+  "remesh": {
+   "type": "boolean",
+   "default": true
+  },
+  "remesh_band": {
+   "type": "number",
+   "default": 1,
+   "minimum": 0,
+   "maximum": 4
+  },
+  "remesh_project": {
+   "type": "number",
+   "default": 0,
+   "minimum": 0,
+   "maximum": 1
+  },
+  "resolution": {
+   "type": "integer",
+   "enum": [
+    512,
+    1024,
+    1536
+   ],
+   "default": 1024
+  },
+  "seed": {
+   "type": "integer|null"
+  },
+  "shape_slat_guidance_interval_end": {
+   "type": "number",
+   "default": 1,
+   "minimum": 0,
+   "maximum": 1
+  },
+  "shape_slat_guidance_interval_start": {
+   "type": "number",
+   "default": 0.6,
+   "minimum": 0,
+   "maximum": 1
+  },
+  "shape_slat_guidance_rescale": {
+   "type": "number",
+   "default": 0.5,
+   "minimum": 0,
+   "maximum": 1
+  },
+  "shape_slat_guidance_strength": {
+   "type": "number",
+   "default": 7.5,
+   "minimum": 0,
+   "maximum": 10
+  },
+  "shape_slat_rescale_t": {
+   "type": "number",
+   "default": 3,
+   "minimum": 1,
+   "maximum": 6
+  },
+  "shape_slat_sampling_steps": {
+   "type": "integer",
+   "default": 12,
+   "minimum": 1,
+   "maximum": 50
+  },
+  "ss_guidance_interval_end": {
+   "type": "number",
+   "default": 1,
+   "minimum": 0,
+   "maximum": 1
+  },
+  "ss_guidance_interval_start": {
+   "type": "number",
+   "default": 0.6,
+   "minimum": 0,
+   "maximum": 1
+  },
+  "ss_guidance_rescale": {
+   "type": "number",
+   "default": 0.7,
+   "minimum": 0,
+   "maximum": 1
+  },
+  "ss_guidance_strength": {
+   "type": "number",
+   "default": 7.5,
+   "minimum": 0,
+   "maximum": 10
+  },
+  "ss_rescale_t": {
+   "type": "number",
+   "default": 5,
+   "minimum": 1,
+   "maximum": 6
+  },
+  "ss_sampling_steps": {
+   "type": "integer",
+   "default": 12,
+   "minimum": 1,
+   "maximum": 50
+  },
+  "tex_slat_guidance_interval_end": {
+   "type": "number",
+   "default": 0.9,
+   "minimum": 0,
+   "maximum": 1
+  },
+  "tex_slat_guidance_interval_start": {
+   "type": "number",
+   "default": 0.6,
+   "minimum": 0,
+   "maximum": 1
+  },
+  "tex_slat_guidance_rescale": {
+   "type": "number",
+   "default": 0,
+   "minimum": 0,
+   "maximum": 1
+  },
+  "tex_slat_guidance_strength": {
+   "type": "number",
+   "default": 1,
+   "minimum": 0,
+   "maximum": 10
+  },
+  "tex_slat_rescale_t": {
+   "type": "number",
+   "default": 3,
+   "minimum": 1,
+   "maximum": 6
+  },
+  "tex_slat_sampling_steps": {
+   "type": "integer",
+   "default": 12,
+   "minimum": 1,
+   "maximum": 50
+  },
+  "texture_size": {
+   "type": "integer",
+   "enum": [
+    1024,
+    2048,
+    4096
+   ],
+   "default": 2048
+  },
+  "uv_unwrap_angle_threshold_deg": {
+   "type": "number",
+   "default": 90,
+   "minimum": 0,
+   "maximum": 180
+  },
+  "uv_unwrap_global_iterations": {
+   "type": "integer",
+   "default": 1,
+   "minimum": 1,
+   "maximum": 10
+  },
+  "uv_unwrap_refine_iterations": {
+   "type": "integer",
+   "default": 0,
+   "minimum": 0,
+   "maximum": 10
+  },
+  "uv_unwrap_smooth_strength": {
+   "type": "number",
+   "default": 1,
+   "minimum": 0,
+   "maximum": 10
+  }
+ },
+ "required": [
+  "image_url"
+ ],
+ "output": [
+  "model_glb"
+ ],
+ "deprecated": false
+}

@@ -1,0 +1,28 @@
+{
+ "endpoint": "fal-ai/kling-video/video-to-audio",
+ "variant": null,
+ "input": {
+  "asmr_mode": {
+   "type": "boolean"
+  },
+  "background_music_prompt": {
+   "type": "null|string",
+   "default": "intense car race"
+  },
+  "sound_effect_prompt": {
+   "type": "null|string",
+   "default": "Car tires screech as they accelerate in a drag race"
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "video_url"
+ ],
+ "output": [
+  "audio",
+  "video"
+ ],
+ "deprecated": false
+}

@@ -1,0 +1,67 @@
+{
+ "endpoint": "fal-ai/kling-video/v3/pro/text-to-video",
+ "variant": null,
+ "input": {
+  "aspect_ratio": {
+   "type": "string",
+   "enum": [
+    "16:9",
+    "9:16",
+    "1:1"
+   ],
+   "default": "16:9"
+  },
+  "cfg_scale": {
+   "type": "number",
+   "default": 0.5,
+   "minimum": 0,
+   "maximum": 1
+  },
+  "duration": {
+   "type": "string",
+   "enum": [
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15"
+   ],
+   "default": "5"
+  },
+  "generate_audio": {
+   "type": "boolean",
+   "default": true
+  },
+  "multi_prompt": {
+   "type": "array<object<KlingV3MultiPromptElement>>|null"
+  },
+  "negative_prompt": {
+   "type": "string",
+   "default": "blur, distort, and low quality"
+  },
+  "prompt": {
+   "type": "null|string"
+  },
+  "shot_type": {
+   "type": "string",
+   "enum": [
+    "customize",
+    "intelligent"
+   ],
+   "default": "customize"
+  }
+ },
+ "required": [],
+ "output": [
+  "video"
+ ],
+ "deprecated": false
+}

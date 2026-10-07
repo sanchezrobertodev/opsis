@@ -1,0 +1,20 @@
+{
+ "endpoint": "fal-ai/hunyuan_world",
+ "variant": null,
+ "input": {
+  "image_url": {
+   "type": "string"
+  },
+  "prompt": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "image_url",
+  "prompt"
+ ],
+ "output": [
+  "image"
+ ],
+ "deprecated": false
+}

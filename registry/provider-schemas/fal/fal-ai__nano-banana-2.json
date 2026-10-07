@@ -1,0 +1,99 @@
+{
+ "endpoint": "fal-ai/nano-banana-2",
+ "variant": null,
+ "input": {
+  "aspect_ratio": {
+   "type": "null|string",
+   "enum": [
+    "auto",
+    "21:9",
+    "16:9",
+    "3:2",
+    "4:3",
+    "5:4",
+    "1:1",
+    "4:5",
+    "3:4",
+    "2:3",
+    "9:16",
+    "4:1",
+    "1:4",
+    "8:1",
+    "1:8"
+   ],
+   "default": "auto"
+  },
+  "enable_web_search": {
+   "type": "boolean"
+  },
+  "limit_generations": {
+   "type": "boolean",
+   "default": true
+  },
+  "num_images": {
+   "type": "integer",
+   "default": 1,
+   "minimum": 1,
+   "maximum": 4
+  },
+  "output_format": {
+   "type": "string",
+   "enum": [
+    "jpeg",
+    "png",
+    "webp"
+   ],
+   "default": "png"
+  },
+  "prompt": {
+   "type": "string"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "0.5K",
+    "1K",
+    "2K",
+    "4K"
+   ],
+   "default": "1K"
+  },
+  "safety_tolerance": {
+   "type": "string",
+   "enum": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6"
+   ],
+   "default": "4"
+  },
+  "seed": {
+   "type": "integer|null"
+  },
+  "sync_mode": {
+   "type": "boolean"
+  },
+  "system_prompt": {
+   "type": "string",
+   "default": ""
+  },
+  "thinking_level": {
+   "type": "null|string",
+   "enum": [
+    "minimal",
+    "high"
+   ]
+  }
+ },
+ "required": [
+  "prompt"
+ ],
+ "output": [
+  "description",
+  "images"
+ ],
+ "deprecated": false
+}

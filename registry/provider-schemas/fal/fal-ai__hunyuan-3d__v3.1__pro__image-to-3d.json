@@ -1,0 +1,57 @@
+{
+ "endpoint": "fal-ai/hunyuan-3d/v3.1/pro/image-to-3d",
+ "variant": null,
+ "input": {
+  "back_image_url": {
+   "type": "null|string"
+  },
+  "bottom_image_url": {
+   "type": "null|string"
+  },
+  "enable_pbr": {
+   "type": "boolean"
+  },
+  "face_count": {
+   "type": "integer",
+   "default": 500000,
+   "minimum": 40000,
+   "maximum": 1500000
+  },
+  "generate_type": {
+   "type": "string",
+   "enum": [
+    "Normal",
+    "Geometry"
+   ],
+   "default": "Normal"
+  },
+  "input_image_url": {
+   "type": "string"
+  },
+  "left_front_image_url": {
+   "type": "null|string"
+  },
+  "left_image_url": {
+   "type": "null|string"
+  },
+  "right_front_image_url": {
+   "type": "null|string"
+  },
+  "right_image_url": {
+   "type": "null|string"
+  },
+  "top_image_url": {
+   "type": "null|string"
+  }
+ },
+ "required": [
+  "input_image_url"
+ ],
+ "output": [
+  "model_glb",
+  "model_urls",
+  "seed",
+  "thumbnail"
+ ],
+ "deprecated": false
+}

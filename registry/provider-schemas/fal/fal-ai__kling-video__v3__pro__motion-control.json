@@ -1,0 +1,38 @@
+{
+ "endpoint": "fal-ai/kling-video/v3/pro/motion-control",
+ "variant": null,
+ "input": {
+  "character_orientation": {
+   "type": "string",
+   "enum": [
+    "image",
+    "video"
+   ]
+  },
+  "elements": {
+   "type": "array<object<KlingV3ImageElementInput>>|null"
+  },
+  "image_url": {
+   "type": "string"
+  },
+  "keep_original_sound": {
+   "type": "boolean",
+   "default": true
+  },
+  "prompt": {
+   "type": "null|string"
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "character_orientation",
+  "image_url",
+  "video_url"
+ ],
+ "output": [
+  "video"
+ ],
+ "deprecated": false
+}

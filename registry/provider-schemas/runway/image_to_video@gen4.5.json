@@ -1,0 +1,81 @@
+{
+ "endpoint": "image_to_video",
+ "variant": "gen4.5",
+ "input": {
+  "contentModeration": {
+   "type": "object"
+  },
+  "duration": {
+   "type": "integer",
+   "minimum": 2,
+   "maximum": 10
+  },
+  "model": {
+   "type": "str",
+   "enum": [
+    "gen4.5"
+   ]
+  },
+  "outputFormat": {
+   "type": "string",
+   "enum": [
+    "mp4",
+    "prores",
+    "png_sequence",
+    "hdr10",
+    "hlg",
+    "sdr_rec709_10bit",
+    "hdr_pq_12bit_master",
+    "hdr_prores",
+    "hdr_png_sequence",
+    "hdr_exr_sequence",
+    "hdr_exr_acescg_sequence_1_3",
+    "hdr_exr_acescg_sequence_2_0"
+   ]
+  },
+  "promptImage": {
+   "type": "array<object<PromptImage>>|string",
+   "minItems": 1,
+   "maxItems": 1
+  },
+  "promptText": {
+   "type": "string"
+  },
+  "proresProfile": {
+   "type": "string",
+   "enum": [
+    "422",
+    "4444",
+    "422 Proxy",
+    "422 LT",
+    "422 HQ",
+    "4444 XQ"
+   ]
+  },
+  "ratio": {
+   "type": "string",
+   "enum": [
+    "1280:720",
+    "720:1280",
+    "1104:832",
+    "960:960",
+    "832:1104",
+    "1584:672"
+   ]
+  },
+  "seed": {
+   "type": "integer",
+   "minimum": 0,
+   "maximum": 4294967295
+  }
+ },
+ "required": [
+  "duration",
+  "model",
+  "promptImage",
+  "promptText",
+  "ratio"
+ ],
+ "output": [],
+ "deprecated": false
+}

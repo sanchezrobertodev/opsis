@@ -1,0 +1,76 @@
+{
+ "endpoint": "fal-ai/veo3.1/first-last-frame-to-video",
+ "variant": null,
+ "input": {
+  "aspect_ratio": {
+   "type": "string",
+   "enum": [
+    "auto",
+    "16:9",
+    "9:16"
+   ],
+   "default": "auto"
+  },
+  "auto_fix": {
+   "type": "boolean"
+  },
+  "duration": {
+   "type": "string",
+   "enum": [
+    "4s",
+    "6s",
+    "8s"
+   ],
+   "default": "8s"
+  },
+  "first_frame_url": {
+   "type": "string"
+  },
+  "generate_audio": {
+   "type": "boolean",
+   "default": true
+  },
+  "last_frame_url": {
+   "type": "string"
+  },
+  "negative_prompt": {
+   "type": "null|string"
+  },
+  "prompt": {
+   "type": "string"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "720p",
+    "1080p",
+    "4k"
+   ],
+   "default": "720p"
+  },
+  "safety_tolerance": {
+   "type": "string",
+   "enum": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6"
+   ],
+   "default": "4"
+  },
+  "seed": {
+   "type": "integer|null"
+  }
+ },
+ "required": [
+  "first_frame_url",
+  "last_frame_url",
+  "prompt"
+ ],
+ "output": [
+  "video"
+ ],
+ "deprecated": false
+}

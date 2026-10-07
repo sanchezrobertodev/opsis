@@ -1,0 +1,187 @@
+{
+ "endpoint": "fal-ai/wan-vace-14b/depth",
+ "variant": null,
+ "input": {
+  "acceleration": {
+   "type": "null|string",
+   "enum": [
+    "none",
+    "low",
+    "regular"
+   ],
+   "default": "regular"
+  },
+  "aspect_ratio": {
+   "type": "string",
+   "enum": [
+    "auto",
+    "16:9",
+    "1:1",
+    "9:16"
+   ],
+   "default": "auto"
+  },
+  "auto_downsample_min_fps": {
+   "type": "number",
+   "default": 15,
+   "minimum": 1,
+   "maximum": 60
+  },
+  "enable_auto_downsample": {
+   "type": "boolean"
+  },
+  "enable_prompt_expansion": {
+   "type": "boolean"
+  },
+  "enable_safety_checker": {
+   "type": "boolean"
+  },
+  "first_frame_url": {
+   "type": "null|string"
+  },
+  "frames_per_second": {
+   "type": "integer|null",
+   "default": 16,
+   "minimum": 5,
+   "maximum": 30
+  },
+  "guidance_scale": {
+   "type": "number",
+   "default": 5,
+   "minimum": 1,
+   "maximum": 10
+  },
+  "interpolator_model": {
+   "type": "string",
+   "enum": [
+    "rife",
+    "film"
+   ],
+   "default": "film"
+  },
+  "last_frame_url": {
+   "type": "null|string"
+  },
+  "match_input_frames_per_second": {
+   "type": "boolean"
+  },
+  "match_input_num_frames": {
+   "type": "boolean"
+  },
+  "negative_prompt": {
+   "type": "string",
+   "default": "letterboxing, borders, black bars, bright colors, overexposed, static, blurred details, subtitles, style, artwork, painting, picture, still, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, malformed limbs, fused fingers, still picture, cluttered background, three legs, many people in the background, walking backwards"
+  },
+  "num_frames": {
+   "type": "integer",
+   "default": 81,
+   "minimum": 17,
+   "maximum": 241
+  },
+  "num_inference_steps": {
+   "type": "integer",
+   "default": 30,
+   "minimum": 2,
+   "maximum": 50
+  },
+  "num_interpolated_frames": {
+   "type": "integer",
+   "default": 0,
+   "minimum": 0,
+   "maximum": 5
+  },
+  "preprocess": {
+   "type": "boolean"
+  },
+  "prompt": {
+   "type": "string"
+  },
+  "ref_image_urls": {
+   "type": "array<string>"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "auto",
+    "240p",
+    "360p",
+    "480p",
+    "580p",
+    "720p"
+   ],
+   "default": "auto"
+  },
+  "return_frames_zip": {
+   "type": "boolean"
+  },
+  "sampler": {
+   "type": "string",
+   "enum": [
+    "unipc",
+    "dpm++",
+    "euler"
+   ],
+   "default": "unipc"
+  },
+  "seed": {
+   "type": "integer|null"
+  },
+  "shift": {
+   "type": "number",
+   "default": 5,
+   "minimum": 1,
+   "maximum": 15
+  },
+  "sync_mode": {
+   "type": "boolean"
+  },
+  "temporal_downsample_factor": {
+   "type": "integer",
+   "default": 0,
+   "minimum": 0,
+   "maximum": 5
+  },
+  "transparency_mode": {
+   "type": "string",
+   "enum": [
+    "content_aware",
+    "white",
+    "black"
+   ],
+   "default": "content_aware"
+  },
+  "video_quality": {
+   "type": "string",
+   "enum": [
+    "low",
+    "medium",
+    "high",
+    "maximum"
+   ],
+   "default": "high"
+  },
+  "video_url": {
+   "type": "string"
+  },
+  "video_write_mode": {
+   "type": "string",
+   "enum": [
+    "fast",
+    "balanced",
+    "small"
+   ],
+   "default": "balanced"
+  }
+ },
+ "required": [
+  "prompt",
+  "video_url"
+ ],
+ "output": [
+  "frames_zip",
+  "prompt",
+  "seed",
+  "video"
+ ],
+ "deprecated": false
+}

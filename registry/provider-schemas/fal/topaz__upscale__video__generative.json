@@ -1,0 +1,46 @@
+{
+ "endpoint": "topaz/upscale/video/generative",
+ "variant": null,
+ "input": {
+  "H264_output": {
+   "type": "boolean"
+  },
+  "model": {
+   "type": "string",
+   "enum": [
+    "Starlight Precise 2.6",
+    "Starlight HQ",
+    "Starlight Mini",
+    "Starlight Sharp",
+    "Starlight Fast 2"
+   ],
+   "default": "Starlight Precise 2.6"
+  },
+  "softness": {
+   "type": "null|number",
+   "minimum": 1,
+   "maximum": 5
+  },
+  "target_fps": {
+   "type": "integer|null",
+   "minimum": 16,
+   "maximum": 60
+  },
+  "upscale_factor": {
+   "type": "number",
+   "default": 2,
+   "minimum": 1,
+   "maximum": 4
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "video_url"
+ ],
+ "output": [
+  "video"
+ ],
+ "deprecated": false
+}

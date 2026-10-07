@@ -1,0 +1,53 @@
+{
+ "endpoint": "character_performance",
+ "variant": "act_two",
+ "input": {
+  "bodyControl": {
+   "type": "boolean"
+  },
+  "character": {
+   "type": "object<CharacterImage>|object<CharacterVideo>"
+  },
+  "contentModeration": {
+   "type": "object"
+  },
+  "expressionIntensity": {
+   "type": "integer",
+   "default": 3,
+   "minimum": 1,
+   "maximum": 5
+  },
+  "model": {
+   "type": "str",
+   "enum": [
+    "act_two"
+   ]
+  },
+  "ratio": {
+   "type": "string",
+   "enum": [
+    "1280:720",
+    "720:1280",
+    "960:960",
+    "1104:832",
+    "832:1104",
+    "1584:672"
+   ]
+  },
+  "reference": {
+   "type": "object<CharacterReferenceVideo>"
+  },
+  "seed": {
+   "type": "integer",
+   "minimum": 0,
+   "maximum": 4294967295
+  }
+ },
+ "required": [
+  "character",
+  "model",
+  "reference"
+ ],
+ "output": [],
+ "deprecated": false
+}

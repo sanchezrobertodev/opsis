@@ -1,0 +1,48 @@
+{
+ "endpoint": "fal-ai/sam-3/video-rle",
+ "variant": null,
+ "input": {
+  "apply_mask": {
+   "type": "boolean"
+  },
+  "boundingbox_zip": {
+   "type": "boolean"
+  },
+  "box_prompts": {
+   "type": "array<object<BoxPrompt>>",
+   "default": []
+  },
+  "detection_threshold": {
+   "type": "number",
+   "default": 0.5,
+   "minimum": 0.01,
+   "maximum": 1
+  },
+  "frame_index": {
+   "type": "integer",
+   "default": 0
+  },
+  "mask_url": {
+   "type": "null|string"
+  },
+  "point_prompts": {
+   "type": "array<object<PointPrompt>>",
+   "default": []
+  },
+  "prompt": {
+   "type": "string",
+   "default": ""
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "video_url"
+ ],
+ "output": [
+  "boundingbox_frames_zip",
+  "video"
+ ],
+ "deprecated": false
+}

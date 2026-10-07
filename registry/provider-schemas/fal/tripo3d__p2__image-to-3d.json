@@ -1,0 +1,79 @@
+{
+ "endpoint": "tripo3d/p2/image-to-3d",
+ "variant": null,
+ "input": {
+  "auto_size": {
+   "type": "boolean"
+  },
+  "delight": {
+   "type": "boolean",
+   "default": true
+  },
+  "export_orientation": {
+   "type": "null|string",
+   "enum": [
+    "+x",
+    "-x",
+    "-y",
+    "+y"
+   ]
+  },
+  "export_uv": {
+   "type": "boolean",
+   "default": true
+  },
+  "face_limit": {
+   "type": "integer|null",
+   "minimum": 48,
+   "maximum": 50000
+  },
+  "image_url": {
+   "type": "string"
+  },
+  "model_seed": {
+   "type": "integer|null"
+  },
+  "pbr": {
+   "type": "boolean",
+   "default": true
+  },
+  "quad": {
+   "type": "boolean"
+  },
+  "texture": {
+   "type": "boolean",
+   "default": true
+  },
+  "texture_quality": {
+   "type": "string",
+   "enum": [
+    "fast",
+    "standard",
+    "detailed",
+    "extreme"
+   ],
+   "default": "standard"
+  },
+  "texture_seed": {
+   "type": "integer|null"
+  },
+  "texture_version": {
+   "type": "null|string",
+   "enum": [
+    "v3.5-20260815",
+    "v3.0-20250812",
+    "v2.5-20250123"
+   ]
+  }
+ },
+ "required": [
+  "image_url"
+ ],
+ "output": [
+  "model_mesh",
+  "model_urls",
+  "rendered_image",
+  "task_id"
+ ],
+ "deprecated": false
+}

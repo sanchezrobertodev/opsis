@@ -1,0 +1,52 @@
+{
+ "endpoint": "luma/agent/ray/v3.2/reframe",
+ "variant": null,
+ "input": {
+  "aspect_ratio": {
+   "type": "string",
+   "enum": [
+    "3:4",
+    "4:3",
+    "1:1",
+    "9:16",
+    "16:9",
+    "21:9"
+   ]
+  },
+  "duration": {
+   "type": "null|string",
+   "enum": [
+    "5s",
+    "10s"
+   ]
+  },
+  "prompt": {
+   "type": "string"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "540p",
+    "720p",
+    "1080p"
+   ],
+   "default": "540p"
+  },
+  "source_position": {
+   "type": "null|object<RayReframeSourcePosition>"
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "aspect_ratio",
+  "prompt",
+  "video_url"
+ ],
+ "output": [
+  "exr_file",
+  "video"
+ ],
+ "deprecated": false
+}
