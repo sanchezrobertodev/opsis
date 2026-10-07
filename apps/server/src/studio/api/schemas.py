@@ -102,6 +102,8 @@ class GenerationCreate(ApiModel):
     group_id: uuid.UUID | None = None
     parent_generation_id: uuid.UUID | None = None
     direction: ShotDirection | None = Field(None, description="Camera moves and cinema look, compiled into the prompt")
+    project_id: uuid.UUID | None = Field(None, description="A Cinema Studio project this take belongs to")
+    shot_key: str | None = Field(None, max_length=80, description="The project's shot this take is for")
 
 
 class CandidateOut(ApiModel):
@@ -201,6 +203,8 @@ class GenerationOut(ApiModel):
     error_message: str | None
     group_id: uuid.UUID | None
     parent_generation_id: uuid.UUID | None
+    project_id: uuid.UUID | None = None
+    shot_key: str | None = None
     created_at: datetime
     queued_at: datetime | None
     started_at: datetime | None

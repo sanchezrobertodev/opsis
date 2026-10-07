@@ -1,0 +1,38 @@
+import { expect, test } from "@playwright/test";
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8400";
+
+test.beforeAll(async ({ request }) => {
+  const health = await (await request.get(`${API}/health`)).json();
+  expect(health.provider_mode, "e2e only runs against the mock provider").toBe("mock");
+});
+
+test("Cinema: script, Claude's shot plan, film every shot, pick takes, export the cut", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.goto("/cinema");
+  await page.getByRole("button", { name: "New film" }).click();
+  await page.getByLabel("Title").fill(`e2e film ${Date.now()}`);
+  await page.getByRole("button", { name: "Create" }).click();
+  await expect(page).toHaveURL(/\/cinema\/[0-9a-f-]+$/);
+
+  await page.getByRole("radio", { name: "Script" }).click();
+  await page.getByLabel("Script").fill("A kite lifts off the beach. It climbs into the wind.");
+  await page.getByRole("button", { name: "Plan shots with Claude" }).click();
+  await page.getByRole("button", { name: "Use this plan" }).click();
+
+  await expect(page.getByText("Saved, version 2")).toBeVisible();
+  await page.getByRole("button", { name: /^Film 2 unfilmed shots/ }).click();
+
+  for (const action of ["A kite lifts off the beach.", "It climbs into the wind."]) {
+    await page.getByRole("button", { name: new RegExp(action.replace(".", "\\.")) }).click();
+    await page.getByRole("button", { name: "Use this take" }).first().click({ timeout: 90_000 });
+    await expect(page.getByRole("button", { name: "In the cut" })).toBeVisible();
+  }
+
+  await expect(page.getByRole("button", { name: /^Film 0 unfilmed shots/ })).toBeVisible();  // both picked
+  await page.getByRole("radio", { name: "Cut" }).first().click();
+  await expect(page.getByLabel("Shot 2 starts at")).toBeVisible();
+  await page.getByRole("radio", { name: "Fade" }).click();
+  await page.getByRole("button", { name: "Export the film" }).click();
+  await expect(page.getByText(/^Exported\./)).toBeVisible({ timeout: 60_000 });
+});

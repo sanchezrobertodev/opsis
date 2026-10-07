@@ -32,7 +32,8 @@ def generation_out(g: Generation, assets: list[Asset] | None = None) -> Generati
         estimated_cost_usd=float(g.estimated_cost_usd) if g.estimated_cost_usd is not None else None,
         actual_cost_usd=float(g.actual_cost_usd) if g.actual_cost_usd is not None else None,
         error_code=g.error_code.value if g.error_code else None, error_message=g.error_message,
-        group_id=g.group_id, parent_generation_id=g.parent_generation_id, created_at=g.created_at,
+        group_id=g.group_id, parent_generation_id=g.parent_generation_id, project_id=g.project_id,
+        shot_key=g.shot_key, created_at=g.created_at,
         queued_at=g.queued_at, started_at=g.started_at, finished_at=g.finished_at,
         assets=[asset_out(a) for a in sorted(assets or [], key=lambda a: a.output_index or 0)],
     )

@@ -254,7 +254,13 @@ channels, topic ideas, script approval and editing, narrated stills or animated 
 captions plus SRT, thumbnail pick); and the Object swap studio (click to select on a frame with SAM 3, tracking, 1-3
 edit models compared, a composite that keeps every pixel outside the mask, removal). Not done: the Kids song mode,
 prompt rephrasing in the clip retry ladder, and the VACE swap route (AMS-32, blocked on the VACE weights on
-wan-core, AMS-11). Remaining work is tracked in Jira project AMS; P5 (Cinema Studio, AMS-4) is next.
+wan-core, AMS-11). Remaining work is tracked in Jira project AMS.
+P5 in progress (branch `claude/p5-cinema-studio`, mock-tested): versioned film projects with revisions, Claude shot
+plans, a storyboard with per-shot direction, hero-frame grids, batch takes with last-frame continuity (an edit redoes
+only that shot and the shots chained after it), take picking, and a cut with trims and fades exported by ffmpeg.
+Not yet: the Cinema Studio virtual model (AMS-38), multi-shot and per-shot extend/edit (AMS-41), the director
+panel's extra Cinema Studio 4.0 vocabulary (AMS-37), and a Remotion timeline preview (the cut previews in a plain
+player for now).
 - **Step 0 — Handoff (this session, after approval):**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

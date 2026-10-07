@@ -67,6 +67,7 @@ async def create(
         route_policy=body.route_policy, confirm_cost_usd=body.confirm_cost_usd,
         idempotency_key=idempotency_key, group_id=body.group_id, parent_generation_id=body.parent_generation_id,
         direction=body.direction.model_dump(exclude_none=True) if body.direction else None,
+        project_id=body.project_id, shot_key=body.shot_key,
     ))
     await session.commit()
     if created:

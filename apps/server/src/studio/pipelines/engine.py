@@ -126,6 +126,8 @@ async def _start_generate(session: AsyncSession, run: PipelineRun, step: Pipelin
         model_id=step.input["model_id"], mode=step.input["mode"], prompt=step.input.get("prompt", ""),
         params=step.input.get("params") or {}, media=step.input.get("media") or [],
         direction=step.input.get("direction"), group_id=run.id, pipeline_step_id=step.id,
+        project_id=uuid.UUID(step.input["project_id"]) if step.input.get("project_id") else None,
+        shot_key=step.input.get("shot_key"),
         # the run's cap is the confirmation: anything that fits in what's left may start
         confirm_cost_usd=float(remaining),
         idempotency_key=f"run:{run.id}:{step.key}:{step.input_hash[:16]}:{step.attempts}",

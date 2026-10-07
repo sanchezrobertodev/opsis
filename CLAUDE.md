@@ -146,6 +146,17 @@ pnpm lint       # ruff + eslint + tsc
 - The registry holder notices edited YAML in every process (stamps checked at most once a second), so the worker
   never misses a model the API accepts; a broken file keeps the last good registry.
 
+## Cinema Studio (projects)
+- A film is a `projects` row (`kind: cinema`) whose JSONB `document` is `studio/cinema/document.py:CinemaDocument`
+  (script, cast slugs, settings, scenes of shots with short stable ids). Saves send the `version` they started from
+  (stale -> 409) and every save is kept in `project_revisions`; restoring makes a new version.
+- Runs never write the document. `cinema_frames` (hero frames) and `cinema_takes` (takes, chained from the previous
+  shot's last frame where a shot continues) make generations tagged `project_id` + `shot_key`
+  (`GET /projects/{id}/takes`); the editor picks them into the document. `cinema_export` cuts the picked takes
+  (`media/timeline.py`: trims, cuts or fades).
+- `POST /projects/{id}/plan` asks Claude (Opus) for scenes and shots in the director's vocabulary; unknown ids are
+  dropped and nothing is saved until the editor applies the proposal.
+
 ## Local engine (ComfyUI)
 - `comfy_local` provider = the VideoStudio ComfyUI at `COMFYUI_URL` (default http://127.0.0.1:8188). Start it with
   `C:/Dev/AI/VideoStudio/ComfyUI_windows_portable/python_embeded/python.exe C:/Dev/AI/VideoStudio/setup/launcher.py --no-browser`

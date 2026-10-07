@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from studio.budget import guard
 from studio.config import get_settings
 from studio.db.base import uuid7
-from studio.db.models import Asset, Generation, GenerationAttempt
+from studio.db.models import Asset, Generation, GenerationAttempt, Project
 from studio.director.compiler import Compiled, ShotDirection, compile_prompt
 from studio.director.elements import resolve_mentions
 from studio.domain import fsm
@@ -57,6 +57,8 @@ class CreateRequest:
     parent_generation_id: uuid.UUID | None = None
     direction: dict[str, Any] | None = None
     pipeline_step_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None  # a Cinema Studio project, with the shot this take belongs to
+    shot_key: str | None = None
 
 
 @dataclass
@@ -193,6 +195,10 @@ async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: Cre
         if existing:
             return existing, False
 
+    if body.project_id is not None:
+        project = await session.get(Project, body.project_id)
+        if project is None or project.user_id != user_id or project.deleted_at is not None:
+            raise GenerationRequestError([f"project {body.project_id} not found"])
     reg = get_registry()
     p = await plan(session, user_id, body, reg)
     if p.chosen is None:
@@ -213,6 +219,8 @@ async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: Cre
         group_id=body.group_id,
         parent_generation_id=body.parent_generation_id,
         pipeline_step_id=body.pipeline_step_id,
+        project_id=body.project_id,
+        shot_key=body.shot_key,
         model_id=spec.id,
         mode=p.request.mode,
         output_type=spec.output_type,

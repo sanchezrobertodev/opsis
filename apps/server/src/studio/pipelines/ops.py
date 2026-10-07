@@ -20,6 +20,7 @@ from studio.media.assemble import Block, assemble_episode, frame_size
 from studio.media.captions import burn_captions, cues, fit_words, place_words, to_ass, to_srt
 from studio.media.ops import concat_clips
 from studio.media.swap import masked_merge
+from studio.media.timeline import Clip, cut_timeline
 from studio.storage.local import get_storage
 
 mimetypes.add_type("application/x-subrip", ".srt")
@@ -160,7 +161,30 @@ async def keep_background(session: AsyncSession, run: PipelineRun, step: Pipelin
     return {"asset_id": str(out.id), "derive": [str(out.id)]}
 
 
+async def timeline_cut(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    """Join picked takes into the film: each trimmed, with cuts or fades between them."""
+    inp = step.input
+    assets = await _assets(session, run, [c["asset_id"] for c in inp["clips"]])
+    storage = get_storage()
+    clips = [Clip(storage.path_for(a.storage_key), c.get("trim_in", 0.0), c.get("trim_out"), c.get("transition", "cut"))
+             for a, c in zip(assets, inp["clips"], strict=True)]
+    work = storage.temp_dir() / f"cut-{uuid7().hex}"
+    try:
+        dest = work / "film.mp4"
+        total = await cut_timeline(clips, dest, work, fade=inp.get("fade_seconds", 0.5))
+        film = await save_derived(
+            session, run.user_id, dest, kind=AssetKind.video, source=AssetSource.pipeline,
+            title=inp.get("title") or run.title, pipeline_run_id=run.id,
+            parents=[(a.id, f"shot_{i:02d}") for i, a in enumerate(assets, 1)],
+            metadata={"recipe": run.recipe, "clips": inp["clips"]},
+        )
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return {"asset_id": str(film.id), "duration_ms": round(total * 1000), "derive": [str(film.id)]}
+
+
 LOCAL_OPS: dict[str, Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitable[dict[str, Any]]]] = {
+    "timeline_cut": timeline_cut,
     "last_frame": last_frame,
     "concat": concat,
     "narrated_cut": narrated_cut,

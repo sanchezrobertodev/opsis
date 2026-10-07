@@ -20,6 +20,7 @@ from studio.api.routers import (
     misc,
     pipelines,
     presets,
+    projects,
     registry,
 )
 from studio.api.schemas import CandidateOut, ConfirmationProblem, ValidationProblem
@@ -102,6 +103,7 @@ app.include_router(presets.router)
 app.include_router(llm.router)
 app.include_router(pipelines.router)
 app.include_router(faceless.router)
+app.include_router(projects.router)
 app.include_router(generations.router)
 app.include_router(assets.router)
 app.include_router(misc.router)
