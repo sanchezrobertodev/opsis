@@ -5,7 +5,9 @@ tagged with the project and shot) and the editor picks them into the document.
   when the model takes references).
 - cinema_takes: several takes per shot. A shot starts from its picked hero frame, or continues from the last frame
   of the previous shot (its picked take, or the first take this run makes of it). Editing a shot and revising the
-  run redoes that shot and the shots chained after it, nothing else.
+  run redoes that shot and the shots chained after it, nothing else. A shot's dialogue goes into the prompt of
+  models that voice it themselves; on other models each line is voiced (TTS), the lines are joined into one track,
+  and every take is lip-synced to it as a new take.
 - cinema_export: the cut. Picked takes in order, trimmed, joined with cuts or short fades.
 """
 
@@ -17,21 +19,27 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from studio.db.models import StepKind
+from studio.director.compiler import DialogueLine
 from studio.director.elements import mentions
+from studio.media.speech import CHARS_PER_SECOND
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import (
     bridge_mode,
     edit_mode,
     fit_duration,
     mode_for,
+    mode_with_op,
     multi_shot_mode,
     start_frame_mode,
     text_mode,
     with_param,
 )
 from studio.pipelines.recipes.keyframe import ref_mode
+from studio.pipelines.recipes.talking import lipsync_mode
 from studio.registry.loader import Registry
 from studio.registry.schema import Mode, ModelSpec
+from studio.registry.validate import RequestError
+from studio.registry.virtual import resolve as resolve_virtual
 
 KEY = r"^[a-z][a-z0-9]{2,15}$"
 
@@ -46,6 +54,21 @@ def take_key(shot: str, n: int) -> str:
 
 def chain_key(shot: str) -> str:
     return f"chain[{shot}]"
+
+
+def line_key(shot: str, k: int) -> str:
+    return f"line[{shot}:{k}]"
+
+
+def track_key(shot: str) -> str:
+    return f"track[{shot}]"
+
+
+def lip_key(shot: str, n: int) -> str:
+    return f"lip[{shot}:{n}]"
+
+
+LINE_GAP_S = 0.35
 
 
 # ---------------------------------------------------------------- hero frames
@@ -139,6 +162,16 @@ class CinemaFramesRecipe(Recipe):
 # ---------------------------------------------------------------- takes
 
 
+def _lines(shot: TakeShot) -> list[DialogueLine]:
+    """The shot's dialogue, which travels in its direction."""
+    return [DialogueLine.model_validate(x) for x in (shot.direction or {}).get("dialogue") or []
+            if str(x.get("text") or "").strip() and str(x.get("who") or "").strip()]
+
+
+def _voice_params(line: DialogueLine) -> dict[str, Any]:
+    return {"voice_id": line.voice_id} if line.voice_id else {}
+
+
 class TakeShot(BaseModel):
     key: str = Field(pattern=KEY)
     prompt: str = Field(min_length=1, max_length=2000)
@@ -155,6 +188,8 @@ class CinemaTakesInput(BaseModel):
     params: dict[str, Any] = {}
     takes: int = Field(2, ge=1, le=4)
     shots: list[TakeShot] = Field(min_length=1, max_length=40)
+    voice_model: str = Field("eleven-v4", description="Voices dialogue on models that don't speak it themselves")
+    lipsync_model_id: str = Field("sync-lipsync-3", description="Lip-syncs those takes to their dialogue")
 
     @model_validator(mode="after")
     def _chains_point_back(self) -> CinemaTakesInput:
@@ -185,10 +220,36 @@ class CinemaTakesRecipe(Recipe):
         if not all(s.start_asset_id or s.continue_from or s.continue_from_asset_id for s in inp.shots) \
                 and text_mode(spec) is None:
             return [f"{spec.name} needs a hero frame for every shot"]
+        if any(self._voiced_after(inp, spec, s, reg) for s in inp.shots):
+            voice, lip = reg.model(inp.voice_model), reg.model(inp.lipsync_model_id)
+            if voice is None or mode_with_op(voice, "tts") is None:
+                return [f"{spec.name} doesn't voice dialogue, and {inp.voice_model!r} can't speak the lines"]
+            if lip is None or lipsync_mode(lip, "video") is None:
+                return [f"{spec.name} doesn't voice dialogue, and {inp.lipsync_model_id!r} can't lip-sync a take"]
         return []
 
-    def _params(self, inp: CinemaTakesInput, spec: ModelSpec, mode: Mode, shot: TakeShot) -> dict[str, Any]:
-        return with_param(spec, mode.id, dict(inp.params), "duration", shot.duration)
+    def _params(self, inp: CinemaTakesInput, spec: ModelSpec, mode: Mode, shot: TakeShot,
+                reg: Registry | None = None) -> dict[str, Any]:
+        params = with_param(spec, mode.id, dict(inp.params), "duration", shot.duration)
+        if reg is not None and _lines(shot) and self._speaks(spec, mode, params, reg):
+            params = with_param(spec, mode.id, params, "generate_audio", True)  # dialogue needs the sound on
+        return params
+
+    @staticmethod
+    def _speaks(spec: ModelSpec, mode: Mode, params: dict[str, Any], reg: Registry) -> bool:
+        """Whether the model voices dialogue written in its prompt (a virtual model: its engine)."""
+        try:
+            return resolve_virtual(reg, spec, mode.id, params, None).spec.prompt.dialogue
+        except RequestError:
+            return False
+
+    def _voiced_after(self, inp: CinemaTakesInput, spec: ModelSpec, shot: TakeShot, reg: Registry) -> bool:
+        """Lines this model can't speak: voiced and lip-synced onto each take afterwards."""
+        if not _lines(shot):
+            return False
+        roles = {"start_image"} if shot.start_asset_id or shot.continue_from or shot.continue_from_asset_id else set()
+        mode = mode_for(spec, roles)
+        return mode is not None and not self._speaks(spec, mode, dict(inp.params), reg)
 
     def jobs(self, inp: CinemaTakesInput, reg: Registry) -> list[PlannedJob]:
         spec = reg.models[inp.model_id]
@@ -197,7 +258,18 @@ class CinemaTakesRecipe(Recipe):
             roles = {"start_image"} if shot.start_asset_id or shot.continue_from or shot.continue_from_asset_id else set()
             mode = mode_for(spec, roles)
             assert mode is not None
-            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode, shot), tuple(roles))] * inp.takes
+            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode, shot, reg), tuple(roles))] * inp.takes
+            if self._voiced_after(inp, spec, shot, reg):
+                lines = _lines(shot)
+                voice = reg.models[inp.voice_model]
+                tts = mode_with_op(voice, "tts")
+                lip = reg.models[inp.lipsync_model_id]
+                lip_mode = lipsync_mode(lip, "video")
+                assert tts is not None and lip_mode is not None
+                out += [PlannedJob(voice.id, tts.id, _voice_params(line), prompt_chars=len(line.text)) for line in lines]
+                speech = sum(len(x.text) for x in lines) / CHARS_PER_SECOND + LINE_GAP_S * (len(lines) - 1)
+                out += [PlannedJob(lip.id, lip_mode.id, {}, ("input_video", "input_audio"), planned_seconds=(
+                    ("input_video", float(shot.duration or 5)), ("input_audio", max(1.0, speech))))] * inp.takes
         return out
 
     def plan(self, inp: CinemaTakesInput, settled: Settled, reg: Registry) -> list[StepSpec]:
@@ -230,13 +302,51 @@ class CinemaTakesRecipe(Recipe):
             for n in range(1, inp.takes + 1):
                 specs.append(StepSpec(take_key(shot.key, n), StepKind.generate, f"{shot.key} take {n}", {
                     "model_id": spec.id, "mode": mode.id, "prompt": shot.prompt, "media": media,
-                    "params": self._params(inp, spec, mode, shot), "direction": shot.direction,
+                    "params": self._params(inp, spec, mode, shot, reg), "direction": shot.direction,
                     "project_id": str(inp.project_id), "shot_key": shot.key, "take": n,
                 }, deps, optional=True))
+            if self._voiced_after(inp, spec, shot, reg):
+                specs += self._dialogue_steps(inp, shot, settled, reg)
+        return specs
+
+    def _dialogue_steps(self, inp: CinemaTakesInput, shot: TakeShot, settled: Settled,
+                        reg: Registry) -> list[StepSpec]:
+        """Each line voiced, the lines joined into one track, and each take lip-synced to it (a new take)."""
+        lines = _lines(shot)
+        voice = reg.models[inp.voice_model]
+        tts = mode_with_op(voice, "tts")
+        assert tts is not None
+        pid = str(inp.project_id)
+        keys = [line_key(shot.key, k) for k in range(1, len(lines) + 1)]
+        specs = [StepSpec(key, StepKind.generate, f"{shot.key} line {k}: {line.text[:40]}", {
+            "model_id": voice.id, "mode": tts.id, "prompt": line.text, "params": _voice_params(line),
+            "project_id": pid}, optional=True) for k, (key, line) in enumerate(zip(keys, lines, strict=True), 1)]
+        voiced = [ok(settled, k) for k in keys]
+        if not all(voiced):
+            return specs
+        specs.append(StepSpec(track_key(shot.key), StepKind.local, f"{shot.key} dialogue", {
+            "op": "join_audio", "asset_ids": [v["asset_id"] for v in voiced if v], "gap": LINE_GAP_S,
+            "shot_key": shot.key, "title": f"Dialogue: {lines[0].text[:60]}"}, tuple(keys)))
+        track = ok(settled, track_key(shot.key))
+        if track is None:
+            return specs
+        lip = reg.models[inp.lipsync_model_id]
+        lip_mode = lipsync_mode(lip, "video")
+        assert lip_mode is not None
+        for n in range(1, inp.takes + 1):
+            take = ok(settled, take_key(shot.key, n))
+            if take is not None:
+                specs.append(StepSpec(lip_key(shot.key, n), StepKind.generate, f"{shot.key} take {n}: lip sync", {
+                    "model_id": lip.id, "mode": lip_mode.id, "prompt": "", "params": {},
+                    "media": [{"role": "input_video", "asset_id": take["asset_id"]},
+                              {"role": "input_audio", "asset_id": track["asset_id"]}],
+                    "project_id": pid, "shot_key": shot.key}, (take_key(shot.key, n), track_key(shot.key)),
+                    optional=True))
         return specs
 
     def result(self, inp: CinemaTakesInput, settled: Settled) -> dict[str, Any] | None:
         out: dict[str, list[str]] = {}
+        voiced: dict[str, list[str]] = {}
         for shot in inp.shots:
             keys = [take_key(shot.key, n) for n in range(1, inp.takes + 1)]
             if not all(k in settled for k in keys):
@@ -248,7 +358,11 @@ class CinemaTakesRecipe(Recipe):
                     continue
                 return None
             out[shot.key] = [settled[k]["asset_id"] for k in keys if ok(settled, k)]
-        return {"takes": out}
+            # the engine finishes a run only once every planned step is done, dialogue steps included
+            lips = [ok(settled, lip_key(shot.key, n)) for n in range(1, inp.takes + 1)]
+            if any(lips):
+                voiced[shot.key] = [x["asset_id"] for x in lips if x]
+        return {"takes": out, **({"lip_synced": voiced} if voiced else {})}
 
     def failure(self, inp: CinemaTakesInput, settled: Settled) -> str | None:
         result = self.result(inp, settled)

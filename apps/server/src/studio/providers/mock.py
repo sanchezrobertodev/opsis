@@ -25,6 +25,7 @@ import anyio
 from studio.config import get_settings
 from studio.domain.enums import ErrorClass
 from studio.media import mock_media
+from studio.media.ffmpeg import probe
 from studio.media.speech import estimate_words, spoken_seconds
 from studio.providers.base import (
     AmbiguousSubmitError,
@@ -150,10 +151,16 @@ class MockAdapter(ProviderAdapter):
             duration = spoken_seconds(words) if words else float(p.get("duration") or 5)
             await mock_media.make_audio(dest, workdir, duration=duration, seed=seed)
             return "audio/mpeg"
+        # lipsync and talking portraits: as long as the speech they were given, playing it
+        voice = _first_path(p.get("input_audio"))
+        duration = float(p.get("duration") or 5)
+        if voice is not None and voice.exists():
+            duration = ((await probe(voice)).duration_ms or 5000) / 1000
         await mock_media.make_video(
             dest, workdir, model_id=model_id, mode=mode, prompt=prompt,
-            duration=float(p.get("duration") or 5), resolution=p.get("resolution"),
+            duration=duration, resolution=p.get("resolution"),
             aspect=p.get("aspect_ratio") or "16:9", audio=bool(p.get("generate_audio")), seed=seed,
+            voice=voice if voice is not None and voice.exists() else None,
         )
         return "video/mp4"
 

@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names verified 2026-10-06 against fal's per-endpoint OpenAPI (fal-ai/kling-video/ai-avatar/v2/standard).
+id: kling-avatar-2
+name: Kling Avatar 2.0
+family: kling
+vendor: kuaishou
+description: A portrait and a voice track become a talking, gesturing clip as long as the speech.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [lipsync, avatar, talking-head]
+prompt: {max_chars: 2500, dialect: kling}
+
+parameters:
+  - {name: tier, label: Quality, type: enum, options: [standard, pro], default: standard, ui: segmented,
+     labels: {standard: Standard, pro: Pro}, help: "Pro is higher fidelity at about twice the price."}
+
+modes:
+  - id: avatar
+    label: Talking portrait
+    ops: [lipsync, avatar]
+    prompt: optional
+    medias:
+      - {role: character_image, kinds: [image], label: Portrait, required: true}
+      - {role: input_audio, kinds: [audio], label: Speech, required: true}
+
+routes:
+  - id: kling-avatar-2@fal
+    provider: fal
+    modes:
+      avatar: {endpoint: "fal-ai/kling-video/ai-avatar/v2/{tier}"}
+    map:
+      params:
+        tier: {to: null}
+      media: {character_image: image_url, input_audio: audio_url}
+    pricing:
+      basis: per_output_second
+      quantity: input_audio_seconds
+      rates:
+        - {when: {tier: standard}, usd: 0.0562}
+        - {when: {tier: pro}, usd: 0.115}
+      verified: 2026-10-07
+      source: https://fal.ai/models/fal-ai/kling-video/ai-avatar/v2/standard
+    timeout_s: 1800
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: avatar_smoke
+    mode: avatar
+    prompt: Speaks warmly to camera with small natural gestures.
+    params: {tier: standard}
+    media: {character_image: "fixture:images/keyframe.png", input_audio: "fixture:audio/line.mp3"}
+    smoke: true
+    expect: {cost_usd_range: [0, 1.0]}

@@ -20,6 +20,7 @@ import {
   useRemoveElementImage,
 } from "@/lib/elements";
 import { MediaSlotField } from "@/components/create/MediaSlots";
+import { VOICE_MODEL, VoicePicker } from "@/components/voice/VoicePicker";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 
 const FILTERS = ["all", "character", "location", "prop", "style"] as const;
@@ -130,6 +131,8 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
   const [name, setName] = useState(existing?.name ?? "");
   const [kind, setKind] = useState<ElementKind>(existing?.kind ?? "character");
   const [description, setDescription] = useState(existing?.description ?? "");
+  const [voice, setVoice] = useState<string | null>(
+    ((existing?.voice as { params?: { voice_id?: string } } | null)?.params?.voice_id) ?? null);
   const [pending, setPending] = useState<SlotAsset[]>([]);
 
   const images: SlotAsset[] = useMemo(
@@ -143,7 +146,8 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
   async function save() {
     try {
       if (existing) {
-        await patch.mutateAsync({ id: existing.id, name, kind, description });
+        await patch.mutateAsync({ id: existing.id, name, kind, description,
+                                  voice: voice ? { model_id: VOICE_MODEL, params: { voice_id: voice } } : null, clear_voice: !voice });
         if (pending.length) {
           await addImages.mutateAsync({ id: existing.id, images: pending.map((p) => ({ asset_id: p.id, view: "front" as const })) });
         }
@@ -152,6 +156,7 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
         const e = await create.mutateAsync({
           name, kind, description, attributes: {},
           images: pending.map((p) => ({ asset_id: p.id, view: "front" as const })),
+          ...(voice ? { voice: { model_id: VOICE_MODEL, params: { voice_id: voice } } } : {}),
         });
         toast(`Created ${e.handle}. Use it in any prompt.`);
       }
@@ -205,6 +210,10 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
           />
           <span className="text-2xs text-faint">Models that can’t take images get this text instead. Keep it short.</span>
         </label>
+        {kind === "character" && (
+          <VoicePicker value={voice} onChange={setVoice} allowNone
+                       label="Voice (for dialogue and talking shots)" />
+        )}
         {existing && (
           <p className="flex items-center gap-2 text-xs text-muted">
             Write <span className="text-tungsten">{existing.handle}</span> in a prompt to use it.

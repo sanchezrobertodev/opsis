@@ -141,3 +141,15 @@ def test_a_look_can_read_differently_per_dialect():
     d = ShotDirection(era="eighties")
     assert compile_prompt(REG.model("kling-3.0"), "x", d, lib).prompt == "x, 1980s VHS-era look"  # type: ignore[arg-type]
     assert "neon accents" in compile_prompt(REG.model("veo-3.1"), "x", d, lib).prompt  # type: ignore[arg-type]
+
+
+def test_dialogue_is_written_for_models_that_voice_it():
+    d = ShotDirection(dialogue=[{"who": "@nova", "text": "It goes dark tonight."}, {"who": "Kai", "text": "Then we light it."}])
+    seedance = compile_prompt(REG.model("seedance-2.5"), "x", d, names=NAMES).prompt  # type: ignore[arg-type]
+    assert seedance.splitlines()[-1] == 'Dialogue: Nova (@Image1) says: "It goes dark tonight." Kai says: "Then we light it."'
+    veo = compile_prompt(REG.model("veo-3.1"), "x", d, names=NAMES).prompt  # type: ignore[arg-type]
+    assert veo == 'X. Nova (@Image1) says: "It goes dark tonight." Kai says: "Then we light it."'
+    # a model without its own voice leaves the lines to a lipsync step, and says so
+    runway = compile_prompt(REG.model("runway-gen-4.5"), "x", d, names=NAMES)  # type: ignore[arg-type]
+    assert runway.prompt == "X." and runway.warnings == [
+        "Runway Gen-4.5 doesn't voice dialogue, so the lines were left out of the prompt"]

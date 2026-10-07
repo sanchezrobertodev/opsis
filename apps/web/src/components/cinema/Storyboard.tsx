@@ -4,7 +4,8 @@ import { ArrowLeft, ArrowRight, Check, Clapperboard, Film, ImageIcon, Link2, Loa
 import { useState } from "react";
 import { type Asset, isActive, mediaUrl } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { allShots, type CinemaDoc, type CinemaSettings, newId, newShot, type Scene, type Shot, type Take } from "@/lib/cinema";
+import { allShots, type CinemaDoc, type CinemaSettings, type Line, newId, newShot, type Scene, type Shot, type Take } from "@/lib/cinema";
+import { useElements } from "@/lib/elements";
 import { useModel, useRegistry } from "@/lib/queries";
 import { type Direction, DirectorPanel, mentionSlugs } from "@/components/create/DirectorPanel";
 import { AspectPicker, Button, Field, Segmented, Select, Slider } from "@/components/ui/controls";
@@ -29,14 +30,32 @@ type TakeShot = {
   start_asset_id?: string | null; continue_from?: string; continue_from_asset_id?: string;
 };
 
+/** A shot's lines as the takes run gets them: in its direction, each with its speaker's voice. */
+function withDialogue(direction: Record<string, unknown>, shot: Shot, voices: Record<string, string>) {
+  const lines = (shot.lines ?? []).filter((l) => l.text.trim() && l.who.trim());
+  if (!lines.length) return direction;
+  return { ...direction, dialogue: lines.map((l) => ({
+    who: l.who, text: l.text, voice_id: l.voice_id || voices[l.who.replace(/^@/, "").toLowerCase()] || null })) };
+}
+
+/** Voice ids of saved characters, by slug. */
+export function useCastVoices(): Record<string, string> {
+  const { data: elements } = useElements();
+  return Object.fromEntries((elements ?? []).flatMap((e) => {
+    const id = (e.voice as { params?: { voice_id?: string } } | null)?.params?.voice_id;
+    return id ? [[e.slug, id]] : [];
+  }));
+}
+
 /** The takes-run shots for these shot ids: hero frames, or chaining from the shot before. */
-export function takeShots(doc: CinemaDoc, ids: string[]): TakeShot[] {
+export function takeShots(doc: CinemaDoc, ids: string[], voices: Record<string, string> = {}): TakeShot[] {
   const order = allShots(doc).map((x) => x.shot);
   const batch = new Set(ids);
   return order.flatMap((shot, i): TakeShot[] => {
     if (!batch.has(shot.id) || !shot.action.trim()) return [];
     const prev = order[i - 1];
-    const base = { key: shot.id, prompt: shot.action.trim(), direction: mergedDirection(doc.settings, shot), duration: shot.duration };
+    const base = { key: shot.id, prompt: shot.action.trim(), duration: shot.duration,
+                   direction: withDialogue(mergedDirection(doc.settings, shot), shot, voices) };
     if (shot.continuity === "continue" && prev) {
       if (batch.has(prev.id) && prev.action.trim()) return [{ ...base, continue_from: prev.id }];
       if (prev.take_asset_id) return [{ ...base, continue_from_asset_id: prev.take_asset_id }];
@@ -53,6 +72,7 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
   const shots = allShots(doc);
   const current = shots.find((x) => x.shot.id === selected);
   const { data: filmModel } = useModel(doc.settings.model_id);
+  const voices = useCastVoices();
   const multiShot = Boolean(filmModel?.modes.some((m) => m.ops.includes("multi_shot")));
   const assets = new Map<string, Asset>(takes.flatMap((t) => (t.asset ? [[t.asset.id, t.asset as Asset]] : [])));
   const byShot = (key: string) => takes.filter((t) => t.shot_key === key);
@@ -86,11 +106,13 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
     params: { ...doc.settings.model_params, aspect_ratio: doc.settings.aspect_ratio, resolution: doc.settings.resolution },
     start_asset_id: scene.shots[0]?.hero_asset_id ?? null,
     shots: sceneShots(scene).map((s) => ({ key: s.id, prompt: s.action.trim(), duration: s.duration ?? 5,
-                                          direction: mergedDirection(doc.settings, s) })) } }, "Filming the scene");
+                                          direction: withDialogue(mergedDirection(doc.settings, s), s, voices) })) } },
+    "Filming the scene");
   const filmFor = (ids: string[]) => launch({ recipe: "cinema_takes", input: {
     project_id: projectId, model_id: doc.settings.model_id, takes: doc.settings.takes_per_shot,
+    lipsync_model_id: doc.settings.lipsync_model_id ?? "sync-lipsync-3",
     params: { ...doc.settings.model_params, aspect_ratio: doc.settings.aspect_ratio, resolution: doc.settings.resolution },
-    shots: takeShots(doc, ids) } }, "Filming");
+    shots: takeShots(doc, ids, voices) } }, "Filming");
 
   return (
     <div className="grid h-full grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -244,6 +266,8 @@ function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, pat
                      render={(v) => (v === "cut" ? "On a cut" : "From last")} onChange={(v) => patch({ continuity: v })} />
         </Field>
       </div>
+      <DialogueEditor shot={shot} cast={[...new Set([...mentionSlugs(shot.action), ...doc.cast])]}
+                      onChange={(lines) => patch({ lines })} />
       <DirectorPanel direction={shot.direction} onChange={(d) => patch({ direction: d })} stills={false}
                      cast={mentionSlugs(shot.action)} />
 
@@ -286,10 +310,49 @@ function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, pat
   );
 }
 
+/** What's said in the shot: each line's speaker and words. */
+function DialogueEditor({ shot, cast, onChange }: { shot: Shot; cast: string[]; onChange: (lines: Line[]) => void }) {
+  const lines = shot.lines ?? [];
+  const speakers = [...cast.map((c) => `@${c}`), "Narrator"];
+  const set = (i: number, p: Partial<Line>) => onChange(lines.map((l, j) => (j === i ? { ...l, ...p } : l)));
+  return (
+    <Field label="Dialogue" hint="Veo, Seedance and Kling say the lines themselves; on other models each line is voiced in its speaker's voice and the take is lip-synced to it.">
+      {lines.length > 0 && (
+        <ol className="flex flex-col gap-2">
+          {lines.map((l, i) => (
+            <li key={i} className="flex flex-col gap-1.5 rounded-[var(--radius-control)] bg-bay p-2">
+              <div className="flex items-center gap-2">
+                <select value={l.who} aria-label={`Who says line ${i + 1}`} onChange={(e) => set(i, { who: e.target.value })}
+                        className="h-8 min-w-0 flex-1 rounded-[var(--radius-control)] border border-line-soft bg-panel px-2 text-xs text-chalk outline-none focus:border-tungsten/60">
+                  {[...new Set([...speakers, l.who])].map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <button type="button" aria-label={`Remove line ${i + 1}`} onClick={() => onChange(lines.filter((_, j) => j !== i))}
+                        className="grid size-7 place-items-center rounded-full text-faint hover:bg-raised hover:text-chalk">
+                  <Trash2 className="size-3.5" aria-hidden />
+                </button>
+              </div>
+              <input value={l.text} onChange={(e) => set(i, { text: e.target.value })} maxLength={500}
+                     aria-label={`Line ${i + 1}`} placeholder="What they say"
+                     className="h-9 rounded-[var(--radius-control)] border border-line-soft bg-panel px-2 text-sm outline-none placeholder:text-faint focus:border-tungsten/60" />
+            </li>
+          ))}
+        </ol>
+      )}
+      {lines.length < 12 && (
+        <button type="button" onClick={() => onChange([...lines, { who: speakers[0], text: "" }])}
+                className="mt-1 flex items-center gap-1 self-start rounded-full px-2 py-1 text-xs text-muted hover:text-chalk">
+          <Plus className="size-3.5" aria-hidden /> Add a line
+        </button>
+      )}
+    </Field>
+  );
+}
+
 // how a take came to be: with its parent take in the list ("continued from take 2"), and without
 const MADE_BY: Record<string, [string, string]> = {
   multi_shot: ["cut from a scene take", "cut from a scene take"], extend_after: ["continued from take", "continued"],
   extend_before: ["led into take", "with a lead-in"], edit: ["edited from take", "edited"],
+  lipsync: ["lip-synced from take", "lip-synced"],
   region_edit: ["object changed in take", "object changed"],
 };
 
@@ -356,6 +419,7 @@ function FilmSettings({ doc, update }: { doc: CinemaDoc; update: Update }) {
   const video = (registry?.models ?? []).filter((m) => m.output_type === "video" && m.modes.some((x) => x.ops.includes("i2v")))
     .sort((a, b) => Number(b.kind === "virtual") - Number(a.kind === "virtual"));
   const image = (registry?.models ?? []).filter((m) => m.output_type === "image" && m.modes.some((x) => x.ops.includes("t2i")));
+  const lipsyncers = (registry?.models ?? []).filter((m) => m.modes.some((x) => x.ops.includes("lipsync") && !x.ops.includes("avatar")));
   const virtual = model?.id === s.model_id ? model.virtual : null;
   const engineParam = virtual?.engine_param ?? "engine";
   const engine = String(s.model_params?.[engineParam] ?? virtual?.engines[0]?.id ?? "");
@@ -373,6 +437,11 @@ function FilmSettings({ doc, update }: { doc: CinemaDoc; update: Update }) {
                      onChange={(id) => set({ model_params: { ...s.model_params, [engineParam]: id } })} />
         </Field>
       )}
+      <Field label="Dialogue on other models" htmlFor="lipsync-model"
+             hint="Models that don't speak get each line voiced and the take lip-synced with this.">
+        <Select id="lipsync-model" value={s.lipsync_model_id ?? "sync-lipsync-3"} onChange={(v) => set({ lipsync_model_id: v })}
+                options={lipsyncers.map((m) => ({ value: m.id, label: m.name }))} />
+      </Field>
       <Field label="Opening frames on" htmlFor="frame-model">
         <Select id="frame-model" value={s.image_model_id} onChange={(v) => set({ image_model_id: v })}
                 options={image.map((m) => ({ value: m.id, label: m.name }))} />

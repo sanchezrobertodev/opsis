@@ -8,7 +8,7 @@ output_type: video
 status: active
 license_tier: commercial_api
 tags: [motion, physics, first-last-frame, audio]
-prompt: {max_chars: 2500, dialect: kling, supports_negative: true}
+prompt: {max_chars: 2500, dialect: kling, supports_negative: true, dialogue: true}
 aspect_ratios: ["16:9", "9:16", "1:1"]
 duration: {min: 3, max: 15, default: 5}
 

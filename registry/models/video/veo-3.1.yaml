@@ -9,7 +9,7 @@ output_type: video
 status: active
 license_tier: commercial_api
 tags: [cinematic, audio, references, first-last-frame, 4k]
-prompt: {max_chars: 4000, dialect: veo, supports_negative: true}
+prompt: {max_chars: 4000, dialect: veo, supports_negative: true, dialogue: true}
 aspect_ratios: ["16:9", "9:16"]
 duration: {min: 4, max: 8, default: 8}
 

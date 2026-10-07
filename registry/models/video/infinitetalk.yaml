@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# RunPod Public Endpoint `infinitetalk`, request fields and prices from its docs page, 2026-10-07.
+id: infinitetalk
+name: InfiniteTalk
+family: wan
+vendor: meigen
+description: >-
+  Open-weights talking video (Wan-based) from a picture and a voice track, made for long speech. Runs on RunPod's
+  public endpoint at a flat price per clip.
+output_type: video
+status: active
+license_tier: open_permissive
+tags: [lipsync, avatar, long, open-weights]
+prompt: {max_chars: 1000, dialect: wan}
+
+parameters:
+  - {name: resolution, type: enum, options: ["480p", "720p"], default: "480p", ui: segmented}
+
+modes:
+  - id: avatar
+    label: Talking picture
+    ops: [lipsync, avatar]
+    prompt: required  # the endpoint requires a description of the scene
+    medias:
+      - {role: character_image, kinds: [image], label: Picture, required: true}
+      - {role: input_audio, kinds: [audio], label: Speech, required: true}
+
+routes:
+  - id: infinitetalk@runpod
+    provider: runpod
+    modes:
+      avatar: {endpoint: infinitetalk, fixed: {enable_safety_checker: true}}
+    map:
+      prompt: prompt
+      params: {resolution: size}
+      media: {character_image: image, input_audio: audio}
+    pricing:
+      basis: per_request
+      rates:
+        - {when: {resolution: "480p"}, usd: 0.25}
+        - {when: {resolution: "720p"}, usd: 0.50}
+      verified: 2026-10-07
+      source: https://docs.runpod.io/public-endpoints/models/infinitetalk
+    timeout_s: 1800
+    output: {path: output.video_url, kind: video}
+    notes: >-
+      Priced per clip, not per second, so long speech is where it pays off. Adding its graph to wan-core would cost
+      volume space and GPU time for no saving, so it stays on the public endpoint.
+
+examples:
+  - name: avatar_smoke
+    mode: avatar
+    prompt: A lighthouse keeper speaks quietly to camera.
+    params: {resolution: "480p"}
+    media: {character_image: "fixture:images/keyframe.png", input_audio: "fixture:audio/line.mp3"}
+    smoke: true
+    expect: {cost_usd_range: [0.25, 0.25]}

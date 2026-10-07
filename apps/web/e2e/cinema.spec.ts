@@ -59,6 +59,9 @@ test("Cinema: light and feeling on a shot, a scene in one take, then continue a 
   await page.getByRole("button", { name: "Performance", exact: true }).click();
   await page.getByRole("radio", { name: "Joy", exact: true }).click();
   await expect(page.getByText("the subject feels joy")).toBeVisible();
+  await page.getByRole("button", { name: "Add a line" }).click();
+  await page.getByLabel("Line 1", { exact: true }).fill("Up it goes!");
+  await expect(page.getByLabel("Who says line 1")).toHaveValue("Narrator");
 
   // both shots in one multi-shot call, cut back into a take per shot
   await page.getByRole("button", { name: /^Film as one take/ }).click();

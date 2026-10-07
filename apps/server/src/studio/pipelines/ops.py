@@ -20,6 +20,7 @@ from studio.media.assemble import Block, assemble_episode, frame_size
 from studio.media.captions import burn_captions, cues, fit_words, place_words, to_ass, to_srt
 from studio.media.ffmpeg import probe
 from studio.media.ops import concat_clips
+from studio.media.speech import join_speech
 from studio.media.swap import masked_merge
 from studio.media.timeline import Clip, cut_timeline, normalize_clip
 from studio.storage.local import get_storage
@@ -115,6 +116,29 @@ async def join_takes(session: AsyncSession, run: PipelineRun, step: PipelineStep
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return {"asset_id": str(take.id), "duration_ms": round(total * 1000), "derive": [str(take.id)]}
+
+
+async def join_audio(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    """Spoken lines strung into one dialogue track, in order (a shot's lines, each in its speaker's voice)."""
+    inp = step.input
+    lines = await _assets(session, run, inp["asset_ids"])
+    storage = get_storage()
+    work = storage.temp_dir() / f"lines-{uuid7().hex}"
+    work.mkdir(parents=True)
+    try:
+        dest = work / "dialogue.mp3"
+        await join_speech([storage.path_for(a.storage_key) for a in lines], dest, gap=inp.get("gap", 0.35))
+        seconds = (await probe(dest)).duration_ms
+        track = await save_derived(
+            session, run.user_id, dest, kind=AssetKind.audio, source=AssetSource.pipeline,
+            title=inp.get("title") or f"{run.title}: dialogue", pipeline_run_id=run.id,
+            parents=[(a.id, f"line_{i:02d}") for i, a in enumerate(lines, 1)],
+            metadata={"recipe": run.recipe, "lines": len(lines), **({"shot_key": inp["shot_key"]}
+                                                                    if inp.get("shot_key") else {})},
+        )
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return {"asset_id": str(track.id), "duration_ms": seconds, "derive": [str(track.id)]}
 
 
 async def concat(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
@@ -260,6 +284,7 @@ LOCAL_OPS: dict[str, Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitab
     "first_frame": first_frame,
     "split_shots": split_shots,
     "join_takes": join_takes,
+    "join_audio": join_audio,
     "concat": concat,
     "narrated_cut": narrated_cut,
     "captions": captions,

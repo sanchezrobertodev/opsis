@@ -50,8 +50,8 @@ test("a running take can be canceled", async ({ page }) => {
 });
 
 test("roadmap studios explain what they will do", async ({ page }) => {
-  await page.goto("/soon/lipsync");
-  await expect(page.getByRole("heading", { level: 1, name: "Lipsync" })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2, name: "Arrives in phase 6" })).toBeVisible();
-  await expect(page.getByText(/speak a script or recording/)).toBeVisible();
+  await page.goto("/soon/worlds");
+  await expect(page.getByRole("heading", { level: 1, name: "Worlds" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Arrives in phase 7" })).toBeVisible();
+  await expect(page.getByText(/explorable Gaussian-splat worlds/)).toBeVisible();
 });

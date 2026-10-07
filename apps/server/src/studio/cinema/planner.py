@@ -14,9 +14,15 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from studio.cinema.document import Scene, Shot
+from studio.cinema.document import Scene, Shot, ShotLine
 from studio.config import get_settings
-from studio.director.compiler import MAX_CAST_EMOTIONS, CastEmotion, MoveChoice, ShotDirection
+from studio.director.compiler import (
+    MAX_CAST_EMOTIONS,
+    MAX_LINES,
+    CastEmotion,
+    MoveChoice,
+    ShotDirection,
+)
 from studio.director.library import DirectorLibrary, get_library
 from studio.llm.client import LLMResult, structured
 
@@ -28,6 +34,11 @@ class PlannedEmotion(BaseModel):
     emotion: str = Field(description="An emotion id from the list")
 
 
+class PlannedLine(BaseModel):
+    who: str = Field(description="The speaker's @handle, or a name for anyone else")
+    text: str = Field(description="The words, as spoken")
+
+
 class PlannedShot(BaseModel):
     action: str = Field(description="What the camera sees in this one continuous shot, present tense, concrete. "
                                     "Name cast members by their @handle.")
@@ -37,7 +48,7 @@ class PlannedShot(BaseModel):
     duration: int = Field(5, description="Seconds, 3 to 10")
     continuity: Literal["cut", "continue"] = Field(
         "cut", description="continue only when this shot picks up exactly where the previous shot's last frame ends")
-    dialogue: str = Field("", description="Spoken lines in this shot, if any, as Name: line")
+    lines: list[PlannedLine] = Field(default_factory=list, description="Lines spoken in this shot, in order")
     emotions: list[PlannedEmotion] = Field(
         default_factory=list, description="How each cast member in the shot feels, when it matters")
 
@@ -123,7 +134,9 @@ def to_scenes(plan: ShotPlan, lib: DirectorLibrary, max_shots: int) -> tuple[lis
                 camera_moves=[MoveChoice(id=m) for m in moves],
                 cast_emotions=list(feelings.values())[:MAX_CAST_EMOTIONS])
             shots.append(Shot(action=p.action.strip()[:2000], duration=max(3, min(10, p.duration)),
-                              direction=direction, dialogue=p.dialogue.strip()[:1000],
+                              direction=direction,
+                              lines=[ShotLine(who=x.who.strip()[:60], text=x.text.strip()[:500])
+                                     for x in p.lines if x.who.strip() and x.text.strip()][:MAX_LINES],
                               continuity="continue" if shots and p.continuity == "continue" else "cut"))
         if shots:
             scenes.append(Scene(heading=ps.heading.strip()[:200], summary=ps.summary.strip()[:1000], shots=shots))

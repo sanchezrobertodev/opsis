@@ -16,9 +16,10 @@ from studio.pipelines.recipes.faceless import FacelessRecipe
 from studio.pipelines.recipes.keyframe import KeyframeRecipe
 from studio.pipelines.recipes.object_swap import ObjectSwapRecipe
 from studio.pipelines.recipes.sequence import SequenceRecipe
+from studio.pipelines.recipes.talking import TalkingShotRecipe
 
 RECIPES: dict[str, Recipe] = {r.id: r for r in (
-    SequenceRecipe(), CompareRecipe(), KeyframeRecipe(), FacelessRecipe(), ObjectSwapRecipe(),
+    SequenceRecipe(), CompareRecipe(), KeyframeRecipe(), FacelessRecipe(), ObjectSwapRecipe(), TalkingShotRecipe(),
     CinemaFramesRecipe(), CinemaTakesRecipe(), CinemaSceneRecipe(), CinemaExtendRecipe(), CinemaEditRecipe(),
     CinemaExportRecipe(),
 )}

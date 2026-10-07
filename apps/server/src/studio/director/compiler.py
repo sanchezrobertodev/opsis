@@ -19,6 +19,7 @@ from studio.registry.schema import ModelSpec
 MAX_MOVES = 3
 MAX_LIGHTS = 2
 MAX_CAST_EMOTIONS = 6
+MAX_LINES = 12
 # ShotDirection fields that each pick one item from a look list (studio.director.library.FIELD_SECTIONS)
 LOOK_FIELDS = ("shot_size", "angle", "lens", "focal_length", "aperture", "camera_body", "era", "lighting", "palette",
                "genre", "pacing", "emotion")
@@ -49,6 +50,15 @@ class CastEmotion(BaseModel):
     emotion: str = Field(description="An emotions id")
 
 
+class DialogueLine(BaseModel):
+    """One spoken line: who says it (an @mention of a cast member, or a name) and the words."""
+
+    model_config = ConfigDict(extra="forbid")
+    who: str = Field(min_length=1, max_length=60)
+    text: str = Field(min_length=1, max_length=500)
+    voice_id: str | None = Field(None, description="The voice to speak it with, when it's voiced separately")
+
+
 class ShotDirection(BaseModel):
     """What the director panel sends. Every field is optional; empty means "let the model decide"."""
 
@@ -71,6 +81,8 @@ class ShotDirection(BaseModel):
     emotion: str | None = Field(None, description="How the subject feels")
     cast_emotions: list[CastEmotion] = Field(default_factory=list, max_length=MAX_CAST_EMOTIONS,
                                              description="How each @mentioned cast member feels")
+    dialogue: list[DialogueLine] = Field(default_factory=list, max_length=MAX_LINES,
+                                         description="Lines spoken in the shot, in order")
 
     @model_validator(mode="before")
     @classmethod
@@ -90,7 +102,7 @@ class ShotDirection(BaseModel):
         return self
 
     def is_empty(self) -> bool:
-        return not (self.camera_moves or self.lights or self.cast_emotions) and not any(
+        return not (self.camera_moves or self.lights or self.cast_emotions or self.dialogue) and not any(
             getattr(self, f) for f in LOOK_FIELDS)
 
 
@@ -115,6 +127,7 @@ class Parts:
     mood: list[str]  # genre, era, pacing
     lights: list[str] = field(default_factory=list)  # the lighting console
     performance: list[str] = field(default_factory=list)  # the subject's and each cast member's emotion
+    speech: list[str] = field(default_factory=list)  # dialogue, for models that voice it; never shed
 
 
 # What goes first when a prompt is over the model's limit: the softest cues. Never the prompt or camera moves.
@@ -210,6 +223,18 @@ def _phrase_cast(lib: DirectorLibrary, d: ShotDirection, dialect: str, names: di
     return out
 
 
+def _speaker(who: str, names: dict[str, str] | None) -> str:
+    """A line's speaker as the prompt names them: an @mention resolved like the prompt's, else the name as written."""
+    who = who.strip()
+    if who.startswith("@"):
+        return (names or {}).get(who[1:].lower(), who[1:])
+    return who
+
+
+def _phrase_speech(d: ShotDirection, names: dict[str, str] | None) -> list[str]:
+    return [f'{_speaker(line.who, names)} says: "{line.text.strip()}"' for line in d.dialogue]
+
+
 def unknown_ids(d: ShotDirection, lib: DirectorLibrary | None = None) -> list[str]:
     """Every id in a direction that the director library doesn't know (for linting presets)."""
     from studio.director.library import FIELD_SECTIONS
@@ -229,7 +254,7 @@ def unknown_ids(d: ShotDirection, lib: DirectorLibrary | None = None) -> list[st
 def _render(dialect: str, prompt: str, p: Parts, is_image: bool) -> str:
     prompt = prompt.strip()
     if dialect in ("kling", "wan"):
-        cues = [*p.framing, *p.performance, *([f"camera: {_join_moves(p.moves)}"] if p.moves else []), *p.optics,
+        cues = [*p.framing, *p.performance, *p.speech, *([f"camera: {_join_moves(p.moves)}"] if p.moves else []), *p.optics,
                 *p.lights, *p.light, *p.mood]
         return ", ".join(x for x in [prompt.rstrip(".,"), *cues] if x)
     if dialect == "seedance":
@@ -240,6 +265,8 @@ def _render(dialect: str, prompt: str, p: Parts, is_image: bool) -> str:
             lines.append(f"Shot: {', '.join([*p.framing, *p.optics])}.")
         if p.performance:
             lines.append(f"Performance: {'; '.join(p.performance)}.")
+        if p.speech:
+            lines.append(f"Dialogue: {' '.join(p.speech)}")
         lines += [_sentence(x) for x in p.lights]
         if p.light:
             lines.append(f"Look: {', '.join(p.light)}.")
@@ -251,6 +278,7 @@ def _render(dialect: str, prompt: str, p: Parts, is_image: bool) -> str:
     if p.framing:
         sentences.append(_sentence(", ".join(p.framing)))
     sentences += [_sentence(x) for x in p.performance]
+    sentences += p.speech
     if p.moves and not is_image:
         moves = _join_moves(p.moves)
         sentences.append(_sentence(moves if moves.lower().startswith("the camera") else f"The camera moves: {moves}"))
@@ -299,7 +327,10 @@ def compile_prompt(spec: ModelSpec, prompt: str, direction: ShotDirection | None
         mood=look("genres", direction.genre) + look("eras", direction.era) + look("pacing", direction.pacing),
         lights=_phrase_lights(lib, direction, dialect, subject, warnings),
         performance=look("emotions", direction.emotion) + _phrase_cast(lib, direction, dialect, names, warnings),
+        speech=_phrase_speech(direction, names) if spec.prompt.dialogue and not is_image else [],
     )
+    if direction.dialogue and not parts.speech:
+        warnings.append(f"{spec.name} doesn't voice dialogue, so the lines were left out of the prompt")
     text = _render(dialect, prompt, parts, is_image)
 
     # Over the model's limit: drop the softest cues first, never the user's prompt or camera moves.

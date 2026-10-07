@@ -24,6 +24,7 @@ from studio.cinema.document import CinemaDocument
 from studio.cinema.planner import MAX_SHOTS, plan_shots
 from studio.db.models import Asset, Element, Generation, Project, ProjectRevision, User
 from studio.llm.client import LLMError, LLMUnavailable
+from studio.registry.loader import get_registry
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -96,7 +97,7 @@ class TakeOut(BaseModel):
     generation_id: uuid.UUID | None = Field(description="None for a take cut or joined from others")
     shot_key: str
     made_by: str = Field("model", description="model; multi_shot (cut from a scene take); extend_after or "
-                                              "extend_before (joined with a new part); region_edit")
+                                              "extend_before (joined with a new part); edit; lipsync; region_edit")
     parent_asset_id: uuid.UUID | None = Field(None, description="The take this one was made from")
     output_type: str
     status: str
@@ -333,9 +334,12 @@ TAKES_PAGE = 400  # newest generations and derived clips listed per kind; picked
 
 def _generation_take(g: Generation, a: Asset | None) -> TakeOut:
     parent = next((m["asset_id"] for m in g.request.get("media", []) if m.get("role") == "input_video"), None)
+    spec = get_registry().model(g.model_id)
+    mode = spec.mode(g.mode) if spec else None
+    made_by = ("lipsync" if mode and "lipsync" in mode.ops else "edit") if parent else "model"
     return TakeOut(generation_id=g.id, shot_key=g.shot_key or "", output_type=g.output_type, status=g.status.value,
                    progress=g.progress, error=g.error_message, prompt=g.request.get("prompt", ""),
-                   created_at=g.created_at, made_by="edit" if parent else "model", parent_asset_id=parent,
+                   created_at=g.created_at, made_by=made_by, parent_asset_id=parent,
                    asset=asset_out(a) if a else None)
 
 

@@ -79,6 +79,12 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `registry/virtual.py:resolve` swaps the request for the engine's before mentions, compiling, routing and pricing.
   Shared params are fitted (durations rounded, unknown values dropped with a warning); `virtual.director` params
   become shot direction. Generations store the base model and `request.via` names the studio.
+- Rules can limit input length while they apply: `max_input_seconds: {input_audio: 30}` (OmniHuman at 1080p).
+- Lipsync models carry the `lipsync` op and take `input_audio`; picture-driven ones also carry `avatar` and take
+  `character_image`, clip-driven ones take `input_video`. Price them on `input_audio_seconds`. The mock makes a clip
+  as long as the given `input_audio`, playing it.
+- `prompt.dialogue: true` marks models that speak lines written in their prompt (Veo 3.1, Seedance 2.5, Kling 3.0);
+  the director writes `direction.dialogue` into their prompt dialect and warns on other models.
 
 ## Adding a preset (effects gallery)
 - One YAML per preset in `registry/presets/<category>/<id>.yaml`: `model_id`, `mode`, a `prompt` template with
@@ -100,12 +106,14 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   modes by what they need, never by model id.
 - Built-in: `sequence` (last-frame chaining + ffmpeg join; also how any model "extends"), `compare` (fan-out +
   pick checkpoint), `keyframe` (render a start frame from @character refs, then animate; for Kling), `faceless`
-  (script -> approve -> block plan -> narration + stills or clips -> music -> assembly -> captions -> thumbnail), and
-  `object_swap` (track a SAM mask -> edit with 1-3 models -> composite through the matte -> pick).
+  (script -> approve -> block plan -> narration + stills or clips -> music -> assembly -> captions -> thumbnail),
+  `object_swap` (track a SAM mask -> edit with 1-3 models -> composite through the matte -> pick), and
+  `talking_shot` (a picture or clip + script -> TTS -> lipsync on 1-3 models -> pick; or recorded speech).
 - Claude steps are `llm` steps whose `op` is in `pipelines/llm_ops.py`; they run in `pipeline.step` like local ops.
   Generate-step outputs include `duration_ms`, so a recipe can size what follows (a clip as long as its narration).
 - A `PlannedJob` can name inputs that already exist (`media=((role, asset_id), ...)`), so the run estimate prices
-  them at their real length. Narration is estimated from `prompt_chars`.
+  them at their real length. Narration is estimated from `prompt_chars`; inputs a run makes first (speech from a
+  script) are priced at a guessed length with `planned_seconds=((role, seconds), ...)`.
 - Revising a run while a checkpoint waits updates that checkpoint's question in place; it keeps waiting.
 
 ## Claude
@@ -172,6 +180,11 @@ pnpm lint       # ruff + eslint + tsc
   is how the takes list finds them and shows what each was made from.
 - `POST /projects/{id}/plan` asks Claude (Opus) for scenes and shots in the director's vocabulary; unknown ids are
   dropped and nothing is saved until the editor applies the proposal.
+- Dialogue: a shot's `lines` (who + words; blank lines are kept for editing and skipped when filming) travel to the
+  takes run as `direction.dialogue` with each speaker's voice from their Element (`elements.voice` =
+  `{model_id, params}`). Models with `prompt.dialogue` speak them; on others `cinema_takes` voices each line
+  (`line[shot:k]`), joins them (`track[shot]`, op `join_audio`) and lip-syncs every take to the track
+  (`lip[shot:n]`, the film's `lipsync_model_id`), each a new take.
 - The director (`studio/director/compiler.py`): besides the look lists, `lights` (up to two placed sources) and
   `cast_emotions` (a feeling per @mentioned cast member, phrased with the name the mention resolved to). Golden
   snapshots per dialect live in `tests/unit/golden/director/`; regenerate with `UPDATE_GOLDEN=1` and review the diff.

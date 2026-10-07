@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names verified 2026-10-06 against fal's per-endpoint OpenAPI (fal-ai/bytedance/omnihuman/v1.5).
+id: omnihuman-1.5
+name: OmniHuman 1.5
+family: omnihuman
+vendor: bytedance
+description: >-
+  A full-body performance from one picture and a voice track, with gestures that follow the speech. Several people
+  can be in the picture; a mask picks who speaks.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [lipsync, avatar, full-body, multi-person]
+prompt: {max_chars: 2000, dialect: default}
+
+parameters:
+  - {name: resolution, type: enum, options: ["720p", "1080p"], default: "1080p", ui: segmented,
+     help: "1080p takes up to 30 s of speech, 720p up to 60 s."}
+  - {name: turbo_mode, label: Faster, type: bool, default: false, help: "Quicker, with a slight loss of quality."}
+
+rules:
+  - when: {resolution: "1080p"}
+    max_input_seconds: {input_audio: 30}
+    message: OmniHuman 1.5 takes up to 30 s of speech at 1080p; pick 720p for up to 60 s.
+
+modes:
+  - id: avatar
+    label: Talking performance
+    ops: [lipsync, avatar]
+    prompt: optional
+    medias:
+      - {role: character_image, kinds: [image], label: Picture, required: true}
+      - {role: input_audio, kinds: [audio], label: Speech, required: true, max_duration_s: 60}
+      - {role: mask, kinds: [mask], label: Who speaks (optional)}
+
+routes:
+  - id: omnihuman-1.5@fal
+    provider: fal
+    modes:
+      avatar: {endpoint: fal-ai/bytedance/omnihuman/v1.5}
+    map:
+      params: {resolution: resolution, turbo_mode: turbo_mode}
+      media: {character_image: image_url, input_audio: audio_url, mask: mask_url}
+    pricing:
+      basis: per_output_second
+      quantity: input_audio_seconds
+      rates:
+        - {usd: 0.16}
+      verified: 2026-10-07
+      source: https://fal.ai/models/fal-ai/bytedance/omnihuman/v1.5
+    timeout_s: 1800
+    output: {path: video.url, kind: video}
+    notes: BytePlus sells it at about $0.12/s, but only to companies.
+
+examples:
+  - name: avatar_smoke
+    mode: avatar
+    params: {resolution: "720p"}
+    media: {character_image: "fixture:images/keyframe.png", input_audio: "fixture:audio/line.mp3"}
+    smoke: true
+    expect: {cost_usd_range: [0, 1.5]}

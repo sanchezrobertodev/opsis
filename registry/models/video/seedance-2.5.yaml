@@ -11,7 +11,7 @@ output_type: video
 status: active
 license_tier: commercial_api
 tags: [cinematic, long, references, edit, extend, audio]
-prompt: {max_chars: 3000, dialect: seedance, supports_negative: false}
+prompt: {max_chars: 3000, dialect: seedance, supports_negative: false, dialogue: true}
 aspect_ratios: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
 duration: {min: 4, max: 30, default: 5}
 
