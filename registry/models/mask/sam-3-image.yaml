@@ -43,6 +43,6 @@ examples:
   - name: segment_smoke
     mode: segment
     params: {points: [[0.5, 0.5, 1]]}
-    media: {input_image: https://example.test/frame.png}
+    media: {input_image: "fixture:images/keyframe.png"}
     smoke: true
     expect: {cost_usd_range: [0.004, 0.006]}

@@ -75,8 +75,13 @@ def main() -> int:
 
     total, runs = 0.0, []
     for spec, route, ex in items:
-        media = [{"role": role, "asset_id": upload_fixture(api, ref)}
-                 for role, refs in ex.media.items() for ref in (refs if isinstance(refs, list) else [refs])]
+        refs = [(role, ref) for role, rs in ex.media.items() for ref in (rs if isinstance(rs, list) else [rs])]
+        other = [f"{role} ({ref})" for role, ref in refs if not str(ref).startswith("fixture:")]
+        if other:
+            # e.g. a mask, which only a segmenting model makes: try those routes from their studio instead
+            print(f"  skip {route.id}: its example needs inputs that aren't test files: {', '.join(other)}")
+            continue
+        media = [{"role": role, "asset_id": upload_fixture(api, ref)} for role, ref in refs]
         body = {"model_id": spec.id, "mode": ex.mode, "prompt": ex.prompt, "params": ex.params, "media": media,
                 "route_policy": f"pinned:{route.id}"}
         est = api.post("/registry/estimate", json=body)

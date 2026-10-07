@@ -231,9 +231,10 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   a video per pass, or stills at the camera's keys. The `jutsu3d` recipe makes those renders real (angles or depth).
 - Splats render with Spark (`components/three/Splat.tsx`): one `SparkLayer` per canvas, worlds flipped from OpenCV
   axes, `spark.update()` before each captured frame; data passes hide splats and draw the collision mesh instead.
-- `worldlabs` (Marble, `WORLDLABS_API_KEY`): submit returns an operation, polled until `done`; it can't be canceled
-  and doesn't report a job's credits, so the estimate is charged. Usage past the prepaid balance is billed to the
-  card at month end: keep caps on.
+- `worldlabs` (Marble, `WORLDLABS_API_KEY`): submit returns an operation, polled until `done`; it can't be canceled.
+  The finished operation reports its credits (`cost.total_credits`, $1 = 1,250), which are charged; the world's
+  files are read from the stored world, since the operation's copy can lack the panorama. Usage past the prepaid
+  balance is billed to the card at month end: keep caps on.
 
 ## Local engine (ComfyUI)
 - `comfy_local` provider = the VideoStudio ComfyUI at `COMFYUI_URL` (default http://127.0.0.1:8188). Start it with

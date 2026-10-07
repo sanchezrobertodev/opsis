@@ -41,6 +41,7 @@ from studio.providers.common import (
 from studio.registry.schema import Route
 
 API = "https://api.worldlabs.ai"
+CREDITS_PER_USD = 1250  # docs.worldlabs.ai/api/pricing, checked 2026-10-07
 INLINE_LIMIT = 8 * 1024 * 1024  # inline pictures up to 8 MB; larger ones go up as web links
 NAME_LIMIT = 64
 
@@ -119,6 +120,8 @@ class WorldLabsAdapter(ProviderAdapter):
             cls = ErrorClass.moderation if looks_like_moderation(text) else ErrorClass.internal
             return PollResult(status="failed", error_class=cls, error_message=f"World Labs: {text}"[:900])
         world = op.get("response") or {}
+        if world.get("world_id") or world_id:
+            world = await self._stored_world(world.get("world_id") or world_id, world)
         outputs = route_outputs(world, route.output)
         if not outputs:
             return PollResult(status="failed", error_class=ErrorClass.internal,
@@ -128,7 +131,25 @@ class WorldLabsAdapter(ProviderAdapter):
         for o in outputs:
             o.meta = {**o.meta, "world_id": world.get("world_id") or world_id,
                       **({k: v for k, v in semantics.items() if v is not None} if o.kind == "splat" else {})}
-        return PollResult(status="succeeded", progress=1.0, outputs=outputs)
+        # the finished operation says what it cost: charge that, not the estimate
+        credits = (op.get("cost") or {}).get("total_credits")
+        usage = ({"credits": credits, "cost_usd": round(credits / CREDITS_PER_USD, 6)}
+                 if isinstance(credits, int | float) and not isinstance(credits, bool) else {})
+        return PollResult(status="succeeded", progress=1.0, outputs=outputs, usage=usage)
+
+    async def _stored_world(self, world_id: str, fallback: dict[str, Any]) -> dict[str, Any]:
+        """The world as stored. The finished operation's copy can lag behind it (a draft's panorama is still empty
+        there), so read it back; reading is free. The operation's copy stands in if that fails."""
+        try:
+            async with self._client() as c:
+                r = await c.get(f"/marble/v1/worlds/{world_id}")
+        except httpx.HTTPError:
+            return fallback
+        if r.status_code != 200:
+            return fallback
+        body = r.json()
+        stored = body.get("world", body) if isinstance(body, dict) else None
+        return stored if isinstance(stored, dict) and stored.get("assets") else fallback
 
     async def cancel(self, route: Route, job_id: str) -> bool:
         return False  # the API has no way to stop a world once it's started
