@@ -12,8 +12,8 @@ from test_pipelines import drain, get, start
 
 from studio.api.main import app as api
 from studio.db.models import Generation, GenerationAttempt, SpendLedger
-from studio.domain.enums import AttemptStatus, LedgerEntry
 from studio.db.session import session_scope
+from studio.domain.enums import AttemptStatus, LedgerEntry
 from studio.media.ffmpeg import probe
 from studio.storage.local import get_storage
 

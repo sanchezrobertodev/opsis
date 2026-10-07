@@ -23,7 +23,15 @@ from studio.budget.guard import BudgetBlocked
 from studio.cinema.document import CinemaDocument
 from studio.cinema.planner import MAX_SHOTS, plan_shots
 from studio.db.models import (
-    Asset, Element, Generation, GenerationAttempt, PipelineRun, Project, ProjectRevision, SpendLedger, User,
+    Asset,
+    Element,
+    Generation,
+    GenerationAttempt,
+    PipelineRun,
+    Project,
+    ProjectRevision,
+    SpendLedger,
+    User,
 )
 from studio.domain.enums import AssetKind, LedgerEntry
 from studio.jutsu3d.document import Jutsu3dDocument, starter_scene
