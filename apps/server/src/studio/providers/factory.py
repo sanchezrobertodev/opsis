@@ -56,6 +56,12 @@ def _runpod_comfy() -> ProviderAdapter:
     return RunPodComfyAdapter()
 
 
+def _elevenlabs() -> ProviderAdapter:
+    from studio.providers.elevenlabs import ElevenLabsAdapter
+
+    return ElevenLabsAdapter()
+
+
 def _runway() -> ProviderAdapter:
     from studio.providers.runway import RunwayAdapter
 
@@ -70,6 +76,7 @@ _FACTORIES: dict[str, Callable[[], ProviderAdapter]] = {
     "google_genai": _google,
     "replicate": _replicate,
     "runway": _runway,
+    "elevenlabs": _elevenlabs,
     "runpod": _runpod,
     "runpod_comfy": _runpod_comfy,
 }

@@ -43,6 +43,11 @@ def _t_suffix(v: Any, args: dict) -> Any:
     return f"{v}{args.get('suffix', '')}"
 
 
+def _t_scale(v: Any, args: dict) -> Any:
+    """Unit changes, e.g. seconds to milliseconds: {factor: 1000}."""
+    return round(float(v) * float(args.get("factor", 1)))
+
+
 TRANSFORMS: dict[str, Callable[[Any, dict], Any]] = {
     "str": _t_str,
     "int": _t_int,
@@ -51,6 +56,7 @@ TRANSFORMS: dict[str, Callable[[Any, dict], Any]] = {
     "seconds_to_frames": _t_seconds_to_frames,
     "bool_to_str": _t_bool_to_str,
     "suffix": _t_suffix,
+    "scale": _t_scale,
 }
 
 

@@ -21,7 +21,7 @@ parameters:
 modes:
   - id: edit
     label: Edit a video
-    ops: [instruction_edit, restyle, relight, reframe]
+    ops: [instruction_edit, restyle, relight, reframe, object_replace]
     medias:
       - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 30}
 

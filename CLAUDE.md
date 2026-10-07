@@ -62,6 +62,13 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 - `type: paths` params are motion paths drawn on the start frame (`[{points: [[x, y], ...]}]`, 0-1 of the frame
   cropped to the output aspect; one point = pin). The Create form shows the editor under the start frame
   (`MotionPathsField`); a route transform converts them (Wan-Move: `transforms/comfy.py:wan_move_tracks`).
+- `type: points` params are clicks on an image (`[[x, y, label]]`, 0-1, label 1 = this, 0 = not this); routes turn
+  them into pixels using the input's `width`/`height` on the request media (SAM: `transforms/segment.py`).
+- Enum params can carry `labels` (option -> what the user sees) for options that are ids, e.g. voices.
+- Media kinds include `mask` and `mask_video` (white = the selected object), so a matte is never passed where a
+  picture is expected. Outputs of `output_type: mask` models are stored with those kinds.
+- Ops for audio and selection: `tts`, `sfx`, `music`, `segment`, `track`. Edit modes that can change one object in a
+  clip carry `object_replace`; the Object swap recipe picks models by it.
 
 ## Adding a preset (effects gallery)
 - One YAML per preset in `registry/presets/<category>/<id>.yaml`: `model_id`, `mode`, a `prompt` template with
@@ -82,7 +89,14 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   the in-memory `drain()` helper in `tests/integration/test_pipelines.py`. Use `recipes/common.py` to pick
   modes by what they need, never by model id.
 - Built-in: `sequence` (last-frame chaining + ffmpeg join; also how any model "extends"), `compare` (fan-out +
-  pick checkpoint), `keyframe` (render a start frame from @character refs, then animate; for Kling).
+  pick checkpoint), `keyframe` (render a start frame from @character refs, then animate; for Kling), `faceless`
+  (script -> approve -> block plan -> narration + stills or clips -> music -> assembly -> captions -> thumbnail), and
+  `object_swap` (track a SAM mask -> edit with 1-3 models -> composite through the matte -> pick).
+- Claude steps are `llm` steps whose `op` is in `pipelines/llm_ops.py`; they run in `pipeline.step` like local ops.
+  Generate-step outputs include `duration_ms`, so a recipe can size what follows (a clip as long as its narration).
+- A `PlannedJob` can name inputs that already exist (`media=((role, asset_id), ...)`), so the run estimate prices
+  them at their real length. Narration is estimated from `prompt_chars`.
+- Revising a run while a checkpoint waits updates that checkpoint's question in place; it keeps waiting.
 
 ## Claude
 - `LLM_MODE=mock` (default) returns canned results and never bills; `live` needs `ANTHROPIC_API_KEY`.
@@ -115,6 +129,22 @@ pnpm lint       # ruff + eslint + tsc
   `RUNPOD_API_KEY` + `RUNPOD_WAN_CORE_ENDPOINT` (a provider's `key_setting` may list several settings). Cost is the
   worker's `executionTime` at the provider's `gpu_usd_per_hour`, kept flagged as an estimate. Check new graphs
   against the local ComfyUI 0.34 (same version) before pushing: `/prompt` validates them without the models.
+
+- `elevenlabs`: Eleven v4 TTS (with word timings), sound effects and music (`ELEVENLABS_API_KEY`). The API is
+  synchronous, so submit parks the audio in a ResultStore (like Gemini images). TTS word timings land on the asset
+  as `metadata.alignment.words` (`[{text, start, end}]`); the mock times words at a reading pace instead.
+
+## Faceless Studio and Object Swap
+- Themes and styles are data in `registry/faceless/` (`studio/faceless/catalog.py`, reloaded on change); each style
+  has a caption look. Channels (`channels` table) keep a series' theme, style, notes and episode defaults; episodes
+  are `faceless` runs whose input names the channel (`GET /pipelines?channel_id=`).
+- Assembly is `media/assemble.py` (Ken Burns stills, clips fitted to their narration, ducked music, -14 LUFS) and
+  captions `media/captions.py` (cues from word timings, SRT + ASS burned in with libass). ffmpeg 5's scheduler
+  deadlocks on concat -> asplit -> sidechaincompress in one graph, so the voice track is rendered to a WAV first.
+- Object swap selects with SAM 3 on fal (`sam-3-image` clicks -> mask, `sam-3-video` tracks it); `media/swap.py`
+  composites the edit over the original through the thresholded, grown and feathered matte.
+- The registry holder notices edited YAML in every process (stamps checked at most once a second), so the worker
+  never misses a model the API accepts; a broken file keeps the last good registry.
 
 ## Local engine (ComfyUI)
 - `comfy_local` provider = the VideoStudio ComfyUI at `COMFYUI_URL` (default http://127.0.0.1:8188). Start it with

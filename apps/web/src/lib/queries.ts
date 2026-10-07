@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDraft } from "./draft";
-import { api, API_URL, ApiError, unwrap, type Asset, type Generation } from "./api";
+import { api, API_URL, ApiError, isActive, unwrap, type Asset, type Generation } from "./api";
 
 export const keys = {
   registry: ["registry"] as const,
@@ -91,6 +91,16 @@ export type CreateBody = {
   confirm_cost_usd?: number | null;
   group_id?: string | null;
 };
+
+/** One generation, polled until it settles (for tools that wait on a single job, like a selection). */
+export function useGeneration(id: string | undefined) {
+  return useQuery({
+    queryKey: ["generation", id],
+    queryFn: () => unwrap(api.GET("/generations/{generation_id}", { params: { path: { generation_id: id! } } })),
+    enabled: Boolean(id),
+    refetchInterval: (q) => (q.state.data && !isActive(q.state.data.status) ? false : 1000),
+  });
+}
 
 export function useCreateGeneration() {
   const qc = useQueryClient();

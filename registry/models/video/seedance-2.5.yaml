@@ -41,7 +41,7 @@ modes:
       - {role: audio_references, kinds: [audio], label: Audio refs, max: 3}
   - id: video_edit
     label: Edit a video
-    ops: [instruction_edit, restyle, relight]
+    ops: [instruction_edit, restyle, relight, object_replace]
     medias:
       - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 30, max_mb: 200}
       - {role: image_references, kinds: [image], label: Reference images (optional), max: 9}

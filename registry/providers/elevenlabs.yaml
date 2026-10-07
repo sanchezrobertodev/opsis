@@ -1,0 +1,10 @@
+id: elevenlabs
+name: ElevenLabs
+kind: direct
+adapter: elevenlabs
+key_setting: elevenlabs_api_key
+concurrency: 3   # plan-dependent (Creator allows 5); stay under it so narration batches don't hit 429s
+docs: https://elevenlabs.io/docs/api-reference
+notes: >-
+  Text to speech with word timings, sound effects and music. Synchronous API: each call returns the audio,
+  which is parked locally until ingest.

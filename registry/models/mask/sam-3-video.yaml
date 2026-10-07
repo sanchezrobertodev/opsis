@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-06 from fal's OpenAPI (fal-ai/sam-3/video-rle) and its model page ($0.005 per 16 frames).
+# With apply_mask off the returned video should be the black-and-white matte; confirm on the first live run (AMS-9).
+id: sam-3-video
+name: SAM 3 (track through a clip)
+family: sam
+vendor: meta
+description: Follows an object's mask from one frame through the whole clip.
+output_type: mask
+status: active
+license_tier: commercial_api
+tags: [segmentation, tracking, mask, object-swap]
+prompt: {max_chars: 200, dialect: label}
+
+parameters:
+  - {name: frame_index, label: Frame, type: int, min: 0, max: 100000, default: 0,
+     help: The frame the mask was drawn on.}
+  - {name: detection_threshold, type: float, min: 0.05, max: 1.0, step: 0.05, default: 0.5, group: advanced}
+
+modes:
+  - id: track
+    label: Track an object
+    ops: [track]
+    prompt: none
+    medias:
+      - {role: input_video, kinds: [video], label: Clip, required: true, max_duration_s: 60}
+      - {role: mask, kinds: [mask], label: The object on one frame, required: true}
+
+routes:
+  - id: sam-3-video@fal
+    provider: fal
+    modes:
+      track: {endpoint: fal-ai/sam-3/video-rle, fixed: {apply_mask: false}}
+    map:
+      media: {input_video: video_url, mask: mask_url}
+    pricing:
+      basis: formula
+      formula: "0.005 * ceil(input_video_frames / 16)"
+      verified: 2026-10-06
+      source: https://fal.ai/models/fal-ai/sam-3/video-rle
+    eta: "20 + input_video_seconds * 2"
+    output: {path: video, kind: mask_video}
+
+examples:
+  - name: track_smoke
+    mode: track
+    media: {input_video: https://example.test/clip.mp4, mask: https://example.test/mask.png}
+    smoke: true

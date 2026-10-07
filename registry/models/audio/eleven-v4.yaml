@@ -1,0 +1,80 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Prices from ElevenLabs' API pricing page, 2026-10-06. Voice ids are ElevenLabs' premade voices (stable for years);
+# the API model ids eleven_v4 / eleven_v4_turbo are unconfirmed until the first live run (AMS-8).
+id: eleven-v4
+name: Eleven v4
+family: elevenlabs
+vendor: elevenlabs
+description: Text to speech with word timings, for narration and dialogue. v4 Turbo is half the price and faster.
+output_type: audio
+status: active
+license_tier: commercial_api
+tags: [narration, voice, timestamps]
+prompt: {max_chars: 5000, dialect: speech}
+
+parameters:
+  - name: voice_id
+    label: Voice
+    type: enum
+    default: JBFqnCBsd6RMkjVDRZzb
+    options: [JBFqnCBsd6RMkjVDRZzb, nPczCjzI2devNBz1zQrb, onwK4e9ZLuTAKqWW03F9, pqHfZKP75CvOlQylNhV4,
+              TX3LPaxmHKxFdv7VOQHJ, IKne3meq5aSn9XLyUdCD, 21m00Tcm4TlvDq8ikWAM, pFZP5JQG7iQjIQuC4Bku,
+              XrExE9yKIg1WjnnlVkGX, Xb7hH8MSUJpSbSDYk0k2, EXAVITQu4vr4xnSDxMaL, cgSgspJ2msm6clMCkdW9]
+    labels:
+      JBFqnCBsd6RMkjVDRZzb: "George: warm British storyteller"
+      nPczCjzI2devNBz1zQrb: "Brian: deep American narrator"
+      onwK4e9ZLuTAKqWW03F9: "Daniel: authoritative British newsreader"
+      pqHfZKP75CvOlQylNhV4: "Bill: trustworthy older American"
+      TX3LPaxmHKxFdv7VOQHJ: "Liam: articulate young American"
+      IKne3meq5aSn9XLyUdCD: "Charlie: relaxed Australian"
+      21m00Tcm4TlvDq8ikWAM: "Rachel: calm American"
+      pFZP5JQG7iQjIQuC4Bku: "Lily: warm British"
+      XrExE9yKIg1WjnnlVkGX: "Matilda: friendly American"
+      Xb7hH8MSUJpSbSDYk0k2: "Alice: confident British"
+      EXAVITQu4vr4xnSDxMaL: "Sarah: soft American"
+      cgSgspJ2msm6clMCkdW9: "Jessica: bright, expressive American"
+  - name: tier
+    type: enum
+    options: [standard, turbo]
+    default: standard
+    labels: {standard: "v4", turbo: "v4 Turbo"}
+    ui: segmented
+  - {name: speed, type: float, min: 0.7, max: 1.2, step: 0.05, default: 1.0, group: advanced}
+  - {name: stability, type: float, min: 0.0, max: 1.0, step: 0.05, default: 0.5, group: advanced,
+     help: Lower is more expressive; higher is steadier.}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: tts
+    label: Text to speech
+    ops: [tts]
+
+routes:
+  - id: eleven-v4@elevenlabs
+    provider: elevenlabs
+    modes:
+      tts: {endpoint: "text-to-speech/{voice_id}/with-timestamps"}
+    map:
+      prompt: text
+      params:
+        voice_id: {to: null}
+        tier: {to: model_id, transform: enum_map, args: {values: {standard: eleven_v4, turbo: eleven_v4_turbo}}}
+        speed: voice_settings.speed
+        stability: voice_settings.stability
+    pricing:
+      basis: per_1k_chars
+      rates:
+        - {when: {tier: standard}, usd: 0.08}
+        - {when: {tier: turbo}, usd: 0.04}
+      verified: 2026-10-06
+      source: https://elevenlabs.io/pricing/api
+    timeout_s: 300
+    output: {path: audio, kind: audio}
+
+examples:
+  - name: tts_smoke
+    mode: tts
+    prompt: The lighthouse keeper climbed the stairs one last time.
+    params: {tier: turbo}
+    smoke: true
+    expect: {cost_usd_range: [0.001, 0.01]}

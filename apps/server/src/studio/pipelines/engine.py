@@ -40,6 +40,7 @@ from studio.domain.generations import (
     cancel_generation,
     create_generation,
 )
+from studio.pipelines.llm_ops import LLM_OPS
 from studio.pipelines.ops import LOCAL_OPS, StepFailed
 from studio.pipelines.recipe import Settled, StepSpec
 from studio.pipelines.recipes import get_recipe
@@ -100,13 +101,15 @@ async def _sync_generation(session: AsyncSession, step: PipelineStep) -> None:
     if gen is None:
         step.status, step.error = StepStatus.failed, "its generation is missing"
     elif gen.status == GenStatus.succeeded:
-        ids = (await session.execute(select(Asset.id).where(Asset.generation_id == gen.id, Asset.deleted_at.is_(None))
-                                     .order_by(Asset.output_index))).scalars().all()
-        if not ids:
+        rows = (await session.execute(select(Asset.id, Asset.duration_ms).where(
+            Asset.generation_id == gen.id, Asset.deleted_at.is_(None)).order_by(Asset.output_index))).all()
+        if not rows:
             step.status, step.error = StepStatus.failed, "the take finished without any media"
         else:
             step.status = StepStatus.succeeded
-            step.output = {"generation_id": str(gen.id), "asset_id": str(ids[0]), "asset_ids": [str(i) for i in ids]}
+            # duration lets a recipe size what comes next (a clip as long as its narration)
+            step.output = {"generation_id": str(gen.id), "asset_id": str(rows[0].id),
+                           "asset_ids": [str(r.id) for r in rows], "duration_ms": rows[0].duration_ms}
     elif gen.status in (GenStatus.failed, GenStatus.canceled):
         step.status = StepStatus.failed
         step.error = gen.error_message or f"the take was {gen.status.value}"
@@ -179,7 +182,10 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
             _apply_spec(st, spec, i)
             session.add(st)
             steps[spec.key] = st
-        elif st.input_hash != spec.digest() and st.status not in (StepStatus.running, StepStatus.waiting):
+        elif st.input_hash != spec.digest() and st.status == StepStatus.waiting:
+            # a checkpoint still waiting for its answer asks about the latest input (an edited script)
+            _apply_spec(st, spec, i)
+        elif st.input_hash != spec.digest() and st.status != StepStatus.running:
             # its inputs changed (an edited shot, an upstream redo): do it again
             _apply_spec(st, spec, i)
             st.status, st.output, st.error, st.generation_id = StepStatus.pending, {}, None, None
@@ -234,9 +240,10 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
 
 async def execute_step(session: AsyncSession, step: PipelineStep, run: PipelineRun) -> list[uuid.UUID]:
     """Run one local/llm step in place. Returns assets that need derivatives. Caller commits."""
-    op = LOCAL_OPS.get(step.input.get("op", ""))
+    ops = {StepKind.local: LOCAL_OPS, StepKind.llm: LLM_OPS}.get(step.kind, {})
+    op = ops.get(step.input.get("op", ""))
     try:
-        if step.kind != StepKind.local or op is None:
+        if op is None:
             raise StepFailed(f"no runner for {step.kind.value} step op {step.input.get('op')!r}")
         output = await op(session, run, step)
     except StepFailed as exc:

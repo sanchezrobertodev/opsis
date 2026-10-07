@@ -64,7 +64,7 @@ export const STUDIOS: Studio[] = [
       "Control, Wan Animate and Runway Act-Two, with a library of the movement clips you've used.",
   },
   {
-    slug: "swap", name: "Object swap", href: "/soon/swap", icon: Replace, phase: "P4", group: "studios",
+    slug: "swap", name: "Object swap", href: "/swap", icon: Replace, group: "studios",
     summary: "Click an object in a frame, track it through the clip, and replace or remove it while the " +
       "camera, lighting and motion stay as filmed.",
   },
@@ -79,7 +79,7 @@ export const STUDIOS: Studio[] = [
       "start frames and camera references for video models.",
   },
   {
-    slug: "faceless", name: "Faceless studio", href: "/soon/faceless", icon: Mic, phase: "P4", group: "studios",
+    slug: "faceless", name: "Faceless studio", href: "/faceless", icon: Mic, group: "studios",
     summary: "Topic or script to a finished narrated video: style, cast, script, clips or narrated stills, " +
       "voiceover, music, captions and a thumbnail.",
   },

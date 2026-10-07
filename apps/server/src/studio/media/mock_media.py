@@ -108,3 +108,34 @@ async def make_audio(dest: Path, workdir: Path, *, duration: float, seed: int | 
     await ffmpeg("-f", "lavfi", "-i", f"sine=frequency={freq}:duration={max(0.5, duration):.3f}",
                  "-c:a", "libmp3lame", "-b:a", "128k", "out.mp3", cwd=workdir)
     (workdir / "out.mp3").replace(dest)
+
+
+def make_mask(dest: Path, *, image: Path | None, points: list | None) -> None:
+    """A white blob around each positive click (holes at negative ones), the size of the clicked image."""
+    w, h = Image.open(image).size if image and image.exists() else (1280, 720)
+    mask = Image.new("L", (w, h), 0)
+    draw = ImageDraw.Draw(mask)
+    pts = points or [[0.5, 0.5, 1]]
+    r = int(min(w, h) * 0.18)
+    for x, y, label in sorted(pts, key=lambda p: -p[2]):  # positives first, then negatives cut holes
+        rr = r if label else r // 2
+        draw.ellipse((x * w - rr, y * h - rr * 1.3, x * w + rr, y * h + rr * 1.3), fill=255 if label else 0)
+    mask.save(dest, "PNG")
+
+
+async def make_mask_video(dest: Path, workdir: Path, *, mask: Path | None, video: Path | None) -> None:
+    """The one-frame mask held for the whole clip, at the clip's size and frame rate."""
+    from studio.media.ffmpeg import probe
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    info = await probe(video) if video and video.exists() else None
+    w, h = (info.width or 1280, info.height or 720) if info else (1280, 720)
+    seconds = (info.duration_ms or 5000) / 1000 if info else 5.0
+    fps = (info.fps or 24) if info else 24
+    if mask is None or not mask.exists():
+        mask = workdir / "mask.png"
+        make_mask(mask, image=None, points=None)
+    await ffmpeg("-loop", "1", "-i", str(mask), "-t", f"{seconds:.3f}", "-r", f"{fps}",
+                 "-vf", f"scale={w // 2 * 2}:{h // 2 * 2},format=yuv420p", "-c:v", "libx264", "-preset", "veryfast",
+                 "out.mp4", cwd=workdir)
+    (workdir / "out.mp4").replace(dest)

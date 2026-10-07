@@ -373,6 +373,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/faceless/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Catalog */
+        get: operations["catalog_faceless_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/faceless/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Topics
+         * @description Four topic ideas for a channel's theme. Billed to your budget in live LLM mode.
+         */
+        post: operations["topics_faceless_topics_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/faceless/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Channels */
+        get: operations["list_channels_faceless_channels_get"];
+        put?: never;
+        /** Create Channel */
+        post: operations["create_channel_faceless_channels_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/faceless/channels/{channel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Channel */
+        get: operations["get_channel_faceless_channels__channel_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Channel
+         * @description Hide the channel. Its episodes stay in Runs and the library.
+         */
+        delete: operations["delete_channel_faceless_channels__channel_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Channel */
+        patch: operations["update_channel_faceless_channels__channel_id__patch"];
+        trace?: never;
+    };
     "/generations": {
         parameters: {
             query?: never;
@@ -834,6 +911,91 @@ export interface components {
             /** Is Mock */
             is_mock: boolean;
         };
+        /** CatalogOut */
+        CatalogOut: {
+            /** Themes */
+            themes: components["schemas"]["ThemeOut"][];
+            /** Styles */
+            styles: components["schemas"]["StyleOut"][];
+            /**
+             * Voices
+             * @description Voices of the default narration model
+             */
+            voices: components["schemas"]["Option"][];
+            /**
+             * Defaults
+             * @description Episode settings a new channel starts from
+             */
+            defaults: {
+                [key: string]: unknown;
+            };
+        };
+        /** ChannelIn */
+        ChannelIn: {
+            /** Name */
+            name: string;
+            /** Theme */
+            theme: string;
+            /** Style */
+            style: string;
+            /**
+             * Notes
+             * @description Standing guidance for the writer
+             * @default
+             */
+            notes: string;
+            /**
+             * Defaults
+             * @description Episode settings: aspect_ratio, captions, format, image_model, image_params, language, minutes, music, music_model, notes, resolution, review_script, thumbnail, video_model, video_params, voice, voice_model
+             */
+            defaults?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ChannelOut */
+        ChannelOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Theme */
+            theme: string;
+            /** Style */
+            style: string;
+            /** Notes */
+            notes: string;
+            /** Defaults */
+            defaults: {
+                [key: string]: unknown;
+            };
+            /** Episodes */
+            episodes: number;
+            /** Last Episode At */
+            last_episode_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** ChannelPatch */
+        ChannelPatch: {
+            /** Name */
+            name?: string | null;
+            /** Theme */
+            theme?: string | null;
+            /** Style */
+            style?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Defaults */
+            defaults?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** CheckpointAnswer */
         CheckpointAnswer: {
             /** Choice */
@@ -1084,6 +1246,13 @@ export interface components {
             options: (string | number)[];
             /** Default */
             default?: string | number | null;
+            /**
+             * Labels
+             * @default {}
+             */
+            labels: {
+                [key: string]: string;
+            };
         };
         /** EstimateOut */
         EstimateOut: {
@@ -1424,7 +1593,7 @@ export interface components {
              * Ops
              * @default []
              */
-            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize")[];
+            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music")[];
             /**
              * Prompt
              * @default required
@@ -1528,6 +1697,13 @@ export interface components {
              * @enum {string}
              */
             speed: "slow" | "normal" | "fast";
+        };
+        /** Option */
+        Option: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
         };
         /**
          * PathsParam
@@ -2092,6 +2268,21 @@ export interface components {
             /** Finished At */
             finished_at: string | null;
         };
+        /** StyleOut */
+        StyleOut: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Summary */
+            summary: string;
+            /** Prompt */
+            prompt: string;
+            /** Caption */
+            caption: {
+                [key: string]: unknown;
+            };
+        };
         /** TextParam */
         TextParam: {
             /** Name */
@@ -2123,6 +2314,47 @@ export interface components {
             max_chars?: number | null;
             /** Default */
             default?: string | null;
+        };
+        /** ThemeOut */
+        ThemeOut: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Summary */
+            summary: string;
+            /** Voice Id */
+            voice_id: string;
+        };
+        /** TopicOut */
+        TopicOut: {
+            /** Title */
+            title: string;
+            /** Angle */
+            angle: string;
+        };
+        /** TopicsIn */
+        TopicsIn: {
+            /** Theme */
+            theme: string;
+            /** Channel Id */
+            channel_id?: string | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+        };
+        /** TopicsOut */
+        TopicsOut: {
+            /** Topics */
+            topics: components["schemas"]["TopicOut"][];
+            /** Model */
+            model: string;
+            /** Mock */
+            mock: boolean;
+            /** Cost Usd */
+            cost_usd: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -2690,6 +2922,9 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                recipe?: string | null;
+                /** @description Faceless episodes of one channel */
+                channel_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -2920,6 +3155,224 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    catalog_faceless_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogOut"];
+                };
+            };
+        };
+    };
+    topics_faceless_topics_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicsOut"];
+                };
+            };
+            /** @description Spending limit */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Claude failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No Anthropic key */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_channels_faceless_channels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"][];
+                };
+            };
+        };
+    };
+    create_channel_faceless_channels_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Bad settings */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_channel_faceless_channels__channel_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_channel_faceless_channels__channel_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_channel_faceless_channels__channel_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelOut"];
+                };
+            };
+            /** @description Bad settings */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
