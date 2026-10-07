@@ -16,7 +16,11 @@ TRIAL = "studio_backup_trial"
 def trial():
     user = backups.Database.from_settings().user
     db = backups.Database(user, TRIAL)
-    for name in (TRIAL, f"{TRIAL}_incoming", f"{TRIAL}_restore_check"):
+    try:
+        backups._psql(db, "select 1")
+    except backups.BackupError as exc:  # Docker installed but the daemon or the compose service is down
+        pytest.skip(f"the Postgres container isn't reachable: {exc}")
+    for name in backups._psql(db, f"select datname from pg_database where datname like '{TRIAL}%'").split():
         backups._psql(db, f'drop database if exists "{name}"')
     backups._psql(db, f'create database "{TRIAL}"')
     backups._psql(db, "create table alembic_version (version_num text); insert into alembic_version values ('abc');"
@@ -31,7 +35,10 @@ def test_dump_check_and_replace_keep_every_row_and_drop_nothing(trial, tmp_path)
     dump = backups.dump(tmp_path, trial)
     assert dump.name.startswith(f"{TRIAL}-") and not list(tmp_path.glob("*.partial"))
 
+    # a database that merely looks like a scratch copy is someone else's: a check leaves it alone
+    backups._psql(trial, f'create database "{TRIAL}_restore_check"')
     result = backups.check(dump, trial)
+    assert f"{TRIAL}_restore_check" in backups._psql(trial, "select datname from pg_database").split()
     assert result.ok and result.tables["notes"] == (5, 5) and result.migration == ("abc", "abc")
 
     backups._psql(trial, "insert into notes values (6)", TRIAL)  # a change made after the dump

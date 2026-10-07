@@ -12,8 +12,10 @@ keeping the old one as `<db>_before_restore_<time>`, so nothing is ever dropped 
 from __future__ import annotations
 
 import re
+import secrets
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -129,9 +131,22 @@ def _counts(db: Database, database: str) -> dict[str, int]:
     return {name: int(n) for name, n in (r.split("|", 1) for r in rows if "|" in r)}
 
 
-def _restore_into(db: Database, dump_file: Path, database: str) -> None:
-    _psql(db, f'create database "{database}"')
-    _exec(["pg_restore", "-U", db.user, "-d", database, "--no-owner", "--exit-on-error"], stdin=dump_file)
+def _fresh_name(db: Database, purpose: str) -> str:
+    """A database name no other run uses, so a run only ever drops what it created itself."""
+    return f"{db.name}_{purpose}_{secrets.token_hex(4)}"
+
+
+@contextmanager
+def _restored(db: Database, dump_file: Path, purpose: str) -> Iterator[str]:
+    """A new database (a name this run made up) holding the dump, dropped on the way out. A caller that renames it
+    into place leaves nothing under that name, so the drop then does nothing."""
+    name = _fresh_name(db, purpose)
+    _psql(db, f'create database "{name}"')  # fails rather than reuse a database that already exists
+    try:
+        _exec(["pg_restore", "-U", db.user, "-d", name, "--no-owner", "--exit-on-error"], stdin=dump_file)
+        yield name
+    finally:
+        _psql(db, f'drop database if exists "{name}"')
 
 
 @dataclass
@@ -151,15 +166,10 @@ def check(dump_file: Path | None = None, db: Database | None = None) -> CheckRes
     """Restore a dump into a scratch database, compare it with the live one, and drop the scratch copy."""
     db = db or Database.from_settings()
     dump_file = dump_file or latest(db_name=db.name)
-    scratch = f"{db.name}_restore_check"
-    _psql(db, f'drop database if exists "{scratch}"')
-    try:
-        _restore_into(db, dump_file, scratch)
+    with _restored(db, dump_file, "restore_check") as scratch:
         restored, live = _counts(db, scratch), _counts(db, db.name)
         migration = (_psql(db, "select version_num from alembic_version", scratch).strip(),
                      _psql(db, "select version_num from alembic_version", db.name).strip())
-    finally:
-        _psql(db, f'drop database if exists "{scratch}"')
     tables = {t: (restored.get(t, -1), live.get(t, -1)) for t in sorted(set(restored) | set(live))}
     return CheckResult(dump_file, tables, migration)
 
@@ -168,12 +178,15 @@ def replace(dump_file: Path, db: Database | None = None, now: datetime | None = 
     """Make a dump the live database. The current one is renamed, not dropped; returns its new name."""
     db = db or Database.from_settings()
     stamp = (now or datetime.now(UTC)).strftime("%Y%m%d_%H%M%S")
-    incoming, kept = f"{db.name}_incoming", f"{db.name}_before_restore_{stamp}"
+    kept = f"{db.name}_before_restore_{stamp}"
     busy = _psql(db, f"select count(*) from pg_stat_activity where datname = '{db.name}' and pid <> pg_backend_pid()")
     if int(busy.strip() or 0):
         raise BackupError(f"{busy.strip()} connections are open to {db.name}; stop `pnpm dev` (API and worker) first")
-    _psql(db, f'drop database if exists "{incoming}"')
-    _restore_into(db, dump_file, incoming)
-    _psql(db, f'alter database "{db.name}" rename to "{kept}"')
-    _psql(db, f'alter database "{incoming}" rename to "{db.name}"')
+    with _restored(db, dump_file, "incoming") as incoming:
+        _psql(db, f'alter database "{db.name}" rename to "{kept}"')
+        try:
+            _psql(db, f'alter database "{incoming}" rename to "{db.name}"')
+        except BackupError:
+            _psql(db, f'alter database "{kept}" rename to "{db.name}"')  # put the original back
+            raise
     return kept

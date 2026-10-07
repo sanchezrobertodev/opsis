@@ -24,7 +24,7 @@ from typing import Any
 
 from studio.registry.loader import Registry
 from studio.registry.mapping import TRANSFORMS, build_payload, endpoint_for
-from studio.registry.schema import EnumParam, IntParam, Mode, ModelSpec, ParamMapEntry, Route
+from studio.registry.schema import EnumParam, FloatParam, IntParam, Mode, ModelSpec, ParamMapEntry, Route
 from studio.registry.validate import MediaRef, RequestError, normalize
 
 PLACEHOLDER = re.compile(r"{(\w+)}")
@@ -301,6 +301,8 @@ def _values(spec: ModelSpec, mode: Mode, name: str, entry: str | ParamMapEntry) 
         choices: list[Any] = list(p.options)
     elif isinstance(p, IntParam) and (p.max - p.min) / (p.step or 1) <= MAX_STEPS:
         choices = list(range(p.min, p.max + 1, p.step or 1))  # e.g. durations, which providers often list
+    elif isinstance(p, IntParam | FloatParam):
+        choices = [p.min, p.max]  # a wide range: its ends are what a provider's bounds can reject
     else:
         return None
     options = [o for o in choices if _accepted(spec, mode, {name: o})]
@@ -376,20 +378,37 @@ def check_route(spec: ModelSpec, route: Route, mode: Mode, summary: Summary, tar
         note(f"{mode.id}: never sends `{name}`, which the endpoint requires")
     for name, values in sorted(fields.items()):
         live = summary.input.get(name, {})
-        if values is None or "enum" not in live:
-            continue
-        accepted = {str(v) for v in live["enum"]}
-        if bad := [v for v in values if v not in ("", None) and str(v) not in accepted]:
-            note(f"{mode.id}: `{name}` can be {', '.join(map(str, bad))}, which the endpoint rejects "
-                 f"(it takes {', '.join(map(str, live['enum']))})")
         if live.get("deprecated"):
             note(f"{mode.id}: `{name}` is deprecated")
+        if values is None:
+            continue
+        if "enum" in live:
+            accepted = {str(v) for v in live["enum"]}
+            if bad := [v for v in values if v not in ("", None) and str(v) not in accepted]:
+                note(f"{mode.id}: `{name}` can be {', '.join(map(str, bad))}, which the endpoint rejects "
+                     f"(it takes {', '.join(map(str, live['enum']))})")
+        elif (low := live.get("minimum")) is not None or live.get("maximum") is not None:
+            high = live.get("maximum")
+            out_of_range = [v for v in values if (n := _number(v)) is not None
+                            and ((low is not None and n < low) or (high is not None and n > high))]
+            if out_of_range:
+                note(f"{mode.id}: `{name}` can be {', '.join(map(str, out_of_range))}, outside the endpoint's "
+                     f"range ({low if low is not None else '…'} to {high if high is not None else '…'})")
     if checks_output and summary.output:
         for path in [route.output.path, *(x.path for x in route.output.extras)]:
             tops = {_top(alt.strip()) for alt in path.split("|")}
             if not tops & set(summary.output):
                 note(f"returns {', '.join(summary.output)}; the route reads `{path}`")
     return out
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def diff(old: Summary, new: Summary) -> list[str]:

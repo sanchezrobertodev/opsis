@@ -85,6 +85,15 @@ def test_route_problems_are_reported():
     assert "the route reads `video.url`" in problems
 
 
+def test_numbers_are_checked_against_the_endpoints_bounds():
+    t2v = SPEC.mode("t2v")
+    bounded = {**GOOD, "duration": {"type": "integer", "minimum": 4, "maximum": 6}}
+    found = drift.check_route(SPEC, SPEC.routes[0], t2v, summary(bounded), drift.Target("fal", "toy/t2v"))
+    assert [f.problem for f in found] == ["t2v: `duration` can be 8, outside the endpoint's range (4 to 6)"]
+    roomy = {**GOOD, "duration": {"type": "integer", "minimum": 1, "maximum": 10}}
+    assert drift.check_route(SPEC, SPEC.routes[0], t2v, summary(roomy), drift.Target("fal", "toy/t2v")) == []
+
+
 def test_diff_lists_what_changed():
     old = summary()
     new_props = {**GOOD, "duration": {"type": "string", "enum": ["4", "6", "8", "10"]}, "loop": {"type": "boolean"}}
