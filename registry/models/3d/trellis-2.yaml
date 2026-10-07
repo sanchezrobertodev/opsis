@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names and prices verified 2026-10-07 against fal's OpenAPI and model page (fal-ai/trellis-2).
+id: trellis-2
+name: TRELLIS.2
+family: trellis
+vendor: microsoft
+description: Microsoft's open 3D model (GLB) from one picture. MIT-licensed weights; hosted on fal.
+output_type: 3d
+status: active
+license_tier: open_permissive
+tags: [3d, image-to-3d, open-weights]
+prompt: {max_chars: 10, dialect: default}
+
+parameters:
+  - {name: resolution, label: Detail, type: enum, options: [512, 1024, 1536], default: 1024, ui: segmented}
+  - {name: texture_size, label: Texture size, type: enum, options: [1024, 2048, 4096], default: 2048, group: advanced}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: image_to_3d
+    label: Picture to 3D
+    ops: [to_3d]
+    prompt: none
+    medias:
+      - {role: input_image, kinds: [image], label: Picture, required: true}
+
+routes:
+  - id: trellis-2@fal
+    provider: fal
+    modes:
+      image_to_3d: {endpoint: fal-ai/trellis-2}
+    map:
+      params: {resolution: resolution, texture_size: texture_size, seed: seed}
+      media: {input_image: image_url}
+    pricing:
+      basis: per_request
+      rates:
+        - {when: {resolution: 512}, usd: 0.25}
+        - {when: {resolution: 1024}, usd: 0.30}
+        - {when: {resolution: 1536}, usd: 0.35}
+      verified: 2026-10-07
+      source: https://fal.ai/models/fal-ai/trellis-2
+    timeout_s: 1800
+    output: {path: model_glb.url, kind: model3d}
+    notes: Weights are microsoft/TRELLIS.2-4B (MIT), so a RunPod route is possible later.
+
+examples:
+  - name: image_to_3d_smoke
+    mode: image_to_3d
+    params: {resolution: 512}
+    media: {input_image: "fixture:images/keyframe.png"}
+    smoke: true
+    expect: {cost_usd_range: [0.25, 0.25]}

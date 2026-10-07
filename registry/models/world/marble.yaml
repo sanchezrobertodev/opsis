@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Fields, model ids and credit costs verified 2026-10-07 against https://docs.worldlabs.ai/api and
+# https://docs.worldlabs.ai/api/pricing ($1 = 1,250 credits).
+id: marble
+name: Marble world
+family: marble
+vendor: worldlabs
+description: >-
+  An explorable 3D world (Gaussian splats) from a description or a picture of a place, with its 360 panorama and a
+  collision mesh. Walk a camera through it in World Creation to make frames and camera-move references.
+output_type: 3d
+status: active
+license_tier: commercial_api
+tags: [world, splat, 3d, location]
+prompt: {max_chars: 2000, dialect: default}
+
+parameters:
+  - {name: model, label: Quality, type: enum, options: [marble-1.0-draft, marble-1.1, marble-1.1-plus],
+     default: marble-1.1, ui: segmented,
+     labels: {marble-1.0-draft: Draft, marble-1.1: Standard, marble-1.1-plus: Plus},
+     help: "Draft is a quick, rough preview. Plus sizes the world to the scene and can cost up to twice Standard."}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: text_to_world
+    label: Description to world
+    ops: [world]
+    prompt: required
+  - id: image_to_world
+    label: Picture to world
+    ops: [world]
+    prompt: optional  # guides what's out of frame
+    medias:
+      - {role: input_image, kinds: [image], label: Picture of the place (or a 360 panorama), required: true}
+
+routes:
+  - id: marble@worldlabs
+    provider: worldlabs
+    modes:
+      text_to_world: {endpoint: "marble/v1/worlds:generate", fixed: {world_prompt.type: text}}
+      image_to_world: {endpoint: "marble/v1/worlds:generate", fixed: {world_prompt.type: image}}
+    map:
+      prompt: world_prompt.text_prompt
+      params: {model: model, seed: seed}
+      media: {input_image: world_prompt.image_prompt}
+    pricing:
+      # per world: draft 230 credits, standard 1,580, plus up to 3,080 (priced at the top so caps hold).
+      # A 360 panorama input costs 80 credits less.
+      basis: per_request
+      rates:
+        - {when: {model: marble-1.0-draft}, usd: 0.184}
+        - {when: {model: marble-1.1}, usd: 1.264}
+        - {when: {model: marble-1.1-plus}, usd: 2.464}
+      verified: 2026-10-07
+      source: https://docs.worldlabs.ai/api/pricing
+    timeout_s: 1800
+    eta: "60 if model == 'marble-1.0-draft' else 300"
+    output:
+      path: assets.splats.spz_urls.500k | assets.splats.spz_urls.full_res
+      kind: splat
+      extras:
+        - {path: assets.imagery.pano_url, kind: image, meta: {projection: equirectangular}}
+        - {path: assets.mesh.collider_mesh_url, kind: model3d, meta: {part: collider}}
+    notes: >-
+      Usage past the prepaid credit balance is billed to the card at month end, so keep caps on. About 3 requests
+      a minute. Splats use the OpenCV axes (y down, z forward); the viewer flips them.
+
+examples:
+  - name: draft_smoke
+    mode: text_to_world
+    prompt: A quiet stone courtyard at dusk, lanterns on the walls, an old fig tree in the middle.
+    params: {model: marble-1.0-draft}
+    smoke: true
+    expect: {cost_usd_range: [0.184, 0.184]}
+  - name: picture_world
+    mode: image_to_world
+    media: {input_image: "fixture:images/keyframe.png"}
+    expect: {cost_usd_range: [1.264, 1.264]}

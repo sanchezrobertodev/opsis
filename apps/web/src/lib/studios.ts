@@ -74,9 +74,9 @@ export const STUDIOS: Studio[] = [
       "references attach automatically. Character sheets and optional trained identities.",
   },
   {
-    slug: "worlds", name: "Worlds", href: "/soon/worlds", icon: Globe2, phase: "P7", group: "studios",
-    summary: "360° panoramas and explorable Gaussian-splat worlds. Fly a camera path and turn it into " +
-      "start frames and camera references for video models.",
+    slug: "worlds", name: "Worlds", href: "/worlds", icon: Globe2, group: "studios",
+    summary: "360° panoramas and explorable Gaussian-splat worlds. Grab views as start frames, save places " +
+      "as locations, or film a camera path through a world in 3D blocking.",
   },
   {
     slug: "faceless", name: "Faceless studio", href: "/faceless", icon: Mic, group: "studios",
@@ -89,7 +89,7 @@ export const STUDIOS: Studio[] = [
       "palette controls. Hero frames, multi-shot takes and a timeline export.",
   },
   {
-    slug: "jutsu3d", name: "3D blocking", href: "/soon/jutsu3d", icon: Box, phase: "P7", group: "studios",
+    slug: "jutsu3d", name: "3D blocking", href: "/jutsu3d", icon: Box, group: "studios",
     summary: "Block a scene in 3D with mannequins, props and a camera path, then turn the render into " +
       "photoreal angles and animate them.",
   },

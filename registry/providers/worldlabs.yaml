@@ -1,0 +1,8 @@
+id: worldlabs
+name: World Labs (Marble)
+kind: direct
+adapter: worldlabs
+key_setting: worldlabs_api_key
+# about 3 requests a minute; a world takes around 5 minutes
+concurrency: 2
+poll_min_seconds: 10

@@ -29,9 +29,9 @@ from studio.providers.common import (
     best_mime,
     classify_http,
     download_url,
-    extract_outputs,
     looks_like_moderation,
     require_key,
+    route_outputs,
     staged_ref,
 )
 from studio.registry.schema import Route
@@ -110,7 +110,7 @@ class FalAdapter(ProviderAdapter):
             result = await self.client.result(app, request_id)
         except Exception as exc:
             raise self._error(exc, "result") from exc
-        outputs = extract_outputs(result, route.output.path, route.output.kind)
+        outputs = route_outputs(result, route.output)
         if not outputs:
             if looks_like_moderation(str(result)):
                 return PollResult(status="failed", error_class=ErrorClass.moderation,

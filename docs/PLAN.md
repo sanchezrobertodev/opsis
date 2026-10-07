@@ -273,6 +273,18 @@ the /lipsync studio with an A/B view, voices on characters, and dialogue lines o
 dialogue (Veo 3.1, Seedance 2.5, Kling 3.0) get the lines in their prompt; others get each line voiced and the take
 lip-synced as a new take. Not yet: live takes on the new routes (AMS-8), and a separate dialogue track in the cut
 (dialogue rides in each take's own audio until the cut has tracks, AMS-42).
+P7 built (branch claude/p7-3d-worlds, mock-tested, not merged yet): 3D blocking (/jutsu3d) with versioned scene
+documents; an R3F editor with primitives, a posable figure with pose presets, GLB import (thumbnails drawn in the
+browser), image-to-3D (TRELLIS.2, Hunyuan3D 3.1, Meshy 7.1 with rigging, Tripo P2), lights, cameras with focal
+lengths, keyframes and undo; picture, depth and normal passes drawn in the browser and assembled by ffmpeg; and a
+`jutsu3d` recipe: angles (stills at the camera's keys redrawn on an image model, animated from one to the next with
+start+end-frame models, cut together) or depth (the depth pass drives Wan VACE depth, optionally opening on a
+redrawn first frame). World Creation (/worlds): World Labs Marble worlds (Gaussian splats with their 360 panorama
+and collision mesh, through a new `worldlabs` adapter), HunyuanWorld panoramas on fal, Spark viewers for both,
+grabbed views as pictures, places saved as location Elements, and "film it in 3D blocking", which sets a scene in
+the world so cameras, keys and passes are shared (the depth pass draws the world's collision mesh). Not yet: any
+live run (Marble needs WORLDLABS_API_KEY, and usage past prepaid credits is billed at month end), animation clips
+for rigged GLBs, a normals-guided video route, and multi-image or video Marble prompts.
 - **Step 0 — Handoff (this session, after approval):**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

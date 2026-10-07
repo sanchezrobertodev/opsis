@@ -23,12 +23,13 @@ from studio.budget.guard import BudgetBlocked
 from studio.cinema.document import CinemaDocument
 from studio.cinema.planner import MAX_SHOTS, plan_shots
 from studio.db.models import Asset, Element, Generation, Project, ProjectRevision, User
+from studio.jutsu3d.document import Jutsu3dDocument, starter_scene
 from studio.llm.client import LLMError, LLMUnavailable
 from studio.registry.loader import get_registry
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
-KINDS = {"cinema": CinemaDocument}
+KINDS = {"cinema": CinemaDocument, "jutsu3d": Jutsu3dDocument}
 
 
 class ProjectIn(BaseModel):
@@ -64,6 +65,7 @@ class ProjectSummary(BaseModel):
     scenes: int
     shots: int
     shots_with_takes: int
+    objects: int = Field(0, description="3D scenes: how many objects")
     cover: AssetOut | None
     updated_at: datetime
 
@@ -130,10 +132,17 @@ async def _available(session: AsyncSession, user: User, ids: set[uuid.UUID]) -> 
         Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)))).scalars())
 
 
-async def _check_assets(session: AsyncSession, user: User, doc: dict[str, Any]) -> None:
-    """Picked frames and takes must be the user's own assets."""
-    ids = {v for scene in doc.get("scenes", []) for shot in scene.get("shots", [])
-           for v in (shot.get("hero_asset_id"), shot.get("take_asset_id")) if v}
+def _referenced(kind: str, doc: dict[str, Any]) -> set[str]:
+    """The assets a document points at: a film's picked frames and takes, a 3D scene's models and cover."""
+    if kind == "jutsu3d":
+        return Jutsu3dDocument.model_validate(doc).asset_ids()
+    return {v for scene in doc.get("scenes", []) for shot in scene.get("shots", [])
+            for v in (shot.get("hero_asset_id"), shot.get("take_asset_id")) if v}
+
+
+async def _check_assets(session: AsyncSession, user: User, doc: dict[str, Any], kind: str = "cinema") -> None:
+    """Assets a document points at must be the user's own."""
+    ids = _referenced(kind, doc)
     try:
         wanted = {uuid.UUID(i) for i in ids}
     except ValueError:
@@ -203,8 +212,9 @@ async def list_projects(kind: str | None = None, session: AsyncSession = Depends
     projects = (await session.execute(q.order_by(Project.updated_at.desc()))).scalars().all()
     covers: dict[uuid.UUID, str] = {}
     for p in projects:
-        picked = next((s.get("take_asset_id") or s.get("hero_asset_id") for s in _shots(p.document)
-                       if s.get("take_asset_id") or s.get("hero_asset_id")), None)
+        picked = p.document.get("cover_asset_id") or next(
+            (s.get("take_asset_id") or s.get("hero_asset_id") for s in _shots(p.document)
+             if s.get("take_asset_id") or s.get("hero_asset_id")), None)
         if picked:
             covers[p.id] = picked
     assets = {str(a.id): a for a in (await session.execute(select(Asset).where(
@@ -213,6 +223,7 @@ async def list_projects(kind: str | None = None, session: AsyncSession = Depends
     return [ProjectSummary(
         id=p.id, kind=p.kind, title=p.title, version=p.version, scenes=len(p.document.get("scenes", [])),
         shots=len(_shots(p.document)), shots_with_takes=sum(1 for s in _shots(p.document) if s.get("take_asset_id")),
+        objects=len(p.document.get("objects", [])),
         cover=asset_out(assets[covers[p.id]]) if covers.get(p.id) in assets else None, updated_at=p.updated_at,
     ) for p in projects]
 
@@ -220,8 +231,9 @@ async def list_projects(kind: str | None = None, session: AsyncSession = Depends
 @router.post("", response_model=ProjectOut, status_code=201)
 async def create_project(body: ProjectIn, session: AsyncSession = Depends(get_session),
                          user: User = Depends(current_user)) -> ProjectOut:
-    doc = _validate(body.kind, body.document)
-    await _check_assets(session, user, doc)
+    # a new 3D scene starts with a camera, a figure and the sun
+    doc = _validate(body.kind, body.document or (starter_scene() if body.kind == "jutsu3d" else {}))
+    await _check_assets(session, user, doc, body.kind)
     p = Project(user_id=user.id, kind=body.kind, title=body.title.strip(), document=doc, version=1)
     session.add(p)
     await session.flush()
@@ -244,7 +256,7 @@ async def save_project(project_id: uuid.UUID, body: ProjectSave, session: AsyncS
     if body.version != p.version:
         raise HTTPException(409, f"this project was saved meanwhile (version {p.version}); reload to see it")
     doc = _validate(p.kind, body.document)
-    await _check_assets(session, user, doc)
+    await _check_assets(session, user, doc, p.kind)
     p.document, p.version = doc, p.version + 1
     if body.title:
         p.title = body.title.strip()
@@ -283,8 +295,15 @@ async def restore_revision(project_id: uuid.UUID, version: int, session: AsyncSe
         ProjectRevision.project_id == p.id, ProjectRevision.version == version))).scalar_one_or_none()
     if rev is None:
         raise HTTPException(404, f"no version {version}")
-    # frames and takes deleted since that version can't be picked any more (a save would refuse them)
-    document, cleared = await _drop_gone_picks(session, user, rev.document)
+    # what was deleted since that version can't be referenced any more (a save would refuse it)
+    if p.kind == "jutsu3d":
+        scene = Jutsu3dDocument.model_validate(rev.document)
+        refs = {uuid.UUID(a) for a in scene.asset_ids()}
+        gone = {str(a) for a in refs - await _available(session, user, refs)}
+        restored, cleared = scene.without_assets(gone)
+        document = restored.model_dump(mode="json")
+    else:
+        document, cleared = await _drop_gone_picks(session, user, rev.document)
     p.document, p.title, p.version = document, rev.title, p.version + 1
     p.updated_at = datetime.now(UTC)
     note = f"Restored version {version}"

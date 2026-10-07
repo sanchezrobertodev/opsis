@@ -29,12 +29,14 @@ MediaRole = Literal[
     "input_image",  # an image a tool works on (segmentation)
 ]
 # mask / mask_video: black-and-white mattes (white = the selected object), kept apart from ordinary media
-MediaKind = Literal["image", "video", "audio", "mask", "mask_video"]
+# model3d: a GLB; splat: a Gaussian-splat world (SPZ or PLY)
+MediaKind = Literal["image", "video", "audio", "mask", "mask_video", "model3d", "splat"]
 OpTag = Literal[
     "t2v", "i2v", "flf2v", "multi_ref", "multi_shot", "extend", "instruction_edit", "restyle", "reframe",
     "upscale", "interpolate", "bg_remove", "motion_transfer", "object_replace", "lipsync", "avatar",
     "t2i", "i2i", "relight", "add_sound", "trim", "retime", "reverse", "loop", "stabilize",
     "tts", "sfx", "music", "segment", "track",
+    "to_3d", "panorama", "world", "depth_to_video",
 ]
 OutputType = Literal["video", "image", "audio", "3d", "lora", "mask", "text"]
 Scalar = str | int | float | bool
@@ -250,10 +252,21 @@ class RouteMode(_Strict):
     drop: list[str] = []  # canonical params this endpoint doesn't accept (e.g. no seed on reference mode)
 
 
+class ExtraOutput(_Strict):
+    """Another file the same job returns, kept as its own asset (a world's panorama next to its splat)."""
+
+    path: str
+    kind: MediaKind
+    meta: dict[str, Scalar] = {}
+
+
 class OutputSpec(_Strict):
-    path: str = "output"
+    path: str = "output"  # dotted; "a.url | b.url" tries each in turn (Meshy: the rigged GLB when there is one)
     kind: MediaKind = "video"
     multiple: bool = False
+    # stored on the asset's metadata, e.g. {projection: equirectangular} marks a 360 panorama for the viewer
+    meta: dict[str, Scalar] = {}
+    extras: list[ExtraOutput] = []
 
 
 class Route(_Strict):

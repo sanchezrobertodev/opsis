@@ -27,10 +27,10 @@ from studio.providers.base import (
 from studio.providers.common import (
     best_mime,
     download_url,
-    extract_outputs,
     http_error,
     looks_like_moderation,
     require_key,
+    route_outputs,
     staged_ref,
 )
 from studio.registry.schema import Route
@@ -105,7 +105,7 @@ class ReplicateAdapter(ProviderAdapter):
             err = str(p.get("error") or "prediction failed")
             cls = ErrorClass.moderation if looks_like_moderation(err) else ErrorClass.internal
             return PollResult(status="failed", error_class=cls, error_message=f"Replicate: {err[:800]}", usage=usage)
-        outputs = extract_outputs(p, route.output.path, route.output.kind)
+        outputs = route_outputs(p, route.output)
         if not outputs:
             return PollResult(status="failed", error_class=ErrorClass.internal,
                               error_message="Replicate finished without an output", usage=usage)

@@ -75,6 +75,9 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   The plan compiles each shot's prompt with the take's direction under the shot's own and sets `duration` to the total.
   Routes send them with the `shot_list` transform (Kling `multi_prompt`) or `timed_prompt` (Seedance, one prompt that
   cuts on cue; `prompt_budget: shared` splits the prompt limit between shots).
+- A route's `output` can carry `meta` (stored on each asset, e.g. `{projection: equirectangular}` marks a 360
+  panorama; `GET /assets?projection=equirectangular` lists them) and `extras` (more files the same job returns, each
+  its own asset: Marble's panorama and collision mesh next to its splat). Mock routes copy both.
 - `kind: virtual` models (Cinema Studio) have no routes: `virtual.engines` maps each mode to `base-model/mode`, and
   `registry/virtual.py:resolve` swaps the request for the engine's before mentions, compiling, routing and pricing.
   Shared params are fitted (durations rounded, unknown values dropped with a warning); `virtual.director` params
@@ -188,6 +191,19 @@ pnpm lint       # ruff + eslint + tsc
 - The director (`studio/director/compiler.py`): besides the look lists, `lights` (up to two placed sources) and
   `cast_emotions` (a feeling per @mentioned cast member, phrased with the name the mention resolved to). Golden
   snapshots per dialect live in `tests/unit/golden/director/`; regenerate with `UPDATE_GOLDEN=1` and review the diff.
+
+## 3D blocking and Worlds
+- Media kinds `model3d` (GLB) and `splat` (.spz/.ply) are never probed: uploads are checked by magic bytes, and their
+  library pictures are drawn in the browser and posted to `POST /assets/{id}/thumbnail` (`lib/thumbs.ts`).
+- A scene is a `projects` row (`kind: jutsu3d`) whose document is `studio/jutsu3d/document.py` (objects, keyframe
+  tracks, settings; a `world` object holds a splat and its collision mesh). Render passes are drawn on the editor's
+  canvas (`RenderPanel.tsx:renderScene`), uploaded frame by frame (`api/routers/renders.py`) and joined by ffmpeg into
+  a video per pass, or stills at the camera's keys. The `jutsu3d` recipe makes those renders real (angles or depth).
+- Splats render with Spark (`components/three/Splat.tsx`): one `SparkLayer` per canvas, worlds flipped from OpenCV
+  axes, `spark.update()` before each captured frame; data passes hide splats and draw the collision mesh instead.
+- `worldlabs` (Marble, `WORLDLABS_API_KEY`): submit returns an operation, polled until `done`; it can't be canceled
+  and doesn't report a job's credits, so the estimate is charged. Usage past the prepaid balance is billed to the
+  card at month end: keep caps on.
 
 ## Local engine (ComfyUI)
 - `comfy_local` provider = the VideoStudio ComfyUI at `COMFYUI_URL` (default http://127.0.0.1:8188). Start it with

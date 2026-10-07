@@ -5,6 +5,7 @@ import hashlib
 import mimetypes
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
 
 import anyio
@@ -20,7 +21,8 @@ from studio.db.models import Asset, AssetLineage, User
 from studio.domain import fsm
 from studio.domain.derived import frame_of
 from studio.domain.enums import AssetKind, AssetSource, AssetStatus
-from studio.media.ffmpeg import FFmpegError, probe
+from studio.media.derive import image_thumb
+from studio.media.ffmpeg import FFmpegError, Probe, probe
 from studio.storage.base import asset_key
 from studio.storage.local import get_storage
 from studio.worker.tasks.assets import defer_derive
@@ -31,14 +33,23 @@ MAX_UPLOAD_BYTES = 4 * 1024**3
 CHUNK = 1 << 20
 
 
-def _kind_for(mime: str) -> AssetKind:
+# files the studio keeps without reading them as media: the first bytes each must start with
+NOT_MEDIA = {AssetKind.model3d: (b"glTF",), AssetKind.splat: (b"ply\n", b"ply\r", b"\x1f\x8b")}
+
+
+def _kind_for(mime: str, filename: str = "") -> AssetKind:
+    name = filename.lower()
+    if mime == "model/gltf-binary" or name.endswith(".glb"):
+        return AssetKind.model3d
+    if name.endswith((".spz", ".ply")):
+        return AssetKind.splat
     if mime.startswith("image/"):
         return AssetKind.image
     if mime.startswith("video/"):
         return AssetKind.video
     if mime.startswith("audio/"):
         return AssetKind.audio
-    raise HTTPException(415, f"unsupported file type {mime!r}; upload an image, video or audio file")
+    raise HTTPException(415, f"unsupported file type {mime!r}; upload an image, video, audio or GLB file")
 
 
 @router.post("/uploads", response_model=AssetOut, status_code=201)
@@ -46,10 +57,15 @@ async def upload(
     file: UploadFile, session: AsyncSession = Depends(get_session), user: User = Depends(current_user)
 ) -> AssetOut:
     mime = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
-    kind = _kind_for(mime)
+    kind = _kind_for(mime, file.filename or "")
+    if kind in NOT_MEDIA:
+        mime = mimetypes.guess_type(file.filename or "")[0] or ("model/gltf-binary" if kind == AssetKind.model3d
+                                                                else "application/octet-stream")
     storage = get_storage()
     asset_id = uuid7()
-    ext = mimetypes.guess_extension(mime) or ""
+    ext = mimetypes.guess_extension(mime) or Path(file.filename or "").suffix.lower() or ""
+    if kind == AssetKind.splat:
+        ext = Path(file.filename or "").suffix.lower() or ".spz"
     if ext == ".jpe":
         ext = ".jpg"
     tmp = storage.temp_dir() / f"upload-{asset_id.hex}{ext}"
@@ -63,10 +79,17 @@ async def upload(
                     raise HTTPException(413, "file too large")
                 digest.update(chunk)
                 await out.write(chunk)
-        try:
-            info = await probe(tmp)
-        except FFmpegError:
-            raise HTTPException(415, "could not read this file as media") from None
+        if kind in NOT_MEDIA:
+            async with await anyio.open_file(tmp, "rb") as fh:
+                head = await fh.read(4)
+            if not head.startswith(NOT_MEDIA[kind]):
+                raise HTTPException(415, f"this doesn't look like a {'GLB' if kind == AssetKind.model3d else 'splat'} file")
+            info = Probe(None, None, None, None, False, None, None, {})
+        else:
+            try:
+                info = await probe(tmp)
+            except FFmpegError:
+                raise HTTPException(415, "could not read this file as media") from None
         key = asset_key(user.id, asset_id, f"original{ext}")
         storage.put_file(key, tmp, move=True)
     finally:
@@ -89,16 +112,44 @@ async def upload(
     return asset_out(asset)
 
 
+@router.post("/assets/{asset_id}/thumbnail", response_model=AssetOut)
+async def set_thumbnail(asset_id: uuid.UUID, file: UploadFile, session: AsyncSession = Depends(get_session),
+                        user: User = Depends(current_user)) -> AssetOut:
+    """A picture for an asset that can't be thumbnailed here (a 3D model the browser drew)."""
+    asset = await session.get(Asset, asset_id, with_for_update=True)
+    if asset is None or asset.user_id != user.id or asset.deleted_at is not None:
+        raise HTTPException(404, "asset not found")
+    if (file.content_type or "") not in ("image/png", "image/jpeg", "image/webp"):
+        raise HTTPException(415, "the thumbnail must be PNG, JPEG or WebP")
+    data = await file.read(10 * 1024 * 1024 + 1)
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(413, "thumbnail too large")
+    storage = get_storage()
+    tmp = storage.temp_dir() / f"thumb-{uuid7().hex}"
+    tmp.write_bytes(data)
+    key = asset_key(user.id, asset.id, "thumb.webp")
+    try:
+        await anyio.to_thread.run_sync(image_thumb, tmp, storage.path_for(key))
+    finally:
+        tmp.unlink(missing_ok=True)
+    asset.derivatives = {**(asset.derivatives or {}), "thumb": key}
+    await fsm.emit(session, user_id=user.id, topic="asset", type="asset.updated", subject_id=asset.id,
+                   payload={"asset_id": str(asset.id), "derivatives": ["thumb"]})
+    await session.commit()
+    return asset_out(asset)
+
+
 def _cursor(a: Asset) -> str:
     return base64.urlsafe_b64encode(f"{a.created_at.isoformat()}|{a.id}".encode()).decode()
 
 
 @router.get("/assets", response_model=AssetPage)
 async def list_assets(
-    kind: Literal["video", "image", "audio"] | None = None,
+    kind: Literal["video", "image", "audio", "model3d", "splat"] | None = None,
     source: Literal["upload", "generation"] | None = None,
     favorite: bool | None = None,
     tag: str | None = Query(None, description="Only assets with this tag (e.g. `driving` for movement clips)"),
+    projection: Literal["equirectangular"] | None = Query(None, description="Only 360 panoramas"),
     limit: int = Query(40, ge=1, le=200),
     cursor: str | None = None,
     session: AsyncSession = Depends(get_session),
@@ -113,6 +164,8 @@ async def list_assets(
         stmt = stmt.where(Asset.favorite == favorite)
     if tag:
         stmt = stmt.where(Asset.tags.contains([tag]))
+    if projection:
+        stmt = stmt.where(Asset.metadata_["projection"].astext == projection)
     if cursor:
         try:
             ts, aid = base64.urlsafe_b64decode(cursor.encode()).decode().split("|")

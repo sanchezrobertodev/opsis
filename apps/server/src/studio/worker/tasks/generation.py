@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import mimetypes
 import shutil
 import uuid
 from dataclasses import asdict
@@ -16,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import anyio
 from procrastinate.exceptions import AlreadyEnqueued
@@ -31,7 +33,7 @@ from studio.domain import fsm
 from studio.domain.enums import AssetKind, AssetSource, AssetStatus, AttemptStatus, ErrorClass, GenStatus
 from studio.domain.generations import routing_env
 from studio.domain.health import record_failure, record_success
-from studio.media.ffmpeg import probe
+from studio.media.ffmpeg import Probe, probe
 from studio.providers.base import (
     AmbiguousSubmitError,
     PollResult,
@@ -58,7 +60,17 @@ MAX_INGEST_TRIES = 5
 SUBMIT_TIMEOUT_S = 120
 POLL_TIMEOUT_S = 60
 EXT = {"video/mp4": ".mp4", "video/webm": ".webm", "video/quicktime": ".mov", "image/png": ".png",
-       "image/jpeg": ".jpg", "image/webp": ".webp", "audio/mpeg": ".mp3", "audio/wav": ".wav"}
+       "image/jpeg": ".jpg", "image/webp": ".webp", "audio/mpeg": ".mp3", "audio/wav": ".wav",
+       "model/gltf-binary": ".glb", "application/x-ply": ".ply"}
+# outputs ffmpeg can't read: kept as files, with the extension their kind implies when the mime type is vague
+NOT_MEDIA = {"model3d": ".glb", "splat": ".spz"}
+
+
+def _untitled(model_id: str, mode_id: str, gen_id: uuid.UUID) -> str:
+    """A title for an output made without a prompt (a 3D model from a picture): the model and what it did."""
+    spec = get_registry().model(model_id)
+    mode = spec.mode(mode_id) if spec else None
+    return f"{spec.name}: {mode.label}" if spec and mode else gen_id.hex
 
 
 # ------------------------------------------------------------------ deferral helpers (API + worker)
@@ -538,8 +550,14 @@ async def run_ingest(attempt_id: uuid.UUID) -> None:
             tmp = workdir / "download.bin"
             mime = await adapter.download(route, out, tmp, workdir)
             digest = await anyio.to_thread.run_sync(_sha256, tmp)
-            info = await probe(tmp)
-            key = asset_key(user_id, asset_id, f"original{EXT.get(mime, '.bin')}")
+            if out.kind in NOT_MEDIA:
+                ext = EXT.get(mime or "") or Path(urlsplit(out.url or "").path).suffix or NOT_MEDIA[out.kind]
+                mime = mime if mime in EXT else mimetypes.guess_type(f"x{ext}")[0] or "application/octet-stream"
+                info = Probe(None, None, None, None, False, None, None, {})
+            else:
+                ext = EXT.get(mime, ".bin")
+                info = await probe(tmp)
+            key = asset_key(user_id, asset_id, f"original{ext}")
             size = storage.put_file(key, tmp, move=True)
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
@@ -552,7 +570,7 @@ async def run_ingest(attempt_id: uuid.UUID) -> None:
                     source=AssetSource.generation, mime=mime, storage_key=key, size_bytes=size,
                     content_hash=digest, width=info.width, height=info.height, duration_ms=info.duration_ms,
                     fps=info.fps, has_audio=info.has_audio, codec=info.codec, generation_id=gen_id,
-                    output_index=out.index, title=(user_prompt or gen_id.hex)[:120],
+                    output_index=out.index, title=(user_prompt or _untitled(req.model_id, req.mode, gen_id))[:120],
                     # out.meta carries what the provider says about the file itself (TTS word timings)
                     metadata_={**out.meta, "model_id": req.model_id, "mode": req.mode, "prompt": user_prompt,
                                "compiled_prompt": req.prompt, "direction": direction,

@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names and prices verified 2026-10-07 against fal's OpenAPI and model page (fal-ai/wan-vace-14b/depth).
+id: wan-vace-depth
+name: Wan VACE depth
+family: wan
+vendor: alibaba
+description: >-
+  A video that follows a depth video's shapes and motion (a 3D blocking render, white near the camera), styled by
+  the prompt and up to three reference pictures. Hosted Wan 2.1 VACE 14B.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [depth, control, vace, 3d-blocking]
+prompt: {max_chars: 2000, dialect: wan}
+
+parameters:
+  - {name: resolution, type: enum, options: ["480p", "580p", "720p"], default: "720p", ui: segmented}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: [auto, "16:9", "1:1", "9:16"], default: auto,
+     help: "auto follows the depth video."}
+
+modes:
+  - id: depth_video
+    label: Depth video to video
+    ops: [depth_to_video]
+    medias:
+      - {role: control_video, kinds: [video], label: Depth video, required: true, max_duration_s: 10}
+      - {role: image_references, kinds: [image], label: Reference pictures (optional), max: 3}
+      - {role: start_image, kinds: [image], label: First frame (optional)}
+
+elements: {strategy: refs_native, ref_role: image_references}
+
+routes:
+  - id: wan-vace-depth@fal
+    provider: fal
+    modes:
+      # the depth video is used as given (rendered depth, not estimated), at its own length and frame rate
+      depth_video: {endpoint: fal-ai/wan-vace-14b/depth,
+                    fixed: {preprocess: false, match_input_num_frames: true, match_input_frames_per_second: true}}
+    map:
+      params: {resolution: resolution, aspect_ratio: aspect_ratio}
+      media: {control_video: video_url, image_references: "ref_image_urls[]", start_image: first_frame_url}
+    pricing:
+      # fal bills video seconds counted at 16 frames per second
+      basis: per_output_second
+      quantity: input_video_frames / 16
+      rates:
+        - {when: {resolution: "480p"}, usd: 0.04}
+        - {when: {resolution: "580p"}, usd: 0.06}
+        - {when: {resolution: "720p"}, usd: 0.08}
+      verified: 2026-10-07
+      source: https://fal.ai/models/fal-ai/wan-vace-14b/depth
+    timeout_s: 1800
+    output: {path: video.url, kind: video}
+    notes: The Wan 2.2 version (fal-ai/wan-22-vace-fun-a14b/depth) takes the same fields at $0.05-0.10 per second.
+
+examples:
+  - name: depth_smoke
+    mode: depth_video
+    prompt: A rain-soaked rooftop at night, a lone figure in a long coat, neon signs reflecting in puddles.
+    params: {resolution: "480p"}
+    media: {control_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0, 1.0]}

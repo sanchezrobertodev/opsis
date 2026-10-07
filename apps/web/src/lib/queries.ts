@@ -16,10 +16,11 @@ export const keys = {
 };
 
 export type AssetFilter = {
-  kind?: "video" | "image" | "audio";
+  kind?: "video" | "image" | "audio" | "model3d" | "splat";
   source?: "upload" | "generation";
   favorite?: boolean;
   tag?: string;
+  projection?: "equirectangular";
 };
 
 export function useRegistry() {

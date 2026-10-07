@@ -21,6 +21,7 @@ from studio.db.models import AssetProviderUpload
 from studio.db.session import session_scope
 from studio.domain.enums import ErrorClass
 from studio.providers.base import ProviderError, ProviderOutput, ResolvedMedia
+from studio.registry.schema import OutputSpec
 
 MODERATION_HINTS = (
     "moderation", "content policy", "content_policy", "safety", "nsfw", "prohibited", "sensitive content",
@@ -83,8 +84,13 @@ def dig(data: Any, path: str) -> Any:
 
 
 def extract_outputs(result: Any, path: str, kind: str) -> list[ProviderOutput]:
-    """Turn the value at `path` into outputs: a URL string, a {url, content_type} dict, or a list of either."""
-    value = dig(result, path)
+    """Turn the value at `path` into outputs: a URL string, a {url, content_type} dict, or a list of either.
+    `path` may list alternatives, `a | b`: the first that holds a value is used."""
+    value = None
+    for alternative in path.split("|"):
+        value = dig(result, alternative.strip())
+        if value:
+            break
     items = value if isinstance(value, list) else [value]
     out: list[ProviderOutput] = []
     for item in items:
@@ -94,6 +100,21 @@ def extract_outputs(result: Any, path: str, kind: str) -> list[ProviderOutput]:
         mime = (item.get("content_type") if isinstance(item, dict) else None) or mimetypes.guess_type(
             url.split("?")[0])[0]
         out.append(ProviderOutput(index=len(out), kind=kind, url=url, mime=mime))
+    return out
+
+
+def route_outputs(result: Any, spec: OutputSpec) -> list[ProviderOutput]:
+    """The route's main output(s), then any extras it declares, each carrying the metadata the route gives it.
+    An empty list means the main output is missing (extras alone don't count as a result)."""
+    main = extract_outputs(result, spec.path, spec.kind)
+    if not main:
+        return []
+    for o in main:
+        o.meta = {**spec.meta, **o.meta}
+    out = list(main)
+    for extra in spec.extras:
+        for o in extract_outputs(result, extra.path, extra.kind):
+            out.append(ProviderOutput(index=len(out), kind=o.kind, url=o.url, mime=o.mime, meta=dict(extra.meta)))
     return out
 
 
