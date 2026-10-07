@@ -547,12 +547,16 @@ async def test_marble_lifecycle_keeps_the_panorama_and_collider(wl_key):
                    "semantics_metadata": {"metric_scale_factor": 1.4, "ground_plane_offset": -0.2}},
         "imagery": {"pano_url": "https://cdn.test/w1_pano.png"},
         "mesh": {"collider_mesh_url": "https://cdn.test/w1_collider.glb"}}}
+    # as seen live: the finished operation's copy of a draft world has no panorama yet; the stored world does
+    lagging = {**world, "assets": {**world["assets"], "imagery": {"pano_url": None}}}
     status.side_effect = [
         httpx.Response(200, json={"operation_id": "op1", "done": False, "metadata": {}}),
         httpx.Response(200, json={"operation_id": "op1", "done": False,
                                   "metadata": {"progress": {"status": "IN_PROGRESS"}, "world_id": "w1"}}),
-        httpx.Response(200, json={"operation_id": "op1", "done": True, "response": world}),
+        httpx.Response(200, json={"operation_id": "op1", "done": True, "response": lagging,
+                                  "cost": {"total_credits": 230, "line_items": []}}),
     ]
+    respx.get(f"{WL}/marble/v1/worlds/w1").respond(200, json=world)
     a = WorldLabsAdapter()
     res = await a.submit(rt, "marble/v1/worlds:generate",
                          {"model": "marble-1.1", "world_prompt": {"type": "text", "text_prompt": "x" * 100}},
@@ -570,6 +574,13 @@ async def test_marble_lifecycle_keeps_the_panorama_and_collider(wl_key):
     assert done.outputs[0].meta == {"world_id": "w1", "metric_scale_factor": 1.4, "ground_plane_offset": -0.2}
     assert done.outputs[1].meta == {"projection": "equirectangular", "world_id": "w1"}
     assert [o.index for o in done.outputs] == [0, 1, 2]
+    assert done.usage == {"credits": 230, "cost_usd": 0.184}  # $1 buys 1,250 credits
+
+    # if the world can't be read back, the operation's copy still gives the splat and collider
+    status.side_effect = [httpx.Response(200, json={"operation_id": "op1", "done": True, "response": lagging})]
+    respx.get(f"{WL}/marble/v1/worlds/w1").respond(503)
+    fallback = await a.poll(rt, "op1")
+    assert [o.kind for o in fallback.outputs] == ["splat", "model3d"] and fallback.usage == {}
 
 
 @respx.mock

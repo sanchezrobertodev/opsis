@@ -44,5 +44,6 @@ routes:
 examples:
   - name: track_smoke
     mode: track
-    media: {input_video: https://example.test/clip.mp4, mask: https://example.test/mask.png}
+    # the mask comes from SAM 3 image (uploads are never masks), so the smoke script skips this; Object swap runs it
+    media: {input_video: "fixture:videos/clip_3s.mp4", mask: "made-by:sam-3-image"}
     smoke: true
