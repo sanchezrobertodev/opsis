@@ -156,7 +156,7 @@ class ObjectSwapRecipe(Recipe):
                 specs.append(StepSpec(keep_key(i, spec.id), StepKind.local, f"{spec.name}: keep the rest as filmed", {
                     "op": "keep_background", "original": str(inp.video_asset_id), "edited": edited["asset_id"],
                     "matte": matte, "feather": inp.feather, "grow": inp.grow, "title": self.title(inp),
-                }, (key, "track")))
+                }, (key, "track"), optional=True))  # one take failing to composite shouldn't sink the others
 
         takes = self._takes(inp, settled)
         good = [t for t in takes if t["asset_id"]]
@@ -188,6 +188,13 @@ class ObjectSwapRecipe(Recipe):
                 take.update(asset_id=edited["asset_id"], raw_asset_id=edited["asset_id"], done=True)
             out.append(take)
         return out
+
+    def failure(self, inp: ObjectSwapInput, settled: Settled) -> str | None:
+        takes = self._takes(inp, settled)
+        if takes and all(t["done"] for t in takes) and not any(t["asset_id"] for t in takes):
+            reasons = "; ".join(f"{t['model_id']}: {t['error']}" for t in takes if t["error"])
+            return f"No model produced a take. {reasons}"
+        return None
 
     def result(self, inp: ObjectSwapInput, settled: Settled) -> dict[str, Any] | None:
         takes = self._takes(inp, settled)

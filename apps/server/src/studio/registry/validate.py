@@ -230,6 +230,10 @@ def normalize(
         for ref in got:
             if ref.kind and ref.kind not in slot.kinds:
                 errors.append(f"{slot.role} must be {'/'.join(slot.kinds)}, got {ref.kind}")
+            seconds = (ref.duration_ms or 0) / 1000
+            if slot.max_duration_s and seconds > slot.max_duration_s + 0.05:
+                errors.append(f"{slot.label or slot.role} can be at most {slot.max_duration_s:g} s; "
+                              f"this one is {seconds:.1f} s")
 
     if errors:
         raise RequestError(errors)

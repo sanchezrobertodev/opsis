@@ -112,3 +112,21 @@ def test_sam_points_become_pixels_and_need_a_size():
     req.media[0].width = None
     with pytest.raises(ValueError, match="size is unknown"):
         sam_points(spec=spec, route=spec.routes[0], req=req, payload={"point_prompts": [[0.5, 0.5, 1]]})
+
+
+def test_planned_narration_is_cut_from_the_approved_script():
+    from studio.faceless.writer import narration_from_script
+
+    script = "The keeper climbed the stairs. She lit the lamp—one last time! Then she went home."
+    # case and punctuation drift is fine: the script's own text is used
+    assert narration_from_script(script, ["the keeper climbed the stairs", "She lit the lamp, one last time.",
+                                          "then she went home"]) == [
+        "The keeper climbed the stairs.", "She lit the lamp—one last time!", "Then she went home."]
+    # reworded, reordered, duplicated or dropped words are not
+    assert narration_from_script(script, ["The keeper walked up the stairs.", "She lit the lamp one last time!",
+                                          "Then she went home."]) is None
+    assert narration_from_script(script, ["She lit the lamp one last time!", "The keeper climbed the stairs.",
+                                          "Then she went home."]) is None
+    assert narration_from_script(script, [script, "Then she went home."]) is None
+    assert narration_from_script(script, ["The keeper climbed the stairs."]) is None
+    assert narration_from_script(script, [script, "..."]) is None

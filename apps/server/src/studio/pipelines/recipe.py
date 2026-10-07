@@ -80,6 +80,11 @@ class Recipe(ABC):
     def result(self, inp: Any, settled: Settled) -> dict[str, Any] | None:
         """The run's output once it is complete, else None."""
 
+    def failure(self, inp: Any, settled: Settled) -> str | None:
+        """Why the run failed even though no required step did (e.g. every optional take failed), else None.
+        Checked once every step has finished."""
+        return None
+
 
 def ok(settled: Settled, key: str) -> dict[str, Any] | None:
     """A settled step's output if it succeeded."""

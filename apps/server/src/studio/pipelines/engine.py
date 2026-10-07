@@ -227,7 +227,10 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
     settled = settled_outputs(steps)
     result = recipe.result(inp, settled)
     previous = run.status
-    if result is not None and all(st.status in STEP_DONE for st in live):
+    finished = all(st.status in STEP_DONE for st in live)
+    if finished and (why := recipe.failure(inp, settled)):
+        run.status, run.error, run.finished_at = RunStatus.failed, why[:2000], _now()
+    elif result is not None and finished:
         run.status, run.output, run.finished_at = RunStatus.succeeded, result, _now()
     elif any(st.status == StepStatus.waiting for st in live) and not any(
             st.status == StepStatus.running for st in live):

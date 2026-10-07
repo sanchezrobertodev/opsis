@@ -158,3 +158,16 @@ async def test_catalog_topics_and_channels(client, in_memory_queue):
     assert (await client.get(f"/faceless/channels/{ch['id']}")).status_code == 404
     await drain(in_memory_queue)
     assert (await get(client, run["id"]))["status"] == "succeeded"
+
+
+async def test_channel_counts_only_its_owners_episodes(client, in_memory_queue):
+    from studio.db.models import PipelineRun, User
+
+    ch = (await client.post("/faceless/channels", json={"name": "Mine", "theme": "kids", "style": "colorful-3d"})).json()
+    async with session_scope() as s:
+        other = User(display_name="someone else")
+        s.add(other)
+        await s.flush()
+        s.add(PipelineRun(user_id=other.id, recipe="faceless", title="not mine", input={"channel_id": ch["id"]}))
+    listed = {c["id"]: c for c in (await client.get("/faceless/channels")).json()}
+    assert listed[ch["id"]]["episodes"] == 0

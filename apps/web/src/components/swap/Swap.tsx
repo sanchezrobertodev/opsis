@@ -88,8 +88,8 @@ export function Swap() {
             <MaskEditor key={video.id} video={video} onChange={setSelection} />
           ) : (
             <p className="text-sm text-muted">
-              Add a clip of up to 30 seconds. You&rsquo;ll click the object on one frame and it&rsquo;s followed
-              through the clip.
+              Add a clip. Edit models take 15 to 30 seconds depending on the model; the cost line says if it&rsquo;s
+              too long. You&rsquo;ll click the object on one frame and it&rsquo;s followed through the clip.
             </p>
           )}
         </div>

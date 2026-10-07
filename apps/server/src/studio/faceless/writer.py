@@ -144,9 +144,11 @@ async def plan_blocks(session: AsyncSession, user_id: uuid.UUID, *, script: str,
         prompt=prompt, output=BlockPlan, mock=lambda: _mock_plan(script, fmt), effort="medium", max_tokens=16000)
     plan = result.output
     plan.blocks = [b for b in plan.blocks if b.narration.strip()]
-    covered = _words(" ".join(b.narration for b in plan.blocks))
-    if not plan.blocks or covered < 0.9 * _words(script):
-        raise LLMError("Claude's block plan left out part of the narration. Try again.", retryable=True)
+    texts = narration_from_script(script, [b.narration for b in plan.blocks])
+    if texts is None:
+        raise LLMError("Claude's block plan didn't keep the script word for word. Try again.", retryable=True)
+    for block, text in zip(plan.blocks, texts, strict=True):
+        block.narration = text
     return result
 
 
@@ -169,6 +171,32 @@ def sentences(text: str) -> list[str]:
 
 def _words(text: str) -> int:
     return len(text.split())
+
+
+WORD = re.compile(r"[\w']+")
+CURLY_APOSTROPHE = "\u2019"
+
+
+def _tokens(text: str) -> list[str]:
+    return [w.lower() for w in WORD.findall(text.replace(CURLY_APOSTROPHE, "'"))]
+
+
+def narration_from_script(script: str, blocks: list[str]) -> list[str] | None:
+    """Each block's narration cut from the approved script itself, so what is spoken is exactly what was approved.
+
+    The blocks must hold the script's words in order, none added, dropped or repeated (case and punctuation may
+    differ); otherwise None. Cuts fall just before each block's first word, so punctuation stays with its sentence.
+    """
+    counts = [len(_tokens(t)) for t in blocks]
+    if not blocks or 0 in counts or _tokens(" ".join(blocks)) != _tokens(script):
+        return None
+    starts = [m.start() for m in WORD.finditer(script.replace(CURLY_APOSTROPHE, "'"))]
+    cuts, n = [], 0
+    for count in counts:
+        cuts.append(starts[n])
+        n += count
+    ends = [*cuts[1:], len(script)]
+    return [" ".join(script[a:b].split()) for a, b in zip(cuts, ends, strict=True)]
 
 
 def split_narration(text: str, seconds: float) -> list[str]:

@@ -123,3 +123,28 @@ async def test_swap_validation(client):
     for problem in ("say what the object should become", "Veo 3.1 can't replace objects in a clip",
                     "pick each model once"):
         assert problem in r.text
+
+
+async def test_a_run_where_every_model_fails_is_a_failed_run(client, in_memory_queue):
+    video, mask = await selected_object(client, in_memory_queue)
+    run = await start(client, "object_swap", video_asset_id=video["id"], mask_asset_id=mask["id"],
+                      prompt="Make it gold [[mock:fail=moderation]]",
+                      models=[{"model_id": "kling-o3-edit"}, {"model_id": "runway-aleph-2"}])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "failed" and done["error"].startswith("No model produced a take.")
+    assert "kling-o3-edit:" in done["error"] and "runway-aleph-2:" in done["error"]
+
+
+async def test_too_long_a_clip_is_refused_before_anything_runs(client, in_memory_queue, tmp_path):
+    from studio.media.mock_media import make_video
+
+    clip = tmp_path / "long.mp4"
+    await make_video(clip, tmp_path / "w", model_id="m", mode="x", prompt="long", duration=16, resolution="360p",
+                     aspect="16:9")
+    video = (await client.post("/uploads", files={"file": ("long.mp4", clip.read_bytes(), "video/mp4")})).json()
+    _, mask = await selected_object(client, in_memory_queue)
+    r = await client.post("/pipelines/estimate", json={"recipe": "object_swap", "input": {
+        "video_asset_id": video["id"], "mask_asset_id": mask["id"], "prompt": "a cactus",
+        "models": [{"model_id": "kling-o3-edit"}]}})
+    assert r.status_code == 422 and "at most 15 s" in r.text

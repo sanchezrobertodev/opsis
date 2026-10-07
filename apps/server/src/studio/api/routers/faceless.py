@@ -181,10 +181,12 @@ async def _channel(session: AsyncSession, user: User, channel_id: uuid.UUID) -> 
 
 
 async def _out(session: AsyncSession, channels: list[Channel]) -> list[ChannelOut]:
+    """Channels with their episode counts. Only the owner's own runs count, whatever channel id a run names."""
     key = PipelineRun.input["channel_id"].astext
     stats = {cid: (n, last) for cid, n, last in (await session.execute(
         select(key, func.count(), func.max(PipelineRun.created_at))
-        .where(PipelineRun.recipe == "faceless", key.in_([str(c.id) for c in channels]))
+        .where(PipelineRun.recipe == "faceless", PipelineRun.user_id == channels[0].user_id,
+               key.in_([str(c.id) for c in channels]))
         .group_by(key))).all()} if channels else {}
     return [ChannelOut(id=c.id, name=c.name, theme=c.theme, style=c.style, notes=c.notes, defaults=c.defaults,
                        episodes=stats.get(str(c.id), (0, None))[0], last_episode_at=stats.get(str(c.id), (0, None))[1],
