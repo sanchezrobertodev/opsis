@@ -107,7 +107,8 @@ export function CutTab({ projectId, title, doc, update, takes, launch, runs }: {
   const preview = useMemo(() => ({
     items: entries.map((e, i): PreviewItem => ({
       key: e.item.id, frames: e.frames, overlapIn: e.overlap, overlapOut: entries[i + 1]?.overlap ?? 0,
-      card: e.card, take: e.asset ? { src: mediaUrl(e.asset.url) ?? e.asset.url, trimBefore: toFrames(e.trimFrom),
+      // the proxy where a take's codec won't play in a browser (HEVC, ProRes)
+      card: e.card, take: e.asset ? { src: mediaUrl(e.asset.proxy_url ?? e.asset.url) ?? e.asset.url, trimBefore: toFrames(e.trimFrom),
                                       volume: e.item.volume } : undefined,
     })),
     sounds: sounds.flatMap((s): PreviewSound[] => {

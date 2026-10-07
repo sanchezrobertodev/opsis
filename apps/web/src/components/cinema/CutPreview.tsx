@@ -35,8 +35,10 @@ function CardView({ card }: { card: TitleCard }) {
     <AbsoluteFill style={{ background: card.background, color: card.color, alignItems: "center", justifyContent: "center",
                            fontFamily: "Arial, Helvetica, sans-serif", fontWeight: 700, textAlign: "center",
                            whiteSpace: "pre-line", gap: "3.3%" }}>
-      <div style={{ fontSize: "9.1cqh", lineHeight: 1.15 }}>{card.text}</div>
-      {card.subtext && <div style={{ fontSize: "4.2cqh", lineHeight: 1.2 }}>{card.subtext}</div>}
+      {/* wrapped at the same width as the export's card (CARD_TEXT_WIDTH) */}
+      <div style={{ fontSize: "9.1cqh", lineHeight: 1.15, maxWidth: "86%", overflowWrap: "anywhere" }}>{card.text}</div>
+      {card.subtext && <div style={{ fontSize: "4.2cqh", lineHeight: 1.2, maxWidth: "86%", overflowWrap: "anywhere" }}>
+        {card.subtext}</div>}
     </AbsoluteFill>
   );
 }

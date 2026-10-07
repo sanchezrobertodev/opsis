@@ -171,22 +171,50 @@ def _font(px: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
+CARD_TEXT_WIDTH = 0.86  # of the frame; the preview wraps its card text at the same width
+
+
+def wrap(text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, width: float) -> str:
+    """Break text into lines no wider than `width` pixels, at spaces where possible (a word longer than a line is
+    split between letters). Newlines the writer typed are kept."""
+    lines: list[str] = []
+    for paragraph in text.split("\n"):
+        line = ""
+        for word in paragraph.split(" "):
+            candidate = f"{line} {word}" if line else word
+            if font.getlength(candidate) <= width:
+                line = candidate
+                continue
+            if line:
+                lines.append(line)
+            line = ""
+            for ch in word:  # a word wider than the card on its own
+                if line and font.getlength(line + ch) > width:
+                    lines.append(line)
+                    line = ""
+                line += ch
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def draw_card(card: Card, size: tuple[int, int], dest: Path) -> None:
-    """The card as a picture: the text centred, the subtext smaller under it."""
+    """The card as a picture: the text centred and wrapped to the card, the subtext smaller under it."""
     w, h = size
     img = Image.new("RGB", (w, h), card.background)
     draw = ImageDraw.Draw(img)
     title, sub = _font(max(18, h // 11)), _font(max(12, h // 24))
-    t_box = draw.multiline_textbbox((0, 0), card.text, font=title, align="center")
-    s_box = draw.multiline_textbbox((0, 0), card.subtext, font=sub, align="center") if card.subtext else (0, 0, 0, 0)
-    gap = h // 30 if card.subtext else 0
+    text = wrap(card.text, title, w * CARD_TEXT_WIDTH)
+    subtext = wrap(card.subtext, sub, w * CARD_TEXT_WIDTH) if card.subtext else ""
+    t_box = draw.multiline_textbbox((0, 0), text, font=title, align="center")
+    s_box = draw.multiline_textbbox((0, 0), subtext, font=sub, align="center") if subtext else (0, 0, 0, 0)
+    gap = h // 30 if subtext else 0
     block = (t_box[3] - t_box[1]) + gap + (s_box[3] - s_box[1])
     y = (h - block) // 2
-    draw.multiline_text(((w - (t_box[2] - t_box[0])) // 2, y - t_box[1]), card.text, font=title, fill=card.color,
+    draw.multiline_text(((w - (t_box[2] - t_box[0])) // 2, y - t_box[1]), text, font=title, fill=card.color,
                         align="center")
-    if card.subtext:
+    if subtext:
         y += (t_box[3] - t_box[1]) + gap
-        draw.multiline_text(((w - (s_box[2] - s_box[0])) // 2, y - s_box[1]), card.subtext, font=sub,
+        draw.multiline_text(((w - (s_box[2] - s_box[0])) // 2, y - s_box[1]), subtext, font=sub,
                             fill=card.color, align="center")
     img.save(dest)
 

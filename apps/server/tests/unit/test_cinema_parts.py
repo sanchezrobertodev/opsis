@@ -67,3 +67,15 @@ def test_the_cut_is_planned_in_whole_frames():
     assert [(s.start, s.frames, s.overlap) for s in p.segments] == [(0, 96, 0), (84, 72, 12), (156, 5, 0),
                                                                      (159, 48, 2)]
     assert p.frames == 207 and p.seconds == pytest.approx(207 / FPS)
+
+
+def test_title_card_text_wraps_inside_the_card():
+    from studio.media.timeline import CARD_TEXT_WIDTH, _font, wrap
+
+    font, width = _font(65), 1280 * CARD_TEXT_WIDTH
+    text = wrap("The keeper climbed the stairs one last time, and the lamp went dark over the harbour", font, width)
+    lines = text.split("\n")
+    assert len(lines) > 1 and all(font.getlength(line) <= width for line in lines)
+    assert wrap("Short\nTwo lines", font, width) == "Short\nTwo lines"  # typed line breaks stay
+    split = wrap("A" * 80, font, 300).split("\n")  # one word wider than the card is split between letters
+    assert len(split) > 1 and all(font.getlength(line) <= 300 for line in split)

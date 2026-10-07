@@ -402,27 +402,52 @@ class DialogueOut(BaseModel):
                                          "same speech)")
 
 
+LINEAGE_HOPS = 6
+
+
+async def _synced_to(session: AsyncSession, user: User, take_id: uuid.UUID) -> tuple[uuid.UUID | None, bool]:
+    """The speech a take was lip-synced to, following a derived take (extended, edited, cut from a scene) back to
+    the take it was made from. Also whether that speech still starts where the take starts (False once a part
+    was joined before it)."""
+    aligned = True
+    current = await session.get(Asset, take_id)
+    for _ in range(LINEAGE_HOPS):
+        if current is None or current.user_id != user.id:
+            return None, aligned
+        if current.generation_id is not None:
+            g = await session.get(Generation, current.generation_id)
+            media = ((g.request or {}).get("media") or []) if g is not None else []
+            audio = next((m.get("asset_id") for m in media if m.get("role") == "input_audio"), None)
+            return (uuid.UUID(audio) if audio and _is_uuid(audio) else None), aligned
+        meta = current.metadata_ or {}
+        if meta.get("made_by") == "extend_before":
+            aligned = False
+        parent = meta.get("parent_asset_id")
+        if not parent or not _is_uuid(parent):
+            return None, aligned
+        current = await session.get(Asset, uuid.UUID(parent))
+    return None, aligned
+
+
 @router.get("/{project_id}/dialogue", response_model=list[DialogueOut])
 async def list_dialogue(project_id: uuid.UUID, session: AsyncSession = Depends(get_session),
                         user: User = Depends(current_user)) -> list[DialogueOut]:
     """Each shot's speech as its own track, for the cut's dialogue track: the audio the picked take was lip-synced
-    to, or else the newest dialogue track a takes run made for the shot (lines voiced and joined)."""
+    to (a take extended or edited from a lip-synced one counts too), or else the newest dialogue track a takes run
+    made for the shot (lines voiced and joined). A shot whose take carries its speech somewhere other than its
+    start (a part joined before it) is left out: its own sound already has the speech, in the right place."""
     p = await _project(session, user, project_id)
     picks = {shot["id"]: shot.get("take_asset_id") for shot in _shots(p.document) if shot.get("id")}
     found: dict[str, tuple[uuid.UUID, bool]] = {}
-
-    take_ids = {uuid.UUID(t) for t in picks.values() if t and _is_uuid(t)}
-    takes = (await session.execute(select(Asset).where(Asset.id.in_(take_ids), Asset.user_id == user.id))
-             ).scalars().all() if take_ids else []
-    gens = {g.id: g for g in (await session.execute(select(Generation).where(
-        Generation.id.in_([t.generation_id for t in takes if t.generation_id])))).scalars().all()}
-    shot_of = {t: s for s, t in picks.items() if t}
-    for take in takes:
-        g = gens.get(take.generation_id) if take.generation_id else None
-        media = ((g.request or {}).get("media") or []) if g is not None else []  # a derived take has no request
-        audio = next((m.get("asset_id") for m in media if m.get("role") == "input_audio"), None)
-        if audio and _is_uuid(audio):
-            found[shot_of[str(take.id)]] = (uuid.UUID(audio), True)
+    in_take: set[str] = set()
+    for shot, take_id in picks.items():
+        if not take_id or not _is_uuid(take_id):
+            continue
+        audio, aligned = await _synced_to(session, user, uuid.UUID(take_id))
+        if audio is not None and aligned:
+            found[shot] = (audio, True)
+        elif audio is not None:
+            in_take.add(shot)
 
     runs = [str(r) for r in (await session.execute(select(PipelineRun.id).where(
         PipelineRun.user_id == user.id, PipelineRun.input["project_id"].astext == str(p.id)))).scalars()]
@@ -432,7 +457,8 @@ async def list_dialogue(project_id: uuid.UUID, session: AsyncSession = Depends(g
         meta["pipeline_run_id"].astext.in_(runs), meta["shot_key"].astext.in_(list(picks)))
         .order_by(Asset.created_at.desc()))).scalars().all() if runs and picks else []
     for t in tracks:
-        found.setdefault(t.metadata_["shot_key"], (t.id, False))
+        if t.metadata_["shot_key"] not in in_take:
+            found.setdefault(t.metadata_["shot_key"], (t.id, False))
 
     rows = {a.id: a for a in (await session.execute(select(Asset).where(
         Asset.id.in_([aid for aid, _ in found.values()]), Asset.user_id == user.id,
