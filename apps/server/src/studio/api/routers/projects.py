@@ -22,10 +22,13 @@ from studio.api.serializers import asset_out
 from studio.budget.guard import BudgetBlocked
 from studio.cinema.document import CinemaDocument
 from studio.cinema.planner import MAX_SHOTS, plan_shots
-from studio.db.models import Asset, Element, Generation, Project, ProjectRevision, User
+from studio.db.models import Asset, Element, Generation, PipelineRun, Project, ProjectRevision, User
+from studio.domain.enums import AssetKind
 from studio.jutsu3d.document import Jutsu3dDocument, starter_scene
 from studio.llm.client import LLMError, LLMUnavailable
+from studio.media.ffmpeg import probe
 from studio.registry.loader import get_registry
+from studio.storage.local import get_storage
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -136,8 +139,9 @@ def _referenced(kind: str, doc: dict[str, Any]) -> set[str]:
     """The assets a document points at: a film's picked frames and takes, a 3D scene's models and cover."""
     if kind == "jutsu3d":
         return Jutsu3dDocument.model_validate(doc).asset_ids()
-    return {v for scene in doc.get("scenes", []) for shot in scene.get("shots", [])
-            for v in (shot.get("hero_asset_id"), shot.get("take_asset_id")) if v}
+    picks = {v for scene in doc.get("scenes", []) for shot in scene.get("shots", [])
+             for v in (shot.get("hero_asset_id"), shot.get("take_asset_id")) if v}
+    return picks | {a["asset_id"] for a in (doc.get("cut") or {}).get("audio", []) if a.get("asset_id")}
 
 
 async def _check_assets(session: AsyncSession, user: User, doc: dict[str, Any], kind: str = "cinema") -> None:
@@ -152,8 +156,10 @@ async def _check_assets(session: AsyncSession, user: User, doc: dict[str, Any], 
 
 
 async def _drop_gone_picks(session: AsyncSession, user: User, doc: dict[str, Any]) -> tuple[dict[str, Any], int]:
-    """An old version may pick frames or takes deleted since; unpick those. Returns the document and how many."""
-    picked = _picked(doc, None)
+    """An old version may pick frames or takes, or use sounds, deleted since; unpick or remove those. Returns the
+    document and how many."""
+    sounds = (doc.get("cut") or {}).get("audio", [])
+    picked = _picked(doc, None) | {uuid.UUID(a["asset_id"]) for a in sounds if _is_uuid(a.get("asset_id"))}
     gone = {str(a) for a in picked - await _available(session, user, picked)}
     cleared = 0
 
@@ -168,7 +174,12 @@ async def _drop_gone_picks(session: AsyncSession, user: User, doc: dict[str, Any
         return shot
 
     scenes = [{**scene, "shots": [clean(s) for s in scene.get("shots", [])]} for scene in doc.get("scenes", [])]
-    return {**doc, "scenes": scenes}, cleared
+    kept = [a for a in sounds if _is_uuid(a.get("asset_id")) and str(a["asset_id"]) not in gone]
+    cleared += len(sounds) - len(kept)
+    out = {**doc, "scenes": scenes}
+    if "cut" in doc:
+        out["cut"] = {**doc["cut"], "audio": kept}
+    return out, cleared
 
 
 def _is_uuid(value: Any) -> bool:
@@ -382,6 +393,56 @@ def _picked(doc: dict[str, Any], shot_key: str | None) -> set[uuid.UUID]:
                 except ValueError:
                     continue
     return out
+
+
+class DialogueOut(BaseModel):
+    shot_key: str
+    asset: AssetOut
+    lip_synced: bool = Field(description="The shot's picked take was lip-synced to this track (its own sound is the "
+                                         "same speech)")
+
+
+@router.get("/{project_id}/dialogue", response_model=list[DialogueOut])
+async def list_dialogue(project_id: uuid.UUID, session: AsyncSession = Depends(get_session),
+                        user: User = Depends(current_user)) -> list[DialogueOut]:
+    """Each shot's speech as its own track, for the cut's dialogue track: the audio the picked take was lip-synced
+    to, or else the newest dialogue track a takes run made for the shot (lines voiced and joined)."""
+    p = await _project(session, user, project_id)
+    picks = {shot["id"]: shot.get("take_asset_id") for shot in _shots(p.document) if shot.get("id")}
+    found: dict[str, tuple[uuid.UUID, bool]] = {}
+
+    take_ids = {uuid.UUID(t) for t in picks.values() if t and _is_uuid(t)}
+    takes = (await session.execute(select(Asset).where(Asset.id.in_(take_ids), Asset.user_id == user.id))
+             ).scalars().all() if take_ids else []
+    gens = {g.id: g for g in (await session.execute(select(Generation).where(
+        Generation.id.in_([t.generation_id for t in takes if t.generation_id])))).scalars().all()}
+    shot_of = {t: s for s, t in picks.items() if t}
+    for take in takes:
+        g = gens.get(take.generation_id) if take.generation_id else None
+        media = ((g.request or {}).get("media") or []) if g is not None else []  # a derived take has no request
+        audio = next((m.get("asset_id") for m in media if m.get("role") == "input_audio"), None)
+        if audio and _is_uuid(audio):
+            found[shot_of[str(take.id)]] = (uuid.UUID(audio), True)
+
+    runs = [str(r) for r in (await session.execute(select(PipelineRun.id).where(
+        PipelineRun.user_id == user.id, PipelineRun.input["project_id"].astext == str(p.id)))).scalars()]
+    meta = Asset.metadata_
+    tracks = (await session.execute(select(Asset).where(
+        Asset.user_id == user.id, Asset.deleted_at.is_(None), Asset.kind == AssetKind.audio,
+        meta["pipeline_run_id"].astext.in_(runs), meta["shot_key"].astext.in_(list(picks)))
+        .order_by(Asset.created_at.desc()))).scalars().all() if runs and picks else []
+    for t in tracks:
+        found.setdefault(t.metadata_["shot_key"], (t.id, False))
+
+    rows = {a.id: a for a in (await session.execute(select(Asset).where(
+        Asset.id.in_([aid for aid, _ in found.values()]), Asset.user_id == user.id,
+        Asset.deleted_at.is_(None)))).scalars().all()} if found else {}
+    for a in rows.values():
+        if a.duration_ms is None:  # tracks joined before derived audio recorded its length
+            a.duration_ms = (await probe(get_storage().path_for(a.storage_key))).duration_ms
+    await session.commit()
+    return [DialogueOut(shot_key=shot, asset=asset_out(rows[aid]), lip_synced=synced)
+            for shot, (aid, synced) in found.items() if aid in rows]
 
 
 @router.get("/{project_id}/takes", response_model=list[TakeOut])

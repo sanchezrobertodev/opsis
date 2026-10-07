@@ -547,6 +547,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/dialogue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Dialogue
+         * @description Each shot's speech as its own track, for the cut's dialogue track: the audio the picked take was lip-synced
+         *     to, or else the newest dialogue track a takes run made for the shot (lines voiced and joined).
+         */
+        get: operations["list_dialogue_projects__project_id__dialogue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/takes": {
         parameters: {
             query?: never;
@@ -1281,6 +1302,17 @@ export interface components {
              * @description The voice to speak it with, when it's voiced separately
              */
             voice_id?: string | null;
+        };
+        /** DialogueOut */
+        DialogueOut: {
+            /** Shot Key */
+            shot_key: string;
+            asset: components["schemas"]["AssetOut"];
+            /**
+             * Lip Synced
+             * @description The shot's picked take was lip-synced to this track (its own sound is the same speech)
+             */
+            lip_synced: boolean;
         };
         /** DirectorLibraryOut */
         DirectorLibraryOut: {
@@ -4485,6 +4517,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_dialogue_projects__project_id__dialogue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DialogueOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

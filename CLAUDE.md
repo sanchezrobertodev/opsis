@@ -192,8 +192,15 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   (stale -> 409) and every save is kept in `project_revisions`; restoring makes a new version.
 - Runs never write the document. `cinema_frames` (hero frames) and `cinema_takes` (takes, chained from the previous
   shot's last frame where a shot continues) make generations tagged `project_id` + `shot_key`
-  (`GET /projects/{id}/takes`); the editor picks them into the document. `cinema_export` cuts the picked takes
-  (`media/timeline.py`: trims, cuts or fades).
+  (`GET /projects/{id}/takes`); the editor picks them into the document.
+- The cut is `document.cut`: picture items (shots, whose picked takes play trimmed as the shot says, and title
+  cards) in order, and audio clips on dialogue, music and SFX tracks; with no items, picked takes play in story
+  order. Timing is in whole frames at 24 fps on both sides: `media/timeline.py:plan` and `web/src/lib/cut.ts`
+  (fades overlap like `xfade`), so the Remotion preview (`CutPreview.tsx`, `TransitionSeries`) and the
+  `cinema_export` file have the same length and order. The export renders each item to its frame count, joins
+  them, then mixes the tracks (dialogue to a WAV first so the music can duck under it). Dialogue tied to a shot
+  (`shot_id`) follows the shot; `GET /projects/{id}/dialogue` finds each shot's speech (what its picked take was
+  lip-synced to, else the shot's joined lines). Remotion's license is free for individuals and small companies.
 - More takes from a take: `cinema_scene` films a scene's shots in one multi-shot call and `split_shots` cuts it back
   into a take per shot; `cinema_extend` continues a take from its last frame (`after`) or draws a frame from a moment
   earlier and animates it into the take's first frame (`before`, needs a start+end-frame mode), then `join_takes`;

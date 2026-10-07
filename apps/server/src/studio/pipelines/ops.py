@@ -22,7 +22,7 @@ from studio.media.ffmpeg import probe
 from studio.media.ops import concat_clips
 from studio.media.speech import join_speech
 from studio.media.swap import masked_merge
-from studio.media.timeline import Clip, cut_timeline, normalize_clip
+from studio.media.timeline import FPS, Card, Clip, Sound, cut_film, cut_timeline, normalize_clip
 from studio.storage.local import get_storage
 
 mimetypes.add_type("application/x-subrip", ".srt")
@@ -257,25 +257,47 @@ async def keep_background(session: AsyncSession, run: PipelineRun, step: Pipelin
 
 
 async def timeline_cut(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
-    """Join picked takes into the film: each trimmed, with cuts or fades between them."""
+    """The film: takes and title cards in order, each trimmed, with cuts or fades between them, and the dialogue,
+    music and SFX tracks mixed under them. Older runs list plain `clips`."""
     inp = step.input
-    assets = await _assets(session, run, [c["asset_id"] for c in inp["clips"]])
+    entries = inp.get("items") or [{"take": c} for c in inp.get("clips", [])]
+    takes = [e["take"] for e in entries if e.get("take")]
+    sounds_in = inp.get("audio") or []
+    assets = await _assets(session, run, [t["asset_id"] for t in takes])
+    audio = await _assets(session, run, [a["asset_id"] for a in sounds_in])
     storage = get_storage()
-    clips = [Clip(storage.path_for(a.storage_key), c.get("trim_in", 0.0), c.get("trim_out"), c.get("transition", "cut"))
-             for a, c in zip(assets, inp["clips"], strict=True)]
+    by_id = {str(a.id): a for a in [*assets, *audio]}
+    items: list[Clip | Card] = []
+    for e in entries:
+        if t := e.get("take"):
+            items.append(Clip(storage.path_for(by_id[t["asset_id"]].storage_key), t.get("trim_in", 0.0),
+                              t.get("trim_out"), t.get("transition", "cut"), t.get("volume", 1.0)))
+        else:
+            c = e["card"]
+            items.append(Card(c["text"], c.get("subtext", ""), c.get("duration", 3.0), c.get("background", "#0d0e10"),
+                              c.get("color", "#f2efe8"), c.get("transition", "fade")))
+    if items and items[0].transition == "fade":
+        items[0].transition = "cut"  # nothing to fade from
+    sounds = [Sound(storage.path_for(by_id[a["asset_id"]].storage_key), a["track"], a.get("start", 0.0),
+                    a.get("trim_in", 0.0), a.get("length"), a.get("volume", 1.0), a.get("fade_in", 0.0),
+                    a.get("fade_out", 0.0)) for a in sounds_in]
     work = storage.temp_dir() / f"cut-{uuid7().hex}"
     try:
         dest = work / "film.mp4"
-        total = await cut_timeline(clips, dest, work, fade=inp.get("fade_seconds", 0.5))
+        plan = await cut_film(items, dest, work, fade=inp.get("fade_seconds", 0.5), sounds=sounds,
+                              duck_music=inp.get("duck_music", True))
         film = await save_derived(
             session, run.user_id, dest, kind=AssetKind.video, source=AssetSource.pipeline,
             title=inp.get("title") or run.title, pipeline_run_id=run.id,
-            parents=[(a.id, f"shot_{i:02d}") for i, a in enumerate(assets, 1)],
-            metadata={"recipe": run.recipe, "clips": inp["clips"]},
+            parents=[*((a.id, f"shot_{i:02d}") for i, a in enumerate(assets, 1)),
+                     *((a.id, f"{s['track']}_{i:02d}") for i, (a, s) in enumerate(zip(audio, sounds_in, strict=True), 1))],
+            metadata={"recipe": run.recipe, "items": entries, "audio": sounds_in, "frames": plan.frames,
+                      "fps": FPS, "starts": [seg.start for seg in plan.segments]},
         )
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    return {"asset_id": str(film.id), "duration_ms": round(total * 1000), "derive": [str(film.id)]}
+    return {"asset_id": str(film.id), "duration_ms": round(plan.seconds * 1000), "frames": plan.frames,
+            "derive": [str(film.id)]}
 
 
 LOCAL_OPS: dict[str, Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitable[dict[str, Any]]]] = {

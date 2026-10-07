@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import type { Direction } from "@/components/create/DirectorPanel";
 import { api, isActive, unwrap } from "./api";
+import type { Cut } from "./cut";
 
 export type ProjectSummary = Schemas["ProjectSummary"];
 export type Project = Schemas["ProjectOut"];
@@ -40,7 +41,8 @@ export type CinemaSettings = {
   takes_per_shot: number;
   hero_frames: number;
 };
-export type CinemaDoc = { logline: string; script: string; cast: string[]; settings: CinemaSettings; scenes: Scene[] };
+export type CinemaDoc = { logline: string; script: string; cast: string[]; settings: CinemaSettings; scenes: Scene[];
+                          cut?: Cut };
 
 export function newId(prefix: "s" | "c") {
   const bytes = crypto.getRandomValues(new Uint8Array(3));
@@ -138,6 +140,14 @@ export function useTakes(id: string, runsActive: boolean) {
     was.current = runsActive;
   }, [runsActive, id, qc]);
   return takes;
+}
+
+/** Each shot's speech as its own track, for the cut's dialogue track. */
+export function useDialogue(id: string) {
+  return useQuery({
+    queryKey: ["dialogue", id],
+    queryFn: () => unwrap(api.GET("/projects/{project_id}/dialogue", { params: { path: { project_id: id } } })),
+  });
 }
 
 /** Whether any of these runs is still going (polled until they all settle). */

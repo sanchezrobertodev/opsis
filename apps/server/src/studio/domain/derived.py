@@ -52,7 +52,7 @@ async def save_derived(
     asset = Asset(
         id=asset_id, user_id=user_id, kind=kind, status=AssetStatus.ready, source=source, mime=mime,
         storage_key=key, size_bytes=size, content_hash=digest, width=info.width, height=info.height,
-        duration_ms=info.duration_ms if kind == AssetKind.video else None,
+        duration_ms=info.duration_ms if kind in (AssetKind.video, AssetKind.audio) else None,
         fps=info.fps if kind == AssetKind.video else None, has_audio=info.has_audio, codec=info.codec,
         title=title[:200],
         metadata_={**(metadata or {}), **({"pipeline_run_id": str(pipeline_run_id)} if pipeline_run_id else {})},
