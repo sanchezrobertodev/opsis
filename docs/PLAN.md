@@ -266,7 +266,7 @@ cast member, with golden snapshots per dialect (AMS-37). Not yet: the AI Directo
 (AMS-35); storyboard drag-and-drop, split/duplicate shot and cost badges (AMS-36); an end-frame pick and 3×3 frame
 grids (AMS-39); the Remotion preview, audio tracks and title cards in the cut (AMS-42); and live checks of the
 multi-shot payloads and Cinema Studio routing.
-P6 in progress (branch `claude/p6-lipsync`, mock-tested): lipsync and talking-portrait models (Sync lipsync-3, Kling
+P6 merged (PR #4, mock-tested): lipsync and talking-portrait models (Sync lipsync-3, Kling
 Avatar 2.0, OmniHuman 1.5 and VEED Fabric 1.0 on fal; InfiniteTalk on RunPod's public endpoint, flat $0.25/$0.50 a
 clip, so no wan-core volume growth), a `talking_shot` recipe (script -> TTS -> lipsync, optional compare and pick),
 the /lipsync studio with an A/B view, voices on characters, and dialogue lines on Cinema shots: models that voice
