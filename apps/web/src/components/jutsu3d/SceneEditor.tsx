@@ -52,12 +52,15 @@ export function SceneEditor({ id }: { id: string }) {
     }
   }, [project]);
 
-  const dirty = Boolean(doc && saved.current && doc !== saved.current) || (title !== null && title !== project?.title);
+  // the title as the server keeps it (trimmed; blank keeps the current one), so a saved title stops being dirty
+  const wantedTitle = title?.trim() || null;
+  const dirty = Boolean(doc && saved.current && doc !== saved.current)
+    || (wantedTitle !== null && wantedTitle !== project?.title);
   useEffect(() => {
     if (!dirty || !project || !doc || save.isPending) return;
     const timer = setTimeout(() => {
       const sent = doc;
-      save.mutate({ version: project.version, document: sent, title: title || project.title }, {
+      save.mutate({ version: project.version, document: sent, title: wantedTitle ?? project.title }, {
         onSuccess: () => { saved.current = sent; },
         onError: (err) => {
           if (err instanceof ApiError && err.status === 409) {
@@ -71,7 +74,7 @@ export function SceneEditor({ id }: { id: string }) {
       });
     }, SAVE_AFTER_MS);
     return () => clearTimeout(timer);
-  }, [dirty, doc, title, project, save, refetch]);
+  }, [dirty, doc, wantedTitle, project, save, refetch]);
 
   // playback
   useEffect(() => {

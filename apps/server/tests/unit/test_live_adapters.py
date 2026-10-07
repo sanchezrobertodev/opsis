@@ -614,3 +614,23 @@ def test_route_outputs_need_the_main_file():
     out = route_outputs({"a": {"url": "https://x/a.png"}, "b": {"url": "https://x/b.glb"}}, spec)
     assert [(o.index, o.kind, o.meta) for o in out] == [(0, "image", {"projection": "equirectangular"}),
                                                         (1, "model3d", {})]
+
+
+def test_best_mime_keeps_3d_files():
+    from studio.providers.common import best_mime
+
+    assert best_mime(None, "application/octet-stream", kind="model3d") == "model/gltf-binary"
+    assert best_mime(None, "model/gltf-binary", kind="model3d") == "model/gltf-binary"
+    # a splat's type is vague; ingest then takes .spz or .ply from its URL
+    assert best_mime(None, "binary/octet-stream", kind="splat") == "application/octet-stream"
+    assert best_mime("application/x-ply", None, kind="splat") == "application/x-ply"
+    assert best_mime(None, None, kind="video") == "video/mp4"
+
+
+@respx.mock
+async def test_fal_downloads_a_glb(keys, tmp_path):
+    respx.get("https://v3.fal.media/files/x/model.glb").respond(200, content=b"glTF....",
+                                                               headers={"content-type": "application/octet-stream"})
+    out = ProviderOutput(index=0, kind="model3d", url="https://v3.fal.media/files/x/model.glb")
+    mime = await FalAdapter().download(route(kind="model3d"), out, tmp_path / "m.bin", tmp_path)
+    assert mime == "model/gltf-binary" and (tmp_path / "m.bin").read_bytes().startswith(b"glTF")
