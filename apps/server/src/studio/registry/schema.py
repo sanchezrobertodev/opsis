@@ -92,8 +92,20 @@ class TextParam(_ParamBase):
     default: str | None = None
 
 
+class PathsParam(_ParamBase):
+    """Motion paths drawn on the start frame: [{"points": [[x, y], ...]}] with x, y in 0-1 of the frame as the
+    model will see it (cropped to the output aspect). A path with one point marks something that should hold still.
+    Routes turn the paths into whatever the model wants (per-frame pixel tracks for Wan-Move)."""
+
+    type: Literal["paths"]
+    min_paths: int = 0
+    max_paths: int = 5
+    max_points: int = 256
+    default: list[Any] | None = None
+
+
 Param = Annotated[
-    EnumParam | IntParam | FloatParam | BoolParam | SeedParam | TextParam, Field(discriminator="type")
+    EnumParam | IntParam | FloatParam | BoolParam | SeedParam | TextParam | PathsParam, Field(discriminator="type")
 ]
 
 
@@ -229,7 +241,7 @@ class Example(_Strict):
     name: str
     mode: str
     prompt: str = ""
-    params: dict[str, Scalar] = {}
+    params: dict[str, Any] = {}  # scalars, or structured values such as motion paths
     media: dict[str, str | list[str]] = {}
     smoke: bool = False
     expect: dict[str, Any] = {}

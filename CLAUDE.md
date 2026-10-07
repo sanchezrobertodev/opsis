@@ -59,6 +59,9 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   ingest charges that instead of the estimate.
 - Studios that share the Create form (Create video/image, Edit video, Motion transfer) pick models and modes
   by op tags; see `apps/web/src/lib/studioKinds.ts`. Tag a new model's modes and it shows up in the right studio.
+- `type: paths` params are motion paths drawn on the start frame (`[{points: [[x, y], ...]}]`, 0-1 of the frame
+  cropped to the output aspect; one point = pin). The Create form shows the editor under the start frame
+  (`MotionPathsField`); a route transform converts them (Wan-Move: `transforms/comfy.py:wan_move_tracks`).
 
 ## Adding a preset (effects gallery)
 - One YAML per preset in `registry/presets/<category>/<id>.yaml`: `model_id`, `mode`, a `prompt` template with

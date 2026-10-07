@@ -37,6 +37,18 @@ First live take through the studio: Wan 2.2 14B Fast, text-to-video, 480p, 3 s. 
 from a cold worker, including loading the text encoder and both experts from the volume. Cost: $0.090, against a
 $0.065 estimate made for a warm worker.
 
+All four workflows have now rendered through the studio (480p, 3 s, start frame from the first take):
+
+| Model | GPU | Run time | Cost |
+|---|---|---|---|
+| Wan 2.2 14B Fast, text-to-video | RTX PRO 6000 | 92.7 s | $0.090 |
+| Wan 2.2 14B Fast, image-to-video | RTX PRO 6000 | 93.5 s | $0.091 |
+| Wan-Move, one path plus one pin | RTX PRO 6000 | 91.7 s | $0.089 |
+| Wan 2.2 Fun Camera, pan right | H100 (the PRO 6000s were throttled) | 174.2 s | $0.232 |
+
+Every run was a cold load of that workflow's weights. On this job the H100 was about twice as slow and 2.6 times
+the price, so dropping the `ADA_80_PRO` pool is worth considering if waiting for a PRO 6000 is acceptable.
+
 Known: the worker logs "You need pytorch with cu130 or higher to use optimized CUDA operations". The base
 image's torch is cu128, so ComfyUI's comfy-kitchen CUDA kernels stay off. A cu130 build may run faster on
 Blackwell hosts, which report CUDA 13.2.

@@ -16,6 +16,7 @@ import { KeyframeHint } from "./KeyframeHint";
 import { type Direction, DirectorPanel } from "./DirectorPanel";
 import { MediaSlotField } from "./MediaSlots";
 import { ModelPicker } from "./ModelPicker";
+import { MotionPathsField } from "./MotionPathsField";
 import { defaultsFor, isVisible, ParamField } from "./ParamField";
 import { PromptBox } from "./PromptBox";
 
@@ -156,7 +157,8 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
     return <div className="p-5 text-sm text-muted">Loading models…</div>;
   }
 
-  const basic = params.filter((p) => p.group !== "advanced" && isVisible(p, values));
+  const drawn = params.filter((p) => p.type === "paths" && isVisible(p, values));
+  const basic = params.filter((p) => p.type !== "paths" && p.group !== "advanced" && isVisible(p, values));
   const advanced = params.filter((p) => p.group === "advanced" && isVisible(p, values));
   const chosen = estimate.data?.candidates.find((c) => c.route_id === estimate.data?.chosen_route_id);
   const liveRef = estimate.data?.live_reference;
@@ -193,6 +195,18 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
             value={draft.media[slot.role] ?? []}
             onAdd={(a) => addMedia(studio, slot.role, a, slot.max ?? 1)}
             onRemove={(id) => removeMedia(studio, slot.role, id)}
+          />
+        ))}
+
+        {/* Drawn on the start frame, so it sits right under it rather than with the other settings. */}
+        {drawn.map((p) => (
+          <MotionPathsField
+            key={p.name}
+            param={p}
+            value={values[p.name]}
+            onChange={(v) => setParam(studio, model.id, p.name, v)}
+            frame={(draft.media.start_image ?? [])[0]}
+            aspect={String(values.aspect_ratio ?? model.aspect_ratios[0] ?? "16:9")}
           />
         ))}
 

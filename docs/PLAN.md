@@ -245,8 +245,9 @@ adapter on Public Endpoints (Wan 2.2 14B, P-Video-Edit, Kling 2.6 MC). Contracts
 published schemas; nothing has run live yet. The custom `wan-core` endpoint (infra/runpod/wan-core) is built:
 worker-comfyui 5.10.0 + our handler, a 118 GB model manifest for a network volume, and validated graphs for Wan 2.2
 14B t2v/i2v (Lightning), Fun Camera and Wan-Move, routed by the `runpod_comfy` adapter; camera moves with a native
-Fun Camera value now set its camera control. Deployed 2026-10-06 (endpoint ovktgiubxwld1j, first live take $0.09). Still open: the trajectory editor for
-Wan-Move, and VACE / Uni3C / Animate-2 graphs.
+Fun Camera value now set its camera control. Deployed 2026-10-06 (endpoint ovktgiubxwld1j). All four workflows ran live through the studio ($0.09
+each on an RTX PRO 6000). Wan-Move has a motion-path editor in the Create form (`type: paths` params: drag to draw,
+tap to pin). Left for later: VACE / Uni3C / Animate-2 graphs (P4 Object Swap and Motion Transfer can add them).
 - **Step 0 — Handoff (this session, after approval):**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

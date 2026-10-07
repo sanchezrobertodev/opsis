@@ -1473,7 +1473,7 @@ export interface components {
             aspect_ratios: string[];
             duration: components["schemas"]["DurationSpec"] | null;
             /** Parameters */
-            parameters: (components["schemas"]["EnumParam"] | components["schemas"]["IntParam"] | components["schemas"]["FloatParam"] | components["schemas"]["BoolParam"] | components["schemas"]["SeedParam"] | components["schemas"]["TextParam"])[];
+            parameters: (components["schemas"]["EnumParam"] | components["schemas"]["IntParam"] | components["schemas"]["FloatParam"] | components["schemas"]["BoolParam"] | components["schemas"]["SeedParam"] | components["schemas"]["TextParam"] | components["schemas"]["PathsParam"])[];
             /** Rules */
             rules: components["schemas"]["Rule"][];
             /** Modes */
@@ -1528,6 +1528,56 @@ export interface components {
              * @enum {string}
              */
             speed: "slow" | "normal" | "fast";
+        };
+        /**
+         * PathsParam
+         * @description Motion paths drawn on the start frame: [{"points": [[x, y], ...]}] with x, y in 0-1 of the frame as the
+         *     model will see it (cropped to the output aspect). A path with one point marks something that should hold still.
+         *     Routes turn the paths into whatever the model wants (per-frame pixel tracks for Wan-Move).
+         */
+        PathsParam: {
+            /** Name */
+            name: string;
+            /** Label */
+            label?: string | null;
+            /** Help */
+            help?: string | null;
+            /**
+             * Group
+             * @default basic
+             * @enum {string}
+             */
+            group: "basic" | "advanced";
+            /** Modes */
+            modes?: string[] | null;
+            /** Visible If */
+            visible_if?: {
+                [key: string]: string | number | boolean | (string | number | boolean)[];
+            } | null;
+            /** Ui */
+            ui?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "paths";
+            /**
+             * Min Paths
+             * @default 0
+             */
+            min_paths: number;
+            /**
+             * Max Paths
+             * @default 5
+             */
+            max_paths: number;
+            /**
+             * Max Points
+             * @default 256
+             */
+            max_points: number;
+            /** Default */
+            default?: unknown[] | null;
         };
         /**
          * PresetField
