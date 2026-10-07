@@ -27,6 +27,14 @@ def test_default_engine_is_seedance_and_director_params_become_direction():
                      "engine_label": "Seedance 2.5"}
 
 
+def test_unset_params_take_the_studios_defaults_not_the_engines():
+    veo = resolve(REG, CINEMA, "t2v", {"engine": "veo"}, None)
+    assert veo.params == {"duration": 6, "resolution": "720p", "aspect_ratio": "16:9", "generate_audio": True}
+    assert veo.warnings == []  # nobody asked for 5 s, so rounding it isn't news
+    kling = resolve(REG, CINEMA, "i2v", {"engine": "kling"}, None)
+    assert kling.params == {"duration": 5, "resolution": "720p", "generate_audio": True}  # Kling's own is silent
+
+
 def test_the_direction_wins_over_a_director_param():
     r = resolve(REG, CINEMA, "t2v", {"era": "eighties", "palette": "sepia"}, {"era": "nineties"})
     assert r.direction == {"era": "nineties", "palette": "sepia"}
@@ -36,7 +44,7 @@ def test_other_engines_fit_what_they_can_and_say_what_they_dropped():
     r = resolve(REG, CINEMA, "t2v", {"engine": "veo", "duration": 5, "resolution": "480p", "aspect_ratio": "21:9"},
                 None)
     assert (r.spec.id, r.mode) == ("veo-3.1", "t2v")
-    assert r.params == {"duration": 6}
+    assert r.params == {"duration": 6, "generate_audio": True}
     assert r.warnings == ["Veo 3.1 makes 6 s clips, not 5 s", "Veo 3.1 has no 480p resolution; using its default",
                           "Veo 3.1 has no 21:9 aspect; using its default"]
     edit = resolve(REG, CINEMA, "video_edit", {"engine": "kling", "resolution": "720p"}, None)

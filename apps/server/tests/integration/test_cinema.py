@@ -271,3 +271,48 @@ async def test_extend_a_take_forward_and_backward_and_edit_it(client, in_memory_
         "project_id": pid, "shot_key": "sone", "take_asset_id": take, "side": "before", "prompt": "x",
         "model_id": "wan-2.2-5b"}})
     assert veo.status_code == 422 and "can't end on a chosen frame" in veo.text
+
+
+async def film_two_takes(client, queue, pid: str) -> tuple[str, str]:
+    """Two takes of shot sone, oldest first."""
+    takes = []
+    for _ in range(2):
+        run = await start(client, "cinema_takes", project_id=pid, model_id="kling-3.0", takes=1,
+                          shots=[{"key": "sone", "prompt": "Waves hit the rocks", "duration": 5}])
+        await drain(queue)
+        takes.append((await get(client, run["id"]))["output"]["takes"]["sone"][0])
+    return takes[0], takes[1]
+
+
+async def test_picked_takes_are_listed_however_old(client, in_memory_queue, monkeypatch):
+    p = await new_project(client)
+    pid = p["id"]
+    old, new = await film_two_takes(client, in_memory_queue, pid)
+    doc = {**p["document"], "scenes": [{"id": "cone", "shots": [{"id": "sone", "action": "Waves",
+                                                                   "take_asset_id": old}]}]}
+    assert (await client.put(f"/projects/{pid}", json={"version": 1, "document": doc})).status_code == 200
+
+    monkeypatch.setattr("studio.api.routers.projects.TAKES_PAGE", 1)  # only the newest fits on the page
+    for query in ({}, {"shot_key": "sone"}):
+        listed = (await client.get(f"/projects/{pid}/takes", params=query)).json()
+        assert [t["asset"]["id"] for t in listed] == [new, old]
+
+
+async def test_restoring_a_version_unpicks_what_was_deleted_since(client, in_memory_queue):
+    p = await new_project(client)
+    pid = p["id"]
+    old, new = await film_two_takes(client, in_memory_queue, pid)
+    doc = {**p["document"], "scenes": [{"id": "cone", "shots": [
+        {"id": "sone", "action": "Waves", "take_asset_id": old},
+        {"id": "stwo", "action": "Gulls", "take_asset_id": new}]}]}
+    assert (await client.put(f"/projects/{pid}", json={"version": 1, "document": doc})).status_code == 200
+    assert (await client.delete(f"/assets/{old}")).status_code == 204
+
+    r = await client.post(f"/projects/{pid}/revisions/2/restore")
+    assert r.status_code == 200, r.text
+    shots = r.json()["document"]["scenes"][0]["shots"]
+    assert [s["take_asset_id"] for s in shots] == [None, new]
+    revisions = (await client.get(f"/projects/{pid}/revisions")).json()
+    assert revisions[0]["note"] == "Restored version 2; 1 pick deleted since was cleared"
+    # and the restored document saves like any other
+    assert (await client.put(f"/projects/{pid}", json={"version": 3, "document": r.json()["document"]})).status_code == 200

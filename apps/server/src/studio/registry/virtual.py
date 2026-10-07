@@ -88,6 +88,12 @@ def resolve(reg: Registry, spec: ModelSpec, mode_id: str, params: dict[str, Any]
         raise RequestError([f"{spec.name}: engine {engine.id} points at {'/'.join(target)}, which doesn't exist"])
 
     rest = {k: val for k, val in params.items() if k != v.engine_param}
+    given = set(rest)
+    # the studio's own defaults, not the engine's: Cinema Studio means 5 s with sound whichever engine runs it
+    for p in spec.params_for(mode_id):
+        if p.name not in rest and p.name != v.engine_param and p.name not in v.director \
+                and p.type != "seed" and getattr(p, "default", None) is not None:
+            rest[p.name] = p.default
     out_direction = dict(direction or {})
     for name in v.director:
         value = rest.pop(name, None)
@@ -100,17 +106,19 @@ def resolve(reg: Registry, spec: ModelSpec, mode_id: str, params: dict[str, Any]
         theirs = next((p for p in base.params_for(target[1]) if p.name == name), None)
         ours = spec.param(name)
         label = (ours.label if ours and ours.label else name.replace("_", " ")).lower()
+        asked = name in given  # chosen in the request, not one of the studio's defaults
         if theirs is None:
-            if ours is not None and value != getattr(ours, "default", None):
+            if asked and ours is not None and value != getattr(ours, "default", None):
                 warnings.append(f"{base.name} doesn't take {label}; left out")
             continue
         if name == "duration" and value is not None:
             fitted = fit_duration(base, target[1], float(value))
-            if fitted is not None and float(fitted) != float(value):
+            if asked and fitted is not None and float(fitted) != float(value):
                 warnings.append(f"{base.name} makes {fitted} s clips, not {value} s")
             out[name] = fitted if fitted is not None else value
         elif isinstance(theirs, EnumParam) and value not in theirs.options:
-            warnings.append(f"{base.name} has no {value} {label}; using its default")
+            if asked:
+                warnings.append(f"{base.name} has no {value} {label}; using its default")
         elif isinstance(theirs, (IntParam, FloatParam)) and isinstance(value, (int, float)) \
                 and not theirs.min <= value <= theirs.max:
             out[name] = min(theirs.max, max(theirs.min, value))

@@ -121,20 +121,52 @@ def _validate(kind: str, document: dict[str, Any]) -> dict[str, Any]:
                                            for e in exc.errors())[:2000]) from None
 
 
+async def _available(session: AsyncSession, user: User, ids: set[uuid.UUID]) -> set[uuid.UUID]:
+    """Which of these assets the user still has."""
+    if not ids:
+        return set()
+    return set((await session.execute(select(Asset.id).where(
+        Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)))).scalars())
+
+
 async def _check_assets(session: AsyncSession, user: User, doc: dict[str, Any]) -> None:
     """Picked frames and takes must be the user's own assets."""
     ids = {v for scene in doc.get("scenes", []) for shot in scene.get("shots", [])
            for v in (shot.get("hero_asset_id"), shot.get("take_asset_id")) if v}
-    if not ids:
-        return
     try:
         wanted = {uuid.UUID(i) for i in ids}
     except ValueError:
         raise HTTPException(422, "picked frames and takes must be asset ids") from None
-    found = set((await session.execute(select(Asset.id).where(
-        Asset.id.in_(wanted), Asset.user_id == user.id, Asset.deleted_at.is_(None)))).scalars())
-    if missing := wanted - found:
+    if missing := wanted - await _available(session, user, wanted):
         raise HTTPException(422, f"assets not found: {', '.join(sorted(map(str, missing)))}")
+
+
+async def _drop_gone_picks(session: AsyncSession, user: User, doc: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    """An old version may pick frames or takes deleted since; unpick those. Returns the document and how many."""
+    picked = _picked(doc, None)
+    gone = {str(a) for a in picked - await _available(session, user, picked)}
+    cleared = 0
+
+    def clean(shot: dict[str, Any]) -> dict[str, Any]:
+        nonlocal cleared
+        shot = dict(shot)
+        for field in ("hero_asset_id", "take_asset_id"):
+            value = shot.get(field)
+            if value and (str(value) in gone or not _is_uuid(value)):
+                shot[field] = None
+                cleared += 1
+        return shot
+
+    scenes = [{**scene, "shots": [clean(s) for s in scene.get("shots", [])]} for scene in doc.get("scenes", [])]
+    return {**doc, "scenes": scenes}, cleared
+
+
+def _is_uuid(value: Any) -> bool:
+    try:
+        uuid.UUID(str(value))
+    except ValueError:
+        return False
+    return True
 
 
 def _out(p: Project) -> ProjectOut:
@@ -250,9 +282,14 @@ async def restore_revision(project_id: uuid.UUID, version: int, session: AsyncSe
         ProjectRevision.project_id == p.id, ProjectRevision.version == version))).scalar_one_or_none()
     if rev is None:
         raise HTTPException(404, f"no version {version}")
-    p.document, p.title, p.version = rev.document, rev.title, p.version + 1
+    # frames and takes deleted since that version can't be picked any more (a save would refuse them)
+    document, cleared = await _drop_gone_picks(session, user, rev.document)
+    p.document, p.title, p.version = document, rev.title, p.version + 1
     p.updated_at = datetime.now(UTC)
-    session.add(_revision(p, f"Restored version {version}"))
+    note = f"Restored version {version}"
+    if cleared:
+        note += f"; {cleared} pick deleted since was cleared" if cleared == 1 else f"; {cleared} picks deleted since were cleared"
+    session.add(_revision(p, note))
     await session.commit()
     return _out(p)
 
@@ -291,43 +328,79 @@ async def plan(project_id: uuid.UUID, body: PlanIn, session: AsyncSession = Depe
                    mock=result.mock, cost_usd=float(result.cost_usd))
 
 
+TAKES_PAGE = 400  # newest generations and derived clips listed per kind; picked ones are always included
+
+
+def _generation_take(g: Generation, a: Asset | None) -> TakeOut:
+    parent = next((m["asset_id"] for m in g.request.get("media", []) if m.get("role") == "input_video"), None)
+    return TakeOut(generation_id=g.id, shot_key=g.shot_key or "", output_type=g.output_type, status=g.status.value,
+                   progress=g.progress, error=g.error_message, prompt=g.request.get("prompt", ""),
+                   created_at=g.created_at, made_by="edit" if parent else "model", parent_asset_id=parent,
+                   asset=asset_out(a) if a else None)
+
+
+def _derived_take(a: Asset) -> TakeOut:
+    m = a.metadata_ or {}
+    return TakeOut(generation_id=None, shot_key=m["shot_key"], made_by=m.get("made_by", "derived"),
+                   parent_asset_id=m.get("parent_asset_id"), output_type=a.kind.value, status="succeeded",
+                   progress=1.0, error=None, prompt=m.get("prompt", ""), asset=asset_out(a), created_at=a.created_at)
+
+
+def _picked(doc: dict[str, Any], shot_key: str | None) -> set[uuid.UUID]:
+    """Frames and takes the document has picked (for one shot, or all)."""
+    out = set()
+    for scene in doc.get("scenes", []):
+        for shot in scene.get("shots", []):
+            if shot_key and shot.get("id") != shot_key:
+                continue
+            for v in (shot.get("hero_asset_id"), shot.get("take_asset_id")):
+                try:
+                    out.add(uuid.UUID(str(v)))
+                except ValueError:
+                    continue
+    return out
+
+
 @router.get("/{project_id}/takes", response_model=list[TakeOut])
 async def list_takes(project_id: uuid.UUID, shot_key: str | None = None, session: AsyncSession = Depends(get_session),
                      user: User = Depends(current_user)) -> list[TakeOut]:
     """Hero frames and takes made for the project's shots, newest first, finished or not. Besides the generations
     made for a shot, this lists takes cut from a multi-shot scene take and takes extended or edited from another
-    (derived clips whose metadata names the project and shot), each with the take it came from."""
+    (derived clips whose metadata names the project and shot), each with the take it came from. Takes the document
+    has picked are always listed, however old, so the storyboard and the cut can show and export them."""
     p = await _project(session, user, project_id)
     q = select(Generation).where(Generation.project_id == p.id, Generation.user_id == user.id,
                                  Generation.shot_key.is_not(None))
     if shot_key:
         q = q.where(Generation.shot_key == shot_key)
-    gens = (await session.execute(q.order_by(Generation.created_at.desc()).limit(400))).scalars().all()
+    gens = list((await session.execute(q.order_by(Generation.created_at.desc()).limit(TAKES_PAGE))).scalars().all())
     assets = (await session.execute(select(Asset).where(
         Asset.generation_id.in_([g.id for g in gens]), Asset.deleted_at.is_(None))
         .order_by(Asset.output_index))).scalars().all() if gens else []
     by_gen: dict[uuid.UUID, list[Asset]] = {}
     for a in assets:
         by_gen.setdefault(a.generation_id, []).append(a)
-    out = []
-    for g in gens:
-        parent = next((m["asset_id"] for m in g.request.get("media", []) if m.get("role") == "input_video"), None)
-        common = {"generation_id": g.id, "shot_key": g.shot_key or "", "output_type": g.output_type,
-                  "status": g.status.value, "progress": g.progress, "error": g.error_message,
-                  "prompt": g.request.get("prompt", ""), "created_at": g.created_at,
-                  "made_by": "edit" if parent else "model", "parent_asset_id": parent}
-        outs = by_gen.get(g.id) or [None]
-        out += [TakeOut(**common, asset=asset_out(a) if a else None) for a in outs]
+    out = [_generation_take(g, a) for g in gens for a in (by_gen.get(g.id) or [None])]
 
     meta = Asset.metadata_
     dq = select(Asset).where(Asset.user_id == user.id, Asset.deleted_at.is_(None), Asset.generation_id.is_(None),
                              meta["project_id"].astext == str(p.id), meta["shot_key"].astext.is_not(None))
     if shot_key:
         dq = dq.where(meta["shot_key"].astext == shot_key)
-    for a in (await session.execute(dq.order_by(Asset.created_at.desc()).limit(400))).scalars().all():
-        m = a.metadata_ or {}
-        out.append(TakeOut(generation_id=None, shot_key=m["shot_key"], made_by=m.get("made_by", "derived"),
-                           parent_asset_id=m.get("parent_asset_id"), output_type=a.kind.value, status="succeeded",
-                           progress=1.0, error=None, prompt=m.get("prompt", ""), asset=asset_out(a),
-                           created_at=a.created_at))
+    out += [_derived_take(a) for a in
+            (await session.execute(dq.order_by(Asset.created_at.desc()).limit(TAKES_PAGE))).scalars().all()]
+
+    # picked takes older than the newest page
+    listed = {t.asset.id for t in out if t.asset}
+    if missing := _picked(p.document, shot_key) - listed:
+        rows = (await session.execute(select(Asset).where(
+            Asset.id.in_(missing), Asset.user_id == user.id, Asset.deleted_at.is_(None)))).scalars().all()
+        made_by = {g.id: g for g in (await session.execute(select(Generation).where(
+            Generation.id.in_([a.generation_id for a in rows if a.generation_id])))).scalars().all()}
+        for a in rows:
+            g = made_by.get(a.generation_id) if a.generation_id else None
+            if g is not None and g.project_id == p.id and g.shot_key:
+                out.append(_generation_take(g, a))
+            elif g is None and (a.metadata_ or {}).get("project_id") == str(p.id) and (a.metadata_ or {}).get("shot_key"):
+                out.append(_derived_take(a))
     return sorted(out, key=lambda t: t.created_at, reverse=True)
