@@ -1,0 +1,27 @@
+{
+ "endpoint": "blackforestlabs/flux-3/edit-video",
+ "variant": null,
+ "input": {
+  "prompt": {
+   "type": "string"
+  },
+  "safety_tolerance": {
+   "type": "integer",
+   "default": 2,
+   "minimum": 0,
+   "maximum": 4
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "prompt",
+  "video_url"
+ ],
+ "output": [
+  "seed",
+  "video"
+ ],
+ "deprecated": false
+}

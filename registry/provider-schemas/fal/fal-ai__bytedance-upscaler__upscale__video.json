@@ -1,0 +1,76 @@
+{
+ "endpoint": "fal-ai/bytedance-upscaler/upscale/video",
+ "variant": null,
+ "input": {
+  "bit_depth": {
+   "type": "integer",
+   "enum": [
+    8,
+    10,
+    12
+   ],
+   "default": 8
+  },
+  "enhancement_preset": {
+   "type": "string",
+   "enum": [
+    "general",
+    "ugc",
+    "short_series",
+    "aigc",
+    "old_film"
+   ],
+   "default": "general"
+  },
+  "enhancement_tier": {
+   "type": "string",
+   "enum": [
+    "fast",
+    "standard",
+    "pro"
+   ],
+   "default": "standard"
+  },
+  "fidelity": {
+   "type": "string",
+   "enum": [
+    "high",
+    "medium"
+   ],
+   "default": "high"
+  },
+  "scale_ratio": {
+   "type": "null|number",
+   "minimum": 1.1,
+   "maximum": 10
+  },
+  "target_fps": {
+   "type": "number",
+   "default": 30,
+   "minimum": 24,
+   "maximum": 120
+  },
+  "target_resolution": {
+   "type": "string",
+   "enum": [
+    "1080p",
+    "2k",
+    "4k",
+    "6k",
+    "8k"
+   ],
+   "default": "1080p"
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "video_url"
+ ],
+ "output": [
+  "duration",
+  "video"
+ ],
+ "deprecated": false
+}

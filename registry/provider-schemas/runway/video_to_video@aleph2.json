@@ -1,0 +1,74 @@
+{
+ "endpoint": "video_to_video",
+ "variant": "aleph2",
+ "input": {
+  "contentModeration": {
+   "type": "object"
+  },
+  "keyframes": {
+   "type": "array<object>",
+   "minItems": 1,
+   "maxItems": 5
+  },
+  "model": {
+   "type": "str",
+   "enum": [
+    "aleph2"
+   ]
+  },
+  "outputFormat": {
+   "type": "string",
+   "enum": [
+    "mp4",
+    "prores",
+    "png_sequence",
+    "sdr_rec709_10bit"
+   ]
+  },
+  "promptText": {
+   "type": "string"
+  },
+  "proresProfile": {
+   "type": "string",
+   "enum": [
+    "422",
+    "4444",
+    "422 Proxy",
+    "422 LT",
+    "422 HQ",
+    "4444 XQ"
+   ]
+  },
+  "ratio": {
+   "type": "string",
+   "deprecated": true
+  },
+  "seed": {
+   "type": "integer",
+   "minimum": 0,
+   "maximum": 4294967295
+  },
+  "targetAspectRatio": {
+   "type": "string",
+   "enum": [
+    "16:9",
+    "4:3",
+    "3:2",
+    "1:1",
+    "2:3",
+    "3:4",
+    "9:16",
+    "21:9"
+   ]
+  },
+  "videoUri": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "model",
+  "videoUri"
+ ],
+ "output": [],
+ "deprecated": false
+}

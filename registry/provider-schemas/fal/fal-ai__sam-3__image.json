@@ -1,0 +1,67 @@
+{
+ "endpoint": "fal-ai/sam-3/image",
+ "variant": null,
+ "input": {
+  "apply_mask": {
+   "type": "boolean",
+   "default": true
+  },
+  "box_prompts": {
+   "type": "array<object<BoxPrompt>>",
+   "default": []
+  },
+  "image_url": {
+   "type": "string"
+  },
+  "include_boxes": {
+   "type": "boolean"
+  },
+  "include_scores": {
+   "type": "boolean"
+  },
+  "max_masks": {
+   "type": "integer",
+   "default": 3,
+   "minimum": 1,
+   "maximum": 32
+  },
+  "output_format": {
+   "type": "string",
+   "enum": [
+    "jpeg",
+    "png",
+    "webp"
+   ],
+   "default": "png"
+  },
+  "point_prompts": {
+   "type": "array<object<PointPrompt>>",
+   "default": []
+  },
+  "prompt": {
+   "type": "string",
+   "default": "wheel"
+  },
+  "return_multiple_masks": {
+   "type": "boolean"
+  },
+  "sync_mode": {
+   "type": "boolean"
+  },
+  "text_prompt": {
+   "type": "null|string",
+   "deprecated": true
+  }
+ },
+ "required": [
+  "image_url"
+ ],
+ "output": [
+  "boxes",
+  "image",
+  "masks",
+  "metadata",
+  "scores"
+ ],
+ "deprecated": false
+}

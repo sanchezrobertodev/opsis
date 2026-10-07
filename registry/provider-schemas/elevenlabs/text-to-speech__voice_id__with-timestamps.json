@@ -1,0 +1,57 @@
+{
+ "endpoint": "text-to-speech/{voice_id}/with-timestamps",
+ "variant": null,
+ "input": {
+  "apply_language_text_normalization": {
+   "type": "boolean"
+  },
+  "apply_text_normalization": {
+   "type": "string",
+   "enum": [
+    "auto",
+    "on",
+    "off"
+   ],
+   "default": "auto"
+  },
+  "language_code": {
+   "type": "null|string"
+  },
+  "model_id": {
+   "type": "string",
+   "default": "eleven_multilingual_v2"
+  },
+  "next_request_ids": {
+   "type": "array<string>"
+  },
+  "next_text": {
+   "type": "null|string"
+  },
+  "previous_request_ids": {
+   "type": "array<string>"
+  },
+  "previous_text": {
+   "type": "null|string"
+  },
+  "pronunciation_dictionary_locators": {
+   "type": "array<object<PronunciationDictionaryVersionLocatorRequestModel>>"
+  },
+  "seed": {
+   "type": "integer|null"
+  },
+  "text": {
+   "type": "string"
+  },
+  "use_pvc_as_ivc": {
+   "type": "boolean"
+  },
+  "voice_settings": {
+   "type": "null|object<VoiceSettingsResponseModel>"
+  }
+ },
+ "required": [
+  "text"
+ ],
+ "output": [],
+ "deprecated": false
+}

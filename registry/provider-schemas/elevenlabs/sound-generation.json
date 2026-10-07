@@ -1,0 +1,31 @@
+{
+ "endpoint": "sound-generation",
+ "variant": null,
+ "input": {
+  "duration_seconds": {
+   "type": "null|number"
+  },
+  "loop": {
+   "type": "boolean"
+  },
+  "model_id": {
+   "type": "string",
+   "enum": [
+    "eleven_text_to_sound_v2"
+   ],
+   "default": "eleven_text_to_sound_v2"
+  },
+  "prompt_influence": {
+   "type": "null|number",
+   "default": 0.3
+  },
+  "text": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "text"
+ ],
+ "output": [],
+ "deprecated": false
+}

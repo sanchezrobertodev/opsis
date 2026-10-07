@@ -1,0 +1,74 @@
+{
+ "endpoint": "music",
+ "variant": null,
+ "input": {
+  "composition_plan": {
+   "type": "null|object<CompositionPlan>|object<MusicPrompt>"
+  },
+  "finetune_id": {
+   "type": "null|string"
+  },
+  "finetune_strength": {
+   "type": "number",
+   "default": 1.0,
+   "maximum": 2.0
+  },
+  "force_instrumental": {
+   "type": "boolean"
+  },
+  "generation_mode": {
+   "type": "null|string",
+   "enum": [
+    "track",
+    "loop",
+    "ambience",
+    "video_to_music"
+   ]
+  },
+  "lyrics_text": {
+   "type": "null|string"
+  },
+  "model_id": {
+   "type": "string",
+   "enum": [
+    "music_v1",
+    "music_v2",
+    "music_v2_5"
+   ],
+   "default": "music_v1"
+  },
+  "music_length_ms": {
+   "type": "integer|null",
+   "minimum": 3000.0,
+   "maximum": 600000.0
+  },
+  "music_prompt": {
+   "type": "null|object<MusicPrompt>",
+   "deprecated": true
+  },
+  "prompt": {
+   "type": "null|string"
+  },
+  "respect_sections_durations": {
+   "type": "boolean",
+   "default": true
+  },
+  "seed": {
+   "type": "integer|null",
+   "minimum": 0.0,
+   "maximum": 2147483647.0
+  },
+  "sign_with_c2pa": {
+   "type": "boolean"
+  },
+  "store_for_inpainting": {
+   "type": "boolean"
+  },
+  "use_phonetic_names": {
+   "type": "boolean"
+  }
+ },
+ "required": [],
+ "output": [],
+ "deprecated": false
+}

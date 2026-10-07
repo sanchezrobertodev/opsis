@@ -1,0 +1,76 @@
+{
+ "endpoint": "blackforestlabs/flux-3/extend-video",
+ "variant": null,
+ "input": {
+  "aspect_ratio": {
+   "type": "string",
+   "enum": [
+    "auto",
+    "21:9",
+    "2:1",
+    "16:9",
+    "4:3",
+    "1:1",
+    "3:4",
+    "9:16"
+   ],
+   "default": "auto"
+  },
+  "duration": {
+   "type": "any",
+   "enum": [
+    "auto",
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20
+   ],
+   "default": "auto"
+  },
+  "generate_audio": {
+   "type": "boolean",
+   "default": true
+  },
+  "prompt": {
+   "type": "string"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "720p",
+    "1080p"
+   ],
+   "default": "720p"
+  },
+  "safety_tolerance": {
+   "type": "integer",
+   "default": 2,
+   "minimum": 0,
+   "maximum": 4
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "prompt",
+  "video_url"
+ ],
+ "output": [
+  "seed",
+  "video"
+ ],
+ "deprecated": false
+}

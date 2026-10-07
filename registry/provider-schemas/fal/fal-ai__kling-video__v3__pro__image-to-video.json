@@ -1,0 +1,69 @@
+{
+ "endpoint": "fal-ai/kling-video/v3/pro/image-to-video",
+ "variant": null,
+ "input": {
+  "cfg_scale": {
+   "type": "number",
+   "default": 0.5,
+   "minimum": 0,
+   "maximum": 1
+  },
+  "duration": {
+   "type": "string",
+   "enum": [
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15"
+   ],
+   "default": "5"
+  },
+  "elements": {
+   "type": "array<object<KlingV3ComboElementInput>>|null"
+  },
+  "end_image_url": {
+   "type": "null|string"
+  },
+  "generate_audio": {
+   "type": "boolean",
+   "default": true
+  },
+  "multi_prompt": {
+   "type": "array<object<KlingV3MultiPromptElement>>|null"
+  },
+  "negative_prompt": {
+   "type": "string",
+   "default": "blur, distort, and low quality"
+  },
+  "prompt": {
+   "type": "null|string"
+  },
+  "shot_type": {
+   "type": "string",
+   "enum": [
+    "customize",
+    "intelligent"
+   ],
+   "default": "customize"
+  },
+  "start_image_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "start_image_url"
+ ],
+ "output": [
+  "video"
+ ],
+ "deprecated": false
+}

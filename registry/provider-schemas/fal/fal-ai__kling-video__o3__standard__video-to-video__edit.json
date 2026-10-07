@@ -1,0 +1,37 @@
+{
+ "endpoint": "fal-ai/kling-video/o3/standard/video-to-video/edit",
+ "variant": null,
+ "input": {
+  "elements": {
+   "type": "array<object<KlingV3ImageElementInput>>|null"
+  },
+  "image_urls": {
+   "type": "array<string>|null"
+  },
+  "keep_audio": {
+   "type": "boolean",
+   "default": true
+  },
+  "prompt": {
+   "type": "string"
+  },
+  "shot_type": {
+   "type": "str",
+   "enum": [
+    "customize"
+   ],
+   "default": "customize"
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "prompt",
+  "video_url"
+ ],
+ "output": [
+  "video"
+ ],
+ "deprecated": false
+}

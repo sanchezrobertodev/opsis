@@ -1,0 +1,82 @@
+{
+ "endpoint": "topaz/upscale/video/precision",
+ "variant": null,
+ "input": {
+  "H264_output": {
+   "type": "boolean"
+  },
+  "compression": {
+   "type": "null|number",
+   "minimum": 0,
+   "maximum": 1
+  },
+  "grain": {
+   "type": "null|number",
+   "minimum": 0,
+   "maximum": 0.1
+  },
+  "halo": {
+   "type": "null|number",
+   "minimum": 0,
+   "maximum": 1
+  },
+  "model": {
+   "type": "string",
+   "enum": [
+    "Proteus",
+    "Proteus Natural",
+    "Iris",
+    "Iris Low Quality",
+    "Dione DV",
+    "Dione TV",
+    "Dione Robust",
+    "Dione Dehalo",
+    "Dione Robust Dehalo",
+    "Artemis High Quality",
+    "Artemis Medium Quality",
+    "Artemis Low Quality",
+    "Artemis Strong Halo",
+    "Artemis Medium Halo",
+    "Artemis Aliasing & Moire",
+    "Gaia HQ",
+    "Gaia CG",
+    "Gaia 2",
+    "Rhea",
+    "Theia Fine Tune Detail",
+    "Theia Fine Tune Fidelity"
+   ],
+   "default": "Proteus"
+  },
+  "noise": {
+   "type": "null|number",
+   "minimum": 0,
+   "maximum": 1
+  },
+  "recover_detail": {
+   "type": "null|number",
+   "minimum": 0,
+   "maximum": 1
+  },
+  "target_fps": {
+   "type": "integer|null",
+   "minimum": 16,
+   "maximum": 60
+  },
+  "upscale_factor": {
+   "type": "number",
+   "default": 2,
+   "minimum": 1,
+   "maximum": 4
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "video_url"
+ ],
+ "output": [
+  "video"
+ ],
+ "deprecated": false
+}

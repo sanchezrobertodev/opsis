@@ -1,0 +1,28 @@
+{
+ "endpoint": "veed/fabric-1.0",
+ "variant": null,
+ "input": {
+  "audio_url": {
+   "type": "string"
+  },
+  "image_url": {
+   "type": "string"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "720p",
+    "480p"
+   ]
+  }
+ },
+ "required": [
+  "audio_url",
+  "image_url",
+  "resolution"
+ ],
+ "output": [
+  "video"
+ ],
+ "deprecated": false
+}

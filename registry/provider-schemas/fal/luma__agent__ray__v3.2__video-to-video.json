@@ -1,0 +1,80 @@
+{
+ "endpoint": "luma/agent/ray/v3.2/video-to-video",
+ "variant": null,
+ "input": {
+  "auto_controls": {
+   "type": "boolean"
+  },
+  "controls": {
+   "type": "null|object<RayEditControls>"
+  },
+  "duration": {
+   "type": "string",
+   "enum": [
+    "5s",
+    "10s"
+   ],
+   "default": "5s"
+  },
+  "edit_strength": {
+   "type": "null|string",
+   "enum": [
+    "adhere_1",
+    "adhere_2",
+    "adhere_3",
+    "flex_1",
+    "flex_2",
+    "flex_3",
+    "reimagine_1",
+    "reimagine_2",
+    "reimagine_3"
+   ]
+  },
+  "exr_export": {
+   "type": "boolean"
+  },
+  "hdr": {
+   "type": "boolean"
+  },
+  "keyframe_indexes": {
+   "type": "array<integer>|null",
+   "minItems": 1,
+   "maxItems": 64
+  },
+  "keyframes": {
+   "type": "array<string>|null",
+   "minItems": 1,
+   "maxItems": 64
+  },
+  "prompt": {
+   "type": "string"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "540p",
+    "720p",
+    "1080p"
+   ],
+   "default": "540p"
+  },
+  "start_image_url": {
+   "type": "null|string"
+  },
+  "user": {
+   "type": "null|string"
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "prompt",
+  "video_url"
+ ],
+ "output": [
+  "exr_file",
+  "video"
+ ],
+ "deprecated": false
+}

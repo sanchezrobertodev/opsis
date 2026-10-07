@@ -133,10 +133,29 @@ pnpm gen        # OpenAPI -> packages/api-client/src/schema.d.ts (run after API 
 pnpm test       # pytest: unit, registry contract, DB integration (uses a separate studio_test database)
 pnpm e2e        # Playwright against the mock provider (reuses a running `pnpm dev`)
 pnpm lint       # ruff + eslint + tsc
+uv run python scripts/backup_db.py                 # dump the database to data/backups/ (14 days kept)
+uv run python scripts/restore_db.py --check        # restore the newest dump into a scratch copy and compare
+uv run python scripts/fetch_provider_schemas.py    # provider schema drift report (free; --update re-baselines)
 ```
 - The API runs on **8400**, not 8000 (other local containers publish 8000). Web reads `NEXT_PUBLIC_API_URL`.
 - Run the API via `python -m studio.api`, not bare uvicorn: on Windows it must use `asyncio:SelectorEventLoop`.
 - Media is served by the API at `/media/{key}` with Range support; files live under `data/media/`.
+
+## Backups and schema checks
+- `scripts/schedule_tasks.ps1` registers two Windows scheduled tasks (`-Remove` takes them away): the database
+  backup nightly at 03:30 and the provider schema check on Mondays at 09:00, logging to `data/logs/`.
+- Backups (`studio/ops/backups.py`) run `pg_dump -Fc` inside the Postgres container (Docker must be up), keep 14
+  days in `data/backups/`, and are only kept once `pg_restore --list` reads them. Restores never drop anything:
+  `--check` uses a scratch database; `--replace --yes` (API and worker stopped) restores into a new database and
+  swaps it in, keeping the old one as `studio_before_restore_<time>`.
+- **Media is not in the database.** `data/media/` (every asset) needs its own copy, e.g.
+  `robocopy data\media E:\studio-media /MIR` to an external drive; a restored database pointing at missing files
+  shows broken assets.
+- The schema check (`studio/registry/drift.py`) reads each route's published schema (fal per endpoint, Runway,
+  ElevenLabs; Replicate and World Labs with their keys) and reports gone or deprecated endpoints, fields a route
+  sends that the endpoint doesn't take, required fields it never sends, choices the endpoint rejects (after the
+  model's own rules), and changes since the baselines in `registry/provider-schemas/`. The contract tests check
+  every route against those baselines offline. After a reviewed change, fix the YAML and run with `--update`.
 
 ## Providers without a model
 - `local_tools`: the `video-tools` model's modes (reframe, trim, retime, reverse, loop, interpolate, upscale,
