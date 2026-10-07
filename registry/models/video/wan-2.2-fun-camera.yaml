@@ -18,7 +18,8 @@ camera: {native: wan-fun-camera}
 
 parameters:
   - {name: camera_control, label: Camera move, type: enum, default: ZoomIn, ui: segmented,
-     options: [ZoomIn, ZoomOut, PanLeft, PanRight, TiltUp, TiltDown, RollLeft, RollRight, Static]}
+     options: [ZoomIn, ZoomOut, PanLeft, PanRight, TiltUp, TiltDown, RollLeft, RollRight, Static],
+     help: "A camera move picked under Camera takes priority when this model has a preset for it."}
   - {name: camera_speed, label: Move speed, type: float, min: 0.2, max: 3, step: 0.1, default: 1, group: advanced}
   - {name: quality, type: enum, options: ["480p", "720p"], default: "720p", ui: segmented,
      help: "480p renders about twice as fast."}

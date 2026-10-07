@@ -311,11 +311,18 @@ def test_motion_paths_are_validated():
 
 def test_director_camera_moves_drive_fun_camera_natively():
     from studio.director.compiler import ShotDirection, compile_prompt
-    from studio.domain.generations import native_params
+    from studio.domain.generations import merge_native
 
     spec = REG.models["wan-2.2-fun-camera"]
+    pan = compile_prompt(spec, "harbor", ShotDirection.model_validate({"camera_moves": [{"id": "dolly_right"}]}))
     dolly = compile_prompt(spec, "harbor", ShotDirection.model_validate({"camera_moves": [{"id": "dolly_in"}]}))
-    assert native_params(spec, dolly.native_params) == {"camera_control": "ZoomIn"}
+    assert dolly.native_params == {"camera_control": "ZoomIn"}
+    # The form always sends its default (ZoomIn); the camera move picked in the Director wins over it, silently.
+    params, warnings = merge_native(spec, {"camera_control": "ZoomIn", "duration": 3}, pan.native_params)
+    assert params == {"camera_control": "PanRight", "duration": 3} and warnings == []
+    # A value the user deliberately picked is still replaced, but they're told.
+    params, warnings = merge_native(spec, {"camera_control": "PanLeft"}, {"camera_control": "ZoomOut"})
+    assert params["camera_control"] == "ZoomOut" and "replacing PanLeft" in warnings[0]
     # Orbit has a Fun Camera value but this model has no orbit preset: it stays a prompt-only move
-    assert native_params(spec, {"camera_control": "Orbit"}) == {}
-    assert native_params(REG.models["wan-2.2-14b-fast"], {"camera_control": "ZoomIn"}) == {}
+    assert merge_native(spec, {"camera_control": "ZoomIn"}, {"camera_control": "Orbit"}) == ({"camera_control": "ZoomIn"}, [])
+    assert merge_native(REG.models["wan-2.2-14b-fast"], {}, {"camera_control": "ZoomIn"}) == ({}, [])

@@ -9,3 +9,7 @@ docs: https://docs.runpod.io/public-endpoints/overview
 notes: >-
   Public Endpoints (pay-per-use model APIs) now; our own worker-comfyui endpoints for open models later.
   Inputs are hosted through fal storage, so set FAL_KEY too. Media links expire after 7 days.
+# Videos and audio must be web links; they're hosted through fal storage, so these routes need FAL_KEY.
+# Images under 6 MB go inline without it.
+hosted_kinds: [video, audio]
+hosting_setting: fal_key

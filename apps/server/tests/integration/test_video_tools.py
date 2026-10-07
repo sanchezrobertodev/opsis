@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import uuid
 from pathlib import Path
@@ -132,3 +133,59 @@ async def test_tool_errors_fail_the_take_with_the_reason(client):
         "media": [{"role": "input_video", "asset_id": up["id"]}], "route_policy": "cheapest_healthy"})).json()
     done = await drive_local(uuid.UUID(gen["id"]))
     assert done.status == GenStatus.failed and "empty" in (done.error_message or "")
+
+
+async def test_prompt_free_modes_drop_a_leftover_prompt_and_camera_moves(client):
+    """A prompt typed for another model (and a camera move) must not reach a mode that takes no prompt."""
+    up = (await client.post("/uploads", files={"file": ("clip.mp4", CLIP.read_bytes(), "video/mp4")})).json()
+    gen = (await client.post("/generations", json={
+        "model_id": "video-tools", "mode": "reverse", "prompt": "a leftover prompt from Kling",
+        "direction": {"camera_moves": [{"id": "dolly_in"}]},
+        "media": [{"role": "input_video", "asset_id": up["id"]}],
+    })).json()
+    assert gen["request"]["prompt"] == "" and gen["request"]["compiled_prompt"] == ""
+    assert any("ignores the prompt" in w for w in gen["request"]["warnings"])
+
+
+async def test_local_jobs_are_visible_to_poll_workers_in_other_processes(monkeypatch, tmp_path):
+    """Submit and poll can run in different worker processes (`--queues`): liveness comes from the job's
+    heartbeat file, not the submitting process's memory."""
+    from studio.config import get_settings
+    from studio.providers import local_tools
+    from studio.providers.local_tools import LocalToolsAdapter
+    from studio.registry.loader import get_registry
+
+    monkeypatch.setattr(get_settings(), "media_root", tmp_path / "media")
+    release = asyncio.Event()
+
+    async def slow_copy(src, dest, params):
+        await release.wait()
+        shutil.copy(src, dest)
+
+    monkeypatch.setitem(local_tools.OPS, "reverse", slow_copy)
+    route = get_registry().model("video-tools").route("video-tools@local_tools")
+    clip = tmp_path / "in.mp4"
+    shutil.copy(CLIP, clip)
+    submitter, poller = LocalToolsAdapter(), LocalToolsAdapter()  # two processes, two adapters
+    job = (await submitter.submit(route, "reverse", {"input_video": str(clip)}, client_ref="c")).job_id
+
+    assert (await poller.poll(route, job)).status == "running"
+    release.set()
+    for _ in range(50):
+        res = await poller.poll(route, job)
+        if res.status != "running":
+            break
+        await asyncio.sleep(0.05)
+    assert res.status == "succeeded" and res.outputs[0].ref.endswith(".mp4")
+
+    # A job whose worker died stops refreshing its heartbeat: after STALE_S it's reported for a retry.
+    job2 = (await submitter.submit(route, "reverse", {"input_video": str(clip)}, client_ref="d")).job_id
+    running = submitter.store.root / job2 / "running"
+    old = running.stat().st_mtime - local_tools.STALE_S - 1
+    os.utime(running, (old, old))
+    gone = await poller.poll(route, job2)
+    assert gone.status == "failed" and gone.error_class.value == "transient"
+    # Cancel from the other process stops it through the cancel file.
+    running.touch()
+    assert await poller.cancel(route, job2) and (running.parent / "cancel").exists()
+    await submitter.cancel(route, job2)

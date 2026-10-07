@@ -97,6 +97,7 @@ async def routing_env(session: AsyncSession, reg: Registry) -> RoutingEnv:
         has_adapter=adapter_implemented,
         health=await load_health(session),
         reachable=lambda provider_id: reach.get(provider_id, True),
+        setting_set=lambda name: bool(getattr(settings, name, "")),
     )
 
 
@@ -129,14 +130,23 @@ async def resolve_media_kinds(session: AsyncSession, user_id: uuid.UUID, media: 
     return refs
 
 
-def native_params(spec: Any, native: dict[str, Any]) -> dict[str, Any]:
-    """Keep the director's native controls the model actually has as params (with an allowed value)."""
-    out = {}
+def merge_native(spec: Any, params: dict[str, Any] | None, native: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Apply the director's native controls (a camera move Fun Camera has a preset for) over the form's params.
+
+    The camera move wins: the form always sends its fields, so the model's own setting usually just holds its
+    default. A warning notes when it replaces a value the user picked (one that isn't the default).
+    """
+    merged = dict(params or {})
+    warnings: list[str] = []
     for name, value in native.items():
         param = spec.param(name)
-        if param is not None and value in (getattr(param, "options", None) or [value]):
-            out[name] = value
-    return out
+        if param is None or value not in (getattr(param, "options", None) or [value]):
+            continue  # this model has no such control, or no preset for this move: the prompt carries it
+        given = merged.get(name)
+        if given not in (None, "", value, param.default):
+            warnings.append(f"the camera move sets {name} to {value}, replacing {given}")
+        merged[name] = value
+    return merged, warnings
 
 
 async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, reg: Registry | None = None) -> Plan:
@@ -148,18 +158,22 @@ async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, r
     # validation: the attached images count against the model's slot limits like any other input.
     mention = await resolve_mentions(session, user_id, spec, body.mode, body.prompt, body.media)
     refs = await resolve_media_kinds(session, user_id, [*body.media, *mention.media])
+    mode = spec.mode(body.mode)
+    promptless = mode is not None and mode.prompt == "none"
     try:
         direction = ShotDirection.model_validate(body.direction) if body.direction else None
-        compiled = compile_prompt(spec, mention.prompt, direction)
-        # A camera move with a native control on this model (Wan Fun Camera) sets that param unless the user did.
-        params = {**native_params(spec, compiled.native_params), **(body.params or {})}
+        # Modes without a prompt (Act-Two, Wan Animate) get no compiled text either: a prompt left over from
+        # another model must not reach the provider.
+        compiled = compile_prompt(spec, "" if promptless else mention.prompt, None if promptless else direction)
+        # A camera move with a native control on this model (Wan Fun Camera) sets that param.
+        params, native_warnings = merge_native(spec, body.params, compiled.native_params)
         req = normalize(spec, body.mode, body.prompt, params, refs, body.negative_prompt)
     except RequestError as exc:
         raise GenerationRequestError(exc.errors) from None
     except ValidationError as exc:
         raise GenerationRequestError(
             [f"direction: {e['msg']} at {'.'.join(map(str, e['loc']))}" for e in exc.errors()]) from None
-    req.warnings.extend(mention.warnings)
+    req.warnings.extend(mention.warnings + native_warnings)
     env = await routing_env(session, reg)
     cands = candidates(reg, spec, req, env, body.route_policy)
     chosen = next((c for c in cands if c.eligible), None)
