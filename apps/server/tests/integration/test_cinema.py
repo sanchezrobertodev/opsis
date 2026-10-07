@@ -11,7 +11,8 @@ import pytest
 from test_pipelines import drain, get, start
 
 from studio.api.main import app as api
-from studio.db.models import Generation
+from studio.db.models import Generation, GenerationAttempt, SpendLedger
+from studio.domain.enums import AttemptStatus, LedgerEntry
 from studio.db.session import session_scope
 from studio.media.ffmpeg import probe
 from studio.storage.local import get_storage
@@ -422,10 +423,20 @@ async def test_the_estimate_and_the_spend_split_by_shot(client, in_memory_queue)
     run = await start(client, "cinema_takes", **{**body, "takes": 1})
     await drain(in_memory_queue)
     steps = {s["key"]: s for s in (await get(client, run["id"]))["steps"]}
+    # charges as the ledger keeps them: a failed attempt the provider still billed counts, not just the cost the
+    # generation ended up with
     async with session_scope() as s:
-        for key, usd in (("take[sone:1]", "0.50"), ("lip[sone:1]", "0.25"), ("take[stwo:1]", "1.00")):
+        for n, (key, usd) in enumerate((("take[sone:1]", "0.50"), ("lip[sone:1]", "0.25"), ("take[stwo:1]", "0.40"),
+                                        ("take[stwo:1]", "0.60"))):
             g = await s.get(Generation, uuid.UUID(steps[key]["generation_id"]))
-            g.actual_cost_usd = Decimal(usd)
+            attempt = GenerationAttempt(generation_id=g.id, attempt_no=100 + n, route_id="test-route",
+                                        provider="test", status=AttemptStatus.failed)
+            s.add(attempt)
+            await s.flush()
+            s.add(SpendLedger(user_id=g.user_id, entry_type=LedgerEntry.charge, amount_usd=Decimal(usd),
+                              generation_attempt_id=attempt.id))
+            s.add(SpendLedger(user_id=g.user_id, entry_type=LedgerEntry.reservation, amount_usd=Decimal("9"),
+                              generation_attempt_id=attempt.id))  # a reservation isn't spend
         await s.commit()
     spend = (await client.get(f"/projects/{pid}/spend")).json()
     assert spend["shots"]["sone"] == pytest.approx(0.75) and spend["shots"]["stwo"] == pytest.approx(1.0)

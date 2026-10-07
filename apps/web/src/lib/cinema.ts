@@ -233,11 +233,19 @@ export function useDialogue(id: string) {
 
 /** What the film's generations have cost so far, per shot (refreshed while runs are going). */
 export function useProjectSpend(id: string, active: boolean) {
-  return useQuery({
+  const qc = useQueryClient();
+  const spend = useQuery({
     queryKey: ["project-spend", id],
     queryFn: () => unwrap(api.GET("/projects/{project_id}/spend", { params: { path: { project_id: id } } })),
     refetchInterval: active ? 3000 : false,
   });
+  const was = useRef(active);
+  useEffect(() => {
+    // the last charges land as the runs settle, possibly between polls: look once more
+    if (was.current && !active) void qc.invalidateQueries({ queryKey: ["project-spend", id] });
+    was.current = active;
+  }, [active, id, qc]);
+  return spend;
 }
 
 /** Whether any of these runs is still going (polled until they all settle). */
