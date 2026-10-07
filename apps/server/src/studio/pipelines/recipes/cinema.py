@@ -154,7 +154,7 @@ class CinemaFramesRecipe(Recipe):
             n = 1 if self._batched(spec, mode) else inp.count
             # the @mentioned characters' pictures fill the reference slot when the frame is made
             roles = (role,) if mode.slot(role) else ()
-            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode), roles)] * n
+            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode), roles, key=shot.key)] * n
         return out
 
     def plan(self, inp: CinemaFramesInput, settled: Settled, reg: Registry) -> list[StepSpec]:
@@ -280,7 +280,8 @@ class CinemaTakesRecipe(Recipe):
             roles = {"start_image"} if shot.start_asset_id or shot.continue_from or shot.continue_from_asset_id else set()
             mode = mode_for(spec, roles)
             assert mode is not None
-            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode, shot, reg), tuple(roles))] * inp.takes
+            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode, shot, reg), tuple(roles),
+                               key=shot.key)] * inp.takes
             if self._voiced_after(inp, spec, shot, reg):
                 lines = _lines(shot)
                 voice = reg.models[inp.voice_model]
@@ -288,10 +289,12 @@ class CinemaTakesRecipe(Recipe):
                 lip = reg.models[inp.lipsync_model_id]
                 lip_mode = lipsync_mode(lip, "video")
                 assert tts is not None and lip_mode is not None
-                out += [PlannedJob(voice.id, tts.id, _voice_params(line), prompt_chars=len(line.text)) for line in lines]
+                out += [PlannedJob(voice.id, tts.id, _voice_params(line), prompt_chars=len(line.text), key=shot.key)
+                        for line in lines]
                 speech = sum(len(x.text) for x in lines) / CHARS_PER_SECOND + LINE_GAP_S * (len(lines) - 1)
                 out += [PlannedJob(lip.id, lip_mode.id, {}, ("input_video", "input_audio"), planned_seconds=(
-                    ("input_video", float(shot.duration or 5)), ("input_audio", max(1.0, speech))))] * inp.takes
+                    ("input_video", float(shot.duration or 5)), ("input_audio", max(1.0, speech))),
+                    key=shot.key)] * inp.takes
         return out
 
     def plan(self, inp: CinemaTakesInput, settled: Settled, reg: Registry) -> list[StepSpec]:

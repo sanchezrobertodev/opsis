@@ -78,3 +78,46 @@ test("Cinema: light and feeling on a shot, a scene in one take, then continue a 
   await page.getByRole("button", { name: "Continue the take" }).click();
   await expect(page.getByText(/continued from take 1/)).toBeVisible({ timeout: 90_000 });
 });
+
+test("Cinema storyboard: duplicate, drag to reorder, split, and what each shot costs", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto("/cinema");
+  await page.getByRole("button", { name: "New film" }).click();
+  await page.getByLabel("Title").fill(`e2e storyboard ${Date.now()}`);
+  await page.getByRole("button", { name: "Create" }).click();
+  await expect(page).toHaveURL(/\/cinema\/[0-9a-f-]+$/);
+  await page.getByRole("radio", { name: "Script" }).click();
+  await page.getByLabel("Script").fill("A kite lifts off the beach. It climbs into the wind.");
+  await page.getByRole("button", { name: "Plan shots with Claude" }).click();
+  await page.getByRole("button", { name: "Use this plan" }).click();
+  await expect(page.getByText("Saved, version 2")).toBeVisible();
+
+  // each card says how long the shot is and about what filming it costs on the paid routes
+  const cards = page.locator("section ol > li");
+  await expect(page.getByText(/^about \$\d/).first()).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("button", { name: /It climbs into the wind\./ }).click();
+  await page.getByRole("button", { name: "Duplicate shot" }).click();
+  await expect(page.getByRole("heading", { name: "Shot 03" })).toBeVisible();
+  await page.getByLabel("What happens").fill("The string snaps");
+  await expect(page.getByRole("button", { name: /^Film 3 unfilmed shots/ })).toBeVisible();
+
+  // the copy moves to the front with the keyboard, by its handle
+  await page.getByRole("button", { name: "Move shot 03" }).focus();
+  await page.keyboard.press("Space");
+  for (const key of ["ArrowLeft", "ArrowLeft"]) {
+    await page.waitForTimeout(250);
+    await page.keyboard.press(key);
+  }
+  await page.waitForTimeout(250);
+  await page.keyboard.press("Space");
+  await expect(cards.first()).toContainText("The string snaps");
+
+  // splitting a shot makes a second part that continues the first
+  await page.getByRole("button", { name: /The string snaps/ }).click();
+  await page.getByRole("button", { name: "Split shot" }).click();
+  await page.getByRole("region", { name: "Split the shot" }).getByRole("button", { name: "Split" }).click();
+  await expect(page.getByRole("heading", { name: "Shot 02" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "From last" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("button", { name: /^Film 4 unfilmed shots/ })).toBeVisible();
+});

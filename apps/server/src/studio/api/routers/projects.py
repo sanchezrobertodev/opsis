@@ -13,7 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.api.deps import current_user, get_session
@@ -22,8 +22,18 @@ from studio.api.serializers import asset_out
 from studio.budget.guard import BudgetBlocked
 from studio.cinema.document import CinemaDocument
 from studio.cinema.planner import MAX_SHOTS, plan_shots
-from studio.db.models import Asset, Element, Generation, PipelineRun, Project, ProjectRevision, User
-from studio.domain.enums import AssetKind
+from studio.db.models import (
+    Asset,
+    Element,
+    Generation,
+    GenerationAttempt,
+    PipelineRun,
+    Project,
+    ProjectRevision,
+    SpendLedger,
+    User,
+)
+from studio.domain.enums import AssetKind, LedgerEntry
 from studio.jutsu3d.document import Jutsu3dDocument, starter_scene
 from studio.llm.client import LLMError, LLMUnavailable
 from studio.media.ffmpeg import probe
@@ -469,6 +479,30 @@ async def list_dialogue(project_id: uuid.UUID, session: AsyncSession = Depends(g
     await session.commit()
     return [DialogueOut(shot_key=shot, asset=asset_out(rows[aid]), lip_synced=synced)
             for shot, (aid, synced) in found.items() if aid in rows]
+
+
+class SpendOut(BaseModel):
+    total_usd: float = Field(description="Every generation made for the film, including whole-scene takes")
+    shots: dict[str, float] = Field(description="Spent per shot id, for generations made for one shot (frames, takes, "
+                                                "voiced lines, lip syncs, extends and edits)")
+
+
+@router.get("/{project_id}/spend", response_model=SpendOut)
+async def project_spend(project_id: uuid.UUID, session: AsyncSession = Depends(get_session),
+                        user: User = Depends(current_user)) -> SpendOut:
+    """What the film's generations have cost so far: every charge in the spend ledger for their attempts, so
+    attempts a provider billed and then failed (or that failed over to another route) count too. Jobs still
+    running count once they settle."""
+    p = await _project(session, user, project_id)
+    rows = (await session.execute(
+        select(Generation.shot_key, func.sum(SpendLedger.amount_usd))
+        .join(GenerationAttempt, GenerationAttempt.generation_id == Generation.id)
+        .join(SpendLedger, SpendLedger.generation_attempt_id == GenerationAttempt.id)
+        .where(Generation.project_id == p.id, Generation.user_id == user.id, SpendLedger.user_id == user.id,
+               SpendLedger.entry_type == LedgerEntry.charge)
+        .group_by(Generation.shot_key))).all()
+    shots = {key: float(usd) for key, usd in rows if key and usd}
+    return SpendOut(total_usd=float(sum((usd for _, usd in rows if usd), start=0)), shots=shots)
 
 
 @router.get("/{project_id}/takes", response_model=list[TakeOut])

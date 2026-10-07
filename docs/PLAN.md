@@ -262,9 +262,11 @@ Also built: the Cinema Studio virtual model over Seedance 2.5 / Kling 3.0 / Veo 
 multi-shot scenes (Kling multi_prompt, Seedance timed prompt) cut back into per-shot takes, and per-shot extend
 after/before plus whole-take and region edits, each a new take linked to its parent (AMS-41), and the director's
 Cinema Studio 4.0 vocabulary: 58 grades, eras by decade, focal lengths, a two-light console and an emotion wheel per
-cast member, with golden snapshots per dialect (AMS-37). Not yet: the AI Director chat that revises a plan as a diff
-(AMS-35); storyboard drag-and-drop, split/duplicate shot and cost badges (AMS-36); an end-frame pick and 3×3 frame
-grids (AMS-39); and live checks of the multi-shot payloads and Cinema Studio routing. The cut's Remotion preview,
+cast member, with golden snapshots per dialect (AMS-37). The storyboard's cards drag between places and scenes (by
+keyboard too), shots duplicate and split (a filmed shot splits its take: each part plays its stretch), and each card
+shows its length, its status and what it cost or would cost to film (AMS-36). Not yet: the AI Director chat that
+revises a plan as a diff (AMS-35); an end-frame pick and 3×3 frame grids (AMS-39); and live checks of the multi-shot
+payloads and Cinema Studio routing. The cut's Remotion preview,
 reordering, title cards and dialogue, music and SFX tracks followed later (AMS-42), timed in frames so the export
 matches the preview.
 P6 merged (PR #4, mock-tested): lipsync and talking-portrait models (Sync lipsync-3, Kling

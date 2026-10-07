@@ -4,14 +4,16 @@ redo only what an edit touches, and the cut with fades."""
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 import httpx
 import pytest
 from test_pipelines import drain, get, start
 
 from studio.api.main import app as api
-from studio.db.models import Generation
+from studio.db.models import Generation, GenerationAttempt, SpendLedger
 from studio.db.session import session_scope
+from studio.domain.enums import AttemptStatus, LedgerEntry
 from studio.media.ffmpeg import probe
 from studio.storage.local import get_storage
 
@@ -400,6 +402,47 @@ async def test_dialogue_is_voiced_and_lip_synced_on_models_that_dont(client, in_
     doc["scenes"][0]["shots"][0]["take_asset_id"] = led["output"]["asset_id"]
     assert (await client.put(f"/projects/{pid}", json={"version": 4, "document": doc})).status_code == 200
     assert (await client.get(f"/projects/{pid}/dialogue")).json() == []
+
+
+async def test_the_estimate_and_the_spend_split_by_shot(client, in_memory_queue):
+    p = await new_project(client)
+    pid = p["id"]
+    body = {"project_id": pid, "model_id": "runway-gen-4.5", "takes": 2, "shots": [
+        {"key": "sone", "prompt": "Nova turns from the window", "duration": 5, "direction": {"dialogue": DIALOGUE}},
+        {"key": "stwo", "prompt": "The lamp turns on", "duration": 10, "continue_from": "sone"}]}
+    est = (await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": body})).json()
+    assert set(est["by_key"]) == {"sone", "stwo"} and sum(est["by_key"].values()) == pytest.approx(est["estimate_usd"])
+    live = est["live_by_key"]
+    assert set(live) == {"sone", "stwo"} and sum(live.values()) == pytest.approx(est["live_estimate_usd"])
+    # mock routes are free; on the paid ones a 10 s shot costs more than a 5 s one without its lines and lip syncs
+    assert est["estimate_usd"] == 0 and live["stwo"] > 0 and live["sone"] > 0
+    lone = (await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
+        **body, "shots": [{**body["shots"][0], "direction": {}}]}})).json()
+    assert live["sone"] > lone["live_by_key"]["sone"]  # its lines are voiced and the takes lip-synced
+
+    run = await start(client, "cinema_takes", **{**body, "takes": 1})
+    await drain(in_memory_queue)
+    steps = {s["key"]: s for s in (await get(client, run["id"]))["steps"]}
+    # charges as the ledger keeps them: a failed attempt the provider still billed counts, not just the cost the
+    # generation ended up with
+    async with session_scope() as s:
+        for n, (key, usd) in enumerate((("take[sone:1]", "0.50"), ("lip[sone:1]", "0.25"), ("take[stwo:1]", "0.40"),
+                                        ("take[stwo:1]", "0.60"))):
+            g = await s.get(Generation, uuid.UUID(steps[key]["generation_id"]))
+            attempt = GenerationAttempt(generation_id=g.id, attempt_no=100 + n, route_id="test-route",
+                                        provider="test", status=AttemptStatus.failed)
+            s.add(attempt)
+            await s.flush()
+            s.add(SpendLedger(user_id=g.user_id, entry_type=LedgerEntry.charge, amount_usd=Decimal(usd),
+                              generation_attempt_id=attempt.id))
+            s.add(SpendLedger(user_id=g.user_id, entry_type=LedgerEntry.reservation, amount_usd=Decimal("9"),
+                              generation_attempt_id=attempt.id))  # a reservation isn't spend
+        await s.commit()
+    spend = (await client.get(f"/projects/{pid}/spend")).json()
+    assert spend["shots"]["sone"] == pytest.approx(0.75) and spend["shots"]["stwo"] == pytest.approx(1.0)
+    assert spend["total_usd"] == pytest.approx(sum(spend["shots"].values()))
+    other = await new_project(client)
+    assert (await client.get(f"/projects/{other['id']}/spend")).json() == {"total_usd": 0, "shots": {}}
 
 
 async def test_old_free_text_dialogue_becomes_lines(client):

@@ -80,6 +80,8 @@ async def _estimate(session: AsyncSession, user: User, body: RunCreate) -> tuple
     if errors := recipe.validate(inp, reg):
         raise GenerationRequestError(errors)
     total, live, live_known = Decimal("0"), Decimal("0"), True
+    by_key: dict[str, Decimal] = {}
+    live_by_key: dict[str, Decimal] = {}
     jobs = recipe.jobs(inp, reg)
     for job in jobs:
         known = await resolve_media_kinds(session, user.id, [{"role": r, "asset_id": a} for r, a in job.media])             if job.media else None
@@ -87,14 +89,20 @@ async def _estimate(session: AsyncSession, user: User, body: RunCreate) -> tuple
                                              prompt="x" * job.prompt_chars if job.prompt_chars else "planned",
                                              known=known, seconds=dict(job.planned_seconds))
         total += usd
+        if job.key is not None:
+            by_key[job.key] = by_key.get(job.key, Decimal("0")) + usd
         if live_usd is None:
             live_known = False
         else:
             live += live_usd
+            if job.key is not None:
+                live_by_key[job.key] = live_by_key.get(job.key, Decimal("0")) + live_usd
     policy = await guard.get_policy(session, user.id)
     cap = Decimal(str(body.cap_usd)) if body.cap_usd is not None else policy.default_run_cap_usd
-    return recipe, inp, RunEstimateOut(estimate_usd=float(total), live_estimate_usd=float(live) if live_known else None,
-                                       generations=len(jobs), cap_usd=float(cap))
+    return recipe, inp, RunEstimateOut(
+        estimate_usd=float(total), live_estimate_usd=float(live) if live_known else None, generations=len(jobs),
+        cap_usd=float(cap), by_key={k: float(v) for k, v in by_key.items()},
+        live_by_key={k: float(v) for k, v in live_by_key.items()} if live_known else None)
 
 
 @router.post("/estimate", response_model=RunEstimateOut, responses={422: {"model": ValidationProblem}})

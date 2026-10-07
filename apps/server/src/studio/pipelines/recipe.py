@@ -53,6 +53,7 @@ class PlannedJob:
     media: tuple[tuple[str, str], ...] = ()  # (role, asset_id) of inputs that already exist, priced at their length
     # (role, seconds) for inputs a run makes before this job, priced at that guess (lipsync on speech from a script)
     planned_seconds: tuple[tuple[str, float], ...] = ()
+    key: str | None = None  # what the job is for (a Cinema shot's id), so an estimate can be split by it
 
 
 Settled = dict[str, dict[str, Any]]  # step key -> output (succeeded, or optional-and-failed)
