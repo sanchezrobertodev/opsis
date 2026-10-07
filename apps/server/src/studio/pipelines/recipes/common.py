@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import math
-
-from studio.registry.schema import EnumParam, FloatParam, IntParam, Mode, ModelSpec
+from studio.registry.schema import Mode, ModelSpec
+from studio.registry.virtual import fit_duration
 
 
 def text_mode(spec: ModelSpec) -> Mode | None:
@@ -40,24 +39,33 @@ def mode_with_op(spec: ModelSpec, op: str) -> Mode | None:
     return next((m for m in spec.modes if op in m.ops), None)
 
 
-def fit_duration(spec: ModelSpec, mode_id: str, seconds: float) -> int | float | str | None:
-    """The shortest duration the model allows that covers `seconds` (its longest if none does), in the param's
-    own type. None when the model has no duration param in this mode."""
-    p = next((p for p in spec.params_for(mode_id) if p.name == "duration"), None)
-    if isinstance(p, EnumParam):
-        numeric = []
-        for o in p.options:
-            try:
-                numeric.append((float(o), o))
-            except ValueError:
-                continue
-        if not numeric:
-            return None
-        numeric.sort()
-        return next((o for v, o in numeric if v >= seconds), numeric[-1][1])
-    if isinstance(p, IntParam):
-        steps = math.ceil(max(0.0, seconds - p.min) / p.step)
-        return min(p.max, p.min + steps * p.step)
-    if isinstance(p, FloatParam):
-        return round(min(p.max, max(p.min, seconds)), 2)
+def multi_shot_mode(spec: ModelSpec, *, frame: bool) -> Mode | None:
+    """A mode that renders several shots in one take, opening on a given first frame or not."""
+    for m in spec.modes:
+        slot = m.slot("start_image")
+        others_optional = all(s.role == "start_image" or not s.required for s in m.medias)
+        if "multi_shot" in m.ops and bool(slot and slot.required) == frame and others_optional:
+            return m
     return None
+
+
+def bridge_mode(spec: ModelSpec) -> Mode | None:
+    """A mode that animates from a start frame to a chosen end frame (to lead into an existing clip)."""
+    for m in spec.modes:
+        others_optional = all(s.role in ("start_image", "end_image") or not s.required for s in m.medias)
+        if m.slot("start_image") and m.slot("end_image") and m.prompt != "none" and others_optional:
+            return m
+    return None
+
+
+def edit_mode(spec: ModelSpec) -> Mode | None:
+    """A mode that changes a whole clip by instruction."""
+    for m in spec.modes:
+        slot = m.slot("input_video")
+        if "instruction_edit" in m.ops and slot and slot.required and m.prompt != "none":
+            return m
+    return None
+
+
+__all__ = ["bridge_mode", "edit_mode", "fit_duration", "mode_for", "mode_with_op", "multi_shot_mode", "start_frame_mode",
+           "text_mode", "with_param"]

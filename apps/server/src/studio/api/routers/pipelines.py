@@ -130,6 +130,8 @@ async def start_run(body: RunCreate, session: AsyncSession = Depends(get_session
 @router.get("", response_model=list[RunSummary])
 async def list_runs(limit: int = Query(30, ge=1, le=100), recipe: str | None = None,
                     channel_id: uuid.UUID | None = Query(None, description="Faceless episodes of one channel"),
+                    project_id: uuid.UUID | None = Query(None, description="Runs for one Cinema project"),
+                    status: RunStatus | None = Query(None, description="Only runs in this status, e.g. running"),
                     session: AsyncSession = Depends(get_session),
                     user: User = Depends(current_user)) -> list[RunSummary]:
     q = select(PipelineRun).where(PipelineRun.user_id == user.id)
@@ -137,6 +139,10 @@ async def list_runs(limit: int = Query(30, ge=1, le=100), recipe: str | None = N
         q = q.where(PipelineRun.recipe == recipe)
     if channel_id:
         q = q.where(PipelineRun.input["channel_id"].astext == str(channel_id))
+    if project_id:
+        q = q.where(PipelineRun.input["project_id"].astext == str(project_id))
+    if status:
+        q = q.where(PipelineRun.status == status)
     runs = (await session.execute(q.order_by(PipelineRun.created_at.desc()).limit(limit))).scalars().all()
     counts = {rid: (done, total) for rid, done, total in (await session.execute(
         select(PipelineStep.run_id,

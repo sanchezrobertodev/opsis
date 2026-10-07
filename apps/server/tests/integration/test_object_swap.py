@@ -148,3 +148,17 @@ async def test_too_long_a_clip_is_refused_before_anything_runs(client, in_memory
         "video_asset_id": video["id"], "mask_asset_id": mask["id"], "prompt": "a cactus",
         "models": [{"model_id": "kling-o3-edit"}]}})
     assert r.status_code == 422 and "at most 15 s" in r.text
+
+
+async def test_a_region_edit_of_a_cinema_take_becomes_a_take_of_its_shot(client, in_memory_queue):
+    video, mask = await selected_object(client, in_memory_queue)
+    project = (await client.post("/projects", json={"title": "Harbour", "document": {}})).json()
+    run = await start(client, "object_swap", video_asset_id=video["id"], mask_asset_id=mask["id"], frame_index=24,
+                      prompt="Make the mug a brass lantern", models=[{"model_id": "kling-o3-edit"}],
+                      project_id=project["id"], shot_key="sone")
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    takes = (await client.get(f"/projects/{project['id']}/takes", params={"shot_key": "sone"})).json()
+    assert [(t["made_by"], t["parent_asset_id"]) for t in takes] == [("region_edit", video["id"])]
+    assert takes[0]["asset"]["id"] == done["output"]["asset_id"]

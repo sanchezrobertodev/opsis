@@ -16,9 +16,13 @@ aspect_ratios: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
 duration: {min: 4, max: 30, default: 5}
 
 parameters:
-  - {name: duration, label: Duration (s), type: int, min: 4, max: 30, default: 5, ui: slider, modes: [t2v, i2v, omni_reference, extend]}
+  - {name: duration, label: Duration (s), type: int, min: 4, max: 30, default: 5, ui: slider,
+     modes: [t2v, i2v, omni_reference, extend, multi_shot, multi_shot_frame]}
+  - {name: shots, label: Shots, type: shots, min_shots: 2, max_shots: 8, min_shot_s: 2, max_shot_s: 30,
+     max_total_s: 30, prompt_budget: shared, modes: [multi_shot, multi_shot_frame],
+     help: "One continuous take of up to 30 s that cuts between your shots on cue."}
   - {name: resolution, type: enum, options: ["480p", "720p"], default: "720p", ui: segmented}
-  - {name: aspect_ratio, label: Aspect, type: enum, options: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], default: "16:9", ui: aspect, modes: [t2v, omni_reference]}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], default: "16:9", ui: aspect, modes: [t2v, omni_reference, multi_shot]}
   - {name: generate_audio, label: Native audio, type: bool, default: true}
   - {name: seed, type: seed, group: advanced}
 
@@ -32,6 +36,16 @@ modes:
     medias:
       - {role: start_image, kinds: [image], label: Start frame, required: true}
       - {role: end_image, kinds: [image], label: End frame (optional)}
+  - id: multi_shot
+    label: Multi-shot
+    ops: [multi_shot]
+    prompt: none  # the shots become one timed prompt
+  - id: multi_shot_frame
+    label: Multi-shot from a frame
+    ops: [multi_shot]
+    prompt: none
+    medias:
+      - {role: start_image, kinds: [image], label: First frame, required: true}
   - id: omni_reference
     label: Omni reference
     ops: [multi_ref]
@@ -60,7 +74,11 @@ routes:
       t2v: {endpoint: bytedance/seedance-2.5}
       # frames require aspect_ratio "adaptive" (the output follows the image)
       i2v: {endpoint: bytedance/seedance-2.5, fixed: {aspect_ratio: adaptive}}
+      multi_shot: {endpoint: bytedance/seedance-2.5}
+      multi_shot_frame: {endpoint: bytedance/seedance-2.5, fixed: {aspect_ratio: adaptive}}
     map:
+      params:
+        shots: {to: prompt, transform: timed_prompt}   # Seedance cuts between shots on cue in one prompt
       media: {start_image: image, end_image: last_frame_image}
     pricing:
       basis: per_output_second
@@ -76,6 +94,8 @@ routes:
     modes:
       t2v: {endpoint: bytedance/seedance-2.5/text-to-video, drop: [seed]}
       i2v: {endpoint: bytedance/seedance-2.5/image-to-video, drop: [seed]}
+      multi_shot: {endpoint: bytedance/seedance-2.5/text-to-video, drop: [seed]}
+      multi_shot_frame: {endpoint: bytedance/seedance-2.5/image-to-video, drop: [seed]}
       omni_reference: {endpoint: bytedance/seedance-2.5/reference-to-video, fixed: {task: reference}}
       # edits and extensions are tasks on the reference endpoint; editing forces auto length and shape
       video_edit: {endpoint: bytedance/seedance-2.5/reference-to-video, drop: [aspect_ratio],
@@ -85,6 +105,7 @@ routes:
     map:
       params:
         duration: {to: duration, transform: str}   # fal takes "auto" | "4".."30"
+        shots: {to: prompt, transform: timed_prompt}
       media: {start_image: image_url, end_image: end_image_url, image_references: image_urls,
               video_references: video_urls, audio_references: audio_urls}
     pricing:

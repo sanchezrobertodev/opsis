@@ -21,6 +21,7 @@ from studio.registry.schema import (
     PathsParam,
     PointsParam,
     SeedParam,
+    ShotsParam,
     TextParam,
 )
 
@@ -78,6 +79,8 @@ def _coerce(param: Param, value: Any) -> Any:
         return _coerce_paths(param, value)
     if isinstance(param, PointsParam):
         return _coerce_points(param, value)
+    if isinstance(param, ShotsParam):
+        return _coerce_shots(param, value)
     if isinstance(param, EnumParam):
         # enum options may be ints (e.g. Veo durations 4/6/8); match by string form
         for opt in param.options:
@@ -125,6 +128,31 @@ def _coerce_points(param: PointsParam, value: Any) -> list[list[float]]:
     return clean
 
 
+def _coerce_shots(param: ShotsParam, value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ValueError("must be a list of shots")
+    if len(value) > param.max_shots:
+        raise ValueError(f"at most {param.max_shots} shots")
+    shots = []
+    for i, shot in enumerate(value, 1):
+        if not isinstance(shot, dict) or not str(shot.get("prompt") or "").strip():
+            raise ValueError(f"shot {i} needs a description")
+        try:
+            seconds = float(shot.get("duration") or 0)
+        except (TypeError, ValueError):
+            raise ValueError(f"shot {i}: duration must be a number of seconds") from None
+        if not param.min_shot_s <= seconds <= param.max_shot_s:
+            raise ValueError(f"shot {i} must last {param.min_shot_s:g} to {param.max_shot_s:g} s")
+        clean: dict[str, Any] = {"prompt": str(shot["prompt"]).strip(), "duration": round(seconds, 2)}
+        if isinstance(shot.get("direction"), dict) and shot["direction"]:
+            clean["direction"] = shot["direction"]
+        shots.append(clean)
+    total = sum(s["duration"] for s in shots)
+    if total > param.max_total_s + 1e-6:
+        raise ValueError(f"the shots add up to {total:g} s; at most {param.max_total_s:g} s in one take")
+    return shots
+
+
 def _paths_needed(n: int) -> str:
     return "Draw at least one motion path on the start frame." if n == 1 else f"Draw at least {n} motion paths."
 
@@ -132,6 +160,8 @@ def _paths_needed(n: int) -> str:
 def _check(param: Param, value: Any) -> str | None:
     if isinstance(param, PathsParam) and len(value) < param.min_paths:
         return _paths_needed(param.min_paths)
+    if isinstance(param, ShotsParam) and len(value) < param.min_shots:
+        return f"Add at least {param.min_shots} shots."
     if isinstance(param, PointsParam) and sum(1 for p in value if p[2] == 1) < param.min_points:
         return "Click on the object you want to select."
     if isinstance(param, (IntParam, FloatParam)) and not (param.min <= value <= param.max):
@@ -187,6 +217,8 @@ def normalize(
                     errors.append(_paths_needed(param.min_paths))
                 if isinstance(param, PointsParam) and param.min_points:
                     errors.append("Click on the object you want to select.")
+                if isinstance(param, ShotsParam) and param.min_shots:
+                    errors.append(f"Add at least {param.min_shots} shots.")
                 continue
             raw = param.default
         try:
@@ -198,6 +230,15 @@ def normalize(
         if problem:
             errors.append(problem)
         out[name] = value
+
+    # a multi-shot take is as long as its shots together
+    shots = next((out[p.name] for p in allowed.values() if isinstance(p, ShotsParam) and out.get(p.name)), None)
+    if shots and isinstance(allowed.get("duration"), (IntParam, FloatParam)):
+        total = sum(s["duration"] for s in shots)
+        d = allowed["duration"]
+        out["duration"] = round(total) if isinstance(d, IntParam) else round(total, 2)
+        if not d.min <= out["duration"] <= d.max:
+            errors.append(f"the shots add up to {total:g} s; {spec.name} makes takes of {d.min:g} to {d.max:g} s")
 
     if "aspect_ratio" in out and spec.aspect_ratios and out["aspect_ratio"] not in spec.aspect_ratios:
         errors.append(f"aspect_ratio must be one of {spec.aspect_ratios}")

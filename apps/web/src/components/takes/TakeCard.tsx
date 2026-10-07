@@ -3,7 +3,7 @@
 import { Download, ImageUp, RotateCcw, Star, StepForward, UserRoundPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { type Asset, type Generation, isActive, mediaUrl } from "@/lib/api";
+import { type Asset, type Generation, isActive, mediaUrl, viaOf } from "@/lib/api";
 import { cn, seconds, timecode, usd } from "@/lib/cn";
 import { useDraft } from "@/lib/draft";
 import {
@@ -333,7 +333,7 @@ function TakeFooter({
         )}
         <IconButton
           label="Reuse this prompt"
-          onClick={() => setDraft(studio, { prompt, modelId: gen.model_id, mode: gen.mode })}
+          onClick={() => setDraft(studio, { prompt, modelId: viaOf(gen)?.model_id ?? gen.model_id, mode: viaOf(gen)?.mode ?? gen.mode })}
         >
           <span className="text-2xs">Aa</span>
         </IconButton>

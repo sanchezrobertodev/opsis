@@ -13,6 +13,7 @@ import yaml
 from pydantic import ValidationError
 
 from studio.registry.schema import (
+    EnumParam,
     ModelSpec,
     OutputSpec,
     PresetSpec,
@@ -64,6 +65,30 @@ def mock_route(spec: ModelSpec) -> Route:
     )
 
 
+def _fill_director_options(models: dict[str, ModelSpec], root: Path, errors: list[str]) -> None:
+    """Enum params with `director: <list>` take their options and labels from the director vocabulary."""
+    if not any(isinstance(p, EnumParam) and p.director for s in models.values() for p in s.parameters):
+        return
+    from studio.director.library import (
+        load_library,  # local import: the director package imports the registry
+    )
+
+    try:
+        lib = load_library(root / "director")
+    except Exception as exc:  # a broken vocabulary file is reported like any other registry error
+        errors.append(f"director: {exc}")
+        return
+    for spec in models.values():
+        for p in spec.parameters:
+            if isinstance(p, EnumParam) and p.director:
+                items = getattr(lib, p.director, None)
+                if not isinstance(items, list):
+                    errors.append(f"model {spec.id}: param {p.name} names unknown director list {p.director!r}")
+                    continue
+                p.options = [i.id for i in items]
+                p.labels = {i.id: i.label for i in items}
+
+
 def _read_yaml_dir(directory: Path, errors: list[str]) -> list[tuple[Path, Any]]:
     out = []
     if not directory.exists():
@@ -108,9 +133,11 @@ def load_registry(root: Path) -> Registry:
             continue
         if spec.id in models:
             errors.append(f"{path.name}: duplicate model id {spec.id}")
-        if not any(r.provider == MOCK_PROVIDER for r in spec.routes):
+        # a virtual model runs on its engines' routes (mock included), never its own
+        if spec.kind != "virtual" and not any(r.provider == MOCK_PROVIDER for r in spec.routes):
             spec.routes.append(mock_route(spec))
         models[spec.id] = spec
+    _fill_director_options(models, root, errors)
 
     presets: dict[str, PresetSpec] = {}
     for path, data in _read_yaml_dir(root / "presets", errors):

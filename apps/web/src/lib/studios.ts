@@ -84,7 +84,7 @@ export const STUDIOS: Studio[] = [
       "voiceover, music, captions and a thumbnail.",
   },
   {
-    slug: "cinema", name: "Cinema studio", href: "/soon/cinema", icon: Film, phase: "P5", group: "studios",
+    slug: "cinema", name: "Cinema studio", href: "/cinema", icon: Film, group: "studios",
     summary: "Scenes and shots on a storyboard, with camera body, lens, aperture, genre, era, lighting and " +
       "palette controls. Hero frames, multi-shot takes and a timeline export.",
   },

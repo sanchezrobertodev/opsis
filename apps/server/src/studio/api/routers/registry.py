@@ -29,7 +29,15 @@ def _defaults(spec: ModelSpec, mode_id: str) -> dict:
     return {p.name: p.default for p in spec.params_for(mode_id) if p.default is not None}
 
 
-def _from_price(spec: ModelSpec) -> float | None:
+def _wrapped(reg: Registry, spec: ModelSpec) -> list[ModelSpec]:
+    """The base models a virtual model runs on."""
+    return [m for w in spec.wraps if (m := reg.model(w)) is not None and m.kind != "virtual"]
+
+
+def _from_price(reg: Registry, spec: ModelSpec) -> float | None:
+    if spec.kind == "virtual":
+        prices = [p for m in _wrapped(reg, spec) if (p := _from_price(reg, m)) is not None]
+        return min(prices) if prices else None
     prices = []
     for mode in spec.modes:
         params = _defaults(spec, mode.id)
@@ -44,6 +52,8 @@ def _from_price(spec: ModelSpec) -> float | None:
 
 
 async def _runnable(session: AsyncSession, reg: Registry, spec: ModelSpec) -> bool:
+    if spec.kind == "virtual":
+        return any([await _runnable(session, reg, m) for m in _wrapped(reg, spec)])
     env = await routing_env(session, reg)
     for mode in spec.modes:
         req = NormalizedRequest(spec.id, mode.id, "", None, _defaults(spec, mode.id), [])
@@ -64,10 +74,11 @@ async def get_registry_summary(
     models = []
     for spec in sorted(reg.models.values(), key=lambda m: (m.output_type != "video", m.name)):
         models.append(ModelSummary(
-            id=spec.id, name=spec.name, family=spec.family, vendor=spec.vendor, description=spec.description,
+            id=spec.id, name=spec.name, kind=spec.kind, family=spec.family, vendor=spec.vendor,
+            description=spec.description,
             output_type=spec.output_type, status=spec.status, license_tier=spec.license_tier, tags=spec.tags,
             modes=[ModeSummary(id=m.id, label=m.label, ops=list(m.ops)) for m in spec.modes],
-            from_price_usd=_from_price(spec), runnable=await _runnable(session, reg, spec),
+            from_price_usd=_from_price(reg, spec), runnable=await _runnable(session, reg, spec),
         ))
     return RegistryOut(hash=reg.hash, provider_mode=get_settings().provider_mode, models=models,
                        warnings=reg.warnings)
@@ -95,7 +106,7 @@ async def get_model(model_id: str) -> ModelDetail:
         description=spec.description, output_type=spec.output_type, status=spec.status,
         license_tier=spec.license_tier, tags=spec.tags, prompt=spec.prompt, aspect_ratios=spec.aspect_ratios,
         duration=spec.duration, parameters=spec.parameters, rules=spec.rules, modes=spec.modes,
-        elements=spec.elements, routes=routes,
+        elements=spec.elements, routes=routes, virtual=spec.virtual,
     )
 
 

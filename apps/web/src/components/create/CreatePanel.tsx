@@ -13,7 +13,7 @@ import { KINDS, modeMatches, type StudioKind } from "@/lib/studioKinds";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 import { CompareDialog } from "./CompareDialog";
 import { KeyframeHint } from "./KeyframeHint";
-import { type Direction, DirectorPanel } from "./DirectorPanel";
+import { type Direction, DirectorPanel, mentionSlugs } from "./DirectorPanel";
 import { MediaSlotField } from "./MediaSlots";
 import { ModelPicker } from "./ModelPicker";
 import { MotionPathsField } from "./MotionPathsField";
@@ -52,10 +52,13 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
     : model.modes) : [];
   const mode = modes.find((m) => m.id === draft.mode) ?? modes[0];
   const directed = studio === "video" || studio === "image";
-  const params = useMemo(
-    () => (model && mode ? model.parameters.filter((p) => !p.modes || p.modes.includes(mode.id)) : []),
-    [model, mode],
-  );
+  const params = useMemo(() => {
+    // a virtual model's director params (era, lens...) are set in the director panel when it's shown
+    const viaDirector = new Set(directed ? model?.virtual?.director ?? [] : []);
+    const own = model && mode ? model.parameters.filter((p) => (!p.modes || p.modes.includes(mode.id)) && !viaDirector.has(p.name)) : [];
+    // a multi-shot take is as long as its shots together
+    return own.some((p) => p.type === "shots") ? own.filter((p) => p.name !== "duration") : own;
+  }, [model, mode, directed]);
   const values = useMemo(
     () => ({ ...defaultsFor(params), ...(modelId ? draft.params[modelId] : {}) }),
     [params, draft.params, modelId],
@@ -237,6 +240,7 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
             direction={draft.direction as Direction}
             onChange={(direction) => setDraft(studio, { direction: direction as Record<string, unknown> })}
             stills={model.output_type === "image"}
+            cast={mentionSlugs(draft.prompt)}
           />
         )}
 

@@ -450,6 +450,125 @@ export interface paths {
         patch: operations["update_channel_faceless_channels__channel_id__patch"];
         trace?: never;
     };
+    "/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Projects */
+        get: operations["list_projects_projects_get"];
+        put?: never;
+        /** Create Project */
+        post: operations["create_project_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project */
+        get: operations["get_project_projects__project_id__get"];
+        /** Save Project */
+        put: operations["save_project_projects__project_id__put"];
+        post?: never;
+        /**
+         * Delete Project
+         * @description Hide the project. Its takes stay in the library.
+         */
+        delete: operations["delete_project_projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Revisions */
+        get: operations["list_revisions_projects__project_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/revisions/{version}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Revision
+         * @description Make an earlier version current again (as a new version, so nothing is lost).
+         */
+        post: operations["restore_revision_projects__project_id__revisions__version__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan
+         * @description Claude proposes scenes and shots for the script. Nothing is saved; apply the proposal to the document.
+         */
+        post: operations["plan_projects__project_id__plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/takes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Takes
+         * @description Hero frames and takes made for the project's shots, newest first, finished or not. Besides the generations
+         *     made for a shot, this lists takes cut from a multi-shot scene take and takes extended or edited from another
+         *     (derived clips whose metadata names the project and shot), each with the take it came from.
+         */
+        get: operations["list_takes_projects__project_id__takes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/generations": {
         parameters: {
             query?: never;
@@ -911,6 +1030,22 @@ export interface components {
             /** Is Mock */
             is_mock: boolean;
         };
+        /**
+         * CastEmotion
+         * @description How one cast member feels in the shot, from the emotion wheel.
+         */
+        CastEmotion: {
+            /**
+             * Who
+             * @description An @mention of a cast member, or a plain name
+             */
+            who: string;
+            /**
+             * Emotion
+             * @description An emotions id
+             */
+            emotion: string;
+        };
         /** CatalogOut */
         CatalogOut: {
             /** Themes */
@@ -1060,6 +1195,8 @@ export interface components {
             angles: components["schemas"]["LookItem"][];
             /** Lenses */
             lenses: components["schemas"]["LookItem"][];
+            /** Focal Lengths */
+            focal_lengths: components["schemas"]["LookItem"][];
             /** Apertures */
             apertures: components["schemas"]["LookItem"][];
             /** Camera Bodies */
@@ -1068,6 +1205,12 @@ export interface components {
             eras: components["schemas"]["LookItem"][];
             /** Lighting */
             lighting: components["schemas"]["LookItem"][];
+            /** Light Sources */
+            light_sources: components["schemas"]["LookItem"][];
+            /** Light Positions */
+            light_positions: components["schemas"]["LookItem"][];
+            /** Light Colors */
+            light_colors: components["schemas"]["LookItem"][];
             /** Palettes */
             palettes: components["schemas"]["LookItem"][];
             /** Genres */
@@ -1075,7 +1218,7 @@ export interface components {
             /** Pacing */
             pacing: components["schemas"]["LookItem"][];
             /** Emotions */
-            emotions: components["schemas"]["LookItem"][];
+            emotions: components["schemas"]["EmotionItem"][];
         };
         /** DurationSpec */
         DurationSpec: {
@@ -1184,6 +1327,40 @@ export interface components {
             /** Cover Asset Id */
             cover_asset_id?: string | null;
         };
+        /**
+         * EmotionItem
+         * @description One cell of the emotion wheel: a family and how strongly it shows (1 mild, 2 plain, 3 intense).
+         */
+        EmotionItem: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Dialects
+             * @default {}
+             */
+            dialects: {
+                [key: string]: string;
+            };
+            /**
+             * Swatch
+             * @default []
+             */
+            swatch: string[];
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "joy" | "trust" | "fear" | "surprise" | "sadness" | "disgust" | "anger" | "anticipation";
+            /**
+             * Level
+             * @enum {integer}
+             */
+            level: 1 | 2 | 3;
+        };
         /** EnhanceIn */
         EnhanceIn: {
             /** Model Id */
@@ -1242,7 +1419,10 @@ export interface components {
              * @enum {string}
              */
             type: "enum";
-            /** Options */
+            /**
+             * Options
+             * @default []
+             */
             options: (string | number)[];
             /** Default */
             default?: string | number | null;
@@ -1253,9 +1433,25 @@ export interface components {
             labels: {
                 [key: string]: string;
             };
+            /** Director */
+            director?: string | null;
         };
         /** EstimateOut */
         EstimateOut: {
+            /**
+             * Model Id
+             * @description The model that runs (a virtual model's engine)
+             */
+            model_id: string;
+            /** Mode */
+            mode: string;
+            /**
+             * Via
+             * @description The virtual model asked for, and its engine
+             */
+            via?: {
+                [key: string]: unknown;
+            } | null;
             /** Chosen Route Id */
             chosen_route_id: string | null;
             /** Estimate Usd */
@@ -1361,6 +1557,16 @@ export interface components {
             parent_generation_id?: string | null;
             /** @description Camera moves and cinema look, compiled into the prompt */
             direction?: components["schemas"]["ShotDirection"] | null;
+            /**
+             * Project Id
+             * @description A Cinema Studio project this take belongs to
+             */
+            project_id?: string | null;
+            /**
+             * Shot Key
+             * @description The project's shot this take is for
+             */
+            shot_key?: string | null;
         };
         /** GenerationOut */
         GenerationOut: {
@@ -1403,6 +1609,10 @@ export interface components {
             group_id: string | null;
             /** Parent Generation Id */
             parent_generation_id: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Shot Key */
+            shot_key?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1499,6 +1709,40 @@ export interface components {
             /** Default */
             default?: number | null;
         };
+        /**
+         * LightChoice
+         * @description One source on the lighting console.
+         */
+        LightChoice: {
+            /**
+             * Source
+             * @description A light_sources id
+             */
+            source: string;
+            /**
+             * Position
+             * @description A light_positions id
+             * @default front_left
+             */
+            position: string;
+            /**
+             * Color
+             * @description A light_colors id; none keeps the source's own color
+             */
+            color?: string | null;
+            /**
+             * Quality
+             * @default soft
+             * @enum {string}
+             */
+            quality: "soft" | "hard";
+            /**
+             * Intensity
+             * @default normal
+             * @enum {string}
+             */
+            intensity: "dim" | "normal" | "bright";
+        };
         /** LineageEdge */
         LineageEdge: {
             /**
@@ -1541,6 +1785,18 @@ export interface components {
             label: string;
             /** Prompt */
             prompt: string;
+            /**
+             * Dialects
+             * @default {}
+             */
+            dialects: {
+                [key: string]: string;
+            };
+            /**
+             * Swatch
+             * @default []
+             */
+            swatch: string[];
         };
         /** MediaInput */
         MediaInput: {
@@ -1558,9 +1814,9 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image" | "character_image" | "driving_video";
+            role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image" | "character_image" | "driving_video" | "input_image";
             /** Kinds */
-            kinds: ("image" | "video" | "audio")[];
+            kinds: ("image" | "video" | "audio" | "mask" | "mask_video")[];
             /** Label */
             label?: string | null;
             /**
@@ -1593,7 +1849,7 @@ export interface components {
              * Ops
              * @default []
              */
-            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music")[];
+            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "segment" | "track")[];
             /**
              * Prompt
              * @default required
@@ -1642,7 +1898,7 @@ export interface components {
             aspect_ratios: string[];
             duration: components["schemas"]["DurationSpec"] | null;
             /** Parameters */
-            parameters: (components["schemas"]["EnumParam"] | components["schemas"]["IntParam"] | components["schemas"]["FloatParam"] | components["schemas"]["BoolParam"] | components["schemas"]["SeedParam"] | components["schemas"]["TextParam"] | components["schemas"]["PathsParam"])[];
+            parameters: (components["schemas"]["EnumParam"] | components["schemas"]["IntParam"] | components["schemas"]["FloatParam"] | components["schemas"]["BoolParam"] | components["schemas"]["SeedParam"] | components["schemas"]["TextParam"] | components["schemas"]["PathsParam"] | components["schemas"]["PointsParam"] | components["schemas"]["ShotsParam"])[];
             /** Rules */
             rules: components["schemas"]["Rule"][];
             /** Modes */
@@ -1653,6 +1909,8 @@ export interface components {
             } | null;
             /** Routes */
             routes: components["schemas"]["RouteSummary"][];
+            /** @description Engines a virtual model runs on, and its director params */
+            virtual?: components["schemas"]["VirtualSpec"] | null;
         };
         /** ModelSummary */
         ModelSummary: {
@@ -1660,6 +1918,12 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /**
+             * Kind
+             * @description model, or virtual: a studio layer that runs on other models
+             * @default model
+             */
+            kind: string;
             /** Family */
             family: string;
             /** Vendor */
@@ -1750,6 +2014,95 @@ export interface components {
             /**
              * Max Points
              * @default 256
+             */
+            max_points: number;
+            /** Default */
+            default?: unknown[] | null;
+        };
+        /** PlanIn */
+        PlanIn: {
+            /**
+             * Script
+             * @description Defaults to the project's saved script
+             * @default
+             */
+            script: string;
+            /**
+             * Logline
+             * @description Defaults to the project's saved logline
+             * @default
+             */
+            logline: string;
+            /**
+             * Cast
+             * @description @mention slugs; defaults to the saved cast
+             */
+            cast?: string[] | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /**
+             * Max Shots
+             * @default 12
+             */
+            max_shots: number;
+        };
+        /** PlanOut */
+        PlanOut: {
+            /** Scenes */
+            scenes: {
+                [key: string]: unknown;
+            }[];
+            /** Warnings */
+            warnings: string[];
+            /** Model */
+            model: string;
+            /** Mock */
+            mock: boolean;
+            /** Cost Usd */
+            cost_usd: number;
+        };
+        /**
+         * PointsParam
+         * @description Clicks on an image: [[x, y, label]] with x, y in 0-1 of the image and label 1 (this) or 0 (not this).
+         *     Routes turn them into the provider's shape (pixel points for SAM).
+         */
+        PointsParam: {
+            /** Name */
+            name: string;
+            /** Label */
+            label?: string | null;
+            /** Help */
+            help?: string | null;
+            /**
+             * Group
+             * @default basic
+             * @enum {string}
+             */
+            group: "basic" | "advanced";
+            /** Modes */
+            modes?: string[] | null;
+            /** Visible If */
+            visible_if?: {
+                [key: string]: string | number | boolean | (string | number | boolean)[];
+            } | null;
+            /** Ui */
+            ui?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "points";
+            /**
+             * Min Points
+             * @default 0
+             */
+            min_points: number;
+            /**
+             * Max Points
+             * @default 24
              */
             max_points: number;
             /** Default */
@@ -1885,6 +2238,93 @@ export interface components {
             media: components["schemas"]["MediaInput"][];
             direction?: components["schemas"]["ShotDirection"] | null;
         };
+        /** ProjectIn */
+        ProjectIn: {
+            /**
+             * Kind
+             * @default cinema
+             */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Document */
+            document?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ProjectOut */
+        ProjectOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ProjectSave */
+        ProjectSave: {
+            /**
+             * Version
+             * @description The version this edit started from
+             */
+            version: number;
+            /** Title */
+            title?: string | null;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** ProjectSummary */
+        ProjectSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+            /** Scenes */
+            scenes: number;
+            /** Shots */
+            shots: number;
+            /** Shots With Takes */
+            shots_with_takes: number;
+            cover: components["schemas"]["AssetOut"] | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** PromptSpec */
         PromptSpec: {
             /**
@@ -1929,6 +2369,22 @@ export interface components {
             models: components["schemas"]["ModelSummary"][];
             /** Warnings */
             warnings: string[];
+        };
+        /** RevisionOut */
+        RevisionOut: {
+            /** Version */
+            version: number;
+            /** Title */
+            title: string;
+            /** Note */
+            note: string;
+            /** Shots */
+            shots: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** RouteSummary */
         RouteSummary: {
@@ -2066,6 +2522,11 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * RunStatus
+         * @enum {string}
+         */
+        RunStatus: "running" | "waiting" | "succeeded" | "failed" | "canceled";
         /** RunSummary */
         RunSummary: {
             /**
@@ -2154,6 +2615,8 @@ export interface components {
             angle?: string | null;
             /** Lens */
             lens?: string | null;
+            /** Focal Length */
+            focal_length?: string | null;
             /** Aperture */
             aperture?: string | null;
             /** Camera Body */
@@ -2162,14 +2625,93 @@ export interface components {
             era?: string | null;
             /** Lighting */
             lighting?: string | null;
+            /**
+             * Lights
+             * @description The lighting console: a key light and an optional second light
+             */
+            lights?: components["schemas"]["LightChoice"][];
             /** Palette */
             palette?: string | null;
             /** Genre */
             genre?: string | null;
             /** Pacing */
             pacing?: string | null;
-            /** Emotion */
+            /**
+             * Emotion
+             * @description How the subject feels
+             */
             emotion?: string | null;
+            /**
+             * Cast Emotions
+             * @description How each @mentioned cast member feels
+             */
+            cast_emotions?: components["schemas"]["CastEmotion"][];
+        };
+        /**
+         * ShotsParam
+         * @description Several shots rendered in one call (multi-shot): [{"prompt": str, "duration": seconds}] in order, each shot
+         *     optionally with its own `direction`. The clip is as long as its shots together (it sets `duration`). Routes
+         *     send the shots as the provider's shot list (`shot_list`) or as one timed prompt (`timed_prompt`).
+         */
+        ShotsParam: {
+            /** Name */
+            name: string;
+            /** Label */
+            label?: string | null;
+            /** Help */
+            help?: string | null;
+            /**
+             * Group
+             * @default basic
+             * @enum {string}
+             */
+            group: "basic" | "advanced";
+            /** Modes */
+            modes?: string[] | null;
+            /** Visible If */
+            visible_if?: {
+                [key: string]: string | number | boolean | (string | number | boolean)[];
+            } | null;
+            /** Ui */
+            ui?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "shots";
+            /**
+             * Min Shots
+             * @default 2
+             */
+            min_shots: number;
+            /**
+             * Max Shots
+             * @default 6
+             */
+            max_shots: number;
+            /**
+             * Min Shot S
+             * @default 1
+             */
+            min_shot_s: number;
+            /**
+             * Max Shot S
+             * @default 15
+             */
+            max_shot_s: number;
+            /**
+             * Max Total S
+             * @default 15
+             */
+            max_total_s: number;
+            /**
+             * Prompt Budget
+             * @default each
+             * @enum {string}
+             */
+            prompt_budget: "each" | "shared";
+            /** Default */
+            default?: unknown[] | null;
         };
         /** SpendBreakdown */
         SpendBreakdown: {
@@ -2283,6 +2825,43 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** TakeOut */
+        TakeOut: {
+            /**
+             * Generation Id
+             * @description None for a take cut or joined from others
+             */
+            generation_id: string | null;
+            /** Shot Key */
+            shot_key: string;
+            /**
+             * Made By
+             * @description model; multi_shot (cut from a scene take); extend_after or extend_before (joined with a new part); region_edit
+             * @default model
+             */
+            made_by: string;
+            /**
+             * Parent Asset Id
+             * @description The take this one was made from
+             */
+            parent_asset_id?: string | null;
+            /** Output Type */
+            output_type: string;
+            /** Status */
+            status: string;
+            /** Progress */
+            progress: number | null;
+            /** Error */
+            error: string | null;
+            /** Prompt */
+            prompt: string;
+            asset: components["schemas"]["AssetOut"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** TextParam */
         TextParam: {
             /** Name */
@@ -2384,6 +2963,40 @@ export interface components {
              * @default []
              */
             candidates: components["schemas"]["CandidateOut"][];
+        };
+        /**
+         * VirtualEngine
+         * @description One engine a virtual model can run on: which base model and mode serves each of its modes.
+         */
+        VirtualEngine: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Modes */
+            modes: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * VirtualSpec
+         * @description A studio layer over base models (`kind: virtual`). A request names an engine (`engine_param`) and is
+         *     resolved to that engine's base model and mode before anything else happens, so routing, pricing and the
+         *     spend guard are the base model's own. Params named in `director` become shot direction instead.
+         */
+        VirtualSpec: {
+            /**
+             * Engine Param
+             * @default engine
+             */
+            engine_param: string;
+            /** Engines */
+            engines: components["schemas"]["VirtualEngine"][];
+            /**
+             * Director
+             * @default []
+             */
+            director: string[];
         };
     };
     responses: never;
@@ -2925,6 +3538,10 @@ export interface operations {
                 recipe?: string | null;
                 /** @description Faceless episodes of one channel */
                 channel_id?: string | null;
+                /** @description Runs for one Cinema project */
+                project_id?: string | null;
+                /** @description Only runs in this status, e.g. running */
+                status?: components["schemas"]["RunStatus"] | null;
             };
             header?: never;
             path?: never;
@@ -3373,6 +3990,326 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_projects_projects_get: {
+        parameters: {
+            query?: {
+                kind?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_project_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_project_projects__project_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Saved meanwhile; reload and reapply */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_revisions_projects__project_id__revisions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_revision_projects__project_id__revisions__version__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_projects__project_id__plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanOut"];
+                };
+            };
+            /** @description Spending limit */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Claude failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No Anthropic key */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_takes_projects__project_id__takes_get: {
+        parameters: {
+            query?: {
+                shot_key?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TakeOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

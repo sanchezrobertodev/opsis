@@ -69,6 +69,16 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   picture is expected. Outputs of `output_type: mask` models are stored with those kinds.
 - Ops for audio and selection: `tts`, `sfx`, `music`, `segment`, `track`. Edit modes that can change one object in a
   clip carry `object_replace`; the Object swap recipe picks models by it.
+- Enum params with `director: <list>` (e.g. `director: palettes`) get their options and labels from
+  `registry/director/looks.yaml` when the registry loads.
+- `type: shots` params are multi-shot takes (`[{prompt, duration, direction?}]`, op `multi_shot`, mode `prompt: none`).
+  The plan compiles each shot's prompt with the take's direction under the shot's own and sets `duration` to the total.
+  Routes send them with the `shot_list` transform (Kling `multi_prompt`) or `timed_prompt` (Seedance, one prompt that
+  cuts on cue; `prompt_budget: shared` splits the prompt limit between shots).
+- `kind: virtual` models (Cinema Studio) have no routes: `virtual.engines` maps each mode to `base-model/mode`, and
+  `registry/virtual.py:resolve` swaps the request for the engine's before mentions, compiling, routing and pricing.
+  Shared params are fitted (durations rounded, unknown values dropped with a warning); `virtual.director` params
+  become shot direction. Generations store the base model and `request.via` names the studio.
 
 ## Adding a preset (effects gallery)
 - One YAML per preset in `registry/presets/<category>/<id>.yaml`: `model_id`, `mode`, a `prompt` template with
@@ -145,6 +155,26 @@ pnpm lint       # ruff + eslint + tsc
   composites the edit over the original through the thresholded, grown and feathered matte.
 - The registry holder notices edited YAML in every process (stamps checked at most once a second), so the worker
   never misses a model the API accepts; a broken file keeps the last good registry.
+
+## Cinema Studio (projects)
+- A film is a `projects` row (`kind: cinema`) whose JSONB `document` is `studio/cinema/document.py:CinemaDocument`
+  (script, cast slugs, settings, scenes of shots with short stable ids). Saves send the `version` they started from
+  (stale -> 409) and every save is kept in `project_revisions`; restoring makes a new version.
+- Runs never write the document. `cinema_frames` (hero frames) and `cinema_takes` (takes, chained from the previous
+  shot's last frame where a shot continues) make generations tagged `project_id` + `shot_key`
+  (`GET /projects/{id}/takes`); the editor picks them into the document. `cinema_export` cuts the picked takes
+  (`media/timeline.py`: trims, cuts or fades).
+- More takes from a take: `cinema_scene` films a scene's shots in one multi-shot call and `split_shots` cuts it back
+  into a take per shot; `cinema_extend` continues a take from its last frame (`after`) or draws a frame from a moment
+  earlier and animates it into the take's first frame (`before`, needs a start+end-frame mode), then `join_takes`;
+  `cinema_edit` changes the whole take with an Edit Video model; an `object_swap` run given `project_id` + `shot_key`
+  makes a region edit. Clips made by a local step carry `metadata.project_id/shot_key/made_by/parent_asset_id`, which
+  is how the takes list finds them and shows what each was made from.
+- `POST /projects/{id}/plan` asks Claude (Opus) for scenes and shots in the director's vocabulary; unknown ids are
+  dropped and nothing is saved until the editor applies the proposal.
+- The director (`studio/director/compiler.py`): besides the look lists, `lights` (up to two placed sources) and
+  `cast_emotions` (a feeling per @mentioned cast member, phrased with the name the mention resolved to). Golden
+  snapshots per dialect live in `tests/unit/golden/director/`; regenerate with `UPDATE_GOLDEN=1` and review the diff.
 
 ## Local engine (ComfyUI)
 - `comfy_local` provider = the VideoStudio ComfyUI at `COMFYUI_URL` (default http://127.0.0.1:8188). Start it with

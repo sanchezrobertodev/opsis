@@ -9,6 +9,7 @@ from studio.registry.loader import MOCK_PROVIDER, load_registry
 from studio.registry.mapping import build_payload
 from studio.registry.pricing import estimate
 from studio.registry.validate import MediaRef, normalize
+from studio.registry.virtual import resolve as resolve_virtual
 
 REG = load_registry(get_settings().resolve_registry_dir())
 EXAMPLES = [(spec, ex) for spec in REG.models.values() for ex in spec.examples]
@@ -38,8 +39,12 @@ def test_examples_normalize_price_and_map(spec, example):
         for i, _ in enumerate(refs if isinstance(refs, list) else [refs]):
             # stand-in pixel size, as the API fills it from the asset (routes that place clicks need it)
             media.append(MediaRef(role=role, asset_id=f"{role}-{i}", kind=None, width=1280, height=720))
-    req = normalize(spec, example.mode, example.prompt, example.params, media)
-    routes = [r for r in spec.routes if example.mode in r.modes and r.provider != MOCK_PROVIDER]
+    # a virtual model's example runs on its engine's base model (director params become direction)
+    v = resolve_virtual(REG, spec, example.mode, example.params, None)
+    spec = v.spec
+    assert all("left out" not in w for w in v.warnings), v.warnings
+    req = normalize(spec, v.mode, example.prompt, v.params, media)
+    routes = [r for r in spec.routes if req.mode in r.modes and r.provider != MOCK_PROVIDER]
     assert routes, f"{spec.id}: example {example.name} has no live route"
     for route in routes:
         usd = float(estimate(route.pricing, req.params, req.prompt, req.media, req.mode).usd)

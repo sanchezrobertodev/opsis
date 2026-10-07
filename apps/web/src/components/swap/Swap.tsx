@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ApiError, type MediaSlot } from "@/lib/api";
@@ -23,7 +24,15 @@ export function Swap() {
   const router = useRouter();
   const { data: registry } = useRegistry();
   const startRun = useStartRun();
-  const [clip, setClip] = useState<SlotAsset[]>([]);
+  // opened from a Cinema shot: its take is preloaded and the result becomes a new take of that shot
+  const search = useSearchParams();
+  const [picked, setClip] = useState<SlotAsset[]>([]);
+  const [cleared, setCleared] = useState(false);
+  const { data: given } = useAsset(!picked.length && !cleared ? search.get("video") ?? undefined : undefined);
+  const clip: SlotAsset[] = picked.length ? picked
+    : given ? [{ id: given.id, kind: given.kind, thumb: given.thumb_url, url: given.url, title: given.title }] : [];
+  const film = search.get("project") && search.get("shot") && clip[0]?.id === search.get("video")
+    ? { project: search.get("project")!, shot: search.get("shot")! } : null;
   const { data: video } = useAsset(clip[0]?.id);
   const [selection, setSelection] = useState<Selection | null>(null);
   const { data: segment } = useGeneration(selection?.jobId);
@@ -50,7 +59,7 @@ export function Swap() {
           video_asset_id: video.id, mask_asset_id: maskId, frame_index: selection.frameIndex, action,
           prompt: prompt.trim(), reference_asset_ids: action === "swap" ? refs.map((r) => r.id) : [],
           models: models.map((model_id) => ({ model_id })), keep_background: keepBackground, feather,
-          review_mask: reviewMask,
+          review_mask: reviewMask, ...(film ? { project_id: film.project, shot_key: film.shot } : {}),
         },
       }
     : null;
@@ -63,7 +72,12 @@ export function Swap() {
     if (!body) return;
     try {
       const run = await startRun.mutateAsync({ ...body, confirm_cost_usd: confirmCost ?? null });
-      router.push(`/runs/${run.id}`);
+      if (film) {
+        toast.success("Started. The changed take lands on the shot when it's done.");
+        router.push(`/cinema/${film.project}`);
+      } else {
+        router.push(`/runs/${run.id}`);
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setConfirm((err.body as { estimate_usd: number }).estimate_usd);
@@ -82,8 +96,14 @@ export function Swap() {
     <div className="grid h-full grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="min-h-0 overflow-y-auto p-6 scrollbar-quiet">
         <div className="flex max-w-3xl flex-col gap-5">
+          {film && (
+            <p className="text-xs text-muted">
+              Changing one object in a take from your film. The result becomes a new take of that shot.{" "}
+              <Link href={`/cinema/${film.project}`} className="text-chalk underline-offset-2 hover:underline">Back to the film</Link>
+            </p>
+          )}
           <MediaSlotField slot={CLIP} value={clip} onAdd={(a) => { setClip([a]); setSelection(null); }}
-                          onRemove={() => { setClip([]); setSelection(null); }} />
+                          onRemove={() => { setClip([]); setCleared(true); setSelection(null); }} />
           {video ? (
             <MaskEditor key={video.id} video={video} onChange={setSelection} />
           ) : (

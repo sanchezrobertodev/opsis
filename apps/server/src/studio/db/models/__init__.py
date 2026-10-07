@@ -5,6 +5,7 @@ from studio.db.models.channels import Channel
 from studio.db.models.elements import Element, ElementAsset, ElementKind
 from studio.db.models.generations import Generation, GenerationAttempt, JobEvent
 from studio.db.models.pipelines import PipelineRun, PipelineStep, RunStatus, StepKind, StepStatus
+from studio.db.models.projects import Project, ProjectRevision
 from studio.db.models.spend import BudgetPolicy, ProviderRouteHealth, SpendLedger
 from studio.db.models.users import User
 
@@ -22,6 +23,8 @@ __all__ = [
     "JobEvent",
     "PipelineRun",
     "PipelineStep",
+    "Project",
+    "ProjectRevision",
     "ProviderRouteHealth",
     "RunStatus",
     "SpendLedger",

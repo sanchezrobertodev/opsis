@@ -10,7 +10,7 @@ import type { SlotAsset } from "@/lib/draft";
 import { useDebounced } from "@/lib/hooks";
 import { useModel, useRegistry } from "@/lib/queries";
 import { type RunCreate, useEstimateRun, useStartRun } from "@/lib/runs";
-import { type Direction, DirectorPanel } from "@/components/create/DirectorPanel";
+import { type Direction, DirectorPanel, mentionSlugs } from "@/components/create/DirectorPanel";
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { ModelPicker } from "@/components/create/ModelPicker";
 import { Button, Switch } from "@/components/ui/controls";
@@ -161,7 +161,8 @@ export function Sequence() {
           onAdd={(a) => setStart([a])}
           onRemove={() => setStart([])}
         />
-        <DirectorPanel direction={direction} onChange={setDirection} stills={false} />
+        <DirectorPanel direction={direction} onChange={setDirection} stills={false}
+                       cast={mentionSlugs(shots.map((s) => s.prompt).join(" "))} />
         <label className="flex items-center justify-between gap-4 text-sm">
           <span>
             Join into one video

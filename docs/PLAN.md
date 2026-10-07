@@ -248,13 +248,24 @@ worker-comfyui 5.10.0 + our handler, a 118 GB model manifest for a network volum
 Fun Camera value now set its camera control. Deployed 2026-10-06 (endpoint ovktgiubxwld1j). All four workflows ran live through the studio ($0.09
 each on an RTX PRO 6000). Wan-Move has a motion-path editor in the Create form (`type: paths` params: drag to draw,
 tap to pin). Left for later: VACE / Uni3C / Animate-2 graphs (P4 Object Swap and Motion Transfer can add them).
-P4 built (branch `claude/p4-faceless-object-swap`, mock-tested; nothing live yet): ElevenLabs TTS with word timings,
+P4 done (merged 2026-10-07, PR #2; mock-tested, nothing live yet): ElevenLabs TTS with word timings,
 SFX and music; Claude steps in the pipeline engine; the Faceless studio (4 themes, 12 styles with caption looks,
 channels, topic ideas, script approval and editing, narrated stills or animated clips, ducked music, burned-in
 captions plus SRT, thumbnail pick); and the Object swap studio (click to select on a frame with SAM 3, tracking, 1-3
 edit models compared, a composite that keeps every pixel outside the mask, removal). Not done: the Kids song mode,
-prompt rephrasing in the clip retry ladder, and the VACE swap route (needs the VACE weights on wan-core, AMS-11).
-Remaining work is tracked in Jira project AMS.
+prompt rephrasing in the clip retry ladder, and the VACE swap route (AMS-32, blocked on the VACE weights on
+wan-core, AMS-11). Remaining work is tracked in Jira project AMS.
+P5 in progress (branch `claude/p5-cinema-studio`, mock-tested): versioned film projects with revisions, Claude shot
+plans, a storyboard with per-shot direction, hero-frame grids, batch takes with last-frame continuity (an edit redoes
+only that shot and the shots chained after it), take picking, and a cut with trims and fades exported by ffmpeg.
+Also built: the Cinema Studio virtual model over Seedance 2.5 / Kling 3.0 / Veo 3.1 (AMS-38; the default film model),
+multi-shot scenes (Kling multi_prompt, Seedance timed prompt) cut back into per-shot takes, and per-shot extend
+after/before plus whole-take and region edits, each a new take linked to its parent (AMS-41), and the director's
+Cinema Studio 4.0 vocabulary: 58 grades, eras by decade, focal lengths, a two-light console and an emotion wheel per
+cast member, with golden snapshots per dialect (AMS-37). Not yet: the AI Director chat that revises a plan as a diff
+(AMS-35); storyboard drag-and-drop, split/duplicate shot and cost badges (AMS-36); an end-frame pick and 3×3 frame
+grids (AMS-39); the Remotion preview, audio tracks and title cards in the cut (AMS-42); and live checks of the
+multi-shot payloads and Cinema Studio routing.
 - **Step 0 — Handoff (this session, after approval):**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

@@ -4,6 +4,7 @@ import { Dices } from "lucide-react";
 import { useId } from "react";
 import type { Param } from "@/lib/api";
 import { AspectPicker, Field, Segmented, Select, Slider, Switch } from "@/components/ui/controls";
+import { ShotsField } from "./ShotsField";
 
 export function humanize(name: string) {
   const s = name.replace(/_/g, " ");
@@ -134,6 +135,8 @@ export function ParamField({
           />
         </Field>
       );
+    case "shots":
+      return <ShotsField param={param} value={value} onChange={onChange} />;
     default:
       return null;
   }

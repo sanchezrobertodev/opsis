@@ -1,0 +1,6 @@
+# flux-2-klein-4b (dialect flux, 637/2000 characters)
+Nova (@Image1) climbs the lighthouse stairs as the storm hits. Medium wide shot from the knees up, low angle looking up. Nova (@Image1) is frozen in terror. The keeper is fiercely determined. Anamorphic lens with oval bokeh and horizontal flares, 35mm lens, shallow depth of field at f/2, shot on 35mm film with natural grain. Key light: hard warm tungsten spotlight from the left. Second light: dim soft pale silver-blue moonlight from directly behind, rimming Nova. Shafts of light cutting through haze, cold steel-blue color grade. Suspenseful thriller tone, 1980s look with neon accents and soft diffusion, dynamic, energetic pacing.
+--- warnings
+camera moves don't apply to still images and were left out
+--- native params
+{}

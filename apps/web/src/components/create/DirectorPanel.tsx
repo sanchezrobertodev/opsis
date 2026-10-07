@@ -7,6 +7,9 @@ import type { Schemas } from "@studio/api-client";
 import { api, unwrap } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { Dialog, Segmented } from "@/components/ui/controls";
+import { EmotionWheel, FAMILY_COLOR } from "./director/EmotionWheel";
+import { LightingConsole } from "./director/LightingConsole";
+import { PalettePicker } from "./director/PalettePicker";
 
 export type Direction = Schemas["ShotDirection"];
 type Library = Schemas["DirectorLibraryOut"];
@@ -25,19 +28,30 @@ export const CATEGORIES: { id: Move["category"] | "all"; label: string }[] = [
   { id: "static", label: "Static" },
 ];
 
-const LOOKS: { key: keyof Direction; section: keyof Library; label: string }[] = [
+type LookKey = "shot_size" | "angle" | "lens" | "focal_length" | "aperture" | "camera_body" | "era" | "genre" | "lighting"
+  | "palette" | "pacing" | "emotion";
+type Look = { key: LookKey; section: keyof Library; label: string };
+
+const LOOKS: Look[] = [
   { key: "shot_size", section: "shot_sizes", label: "Shot size" },
   { key: "angle", section: "angles", label: "Angle" },
   { key: "lens", section: "lenses", label: "Lens" },
+  { key: "focal_length", section: "focal_lengths", label: "Focal length" },
   { key: "aperture", section: "apertures", label: "Aperture" },
   { key: "camera_body", section: "camera_bodies", label: "Camera" },
   { key: "era", section: "eras", label: "Era" },
-  { key: "lighting", section: "lighting", label: "Lighting" },
-  { key: "palette", section: "palettes", label: "Color grade" },
   { key: "genre", section: "genres", label: "Genre" },
-  { key: "pacing", section: "pacing", label: "Pacing" },
-  { key: "emotion", section: "emotions", label: "Emotion" },
 ];
+const PALETTE: Look = { key: "palette", section: "palettes", label: "Color grade" };
+const TEMPO: Look = { key: "pacing", section: "pacing", label: "Tempo" };
+const LIGHTING: Look = { key: "lighting", section: "lighting", label: "Lighting" };
+const SUBJECT = "the subject";
+
+/** @mentions in a prompt, for the emotion wheel's cast. */
+export function mentionSlugs(text: string): string[] {
+  const found = [...(text ?? "").matchAll(/(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_-]{0,39})/g)].map((m) => m[1].toLowerCase());
+  return [...new Set(found)];
+}
 
 export const MAX_MOVES = 3;
 
@@ -53,20 +67,67 @@ export function DirectorPanel({
   direction,
   onChange,
   stills,
+  cast = [],
 }: {
   direction: Direction;
   onChange: (d: Direction) => void;
   /** Image models: camera moves don't apply. */
   stills: boolean;
+  /** @mention slugs of the cast in this shot, each of whom can get a feeling on the emotion wheel. */
+  cast?: string[];
 }) {
   const { data: lib } = useDirectorLibrary();
   const [picking, setPicking] = useState(false);
-  const [lookOpen, setLookOpen] = useState(false);
+  const [open, setOpen] = useState<"look" | "light" | "performance" | null>(null);
+  const [who, setWho] = useState<string>(SUBJECT);
   const moves = direction.camera_moves ?? [];
-  const chosenLooks = LOOKS.filter((l) => direction[l.key]);
+  const lights = direction.lights ?? [];
+  const feelings = direction.cast_emotions ?? [];
 
   if (!lib) return null;
   const moveById = new Map(lib.moves.map((m) => [m.id, m]));
+  const labelOf = (l: Look) => (lib[l.section] as { id: string; label: string }[]).find((i) => i.id === direction[l.key])?.label;
+  const emotionOf = (id: string | null | undefined) => lib.emotions.find((e) => e.id === id);
+  const people = [SUBJECT, ...cast.map((c) => `@${c}`), ...feelings.map((f) => f.who)]
+    .filter((p, i, all) => all.findIndex((q) => q.toLowerCase() === p.toLowerCase()) === i);
+  const feelingOf = (person: string) => person === SUBJECT ? direction.emotion
+    : feelings.find((f) => f.who.toLowerCase() === person.toLowerCase())?.emotion;
+  const setFeeling = (person: string, emotion: string | null) => {
+    if (person === SUBJECT) return onChange({ ...direction, emotion });
+    const rest = feelings.filter((f) => f.who.toLowerCase() !== person.toLowerCase());
+    onChange({ ...direction, cast_emotions: emotion ? [...rest, { who: person, emotion }] : rest });
+  };
+  const current = people.includes(who) ? who : SUBJECT;
+
+  const lookSummary = [...LOOKS, TEMPO, PALETTE].map(labelOf).filter(Boolean).join(", ");
+  const lightSummary = [labelOf(LIGHTING), lights.length ? `${lights.length} placed light${lights.length > 1 ? "s" : ""}` : null]
+    .filter(Boolean).join(", ");
+  const performanceSummary = people.filter((p) => feelingOf(p))
+    .map((p) => `${p === SUBJECT ? "Subject" : p}: ${emotionOf(feelingOf(p))?.label ?? feelingOf(p)}`).join(", ");
+  const section = (id: "look" | "light" | "performance", title: string, summary: string, body: React.ReactNode) => (
+    <div>
+      <button type="button" onClick={() => setOpen((v) => (v === id ? null : id))} aria-expanded={open === id}
+              className="flex w-full items-center gap-1.5 text-left text-xs text-muted hover:text-chalk">
+        <ChevronDown className={cn("size-3.5 shrink-0 transition-transform", open === id && "rotate-180")} aria-hidden />
+        {title}
+        {summary && <span className="ml-auto truncate pl-2 text-2xs text-faint">{summary}</span>}
+      </button>
+      {open === id && <div className="mt-3">{body}</div>}
+    </div>
+  );
+  const select = (l: Look) => {
+    const items = lib[l.section] as { id: string; label: string }[];
+    return (
+      <label key={l.key} className="flex flex-col gap-1 text-2xs text-faint">
+        {l.label}
+        <select value={(direction[l.key] as string | null) ?? ""} onChange={(e) => onChange({ ...direction, [l.key]: e.target.value || null })}
+                className="h-9 rounded-[var(--radius-control)] border border-line-soft bg-bay px-2 text-xs text-chalk outline-none focus:border-tungsten/60">
+          <option value="">Any</option>
+          {items.map((i) => <option key={i.id} value={i.id}>{i.label}</option>)}
+        </select>
+      </label>
+    );
+  };
 
   return (
     <div className="space-y-5">
@@ -134,49 +195,51 @@ export function DirectorPanel({
         </div>
       )}
 
-      <div>
-        <button
-          type="button"
-          onClick={() => setLookOpen((v) => !v)}
-          aria-expanded={lookOpen}
-          className="flex w-full items-center gap-1.5 text-left text-xs text-muted hover:text-chalk"
-        >
-          <ChevronDown className={cn("size-3.5 transition-transform", lookOpen && "rotate-180")} aria-hidden />
-          Cinema look
-          {chosenLooks.length > 0 && (
-            <span className="ml-auto truncate text-2xs text-faint">
-              {chosenLooks
-                .map((l) => (lib[l.section] as { id: string; label: string }[]).find((i) => i.id === direction[l.key])?.label)
-                .filter(Boolean)
-                .join(", ")}
-            </span>
-          )}
-        </button>
-        {lookOpen && (
-          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-3">
-            {LOOKS.map((l) => {
-              const items = lib[l.section] as { id: string; label: string }[];
+      {section("look", "Lens and look", lookSummary, (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-3">
+          {LOOKS.map(select)}
+          <div className="col-span-2 flex flex-col gap-1 text-2xs text-faint">
+            Tempo
+            <Segmented label="Tempo" value={direction.pacing ?? ""} options={["", ...lib.pacing.map((p) => p.id)]}
+                       render={(id) => (id ? lib.pacing.find((p) => p.id === id)?.label : "Any")}
+                       onChange={(id) => onChange({ ...direction, pacing: id || null })} />
+          </div>
+          <div className="col-span-2">
+            <PalettePicker palettes={lib.palettes} value={direction.palette}
+                           onChange={(palette) => onChange({ ...direction, palette })} />
+          </div>
+        </div>
+      ))}
+
+      {section("light", "Lighting", lightSummary, (
+        <div className="flex flex-col gap-4">
+          {select(LIGHTING)}
+          <LightingConsole lib={lib} lights={lights} onChange={(next) => onChange({ ...direction, lights: next })} />
+        </div>
+      ))}
+
+      {section("performance", "Performance", performanceSummary, (
+        <div className="flex flex-col gap-3">
+          <div role="tablist" aria-label="Whose feeling" className="flex flex-wrap gap-1.5">
+            {people.map((p) => {
+              const feeling = emotionOf(feelingOf(p));
               return (
-                <label key={l.key} className="flex flex-col gap-1 text-2xs text-faint">
-                  {l.label}
-                  <select
-                    value={(direction[l.key] as string | null) ?? ""}
-                    onChange={(e) => onChange({ ...direction, [l.key]: e.target.value || null })}
-                    className="h-9 rounded-[var(--radius-control)] border border-line-soft bg-bay px-2 text-xs text-chalk outline-none focus:border-tungsten/60"
-                  >
-                    <option value="">Any</option>
-                    {items.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <button key={p} type="button" role="tab" aria-selected={p === current} onClick={() => setWho(p)}
+                        className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs",
+                                      p === current ? "border-tungsten/60 bg-raised text-chalk" : "border-line-soft text-muted hover:text-chalk")}>
+                  {feeling && <span className="size-2 rounded-full" style={{ background: FAMILY_COLOR[feeling.family] }} aria-hidden />}
+                  {p === SUBJECT ? "Subject" : p}
+                </button>
               );
             })}
           </div>
-        )}
-      </div>
+          <EmotionWheel emotions={lib.emotions} value={feelingOf(current)} who={current === SUBJECT ? SUBJECT : current}
+                        onChange={(id) => setFeeling(current, id)} />
+          {cast.length === 0 && (
+            <p className="text-2xs leading-relaxed text-faint">@mention a saved character in the prompt to set how they feel too.</p>
+          )}
+        </div>
+      ))}
 
       <MovePicker
         open={picking}

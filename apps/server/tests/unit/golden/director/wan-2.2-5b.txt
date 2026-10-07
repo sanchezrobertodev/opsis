@@ -1,0 +1,5 @@
+# wan-2.2-5b (dialect wan, 898/2000 characters)
+Nova (@Image1) climbs the lighthouse stairs as the storm hits, medium wide shot from the knees up, low angle looking up, Nova (@Image1) is frozen in terror, the keeper is fiercely determined, camera: crane shot rising up and away from Nova, slow and smooth, then the camera orbits a full 360 degrees around Nova, then dolly zoom (vertigo effect): the camera moves in while the lens zooms out, keeping Nova the same size as the background stretches away, anamorphic lens with oval bokeh and horizontal flares, 35mm lens, shallow depth of field at f/2, shot on 35mm film with natural grain, key light: hard warm tungsten spotlight from the left, second light: dim soft pale silver-blue moonlight from directly behind, rimming Nova, shafts of light cutting through haze, cold steel-blue color grade, suspenseful thriller tone, 1980s look with neon accents and soft diffusion, dynamic, energetic pacing
+--- warnings
+--- native params
+{}
