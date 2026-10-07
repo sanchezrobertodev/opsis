@@ -30,9 +30,9 @@ from studio.providers.base import (
 from studio.providers.common import (
     best_mime,
     download_url,
-    extract_outputs,
     http_error,
     require_key,
+    route_outputs,
     staged_ref,
 )
 from studio.registry.schema import Route
@@ -133,7 +133,7 @@ class RunwayAdapter(ProviderAdapter):
             msg = str(t.get("failure") or "task failed")
             return PollResult(status="failed", error_class=classify_failure(code),
                               error_message=f"Runway {code or 'failure'}: {msg}"[:900], usage=usage)
-        outputs = extract_outputs(t, route.output.path, route.output.kind)
+        outputs = route_outputs(t, route.output)
         if not outputs:
             return PollResult(status="failed", error_class=ErrorClass.internal,
                               error_message="Runway task succeeded without an output", usage=usage)

@@ -570,6 +570,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/renders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Render */
+        post: operations["start_render_projects__project_id__renders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/renders/{render_id}/frames": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Frames */
+        post: operations["upload_frames_projects__project_id__renders__render_id__frames_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/renders/{render_id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish Render */
+        post: operations["finish_render_projects__project_id__renders__render_id__finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/generations": {
         parameters: {
             query?: never;
@@ -653,6 +704,26 @@ export interface paths {
         put?: never;
         /** Upload */
         post: operations["upload_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{asset_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Thumbnail
+         * @description A picture for an asset that can't be thumbnailed here (a 3D model the browser drew).
+         */
+        post: operations["set_thumbnail_assets__asset_id__thumbnail_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -903,6 +974,16 @@ export interface components {
             add_tags?: string[] | null;
             /** Favorite */
             favorite?: boolean | null;
+        };
+        /** Body_set_thumbnail_assets__asset_id__thumbnail_post */
+        Body_set_thumbnail_assets__asset_id__thumbnail_post: {
+            /** File */
+            file: string;
+        };
+        /** Body_upload_frames_projects__project_id__renders__render_id__frames_post */
+        Body_upload_frames_projects__project_id__renders__render_id__frames_post: {
+            /** Files */
+            files: string[];
         };
         /** Body_upload_uploads_post */
         Body_upload_uploads_post: {
@@ -1847,7 +1928,7 @@ export interface components {
              */
             role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image" | "character_image" | "driving_video" | "input_image";
             /** Kinds */
-            kinds: ("image" | "video" | "audio" | "mask" | "mask_video")[];
+            kinds: ("image" | "video" | "audio" | "mask" | "mask_video" | "model3d" | "splat")[];
             /** Label */
             label?: string | null;
             /**
@@ -1880,7 +1961,7 @@ export interface components {
              * Ops
              * @default []
              */
-            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "segment" | "track")[];
+            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "segment" | "track" | "to_3d" | "panorama" | "world" | "depth_to_video")[];
             /**
              * Prompt
              * @default required
@@ -2349,6 +2430,12 @@ export interface components {
             shots: number;
             /** Shots With Takes */
             shots_with_takes: number;
+            /**
+             * Objects
+             * @description 3D scenes: how many objects
+             * @default 0
+             */
+            objects: number;
             cover: components["schemas"]["AssetOut"] | null;
             /**
              * Updated At
@@ -2405,6 +2492,57 @@ export interface components {
             models: components["schemas"]["ModelSummary"][];
             /** Warnings */
             warnings: string[];
+        };
+        /** RenderDone */
+        RenderDone: {
+            /**
+             * Assets
+             * @description A video per pass (or the still of a one-frame render)
+             */
+            assets?: {
+                [key: string]: components["schemas"]["AssetOut"];
+            };
+            /**
+             * Stills
+             * @description Stills renders: an image per time, per pass
+             */
+            stills?: {
+                [key: string]: components["schemas"]["AssetOut"][];
+            };
+        };
+        /** RenderStart */
+        RenderStart: {
+            /**
+             * Version
+             * @description The scene version the frames show
+             */
+            version: number;
+            /** Passes */
+            passes: ("beauty" | "depth" | "normal")[];
+            /**
+             * Fps
+             * @default 24
+             */
+            fps: number;
+            /** Frames */
+            frames: number;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /**
+             * Times
+             * @description Stills: the scene time of each frame, in seconds
+             */
+            times?: number[] | null;
+        };
+        /** RenderStarted */
+        RenderStarted: {
+            /**
+             * Render Id
+             * Format: uuid
+             */
+            render_id: string;
         };
         /** RevisionOut */
         RevisionOut: {
@@ -4383,6 +4521,110 @@ export interface operations {
             };
         };
     };
+    start_render_projects__project_id__renders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenderStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenderStarted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_frames_projects__project_id__renders__render_id__frames_post: {
+        parameters: {
+            query: {
+                pass: "beauty" | "depth" | "normal";
+                start?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                render_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_frames_projects__project_id__renders__render_id__frames_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finish_render_projects__project_id__renders__render_id__finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                render_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenderDone"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_generations_generations_get: {
         parameters: {
             query?: {
@@ -4589,14 +4831,51 @@ export interface operations {
             };
         };
     };
+    set_thumbnail_assets__asset_id__thumbnail_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_set_thumbnail_assets__asset_id__thumbnail_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_assets_assets_get: {
         parameters: {
             query?: {
-                kind?: ("video" | "image" | "audio") | null;
+                kind?: ("video" | "image" | "audio" | "model3d" | "splat") | null;
                 source?: ("upload" | "generation") | null;
                 favorite?: boolean | null;
                 /** @description Only assets with this tag (e.g. `driving` for movement clips) */
                 tag?: string | null;
+                /** @description Only 360 panoramas */
+                projection?: "equirectangular" | null;
                 limit?: number;
                 cursor?: string | null;
             };

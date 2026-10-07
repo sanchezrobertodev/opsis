@@ -51,16 +51,21 @@ class RegistryError(Exception):
 def mock_route(spec: ModelSpec) -> Route:
     """Every model gets a $0 mock route so the whole product works without spending."""
     kind = spec.output_type if spec.output_type in ("video", "image", "audio") else "video"
+    if spec.output_type in ("3d", "splat"):  # mock the file kind the real routes return
+        kinds = {r.output.kind for r in spec.routes}
+        kind = kinds.pop() if len(kinds) == 1 else "model3d"
     if spec.output_type == "mask":  # one mode segments an image, another tracks a clip
         kinds = {r.output.kind for r in spec.routes}
         kind = "mask_video" if kinds == {"mask_video"} else "mask"
+    # same metadata and extra files as the real route (a world's panorama), so the product sees the same shapes
+    real = spec.routes[0].output if spec.routes else OutputSpec()
     return Route(
         id=f"{spec.id}@mock",
         provider=MOCK_PROVIDER,
         modes={m.id: RouteMode(endpoint=f"mock/{spec.id}/{m.id}") for m in spec.modes},
         pricing=Pricing(basis="per_request", rates=[Rate(usd=0.0)], source="mock"),
         timeout_s=300,
-        output=OutputSpec(path="output", kind=kind),
+        output=OutputSpec(path="output", kind=kind, meta=real.meta, extras=real.extras),
         notes="Generated locally with ffmpeg/Pillow. Costs nothing.",
     )
 

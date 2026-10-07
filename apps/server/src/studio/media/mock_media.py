@@ -144,3 +144,85 @@ async def make_mask_video(dest: Path, workdir: Path, *, mask: Path | None, video
                  "-vf", f"scale={w // 2 * 2}:{h // 2 * 2},format=yuv420p", "-c:v", "libx264", "-preset", "veryfast",
                  "out.mp4", cwd=workdir)
     (workdir / "out.mp4").replace(dest)
+
+
+# ---------------------------------------------------------------- 3D stand-ins
+
+
+def make_glb(dest: Path, *, seed: int | None = None, size: float = 0.8) -> None:
+    """A valid binary glTF of one coloured box standing on the ground (y from 0 to `size`)."""
+    import json
+    import struct
+
+    h = hashlib.sha1(str(seed).encode()).digest()
+    color = [0.25 + h[0] / 400, 0.25 + h[1] / 400, 0.25 + h[2] / 400, 1.0]
+    s = size / 2
+    faces = [  # normal, then the face's four corners
+        ((1, 0, 0), [(s, 0, -s), (s, size, -s), (s, size, s), (s, 0, s)]),
+        ((-1, 0, 0), [(-s, 0, s), (-s, size, s), (-s, size, -s), (-s, 0, -s)]),
+        ((0, 1, 0), [(-s, size, -s), (-s, size, s), (s, size, s), (s, size, -s)]),
+        ((0, -1, 0), [(-s, 0, s), (-s, 0, -s), (s, 0, -s), (s, 0, s)]),
+        ((0, 0, 1), [(-s, 0, s), (s, 0, s), (s, size, s), (-s, size, s)]),
+        ((0, 0, -1), [(s, 0, -s), (-s, 0, -s), (-s, size, -s), (s, size, -s)]),
+    ]
+    positions, normals, indices = [], [], []
+    for n, corners in faces:
+        base = len(positions)
+        positions += corners
+        normals += [n] * 4
+        indices += [base, base + 1, base + 2, base, base + 2, base + 3]
+    pos = b"".join(struct.pack("<3f", *p) for p in positions)
+    nor = b"".join(struct.pack("<3f", *v) for v in normals)
+    idx = struct.pack(f"<{len(indices)}H", *indices)
+    idx += b"\x00" * (-len(idx) % 4)
+    binary = pos + nor + idx
+    gltf = {
+        "asset": {"version": "2.0", "generator": "ai-media-studio mock"},
+        "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0, "name": "mock"}],
+        "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1}, "indices": 2, "material": 0}]}],
+        "materials": [{"pbrMetallicRoughness": {"baseColorFactor": color, "metallicFactor": 0, "roughnessFactor": 0.8}}],
+        "buffers": [{"byteLength": len(binary)}],
+        "bufferViews": [
+            {"buffer": 0, "byteOffset": 0, "byteLength": len(pos), "target": 34962},
+            {"buffer": 0, "byteOffset": len(pos), "byteLength": len(nor), "target": 34962},
+            {"buffer": 0, "byteOffset": len(pos) + len(nor), "byteLength": len(indices) * 2, "target": 34963},
+        ],
+        "accessors": [
+            {"bufferView": 0, "componentType": 5126, "count": len(positions), "type": "VEC3",
+             "min": [-s, 0, -s], "max": [s, size, s]},
+            {"bufferView": 1, "componentType": 5126, "count": len(normals), "type": "VEC3"},
+            {"bufferView": 2, "componentType": 5123, "count": len(indices), "type": "SCALAR"},
+        ],
+    }
+    text = json.dumps(gltf, separators=(",", ":")).encode()
+    text += b" " * (-len(text) % 4)
+    total = 12 + 8 + len(text) + 8 + len(binary)
+    dest.write_bytes(struct.pack("<4sII", b"glTF", 2, total) + struct.pack("<I4s", len(text), b"JSON") + text
+                     + struct.pack("<I4s", len(binary), b"BIN\x00") + binary)
+
+
+def make_splat_ply(dest: Path, *, seed: int | None = None, count: int = 12000) -> None:
+    """A small Gaussian-splat world in the common 3DGS PLY layout: a tiled floor and a ring of coloured pillars."""
+    import math
+    import random
+    import struct
+
+    rnd = random.Random(seed)
+    sh0 = 0.28209479177387814
+    points = []
+    for _ in range(count):
+        if rnd.random() < 0.6:  # floor
+            x, z, y = rnd.uniform(-6, 6), rnd.uniform(-6, 6), 0.0
+            tile = (math.floor(x) + math.floor(z)) % 2
+            rgb = (0.55, 0.5, 0.45) if tile else (0.35, 0.32, 0.3)
+        else:  # pillars
+            k = rnd.randrange(8)
+            a = k / 8 * math.tau
+            x, z, y = 4 * math.cos(a) + rnd.gauss(0, 0.15), 4 * math.sin(a) + rnd.gauss(0, 0.15), rnd.uniform(0, 3)
+            rgb = (0.5 + 0.5 * math.cos(a), 0.5 + 0.5 * math.sin(a), 0.6)
+        points.append((x, y, z, *[(c - 0.5) / sh0 for c in rgb], 3.0, *[math.log(0.06)] * 3, 1.0, 0.0, 0.0, 0.0))
+    props = ["x", "y", "z", "f_dc_0", "f_dc_1", "f_dc_2", "opacity", "scale_0", "scale_1", "scale_2",
+             "rot_0", "rot_1", "rot_2", "rot_3"]
+    header = "ply\nformat binary_little_endian 1.0\n" + f"element vertex {len(points)}\n" + \
+        "".join(f"property float {p}\n" for p in props) + "end_header\n"
+    dest.write_bytes(header.encode() + b"".join(struct.pack(f"<{len(props)}f", *p) for p in points))

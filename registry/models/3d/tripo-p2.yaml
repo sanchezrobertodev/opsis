@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names and prices verified 2026-10-07 against fal's OpenAPI and model page (tripo3d/p2/image-to-3d).
+id: tripo-p2
+name: Tripo P2
+family: tripo
+vendor: tripo
+description: A textured 3D model (GLB) from one picture, with PBR materials. Sharp hard-surface detail.
+output_type: 3d
+status: active
+license_tier: commercial_api
+tags: [3d, image-to-3d, pbr]
+prompt: {max_chars: 10, dialect: default}
+
+parameters:
+  - {name: texture, label: Texture, type: bool, default: true}
+  - {name: texture_quality, label: Texture quality, type: enum, options: [fast, standard, detailed, extreme],
+     default: standard, ui: segmented, visible_if: {texture: true}}
+  - {name: pbr, label: PBR materials, type: bool, default: true}
+  - {name: quad, label: Quad topology, type: bool, default: false, group: advanced}
+  - {name: face_limit, label: Face limit, type: int, min: 48, max: 50000, group: advanced}
+
+modes:
+  - id: image_to_3d
+    label: Picture to 3D
+    ops: [to_3d]
+    prompt: none
+    medias:
+      - {role: input_image, kinds: [image], label: Picture, required: true}
+
+routes:
+  - id: tripo-p2@fal
+    provider: fal
+    modes:
+      image_to_3d: {endpoint: tripo3d/p2/image-to-3d}
+    map:
+      params: {texture: texture, texture_quality: texture_quality, pbr: pbr, quad: quad, face_limit: face_limit}
+      media: {input_image: image_url}
+    pricing:
+      basis: per_request
+      rates:
+        - {when: {texture: false}, usd: 1.00}
+        - {when: {texture: true, texture_quality: [fast, standard]}, usd: 1.10}
+        - {when: {texture: true, texture_quality: detailed}, usd: 1.20}
+        - {when: {texture: true, texture_quality: extreme}, usd: 1.30}
+      verified: 2026-10-07
+      source: https://fal.ai/models/tripo3d/p2/image-to-3d
+    timeout_s: 1800
+    output: {path: "model_urls.glb.url | model_mesh.url", kind: model3d}
+    notes: The cheaper Tripo 2.5 (tripo3d/tripo/v2.5/image-to-3d) is $0.20-0.40 if P2 is more than a blocking prop needs.
+
+examples:
+  - name: image_to_3d_smoke
+    mode: image_to_3d
+    params: {texture: false}
+    media: {input_image: "fixture:images/keyframe.png"}
+    smoke: true
+    expect: {cost_usd_range: [1.0, 1.0]}

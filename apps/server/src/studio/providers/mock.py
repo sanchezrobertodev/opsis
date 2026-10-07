@@ -114,7 +114,9 @@ class MockAdapter(ProviderAdapter):
         payload = st["payload"]
         kind = route.output.kind
         count = int(payload.get("num_images") or 1) if kind == "image" else 1
-        outputs = [ProviderOutput(index=i, kind=kind, ref=job_id) for i in range(count)]
+        outputs = [ProviderOutput(index=i, kind=kind, ref=job_id, meta=dict(route.output.meta)) for i in range(count)]
+        outputs += [ProviderOutput(index=count + i, kind=x.kind, ref=job_id, meta=dict(x.meta))
+                    for i, x in enumerate(route.output.extras)]
         if kind == "audio" and _speaks(st["endpoint"]):
             # text to speech: time the words as if read aloud, like the real API's alignment
             outputs[0].meta = {"alignment": {"words": estimate_words(strip_tags(payload.get("prompt", "")))}}
@@ -133,9 +135,10 @@ class MockAdapter(ProviderAdapter):
         prompt = strip_tags(p.get("prompt", ""))
         seed = p.get("seed")
         if output.kind == "image":
+            pano = output.meta.get("projection") == "equirectangular"
             await anyio.to_thread.run_sync(lambda: mock_media.make_image(
                 dest, model_id=model_id, mode=mode, prompt=prompt, resolution=p.get("resolution"),
-                aspect=p.get("aspect_ratio"), index=output.index, seed=seed,
+                aspect="2:1" if pano else p.get("aspect_ratio"), index=output.index, seed=seed,
             ))
             return "image/png"
         if output.kind == "mask":
@@ -146,6 +149,12 @@ class MockAdapter(ProviderAdapter):
             await mock_media.make_mask_video(dest, workdir, mask=_first_path(p.get("mask")),
                                              video=_first_path(p.get("input_video")))
             return "video/mp4"
+        if output.kind == "model3d":
+            await anyio.to_thread.run_sync(lambda: mock_media.make_glb(dest, seed=seed))
+            return "model/gltf-binary"
+        if output.kind == "splat":
+            await anyio.to_thread.run_sync(lambda: mock_media.make_splat_ply(dest, seed=seed))
+            return "application/x-ply"
         if output.kind == "audio":
             words = (output.meta.get("alignment") or {}).get("words")
             duration = spoken_seconds(words) if words else float(p.get("duration") or 5)

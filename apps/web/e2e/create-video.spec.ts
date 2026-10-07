@@ -49,9 +49,9 @@ test("a running take can be canceled", async ({ page }) => {
   await expect(take.getByText("Canceled")).toBeVisible();
 });
 
-test("roadmap studios explain what they will do", async ({ page }) => {
-  await page.goto("/soon/worlds");
-  await expect(page.getByRole("heading", { level: 1, name: "Worlds" })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2, name: "Arrives in phase 7" })).toBeVisible();
-  await expect(page.getByText(/explorable Gaussian-splat worlds/)).toBeVisible();
+test("every studio has shipped, so none is shown as coming soon", async ({ page }) => {
+  const soon = await page.goto("/soon/worlds");
+  expect(soon?.status()).toBe(404);
+  await page.goto("/create/video");
+  await expect(page.getByRole("link", { name: "Worlds" })).toHaveAttribute("href", "/worlds");
 });

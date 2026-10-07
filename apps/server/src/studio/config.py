@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="", repr=False)
     runpod_api_key: str = Field(default="", repr=False)
     elevenlabs_api_key: str = Field(default="", repr=False)
+    worldlabs_api_key: str = Field(default="", repr=False)
     # Our own RunPod serverless endpoint running infra/runpod/wan-core (empty turns its routes off)
     runpod_wan_core_endpoint: str = ""
 
@@ -69,6 +70,7 @@ class Settings(BaseSettings):
             "replicate": self.replicate_api_token,
             "runpod": self.runpod_api_key,
             "elevenlabs": self.elevenlabs_api_key,
+            "worldlabs": self.worldlabs_api_key,
         }.get(provider, "")
 
     def resolve_media_root(self) -> Path:

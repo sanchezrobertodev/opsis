@@ -21,6 +21,15 @@ export function useRuns() {
   return useQuery({ queryKey: ["runs"], queryFn: () => unwrap(api.GET("/pipelines")) });
 }
 
+/** Runs made for one project (a film or a 3D scene), newest first; polls while any is still going. */
+export function useProjectRuns(projectId: string, recipe?: string) {
+  return useQuery({
+    queryKey: ["runs", "project", projectId, recipe ?? ""],
+    queryFn: () => unwrap(api.GET("/pipelines", { params: { query: { project_id: projectId, recipe, limit: 20 } } })),
+    refetchInterval: (q) => (q.state.data?.some((r) => ["running", "waiting"].includes(r.status)) ? 2000 : false),
+  });
+}
+
 export function useRun(id: string) {
   return useQuery({
     queryKey: ["run", id],

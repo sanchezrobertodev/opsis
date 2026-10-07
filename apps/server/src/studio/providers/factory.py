@@ -68,6 +68,12 @@ def _runway() -> ProviderAdapter:
     return RunwayAdapter()
 
 
+def _worldlabs() -> ProviderAdapter:
+    from studio.providers.worldlabs import WorldLabsAdapter
+
+    return WorldLabsAdapter()
+
+
 _FACTORIES: dict[str, Callable[[], ProviderAdapter]] = {
     "mock": _mock,
     "comfy_local": _comfy_local,
@@ -77,6 +83,7 @@ _FACTORIES: dict[str, Callable[[], ProviderAdapter]] = {
     "replicate": _replicate,
     "runway": _runway,
     "elevenlabs": _elevenlabs,
+    "worldlabs": _worldlabs,
     "runpod": _runpod,
     "runpod_comfy": _runpod_comfy,
 }

@@ -36,10 +36,10 @@ from studio.providers.base import (
 from studio.providers.common import (
     best_mime,
     download_url,
-    extract_outputs,
     http_error,
     looks_like_moderation,
     require_key,
+    route_outputs,
 )
 from studio.registry.schema import Route
 
@@ -125,7 +125,7 @@ class RunPodAdapter(ProviderAdapter):
             return PollResult(status="failed", error_class=cls, error_message=f"RunPod: {msg}", usage=usage)
         if status != "COMPLETED":
             return PollResult(status="running", raw={"status": status})
-        outputs = extract_outputs(t, route.output.path, route.output.kind)
+        outputs = route_outputs(t, route.output)
         if not outputs:
             return PollResult(status="failed", error_class=ErrorClass.internal,
                               error_message="RunPod finished without a result link", usage=usage)

@@ -35,7 +35,7 @@ class CostEstimate:
 
 def dims_for(resolution: str | None, aspect: str | None) -> tuple[int, int]:
     """Approximate output pixel dimensions from a resolution label and aspect ratio."""
-    res = (resolution or "720p").lower()
+    res = str(resolution or "720p").lower()
     try:
         aw, ah = (float(x) for x in (aspect or "16:9").split(":"))
     except ValueError:

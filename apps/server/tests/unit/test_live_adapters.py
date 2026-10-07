@@ -500,3 +500,137 @@ async def test_runpod_comfy_failures_still_report_gpu_time(wan_core, monkeypatch
     monkeypatch.setattr(get_settings(), "runpod_wan_core_endpoint", "")
     with pytest.raises(ProviderError, match="RUNPOD_WAN_CORE_ENDPOINT"):
         await wan_core.submit(route(), "t", {"prompt": "x"}, client_ref="c")
+
+
+# ---------------------------------------------------------------- World Labs (Marble)
+
+WL = "https://api.worldlabs.ai"
+
+
+def marble():
+    from studio.registry.loader import load_registry
+
+    reg = load_registry(get_settings().resolve_registry_dir())
+    spec = reg.model("marble")
+    return spec, spec.routes[0]
+
+
+@pytest.fixture
+def wl_key(monkeypatch):
+    monkeypatch.setattr(get_settings(), "worldlabs_api_key", "wl-key")
+
+
+def test_marble_payload_nests_the_world_prompt():
+    from studio.registry.mapping import build_payload
+    from studio.registry.validate import MediaRef, normalize
+
+    spec, rt = marble()
+    endpoint, payload, _ = build_payload(spec, rt, normalize(spec, "text_to_world", "a courtyard", {}, []), {})
+    assert endpoint == "marble/v1/worlds:generate"
+    assert payload["world_prompt"] == {"type": "text", "text_prompt": "a courtyard"}
+    assert payload["model"] == "marble-1.1"
+    req = normalize(spec, "image_to_world", "", {"model": "marble-1.0-draft"}, [MediaRef("input_image", "a", "image")])
+    ref = {"source": "data_base64", "data_base64": "AAA=", "extension": "png"}
+    _, payload, _ = build_payload(spec, rt, req, {"input_image": [ref]})
+    assert payload["world_prompt"] == {"type": "image", "image_prompt": ref}
+
+
+@respx.mock
+async def test_marble_lifecycle_keeps_the_panorama_and_collider(wl_key):
+    from studio.providers.worldlabs import WorldLabsAdapter
+
+    _, rt = marble()
+    submit = respx.post(f"{WL}/marble/v1/worlds:generate").respond(200, json={"operation_id": "op1"})
+    status = respx.get(f"{WL}/marble/v1/operations/op1")
+    world = {"world_id": "w1", "assets": {
+        "splats": {"spz_urls": {"100k": "https://cdn.test/w1_100k.spz", "500k": "https://cdn.test/w1_500k.spz"},
+                   "semantics_metadata": {"metric_scale_factor": 1.4, "ground_plane_offset": -0.2}},
+        "imagery": {"pano_url": "https://cdn.test/w1_pano.png"},
+        "mesh": {"collider_mesh_url": "https://cdn.test/w1_collider.glb"}}}
+    status.side_effect = [
+        httpx.Response(200, json={"operation_id": "op1", "done": False, "metadata": {}}),
+        httpx.Response(200, json={"operation_id": "op1", "done": False,
+                                  "metadata": {"progress": {"status": "IN_PROGRESS"}, "world_id": "w1"}}),
+        httpx.Response(200, json={"operation_id": "op1", "done": True, "response": world}),
+    ]
+    a = WorldLabsAdapter()
+    res = await a.submit(rt, "marble/v1/worlds:generate",
+                         {"model": "marble-1.1", "world_prompt": {"type": "text", "text_prompt": "x" * 100}},
+                         client_ref="abcdef123456")
+    sent = submit.calls.last.request
+    assert sent.headers["wlt-api-key"] == "wl-key"
+    assert json.loads(sent.content)["display_name"] == "x" * 64
+    assert res.job_id == "op1"
+    assert (await a.poll(rt, "op1")).status == "queued"
+    assert (await a.poll(rt, "op1")).status == "running"
+    done = await a.poll(rt, "op1")
+    assert done.status == "succeeded"
+    kinds = [(o.kind, o.url.rsplit("/", 1)[1]) for o in done.outputs]
+    assert kinds == [("splat", "w1_500k.spz"), ("image", "w1_pano.png"), ("model3d", "w1_collider.glb")]
+    assert done.outputs[0].meta == {"world_id": "w1", "metric_scale_factor": 1.4, "ground_plane_offset": -0.2}
+    assert done.outputs[1].meta == {"projection": "equirectangular", "world_id": "w1"}
+    assert [o.index for o in done.outputs] == [0, 1, 2]
+
+
+@respx.mock
+async def test_marble_failures(wl_key, monkeypatch):
+    from studio.providers.worldlabs import WorldLabsAdapter
+
+    _, rt = marble()
+    respx.get(f"{WL}/marble/v1/operations/bad").respond(200, json={
+        "done": True, "error": {"message": "Prompt violates the content policy"}})
+    failed = await WorldLabsAdapter().poll(rt, "bad")
+    assert failed.status == "failed" and failed.error_class == ErrorClass.moderation
+    respx.get(f"{WL}/marble/v1/operations/empty").respond(200, json={"done": True, "response": {"assets": {}}})
+    assert (await WorldLabsAdapter().poll(rt, "empty")).error_class == ErrorClass.internal
+    respx.post(f"{WL}/marble/v1/worlds:generate").mock(side_effect=httpx.ReadTimeout("slow"))
+    with pytest.raises(AmbiguousSubmitError):
+        await WorldLabsAdapter().submit(rt, "marble/v1/worlds:generate", {"world_prompt": {}}, client_ref="c")
+    monkeypatch.setattr(get_settings(), "worldlabs_api_key", "")
+    with pytest.raises(ProviderError) as exc:
+        await WorldLabsAdapter().poll(rt, "x")
+    assert exc.value.error_class == ErrorClass.route_unavailable
+
+
+async def test_marble_inlines_pictures(wl_key, tmp_path):
+    from studio.providers.base import ResolvedMedia
+    from studio.providers.worldlabs import WorldLabsAdapter
+
+    _, rt = marble()
+    pic = tmp_path / "place.JPG"
+    pic.write_bytes(b"\xff\xd8\xff" + b"0" * 50)
+    staged = await WorldLabsAdapter().stage_inputs(rt, [ResolvedMedia("input_image", "a", pic, "image/jpeg", "image")])
+    ref = staged["input_image"][0]
+    assert ref["source"] == "data_base64" and ref["extension"] == "jpg" and ref["data_base64"].startswith("/9j/")
+
+
+def test_route_outputs_need_the_main_file():
+    from studio.providers.common import route_outputs
+    from studio.registry.schema import ExtraOutput
+
+    spec = OutputSpec(path="a.url", kind="image", meta={"projection": "equirectangular"},
+                      extras=[ExtraOutput(path="b.url", kind="model3d")])
+    assert route_outputs({"b": {"url": "https://x/b.glb"}}, spec) == []
+    out = route_outputs({"a": {"url": "https://x/a.png"}, "b": {"url": "https://x/b.glb"}}, spec)
+    assert [(o.index, o.kind, o.meta) for o in out] == [(0, "image", {"projection": "equirectangular"}),
+                                                        (1, "model3d", {})]
+
+
+def test_best_mime_keeps_3d_files():
+    from studio.providers.common import best_mime
+
+    assert best_mime(None, "application/octet-stream", kind="model3d") == "model/gltf-binary"
+    assert best_mime(None, "model/gltf-binary", kind="model3d") == "model/gltf-binary"
+    # a splat's type is vague; ingest then takes .spz or .ply from its URL
+    assert best_mime(None, "binary/octet-stream", kind="splat") == "application/octet-stream"
+    assert best_mime("application/x-ply", None, kind="splat") == "application/x-ply"
+    assert best_mime(None, None, kind="video") == "video/mp4"
+
+
+@respx.mock
+async def test_fal_downloads_a_glb(keys, tmp_path):
+    respx.get("https://v3.fal.media/files/x/model.glb").respond(200, content=b"glTF....",
+                                                               headers={"content-type": "application/octet-stream"})
+    out = ProviderOutput(index=0, kind="model3d", url="https://v3.fal.media/files/x/model.glb")
+    mime = await FalAdapter().download(route(kind="model3d"), out, tmp_path / "m.bin", tmp_path)
+    assert mime == "model/gltf-binary" and (tmp_path / "m.bin").read_bytes().startswith(b"glTF")

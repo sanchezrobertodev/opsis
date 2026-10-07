@@ -115,7 +115,7 @@ export function CinemaEditor({ id }: { id: string }) {
   );
 }
 
-function HistoryDialog({ id, open, onClose, onRestored }: { id: string; open: boolean; onClose: () => void;
+export function HistoryDialog({ id, open, onClose, onRestored }: { id: string; open: boolean; onClose: () => void;
                                                              onRestored: () => void }) {
   const { data: revisions } = useRevisions(id, open);
   const restore = useRestoreRevision(id);
@@ -127,7 +127,7 @@ function HistoryDialog({ id, open, onClose, onRestored }: { id: string; open: bo
           <li key={r.version} className="flex items-center gap-3 rounded-[4px] px-2 py-1.5 hover:bg-raised">
             <span className="tabular w-10 text-faint">v{r.version}</span>
             <span className="min-w-0 flex-1 truncate text-chalk">{r.note || r.title}</span>
-            <span className="tabular text-2xs text-faint">{r.shots} shots, {WHEN.format(new Date(r.created_at))}</span>
+            <span className="tabular text-2xs text-faint">{r.shots ? `${r.shots} shots, ` : ""}{WHEN.format(new Date(r.created_at))}</span>
             {i > 0 && (
               <Button size="sm" tone="ghost" disabled={restore.isPending}
                       onClick={() => restore.mutate(r.version, { onSuccess: () => { onRestored(); onClose(); toast(`Restored version ${r.version}`); } })}>

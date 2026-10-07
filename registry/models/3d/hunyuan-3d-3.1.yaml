@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names and prices verified 2026-10-07 against fal's OpenAPI and model page
+# (fal-ai/hunyuan-3d/v3.1/pro/image-to-3d).
+id: hunyuan-3d-3.1
+name: Hunyuan3D 3.1
+family: hunyuan
+vendor: tencent
+description: A detailed textured 3D model (GLB) from one picture. The best value of the image-to-3D models.
+output_type: 3d
+status: active
+license_tier: commercial_api
+tags: [3d, image-to-3d]
+prompt: {max_chars: 10, dialect: default}
+
+parameters:
+  - {name: enable_pbr, label: PBR materials, type: bool, default: false}
+
+modes:
+  - id: image_to_3d
+    label: Picture to 3D
+    ops: [to_3d]
+    prompt: none
+    medias:
+      - {role: input_image, kinds: [image], label: Picture, required: true}
+
+routes:
+  - id: hunyuan-3d-3.1@fal
+    provider: fal
+    modes:
+      image_to_3d: {endpoint: fal-ai/hunyuan-3d/v3.1/pro/image-to-3d}
+    map:
+      params: {enable_pbr: enable_pbr}
+      media: {input_image: input_image_url}
+    pricing:
+      basis: formula
+      formula: "0.375 + (0.15 if enable_pbr else 0)"
+      verified: 2026-10-07
+      source: https://fal.ai/models/fal-ai/hunyuan-3d/v3.1/pro/image-to-3d
+    timeout_s: 1800
+    output: {path: model_glb.url, kind: model3d}
+    notes: >-
+      v3.x is API-only. Tencent's open weights stop at 2.1 under the Tencent Hunyuan Community license, which
+      excludes the EU, UK and South Korea.
+
+examples:
+  - name: image_to_3d_smoke
+    mode: image_to_3d
+    media: {input_image: "fixture:images/keyframe.png"}
+    smoke: true
+    expect: {cost_usd_range: [0.375, 0.375]}

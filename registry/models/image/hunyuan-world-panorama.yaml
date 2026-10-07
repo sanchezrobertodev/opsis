@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names and price verified 2026-10-07 against fal's OpenAPI and model page (fal-ai/hunyuan_world).
+id: hunyuan-world-panorama
+name: HunyuanWorld panorama
+family: hunyuan
+vendor: tencent
+description: >-
+  Turns a picture of a place into a 360-degree equirectangular panorama (2:1, about 1920 x 960), for location
+  references and looking around for start frames.
+output_type: image
+status: active
+license_tier: commercial_api
+tags: [panorama, "360", location]
+prompt: {max_chars: 1000, dialect: default}
+
+modes:
+  - id: panorama
+    label: Picture to 360 panorama
+    ops: [panorama]
+    prompt: required
+    medias:
+      - {role: input_image, kinds: [image], label: Picture of the place, required: true}
+
+routes:
+  - id: hunyuan-world-panorama@fal
+    provider: fal
+    modes:
+      panorama: {endpoint: fal-ai/hunyuan_world}
+    map:
+      media: {input_image: image_url}
+    pricing:
+      basis: per_request
+      rates:
+        - {usd: 0.15}
+      verified: 2026-10-07
+      source: https://fal.ai/models/fal-ai/hunyuan_world
+    timeout_s: 900
+    output: {path: image.url, kind: image, meta: {projection: equirectangular}}
+    notes: >-
+      There's no text-to-panorama endpoint on fal; make a picture first. The open weights use the Tencent
+      HunyuanWorld community license, which excludes the EU, UK and South Korea.
+
+examples:
+  - name: panorama_smoke
+    mode: panorama
+    prompt: A misty harbour at dawn, fishing boats at the quay, a lighthouse on the breakwater.
+    media: {input_image: "fixture:images/keyframe.png"}
+    smoke: true
+    expect: {cost_usd_range: [0.15, 0.15]}

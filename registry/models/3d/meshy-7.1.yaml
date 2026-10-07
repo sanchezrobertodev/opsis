@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names and prices verified 2026-10-07 against fal's OpenAPI and model page (meshy/v7.1/image-to-3d).
+id: meshy-7.1
+name: Meshy 7.1
+family: meshy
+vendor: meshy
+description: >-
+  A 3D model (GLB) from one picture, optionally rigged as a character with a skeleton, ready to pose and animate.
+output_type: 3d
+status: active
+license_tier: commercial_api
+tags: [3d, image-to-3d, rigging, characters]
+prompt: {max_chars: 600, dialect: default}
+
+parameters:
+  - {name: should_texture, label: Texture, type: bool, default: true}
+  - {name: enable_pbr, label: PBR materials, type: bool, default: false, visible_if: {should_texture: true}}
+  - {name: enable_rigging, label: Rig as a character, type: bool, default: false,
+     help: "Adds a skeleton (humanoid characters). The rigged GLB is the one kept."}
+  - {name: rigging_height_meters, label: Character height (m), type: float, min: 0.5, max: 3, step: 0.05, default: 1.7,
+     visible_if: {enable_rigging: true}}
+  - {name: pose_mode, label: Pose, type: enum, options: [as_drawn, a-pose, t-pose], default: as_drawn,
+     labels: {as_drawn: As drawn, a-pose: A-pose, t-pose: T-pose}, help: "An A- or T-pose rigs more cleanly."}
+  - {name: topology, type: enum, options: [triangle, quad], default: triangle, group: advanced}
+  - {name: target_polycount, label: Polygons, type: int, min: 100, max: 300000, default: 30000, group: advanced}
+
+modes:
+  - id: image_to_3d
+    label: Picture to 3D
+    ops: [to_3d]
+    prompt: optional  # describes the texture
+    medias:
+      - {role: input_image, kinds: [image], label: Picture, required: true}
+
+routes:
+  - id: meshy-7.1@fal
+    provider: fal
+    modes:
+      image_to_3d: {endpoint: meshy/v7.1/image-to-3d}
+    map:
+      prompt: texture_prompt
+      params:
+        should_texture: should_texture
+        enable_pbr: enable_pbr
+        enable_rigging: enable_rigging
+        rigging_height_meters: rigging_height_meters
+        pose_mode: {to: pose_mode, transform: enum_map, args: {values: {as_drawn: "", a-pose: a-pose, t-pose: t-pose}}}
+        topology: topology
+        target_polycount: target_polycount
+      media: {input_image: image_url}
+    pricing:
+      basis: formula
+      formula: "0.8 + (0.4 if should_texture else 0) + (0.2 if enable_rigging else 0)"
+      verified: 2026-10-07
+      source: https://fal.ai/models/meshy/v7.1/image-to-3d
+    timeout_s: 1800
+    output: {path: "rigged_character_glb.url | model_glb.url", kind: model3d}
+    notes: fal-ai/meshy/rigging ($0.20) can rig a GLB from any other model later.
+
+examples:
+  - name: image_to_3d_smoke
+    mode: image_to_3d
+    params: {should_texture: false}
+    media: {input_image: "fixture:images/keyframe.png"}
+    smoke: true
+    expect: {cost_usd_range: [0.8, 0.8]}
+  - name: rigged_character
+    mode: image_to_3d
+    params: {should_texture: true, enable_rigging: true, pose_mode: t-pose}
+    media: {input_image: "fixture:images/keyframe.png"}
+    expect: {cost_usd_range: [1.4, 1.4]}
