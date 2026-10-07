@@ -97,3 +97,15 @@ def test_build_payload_maps_transforms_drops_and_media():
     assert payload["ref_urls"] == ["https://x/r1.png"]  # max>1 slot -> list
     assert payload["mode"] == "pro"  # fixed values from the route mode
     assert payload["resolution"] == "720p"  # unmapped params pass through
+
+
+def test_media_longer_than_a_slot_allows_is_rejected():
+    from studio.config import get_settings
+    from studio.registry.loader import load_registry
+
+    spec = load_registry(get_settings().resolve_registry_dir()).model("kling-o3-edit")  # clips up to 15 s
+    ok = MediaRef("input_video", "v", "video", duration_ms=15_000)
+    normalize(spec, "edit", "x", {}, [ok])
+    long = MediaRef("input_video", "v", "video", duration_ms=16_000)
+    with pytest.raises(RequestError, match=r"Clip to edit can be at most 15 s; this one is 16.0 s"):
+        normalize(spec, "edit", "x", {}, [long])

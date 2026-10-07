@@ -25,6 +25,7 @@ import anyio
 from studio.config import get_settings
 from studio.domain.enums import ErrorClass
 from studio.media import mock_media
+from studio.media.speech import estimate_words, spoken_seconds
 from studio.providers.base import (
     AmbiguousSubmitError,
     PollResult,
@@ -113,6 +114,9 @@ class MockAdapter(ProviderAdapter):
         kind = route.output.kind
         count = int(payload.get("num_images") or 1) if kind == "image" else 1
         outputs = [ProviderOutput(index=i, kind=kind, ref=job_id) for i in range(count)]
+        if kind == "audio" and _speaks(st["endpoint"]):
+            # text to speech: time the words as if read aloud, like the real API's alignment
+            outputs[0].meta = {"alignment": {"words": estimate_words(strip_tags(payload.get("prompt", "")))}}
         return PollResult(status="succeeded", progress=1.0, outputs=outputs, usage={"mock": True})
 
     async def cancel(self, route: Route, job_id: str) -> bool:
@@ -133,8 +137,18 @@ class MockAdapter(ProviderAdapter):
                 aspect=p.get("aspect_ratio"), index=output.index, seed=seed,
             ))
             return "image/png"
+        if output.kind == "mask":
+            image = _first_path(p.get("input_image"))
+            await anyio.to_thread.run_sync(lambda: mock_media.make_mask(dest, image=image, points=p.get("points")))
+            return "image/png"
+        if output.kind == "mask_video":
+            await mock_media.make_mask_video(dest, workdir, mask=_first_path(p.get("mask")),
+                                             video=_first_path(p.get("input_video")))
+            return "video/mp4"
         if output.kind == "audio":
-            await mock_media.make_audio(dest, workdir, duration=float(p.get("duration") or 5), seed=seed)
+            words = (output.meta.get("alignment") or {}).get("words")
+            duration = spoken_seconds(words) if words else float(p.get("duration") or 5)
+            await mock_media.make_audio(dest, workdir, duration=duration, seed=seed)
             return "audio/mpeg"
         await mock_media.make_video(
             dest, workdir, model_id=model_id, mode=mode, prompt=prompt,
@@ -142,3 +156,19 @@ class MockAdapter(ProviderAdapter):
             aspect=p.get("aspect_ratio") or "16:9", audio=bool(p.get("generate_audio")), seed=seed,
         )
         return "video/mp4"
+
+
+def _speaks(endpoint: str) -> bool:
+    """Whether a mock endpoint (`mock/<model>/<mode>`) stands in for text to speech."""
+    from studio.registry.loader import get_registry
+
+    model_id, _, mode_id = endpoint.removeprefix("mock/").partition("/")
+    spec = get_registry().model(model_id)
+    mode = spec.mode(mode_id) if spec else None
+    return bool(mode and "tts" in mode.ops)
+
+
+def _first_path(value: Any) -> Path | None:
+    """Mock inputs are staged as local paths, one list per role."""
+    first = value[0] if isinstance(value, list) and value else value
+    return Path(first) if isinstance(first, str) and first else None

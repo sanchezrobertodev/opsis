@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,9 @@ class RegistryError(Exception):
 def mock_route(spec: ModelSpec) -> Route:
     """Every model gets a $0 mock route so the whole product works without spending."""
     kind = spec.output_type if spec.output_type in ("video", "image", "audio") else "video"
+    if spec.output_type == "mask":  # one mode segments an image, another tracks a clip
+        kinds = {r.output.kind for r in spec.routes}
+        kind = "mask_video" if kinds == {"mask_video"} else "mask"
     return Route(
         id=f"{spec.id}@mock",
         provider=MOCK_PROVIDER,
@@ -60,13 +64,16 @@ def mock_route(spec: ModelSpec) -> Route:
     )
 
 
-def _read_yaml_dir(directory: Path) -> list[tuple[Path, Any]]:
+def _read_yaml_dir(directory: Path, errors: list[str]) -> list[tuple[Path, Any]]:
     out = []
     if not directory.exists():
         return out
     for path in sorted(directory.rglob("*.yaml")):
-        with path.open(encoding="utf-8") as fh:
-            out.append((path, yaml.safe_load(fh)))
+        try:
+            with path.open(encoding="utf-8") as fh:
+                out.append((path, yaml.safe_load(fh)))
+        except yaml.YAMLError as exc:  # a file mid-edit: report it, keep loading the rest
+            errors.append(f"{path.relative_to(directory.parent).as_posix()}: not valid YAML ({exc})")
     return out
 
 
@@ -83,7 +90,7 @@ def load_registry(root: Path) -> Registry:
     providers: dict[str, ProviderSpec] = {}
     models: dict[str, ModelSpec] = {}
 
-    for path, data in _read_yaml_dir(root / "providers"):
+    for path, data in _read_yaml_dir(root / "providers", errors):
         try:
             p = ProviderSpec.model_validate(data)
         except ValidationError as exc:
@@ -93,7 +100,7 @@ def load_registry(root: Path) -> Registry:
             errors.append(f"{path.name}: duplicate provider id {p.id}")
         providers[p.id] = p
 
-    for path, data in _read_yaml_dir(root / "models"):
+    for path, data in _read_yaml_dir(root / "models", errors):
         try:
             spec = ModelSpec.model_validate(data)
         except ValidationError as exc:
@@ -106,7 +113,7 @@ def load_registry(root: Path) -> Registry:
         models[spec.id] = spec
 
     presets: dict[str, PresetSpec] = {}
-    for path, data in _read_yaml_dir(root / "presets"):
+    for path, data in _read_yaml_dir(root / "presets", errors):
         try:
             preset = PresetSpec.model_validate(data)
         except ValidationError as exc:
@@ -129,20 +136,41 @@ def load_registry(root: Path) -> Registry:
 
 
 class RegistryHolder:
-    """Holds the active registry. A failed reload keeps the previous good one."""
+    """Holds the active registry. A failed reload keeps the previous good one.
 
-    def __init__(self, root: Path):
+    Every process (API, worker) notices edited YAML on its own: `current` compares the files' sizes and
+    modification times at most once per `check_every` seconds and reloads when they changed, so a model the
+    API accepts is never unknown to the worker.
+    """
+
+    def __init__(self, root: Path, check_every: float = 1.0):
         self.root = root
+        self.check_every = check_every
         self._current: Registry | None = None
+        self._stamp: tuple | None = None
+        self._checked = 0.0
         self.last_error: list[str] | None = None
+
+    def _files(self) -> tuple:
+        return tuple(sorted((p.relative_to(self.root).as_posix(), p.stat().st_mtime_ns, p.stat().st_size)
+                            for p in self.root.rglob("*.yaml")))
 
     @property
     def current(self) -> Registry:
         if self._current is None:
+            self._stamp = self._files()
             self._current = load_registry(self.root)
+            self._checked = time.monotonic()
+        elif time.monotonic() - self._checked >= self.check_every:
+            self._checked = time.monotonic()
+            stamp = self._files()
+            if stamp != self._stamp:
+                self._stamp = stamp
+                self.reload()
         return self._current
 
     def reload(self) -> bool:
+        self._stamp = self._files()
         try:
             self._current = load_registry(self.root)
         except RegistryError as exc:

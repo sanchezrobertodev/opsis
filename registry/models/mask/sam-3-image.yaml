@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-06 from fal's OpenAPI (fal-ai/sam-3/image) and its model page ($0.005 per request).
+id: sam-3-image
+name: SAM 3 (select in an image)
+family: sam
+vendor: meta
+description: Segment Anything 3. Click the object you want (and optionally name it) to get its mask.
+output_type: mask
+status: active
+license_tier: commercial_api
+tags: [segmentation, mask, object-swap]
+prompt: {max_chars: 200, dialect: label}
+
+parameters:
+  - {name: points, label: Clicks, type: points, min_points: 1, max_points: 24,
+     help: Click the object; click with Alt to mark what isn't part of it.}
+
+modes:
+  - id: segment
+    label: Select an object
+    ops: [segment]
+    prompt: optional
+    medias:
+      - {role: input_image, kinds: [image], label: Image, required: true}
+
+routes:
+  - id: sam-3-image@fal
+    provider: fal
+    modes:
+      segment: {endpoint: fal-ai/sam-3/image, fixed: {apply_mask: false, output_format: png}}
+    map:
+      params: {points: point_prompts}
+      media: {input_image: image_url}
+    transform: studio.providers.transforms.segment:sam_points
+    pricing:
+      basis: per_request
+      rates: [{usd: 0.005}]
+      verified: 2026-10-06
+      source: https://fal.ai/models/fal-ai/sam-3/image
+    output: {path: masks, kind: mask}
+
+examples:
+  - name: segment_smoke
+    mode: segment
+    params: {points: [[0.5, 0.5, 1]]}
+    media: {input_image: https://example.test/frame.png}
+    smoke: true
+    expect: {cost_usd_range: [0.004, 0.006]}

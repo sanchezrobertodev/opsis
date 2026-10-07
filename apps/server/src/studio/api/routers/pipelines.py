@@ -33,7 +33,12 @@ from studio.db.models import (
     StepStatus,
     User,
 )
-from studio.domain.generations import ConfirmationRequired, GenerationRequestError, quick_estimate
+from studio.domain.generations import (
+    ConfirmationRequired,
+    GenerationRequestError,
+    quick_estimate,
+    resolve_media_kinds,
+)
 from studio.pipelines.engine import (
     RUN_DONE,
     Effects,
@@ -77,7 +82,10 @@ async def _estimate(session: AsyncSession, user: User, body: RunCreate) -> tuple
     total, live, live_known = Decimal("0"), Decimal("0"), True
     jobs = recipe.jobs(inp, reg)
     for job in jobs:
-        usd, live_usd = await quick_estimate(session, job.model_id, job.mode, job.params, list(job.roles), reg)
+        known = await resolve_media_kinds(session, user.id, [{"role": r, "asset_id": a} for r, a in job.media])             if job.media else None
+        usd, live_usd = await quick_estimate(session, job.model_id, job.mode, job.params, list(job.roles), reg,
+                                             prompt="x" * job.prompt_chars if job.prompt_chars else "planned",
+                                             known=known)
         total += usd
         if live_usd is None:
             live_known = False
@@ -120,10 +128,16 @@ async def start_run(body: RunCreate, session: AsyncSession = Depends(get_session
 
 
 @router.get("", response_model=list[RunSummary])
-async def list_runs(limit: int = Query(30, ge=1, le=100), session: AsyncSession = Depends(get_session),
+async def list_runs(limit: int = Query(30, ge=1, le=100), recipe: str | None = None,
+                    channel_id: uuid.UUID | None = Query(None, description="Faceless episodes of one channel"),
+                    session: AsyncSession = Depends(get_session),
                     user: User = Depends(current_user)) -> list[RunSummary]:
-    runs = (await session.execute(select(PipelineRun).where(PipelineRun.user_id == user.id)
-                                  .order_by(PipelineRun.created_at.desc()).limit(limit))).scalars().all()
+    q = select(PipelineRun).where(PipelineRun.user_id == user.id)
+    if recipe:
+        q = q.where(PipelineRun.recipe == recipe)
+    if channel_id:
+        q = q.where(PipelineRun.input["channel_id"].astext == str(channel_id))
+    runs = (await session.execute(q.order_by(PipelineRun.created_at.desc()).limit(limit))).scalars().all()
     counts = {rid: (done, total) for rid, done, total in (await session.execute(
         select(PipelineStep.run_id,
                func.count().filter(PipelineStep.status.in_([StepStatus.succeeded, StepStatus.skipped])),
@@ -154,6 +168,14 @@ def _summary(run: PipelineRun, assets: dict[str, Asset], counts: tuple[int, int]
     )
 
 
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
 async def run_out(session: AsyncSession, run: PipelineRun) -> RunOut:
     steps = (await session.execute(select(PipelineStep).where(PipelineStep.run_id == run.id)
                                    .order_by(PipelineStep.sort, PipelineStep.created_at))).scalars().all()
@@ -162,8 +184,8 @@ async def run_out(session: AsyncSession, run: PipelineRun) -> RunOut:
     ids: list[str | None] = [run.output.get("asset_id")]
     for st in steps:
         ids += [st.output.get("asset_id"), *st.output.get("asset_ids", [])]
-        if st.kind == StepKind.checkpoint:
-            ids += [o.get("value") for o in st.input.get("options", [])]
+        if st.kind == StepKind.checkpoint:  # pick options are asset ids; approve options are plain words
+            ids += [v for o in st.input.get("options", []) if _is_uuid(v := str(o.get("value")))]
     assets = await _assets(session, ids)
 
     def step_out(st: PipelineStep) -> StepOut:

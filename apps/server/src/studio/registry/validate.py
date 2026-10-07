@@ -19,6 +19,7 @@ from studio.registry.schema import (
     ModelSpec,
     Param,
     PathsParam,
+    PointsParam,
     SeedParam,
     TextParam,
 )
@@ -31,6 +32,8 @@ class MediaRef:
     kind: str | None = None  # filled by the API from the asset row
     duration_ms: int | None = None  # for video/audio inputs; some routes bill by input length
     fps: float | None = None  # for video inputs; some routes bill per input frame
+    width: int | None = None  # pixel size, for routes that send coordinates (SAM points)
+    height: int | None = None
 
 
 @dataclass
@@ -51,7 +54,7 @@ class NormalizedRequest:
             "negative_prompt": self.negative_prompt,
             "params": self.params,
             "media": [{"role": m.role, "asset_id": m.asset_id, "kind": m.kind, "duration_ms": m.duration_ms,
-                       "fps": m.fps} for m in self.media],
+                       "fps": m.fps, "width": m.width, "height": m.height} for m in self.media],
             "warnings": self.warnings,
         }
 
@@ -73,6 +76,8 @@ def _coerce(param: Param, value: Any) -> Any:
         return float(value)
     if isinstance(param, PathsParam):
         return _coerce_paths(param, value)
+    if isinstance(param, PointsParam):
+        return _coerce_points(param, value)
     if isinstance(param, EnumParam):
         # enum options may be ints (e.g. Veo durations 4/6/8); match by string form
         for opt in param.options:
@@ -104,6 +109,22 @@ def _coerce_paths(param: PathsParam, value: Any) -> list[dict[str, list[list[flo
     return paths
 
 
+def _coerce_points(param: PointsParam, value: Any) -> list[list[float]]:
+    if not isinstance(value, list):
+        raise ValueError("must be a list of [x, y, label] points")
+    if len(value) > param.max_points:
+        raise ValueError(f"at most {param.max_points} points")
+    clean = []
+    for pt in value:
+        if not (isinstance(pt, list | tuple) and len(pt) == 3 and pt[2] in (0, 1)):
+            raise ValueError("points are [x, y, label] with label 1 (this) or 0 (not this)")
+        x, y = float(pt[0]), float(pt[1])
+        if not (0 <= x <= 1 and 0 <= y <= 1):
+            raise ValueError("points must lie inside the image (0 to 1)")
+        clean.append([round(x, 4), round(y, 4), int(pt[2])])
+    return clean
+
+
 def _paths_needed(n: int) -> str:
     return "Draw at least one motion path on the start frame." if n == 1 else f"Draw at least {n} motion paths."
 
@@ -111,6 +132,8 @@ def _paths_needed(n: int) -> str:
 def _check(param: Param, value: Any) -> str | None:
     if isinstance(param, PathsParam) and len(value) < param.min_paths:
         return _paths_needed(param.min_paths)
+    if isinstance(param, PointsParam) and sum(1 for p in value if p[2] == 1) < param.min_points:
+        return "Click on the object you want to select."
     if isinstance(param, (IntParam, FloatParam)) and not (param.min <= value <= param.max):
         return f"{param.name} must be between {param.min} and {param.max}"
     if isinstance(param, TextParam) and param.max_chars and len(value) > param.max_chars:
@@ -162,6 +185,8 @@ def normalize(
             if param.default is None:
                 if isinstance(param, PathsParam) and param.min_paths:
                     errors.append(_paths_needed(param.min_paths))
+                if isinstance(param, PointsParam) and param.min_points:
+                    errors.append("Click on the object you want to select.")
                 continue
             raw = param.default
         try:
@@ -205,6 +230,10 @@ def normalize(
         for ref in got:
             if ref.kind and ref.kind not in slot.kinds:
                 errors.append(f"{slot.role} must be {'/'.join(slot.kinds)}, got {ref.kind}")
+            seconds = (ref.duration_ms or 0) / 1000
+            if slot.max_duration_s and seconds > slot.max_duration_s + 0.05:
+                errors.append(f"{slot.label or slot.role} can be at most {slot.max_duration_s:g} s; "
+                              f"this one is {seconds:.1f} s")
 
     if errors:
         raise RequestError(errors)

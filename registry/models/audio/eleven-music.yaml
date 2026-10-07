@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Price is the "$0.15 per minute" figure from research 02 (2026-10-06); confirm on the first live run (AMS-9).
+id: eleven-music
+name: Eleven Music
+family: elevenlabs
+vendor: elevenlabs
+description: Background music and songs from a description, cleared for commercial use.
+output_type: audio
+status: active
+license_tier: commercial_api
+tags: [music, score]
+prompt: {max_chars: 2000, dialect: music}
+
+parameters:
+  - {name: duration, type: int, min: 10, max: 300, step: 5, default: 60}
+  - {name: instrumental, type: bool, default: true, help: No vocals.}
+
+modes:
+  - id: music
+    label: Music
+    ops: [music]
+
+routes:
+  - id: eleven-music@elevenlabs
+    provider: elevenlabs
+    modes:
+      music: {endpoint: music, fixed: {model_id: music_v1}}
+    map:
+      prompt: prompt
+      params:
+        duration: {to: music_length_ms, transform: scale, args: {factor: 1000}}
+        instrumental: force_instrumental
+    pricing:
+      basis: per_output_second
+      rates: [{usd: 0.0025}]
+      verified: 2026-10-06
+      source: https://elevenlabs.io/pricing/api
+    timeout_s: 600
+    output: {path: audio, kind: audio}
+
+examples:
+  - name: music_smoke
+    mode: music
+    prompt: Gentle acoustic guitar under a documentary voiceover, warm and unhurried
+    params: {duration: 10}
+    smoke: true
+    expect: {cost_usd_range: [0.01, 0.05]}

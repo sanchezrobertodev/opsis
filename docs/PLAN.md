@@ -123,7 +123,7 @@ apps/gpu-worker/                  stub only (SAM 2, WhisperX, TTS…); not insta
 packages/api-client/              generated TS types + typed hooks
 registry/{models,providers,director,presets}/*.yaml   single source of truth (Pydantic-validated, JSON Schema)
 workflows/comfy/*.json + *.map.yaml                   ComfyUI API workflows + node-injection maps
-infra/docker-compose.yml          postgres:18   ·   infra/runpod/worker-comfyui/ (Dockerfile, handler_patch.py)
+infra/docker-compose.yml          postgres:18   ·   infra/runpod/wan-core/ (Dockerfile, handler.py, models.yaml)
 scripts/                          smoke_live.py, import_catalog.py, fetch_provider_schemas.py, make_mock_media.py
 docs/research/                    research reports from this planning session
 CLAUDE.md                         conventions + "how to add a model" checklist
@@ -137,7 +137,7 @@ CLAUDE.md                         conventions + "how to add a model" checklist
        adds director params.
      - `recipe`: appears in the model picker but starts a pipeline run.
    - Each entry lists modes with media slots (role, kinds, min/max, duration limits), typed params (enum, int,
-     float, bool, seed, text, json, with `visible_if` and ui hints), aspect ratios, durations, status, license
+     float, bool, seed, text, json, paths, with `visible_if` and ui hints), aspect ratios, durations, status, license
      tier, element strategy and camera support.
    - Each entry lists `routes[]`, each with provider, endpoints per mode, a param/media map plus transforms, a
      pricing basis (per output second, image, request, video token, 1k chars or GPU second, with a `verified`
@@ -237,7 +237,7 @@ sequence, compare and keyframe recipes plus ffmpeg assembly. P2 done except the 
 (folded into P5): director and camera moves, Motion control page, Elements/characters with @mentions,
 presets gallery, Claude enhance (mock until a key is added). The opt-in local ComfyUI route (Wan 2.2 5B,
 FLUX.2 klein) runs on the RTX 5070.
-P3 in progress: Edit video studio (instruction edits on Aleph 2, Kling O3 Edit, Luma Ray 3.2 Modify,
+P3 done (merged 2026-10-07, PR #1): Edit video studio (instruction edits on Aleph 2, Kling O3 Edit, Luma Ray 3.2 Modify,
 FLUX 3, Seedance 2.5 edit/extend, P-Video-Edit; Topaz and ByteDance upscalers; Topaz interpolation; Bria
 background removal; Kling video-to-audio; free local ffmpeg tools), Motion transfer studio (Kling 3.0 and 2.6
 Motion Control, Wan 2.2 Animate move/replace, Runway Act-Two) with a movement-clip library, and the RunPod
@@ -248,6 +248,13 @@ worker-comfyui 5.10.0 + our handler, a 118 GB model manifest for a network volum
 Fun Camera value now set its camera control. Deployed 2026-10-06 (endpoint ovktgiubxwld1j). All four workflows ran live through the studio ($0.09
 each on an RTX PRO 6000). Wan-Move has a motion-path editor in the Create form (`type: paths` params: drag to draw,
 tap to pin). Left for later: VACE / Uni3C / Animate-2 graphs (P4 Object Swap and Motion Transfer can add them).
+P4 built (branch `claude/p4-faceless-object-swap`, mock-tested; nothing live yet): ElevenLabs TTS with word timings,
+SFX and music; Claude steps in the pipeline engine; the Faceless studio (4 themes, 12 styles with caption looks,
+channels, topic ideas, script approval and editing, narrated stills or animated clips, ducked music, burned-in
+captions plus SRT, thumbnail pick); and the Object swap studio (click to select on a frame with SAM 3, tracking, 1-3
+edit models compared, a composite that keeps every pixel outside the mask, removal). Not done: the Kids song mode,
+prompt rephrasing in the clip retry ladder, and the VACE swap route (needs the VACE weights on wan-core, AMS-11).
+Remaining work is tracked in Jira project AMS.
 - **Step 0 — Handoff (this session, after approval):**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.
@@ -265,8 +272,8 @@ tap to pin). Left for later: VACE / Uni3C / Animate-2 graphs (P4 Object Swap and
     compare-across-models.
   - *Ships:* our own Create Video across the flagship models.
 - **P2 — Director, Elements, Presets:**
-  - Scope: ShotSpec + dialects; camera-move library (65 moves, stackable) + looks; Elements library + `@mentions`
-    + character-sheet flow + trait builder; keyframe-first pre-step; Claude enhance; effects/preset gallery;
+  - Scope: ShotSpec + dialects; camera-move library (65 moves, stackable) + looks; Elements library, `@mentions`,
+    character-sheet flow + trait builder; keyframe-first pre-step; Claude enhance; effects/preset gallery;
     Cinema Studio virtual model.
 - **P3 — Edit Video, Motion Transfer, Motion Control (open models):**
   - Scope: instruction edits (Aleph 2.0, Kling Omni Edit, Omni conversational, Luma Modify, FLUX 3 Video Edit,

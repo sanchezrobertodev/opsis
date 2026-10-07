@@ -14,6 +14,7 @@ from studio.api.routers import (
     assets,
     director,
     elements,
+    faceless,
     generations,
     llm,
     misc,
@@ -100,6 +101,7 @@ app.include_router(elements.router)
 app.include_router(presets.router)
 app.include_router(llm.router)
 app.include_router(pipelines.router)
+app.include_router(faceless.router)
 app.include_router(generations.router)
 app.include_router(assets.router)
 app.include_router(misc.router)

@@ -68,7 +68,7 @@ the few KB this image adds.
 
 ```bash
 docker run --rm --gpus all \
-  -v C:/Dev/AI/VideoStudio/ComfyUI_windows_portable/ComfyUI/models:/runpod-volume/models:ro \
+  -v C:/Dev/AI/VideoStudio/models:/runpod-volume/models:ro \
   -v ./test_input.json:/test_input.json wan-core:local
 ```
 
@@ -78,6 +78,7 @@ the local Wan 2.2 5B workflow, which fits in 12 GB.
 ## Fill the volume
 
 Either way skips files that are already complete, so rerunning is safe:
+
 - a CPU pod in the volume's data center, using this image with
   `python -u /fetch_models.py --dest /runpod-volume/models` (pennies), or
 - a job on the endpoint: `{"input": {"action": "fetch_models"}}` (bills GPU time while it downloads).
@@ -87,5 +88,5 @@ Check with `{"input": {"action": "check"}}`: it returns the GPU, ComfyUI version
 ## Wire it into the studio
 
 Put the endpoint id in `.env` as `RUNPOD_WAN_CORE_ENDPOINT=...` next to `RUNPOD_API_KEY`, then restart the API
-and worker. The models Wan 2.2 14B Fast and Wan 2.2 Fun Camera route there; add `wan-2.2-14b-fast@wan_core` to
+and worker. Wan 2.2 14B Fast, Wan 2.2 Fun Camera and Wan-Move route there; add their `@wan_core` routes to
 `LIVE_ROUTE_ALLOWLIST` (mixed mode) or run `scripts/smoke_live.py --routes wan-2.2-14b-fast@wan_core --cap 0.50`.

@@ -36,7 +36,8 @@ def test_examples_normalize_price_and_map(spec, example):
     media = []
     for role, refs in example.media.items():
         for i, _ in enumerate(refs if isinstance(refs, list) else [refs]):
-            media.append(MediaRef(role=role, asset_id=f"{role}-{i}", kind=None))
+            # stand-in pixel size, as the API fills it from the asset (routes that place clicks need it)
+            media.append(MediaRef(role=role, asset_id=f"{role}-{i}", kind=None, width=1280, height=720))
     req = normalize(spec, example.mode, example.prompt, example.params, media)
     routes = [r for r in spec.routes if example.mode in r.modes and r.provider != MOCK_PROVIDER]
     assert routes, f"{spec.id}: example {example.name} has no live route"

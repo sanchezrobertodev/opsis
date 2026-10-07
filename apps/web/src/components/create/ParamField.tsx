@@ -39,6 +39,8 @@ export function ParamField({
   switch (param.type) {
     case "enum": {
       const options = param.options as (string | number)[];
+      const labels = (param.labels ?? {}) as Record<string, string>;
+      const show = (o: string | number) => labels[String(o)] ?? String(o);
       if (param.ui === "aspect") {
         return (
           <Field label={label} hint={param.help ?? undefined}>
@@ -49,7 +51,7 @@ export function ParamField({
       if (param.ui === "segmented" || options.length <= 4) {
         return (
           <Field label={label} hint={param.help ?? undefined}>
-            <Segmented label={label} value={value as string | number} options={options} onChange={onChange} />
+            <Segmented label={label} value={value as string | number} options={options} onChange={onChange} render={show} />
           </Field>
         );
       }
@@ -58,7 +60,7 @@ export function ParamField({
           <Select
             id={id}
             value={String(value ?? "")}
-            options={options.map((o) => ({ value: String(o), label: String(o) }))}
+            options={options.map((o) => ({ value: String(o), label: show(o) }))}
             onChange={(v) => onChange(options.find((o) => String(o) === v) ?? v)}
           />
         </Field>

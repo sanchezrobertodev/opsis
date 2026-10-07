@@ -26,12 +26,15 @@ MediaRole = Literal[
     "replacement_image",
     "character_image",  # motion transfer: who performs
     "driving_video",  # motion transfer: whose movement is copied
+    "input_image",  # an image a tool works on (segmentation)
 ]
-MediaKind = Literal["image", "video", "audio"]
+# mask / mask_video: black-and-white mattes (white = the selected object), kept apart from ordinary media
+MediaKind = Literal["image", "video", "audio", "mask", "mask_video"]
 OpTag = Literal[
     "t2v", "i2v", "flf2v", "multi_ref", "multi_shot", "extend", "instruction_edit", "restyle", "reframe",
     "upscale", "interpolate", "bg_remove", "motion_transfer", "object_replace", "lipsync", "avatar",
     "t2i", "i2i", "relight", "add_sound", "trim", "retime", "reverse", "loop", "stabilize",
+    "tts", "sfx", "music", "segment", "track",
 ]
 OutputType = Literal["video", "image", "audio", "3d", "lora", "mask", "text"]
 Scalar = str | int | float | bool
@@ -58,6 +61,7 @@ class EnumParam(_ParamBase):
     type: Literal["enum"]
     options: list[str | int]
     default: str | int | None = None
+    labels: dict[str, str] = {}  # option -> what the user sees, for options that are ids (voices)
 
 
 class IntParam(_ParamBase):
@@ -104,8 +108,19 @@ class PathsParam(_ParamBase):
     default: list[Any] | None = None
 
 
+class PointsParam(_ParamBase):
+    """Clicks on an image: [[x, y, label]] with x, y in 0-1 of the image and label 1 (this) or 0 (not this).
+    Routes turn them into the provider's shape (pixel points for SAM)."""
+
+    type: Literal["points"]
+    min_points: int = 0
+    max_points: int = 24
+    default: list[Any] | None = None
+
+
 Param = Annotated[
-    EnumParam | IntParam | FloatParam | BoolParam | SeedParam | TextParam | PathsParam, Field(discriminator="type")
+    EnumParam | IntParam | FloatParam | BoolParam | SeedParam | TextParam | PathsParam | PointsParam,
+    Field(discriminator="type"),
 ]
 
 

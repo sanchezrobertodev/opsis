@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from studio.registry.schema import Mode, ModelSpec
+import math
+
+from studio.registry.schema import EnumParam, FloatParam, IntParam, Mode, ModelSpec
 
 
 def text_mode(spec: ModelSpec) -> Mode | None:
@@ -31,3 +33,31 @@ def with_param(spec: ModelSpec, mode_id: str, params: dict, name: str, value: ob
     if value is None or not any(p.name == name for p in spec.params_for(mode_id)):
         return params
     return {**params, name: value}
+
+
+def mode_with_op(spec: ModelSpec, op: str) -> Mode | None:
+    """The first mode that does `op` (e.g. tts, music, t2i)."""
+    return next((m for m in spec.modes if op in m.ops), None)
+
+
+def fit_duration(spec: ModelSpec, mode_id: str, seconds: float) -> int | float | str | None:
+    """The shortest duration the model allows that covers `seconds` (its longest if none does), in the param's
+    own type. None when the model has no duration param in this mode."""
+    p = next((p for p in spec.params_for(mode_id) if p.name == "duration"), None)
+    if isinstance(p, EnumParam):
+        numeric = []
+        for o in p.options:
+            try:
+                numeric.append((float(o), o))
+            except ValueError:
+                continue
+        if not numeric:
+            return None
+        numeric.sort()
+        return next((o for v, o in numeric if v >= seconds), numeric[-1][1])
+    if isinstance(p, IntParam):
+        steps = math.ceil(max(0.0, seconds - p.min) / p.step)
+        return min(p.max, p.min + steps * p.step)
+    if isinstance(p, FloatParam):
+        return round(min(p.max, max(p.min, seconds)), 2)
+    return None

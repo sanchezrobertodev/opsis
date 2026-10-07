@@ -6,7 +6,7 @@ added, steps whose input changed are redone, steps that left the plan are skippe
 mutates state, map-style fan-out is just a loop, and editing a run's input only reruns what it touches.
 
 Step outputs:
-- generate: {"generation_id", "asset_id", "asset_ids"}
+- generate: {"generation_id", "asset_id", "asset_ids", "duration_ms"} (duration of the first output, if timed)
 - local / llm: whatever the op returns (assets as "asset_id")
 - checkpoint: {"choice": <option value>}
 A failed `optional` step settles with {"failed": "<reason>"} instead of failing the run.
@@ -49,6 +49,8 @@ class PlannedJob:
     mode: str
     params: dict[str, Any] = field(default_factory=dict)
     roles: tuple[str, ...] = ()
+    prompt_chars: int = 0  # for routes priced by text length (narration)
+    media: tuple[tuple[str, str], ...] = ()  # (role, asset_id) of inputs that already exist, priced at their length
 
 
 Settled = dict[str, dict[str, Any]]  # step key -> output (succeeded, or optional-and-failed)
@@ -77,6 +79,11 @@ class Recipe(ABC):
     @abstractmethod
     def result(self, inp: Any, settled: Settled) -> dict[str, Any] | None:
         """The run's output once it is complete, else None."""
+
+    def failure(self, inp: Any, settled: Settled) -> str | None:
+        """Why the run failed even though no required step did (e.g. every optional take failed), else None.
+        Checked once every step has finished."""
+        return None
 
 
 def ok(settled: Settled, key: str) -> dict[str, Any] | None:

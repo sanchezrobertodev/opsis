@@ -117,7 +117,8 @@ def best_mime(*candidates: str | None, kind: str) -> str:
     for c in candidates:
         if c and c != "application/octet-stream" and c.split("/")[0] in ("video", "image", "audio"):
             return c
-    return {"video": "video/mp4", "image": "image/png", "audio": "audio/mpeg"}[kind]
+    return {"video": "video/mp4", "image": "image/png", "audio": "audio/mpeg", "mask": "image/png",
+            "mask_video": "video/mp4"}[kind]
 
 
 # ---------------------------------------------------------------- input staging (cached per provider)

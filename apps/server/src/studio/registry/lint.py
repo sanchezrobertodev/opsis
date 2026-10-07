@@ -58,6 +58,8 @@ def lint(reg: Registry) -> tuple[list[str], list[str]]:
                 errors.append(f"{where}: param {p.name} references unknown modes {set(p.modes) - mode_ids}")
             if isinstance(p, EnumParam) and p.default is not None and p.default not in p.options:
                 errors.append(f"{where}: param {p.name} default {p.default!r} not in options")
+            if isinstance(p, EnumParam) and (extra := set(p.labels) - {str(o) for o in p.options}):
+                errors.append(f"{where}: param {p.name} labels unknown options {sorted(extra)}")
             if isinstance(p, (IntParam, FloatParam)) and p.default is not None and not p.min <= p.default <= p.max:
                 errors.append(f"{where}: param {p.name} default out of range")
         param_names = {p.name for p in spec.parameters}

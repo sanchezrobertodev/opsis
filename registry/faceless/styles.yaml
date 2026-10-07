@@ -1,0 +1,88 @@
+# Faceless Studio styles: the look of every frame. `prompt` is appended to each visual; `caption` is how the
+# burned-in captions look (size is for a 1080-pixel-tall frame and scales with the video).
+# Fonts are ones Windows ships, so libass finds them without extra setup.
+styles:
+  - id: editorial-motion-graphics
+    label: Editorial Motion Graphics
+    summary: Clean magazine infographics with bold shapes.
+    prompt: >-
+      clean editorial motion-graphics illustration, flat vector shapes, bold geometric layout, limited palette
+      of deep navy, off-white and signal orange, subtle paper grain, magazine infographic style
+    caption: {font: Arial, size: 58, bold: true, color: "#FFFFFF", outline: "#0B1F3A", highlight: "#FF7A1A"}
+  - id: stickman-cartoon
+    label: Stickman Cartoon
+    summary: Simple stick figures with a whiteboard-explainer feel.
+    prompt: >-
+      simple black stick-figure cartoon on a plain off-white background, thick hand-drawn marker lines,
+      minimal props, expressive poses, whiteboard explainer style
+    caption: {font: Comic Sans MS, size: 60, bold: true, color: "#111111", outline: "#FFFFFF", highlight: "#E53935"}
+  - id: fairy-tale-myth
+    label: Fairy Tale & Myth
+    summary: Storybook gouache with gilded, glowing light.
+    prompt: >-
+      storybook fairy-tale illustration, rich gouache textures, gilded details, soft glowing light, enchanted
+      atmosphere, painterly brushwork
+    caption: {font: Georgia, size: 60, bold: false, color: "#FFF6E0", outline: "#2B1A0E", highlight: "#F2C14E"}
+  - id: paper-diorama
+    label: Paper Diorama
+    summary: Layered cut-paper miniature sets.
+    prompt: >-
+      handmade layered paper diorama, cut-paper layers with visible depth and soft shadows between them,
+      warm miniature studio lighting, tactile craft materials
+    caption: {font: Trebuchet MS, size: 58, bold: true, color: "#FFFFFF", outline: "#3B2A20", highlight: "#FFB347"}
+  - id: hand-drawn
+    label: Hand Drawn
+    summary: Pencil and ink sketches with a light wash.
+    prompt: >-
+      hand-drawn pencil and ink sketch, loose cross-hatching, sketchbook paper texture, light watercolor wash
+      accents
+    caption: {font: Georgia, size: 58, bold: false, color: "#FFFFFF", outline: "#222222", highlight: "#7FB3D5"}
+  - id: mannequin
+    label: Mannequin
+    summary: Wooden artist's mannequins acting out the story.
+    prompt: >-
+      featureless wooden artist's mannequins acting out the scene, minimal studio set, soft key light, muted
+      neutral palette, calm and sculptural
+    caption: {font: Arial, size: 56, bold: true, color: "#F5F1EA", outline: "#2E2A26", highlight: "#C9A27E"}
+  - id: poster-vector
+    label: Poster Vector
+    summary: Bold retro screen-print posters.
+    prompt: >-
+      bold retro poster in flat vector style, strong silhouettes, limited three-color screen-print palette,
+      halftone texture, dramatic composition
+    caption: {font: Impact, size: 64, bold: false, color: "#FFF8E7", outline: "#1A1A1A", highlight: "#E63946", uppercase: true}
+  - id: colorful-3d
+    label: Colorful 3D
+    summary: Bright, toy-like 3D renders.
+    prompt: >-
+      vibrant colorful 3D render, rounded toy-like shapes, glossy materials, bright saturated colors, soft
+      global illumination
+    caption: {font: Trebuchet MS, size: 62, bold: true, color: "#FFFFFF", outline: "#3A0CA3", highlight: "#FFD60A"}
+  - id: watercolor-chronicle
+    label: Watercolor Chronicle
+    summary: Soft historical watercolors on textured paper.
+    prompt: >-
+      watercolor illustration, soft bleeding pigments, visible cold-press paper texture, muted historical
+      palette, chronicle illustration
+    caption: {font: Georgia, size: 58, bold: false, color: "#FFFDF7", outline: "#3D3A33", highlight: "#D4A373"}
+  - id: paper-collage
+    label: Paper Collage
+    summary: Torn paper, old photos and newsprint.
+    prompt: >-
+      mixed-media paper collage, torn paper edges, vintage photo cutouts, newsprint textures, layered and
+      slightly askew
+    caption: {font: Courier New, size: 58, bold: true, color: "#FFFFFF", outline: "#1E1E1E", highlight: "#F4A261"}
+  - id: studio-3d
+    label: Studio 3D
+    summary: Polished product-shot 3D on a seamless backdrop.
+    prompt: >-
+      polished studio 3D render, clean product-shot lighting, seamless backdrop, realistic materials, shallow
+      depth of field
+    caption: {font: Arial, size: 56, bold: true, color: "#FFFFFF", outline: "#111111", highlight: "#4CC9F0"}
+  - id: pastel-flat-2d
+    label: Pastel Flat 2D
+    summary: Calm pastel shapes with picture-book clarity.
+    prompt: >-
+      flat 2D illustration in soft pastel colors, simple rounded shapes, gentle gradients, friendly and calm,
+      picture-book clarity
+    caption: {font: Verdana, size: 56, bold: true, color: "#FFFFFF", outline: "#5E548E", highlight: "#FFC6FF"}

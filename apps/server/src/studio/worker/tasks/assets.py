@@ -47,7 +47,7 @@ async def run_derive(asset_id: uuid.UUID) -> None:
         return asset_key(user_id, asset_id, name)
 
     derivatives: dict[str, object] = {}
-    if kind == AssetKind.video:
+    if kind in (AssetKind.video, AssetKind.mask_video):
         poster = storage.path_for(k("poster.jpg"))
         await derive.video_poster(src, poster, duration_ms)
         derivatives["poster"] = k("poster.jpg")

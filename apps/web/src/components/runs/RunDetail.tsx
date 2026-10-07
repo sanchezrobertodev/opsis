@@ -14,6 +14,7 @@ import {
   useRetryRun,
   useRun,
 } from "@/lib/runs";
+import { PlanBlocks, ScriptReview } from "@/components/faceless/ScriptReview";
 import { Button } from "@/components/ui/controls";
 import { statusTone, WHEN } from "./Runs";
 
@@ -21,6 +22,8 @@ const OUTPUT_TEXT: Record<string, string> = {
   sequence: "The joined cut.",
   compare: "The take you kept.",
   keyframe: "The animated shot; its opening frame is in the library too.",
+  object_swap: "The take you kept. The other takes and the tracked mask are in the library too.",
+  faceless: "The finished episode. The clean master, the captions file and the thumbnail are in the library too.",
 };
 
 const KIND_TEXT: Record<string, string> = {
@@ -183,7 +186,22 @@ function StepRow({ run, step }: { run: Run; step: Step }) {
           ))}
         </div>
       )}
-      {step.kind === "checkpoint" && step.status === "waiting" && (
+      {run.recipe === "faceless" && step.key === "plan" && step.status === "succeeded" && <PlanBlocks step={step} />}
+      {step.kind === "checkpoint" && step.status === "waiting" && !(step.options ?? []).some((o) => o.asset) && (
+        run.recipe === "faceless" && step.key === "review" ? (
+          <ScriptReview run={run} step={step} />
+        ) : (
+          <div className="mt-3 flex gap-2 pl-6">
+            {(step.options ?? []).map((o) => (
+              <Button key={String(o.value)} size="sm" tone="primary" disabled={answer.isPending}
+                      onClick={() => answer.mutate({ id: run.id, key: step.key, choice: String(o.value) })}>
+                {String(o.label)}
+              </Button>
+            ))}
+          </div>
+        )
+      )}
+      {step.kind === "checkpoint" && step.status === "waiting" && (step.options ?? []).some((o) => o.asset) && (
         <div className="mt-3 pl-6">
           <p className="mb-2 text-xs text-muted">Which one do you want to keep? It gets a star in your library.</p>
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">

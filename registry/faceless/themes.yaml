@@ -1,0 +1,38 @@
+# Faceless Studio themes: how the script is written and what the score sounds like. The writer (Claude) gets
+# `script_guidance`; `music` is the prompt for the background score. Voices are eleven-v4 voice ids.
+themes:
+  - id: education
+    label: Education
+    summary: Explain one idea clearly, from a hook question to the answer.
+    script_guidance: >-
+      Open with a question the viewer has probably wondered about, then answer it step by step with concrete,
+      everyday examples. One idea per paragraph. Close with a one-sentence recap. Curious, friendly, precise;
+      no filler phrases like "in today's video".
+    voice_id: nPczCjzI2devNBz1zQrb
+    music: light, curious underscore with soft marimba and pizzicato strings, unobtrusive under a voiceover
+  - id: history
+    label: History
+    summary: A true story told in order, with names, places and dates.
+    script_guidance: >-
+      Start on one vivid, specific moment, then step back and tell how it came to that, in chronological
+      order. Use real names, places and dates. Measured documentary tone. Never present speculation as fact;
+      say "historians think" when the record is unsure.
+    voice_id: onwK4e9ZLuTAKqWW03F9
+    music: restrained cinematic documentary score, low strings and soft piano, slow and steady
+  - id: kids
+    label: Kids
+    summary: Warm, playful stories and facts for ages 5 to 9.
+    script_guidance: >-
+      For children aged 5 to 9. Short sentences and simple words. Warm and playful, with a little gentle
+      humour and one clear lesson or fact. Speak to the viewer directly now and then ("Can you guess what
+      happened next?"). Nothing scary or sad.
+    voice_id: cgSgspJ2msm6clMCkdW9
+    music: playful, bouncy ukulele and glockenspiel, cheerful and light
+  - id: storytelling
+    label: Storytelling
+    summary: A short tale with a hero, a problem, rising tension and a turn.
+    script_guidance: >-
+      A short narrative with one clear protagonist, a problem, rising tension and a satisfying turn near the
+      end. Vivid sensory detail, past tense, third person. Let the last line land quietly.
+    voice_id: JBFqnCBsd6RMkjVDRZzb
+    music: atmospheric emotive score with piano and gently swelling strings

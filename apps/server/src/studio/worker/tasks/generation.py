@@ -99,7 +99,7 @@ def request_from(gen: Generation) -> NormalizedRequest:
         model_id=r["model_id"], mode=r["mode"], prompt=r.get("compiled_prompt") or r.get("prompt", ""),
         negative_prompt=r.get("negative_prompt"), params=dict(r.get("params", {})),
         media=[MediaRef(role=m["role"], asset_id=m["asset_id"], kind=m.get("kind"), duration_ms=m.get("duration_ms"),
-                        fps=m.get("fps")) for m in r.get("media", [])],
+                        fps=m.get("fps"), width=m.get("width"), height=m.get("height")) for m in r.get("media", [])],
         warnings=list(r.get("warnings", [])),
     )
 
@@ -551,7 +551,8 @@ async def run_ingest(attempt_id: uuid.UUID) -> None:
                     content_hash=digest, width=info.width, height=info.height, duration_ms=info.duration_ms,
                     fps=info.fps, has_audio=info.has_audio, codec=info.codec, generation_id=gen_id,
                     output_index=out.index, title=(user_prompt or gen_id.hex)[:120],
-                    metadata_={"model_id": req.model_id, "mode": req.mode, "prompt": user_prompt,
+                    # out.meta carries what the provider says about the file itself (TTS word timings)
+                    metadata_={**out.meta, "model_id": req.model_id, "mode": req.mode, "prompt": user_prompt,
                                "compiled_prompt": req.prompt, "direction": direction,
                                "params": req.params, "route_id": attempt.route_id},
                 ))
