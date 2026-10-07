@@ -31,10 +31,15 @@ test("Cinema: script, Claude's shot plan, film every shot, pick takes, export th
 
   await expect(page.getByRole("button", { name: /^Film 0 unfilmed shots/ })).toBeVisible();  // both picked
   await page.getByRole("radio", { name: "Cut" }).first().click();
-  await expect(page.getByLabel("Shot 2 starts at")).toBeVisible();
-  await page.getByRole("radio", { name: "Fade" }).click();
+  // fade into the second shot, open on a title card, then export: the film is as long as the preview
+  await page.getByLabel("Timeline").getByRole("button", { name: /^02 / }).click();
+  await page.getByRole("region", { name: "Selected item" }).getByRole("radio", { name: "Fade" }).click();
+  await page.getByRole("button", { name: "Title card" }).click();
+  await page.getByLabel("Title", { exact: true }).fill("The Kite");
+  await expect(page.getByLabel("Timeline").getByRole("button", { name: /The Kite/ })).toBeVisible();
+  const length = (await page.getByLabel("Film length").textContent())!;
   await page.getByRole("button", { name: "Export the film" }).click();
-  await expect(page.getByText(/^Exported\./)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(`Exported, ${length}.`)).toBeVisible({ timeout: 60_000 });
 });
 
 test("Cinema: light and feeling on a shot, a scene in one take, then continue a take", async ({ page }) => {

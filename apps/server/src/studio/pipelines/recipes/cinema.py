@@ -8,7 +8,8 @@ tagged with the project and shot) and the editor picks them into the document.
   run redoes that shot and the shots chained after it, nothing else. A shot's dialogue goes into the prompt of
   models that voice it themselves; on other models each line is voiced (TTS), the lines are joined into one track,
   and every take is lip-synced to it as a new take.
-- cinema_export: the cut. Picked takes in order, trimmed, joined with cuts or short fades.
+- cinema_export: the cut. Picked takes and title cards in order, trimmed, joined with cuts or short fades, with
+  dialogue, music and SFX tracks mixed under them.
 """
 
 from __future__ import annotations
@@ -400,19 +401,70 @@ class CutClip(BaseModel):
     trim_in: float = Field(0.0, ge=0)
     trim_out: float | None = Field(None, gt=0)
     transition: Literal["cut", "fade"] = "cut"
+    volume: float = Field(1.0, ge=0, le=2, description="The take's own sound; 0 when its dialogue is on a track")
+
+
+class CutCard(BaseModel):
+    text: str = Field(min_length=1, max_length=200)
+    subtext: str = Field("", max_length=200)
+    duration: float = Field(3.0, ge=0.5, le=20)
+    background: str = Field("#0d0e10", pattern=r"^#[0-9a-fA-F]{6}$")
+    color: str = Field("#f2efe8", pattern=r"^#[0-9a-fA-F]{6}$")
+    transition: Literal["cut", "fade"] = "fade"
+
+
+class CutEntry(BaseModel):
+    """One item on the picture track: a take or a title card."""
+
+    take: CutClip | None = None
+    card: CutCard | None = None
+
+    @model_validator(mode="after")
+    def _one(self) -> CutEntry:
+        if (self.take is None) == (self.card is None):
+            raise ValueError("each item is either a take or a title card")
+        return self
+
+
+class CutSound(BaseModel):
+    asset_id: uuid.UUID
+    track: Literal["dialogue", "music", "sfx"]
+    start: float = Field(0.0, ge=0, le=3600)
+    trim_in: float = Field(0.0, ge=0)
+    length: float | None = Field(None, gt=0)
+    volume: float = Field(1.0, ge=0, le=2)
+    fade_in: float = Field(0.0, ge=0, le=10)
+    fade_out: float = Field(0.0, ge=0, le=10)
 
 
 class CinemaExportInput(BaseModel):
     project_id: uuid.UUID
     title: str = Field("Cut", max_length=200)
-    clips: list[CutClip] = Field(min_length=1, max_length=120)
+    items: list[CutEntry] = Field(default_factory=list, max_length=200)
+    audio: list[CutSound] = Field(default_factory=list, max_length=100)
     fade_seconds: float = Field(0.5, ge=0.1, le=2.0)
+    duck_music: bool = Field(True, description="Lower the music while dialogue plays")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _clips_as_items(cls, data: Any) -> Any:
+        """Exports used to send only `clips` (takes)."""
+        if isinstance(data, dict) and data.get("clips") and not data.get("items"):
+            data = {**data, "items": [{"take": c} for c in data["clips"]]}
+            data.pop("clips")
+        return data
+
+    @model_validator(mode="after")
+    def _something(self) -> CinemaExportInput:
+        if not self.items:
+            raise ValueError("the cut needs at least one take or title card")
+        return self
 
 
 class CinemaExportRecipe(Recipe):
     id = "cinema_export"
     name = "Export the cut"
-    summary = "The picked takes in order, trimmed and joined into one film."
+    summary = "The picked takes and title cards in order, trimmed and joined, with dialogue, music and SFX."
     Input = CinemaExportInput
 
     def title(self, inp: CinemaExportInput) -> str:
@@ -423,12 +475,14 @@ class CinemaExportRecipe(Recipe):
 
     def plan(self, inp: CinemaExportInput, settled: Settled, reg: Registry) -> list[StepSpec]:
         return [StepSpec("cut", StepKind.local, "Cut the film", {
-            "op": "timeline_cut", "title": inp.title, "fade_seconds": inp.fade_seconds,
-            "clips": [c.model_dump(mode="json") for c in inp.clips]})]
+            "op": "timeline_cut", "title": inp.title, "fade_seconds": inp.fade_seconds, "duck_music": inp.duck_music,
+            "items": [e.model_dump(mode="json", exclude_none=True) for e in inp.items],
+            "audio": [a.model_dump(mode="json") for a in inp.audio]})]
 
     def result(self, inp: CinemaExportInput, settled: Settled) -> dict[str, Any] | None:
         cut = ok(settled, "cut")
-        return {"asset_id": cut["asset_id"], "duration_ms": cut.get("duration_ms")} if cut else None
+        return ({"asset_id": cut["asset_id"], "duration_ms": cut.get("duration_ms"), "frames": cut.get("frames")}
+                if cut else None)
 
 
 # ---------------------------------------------------------------- a scene in one take (multi-shot)

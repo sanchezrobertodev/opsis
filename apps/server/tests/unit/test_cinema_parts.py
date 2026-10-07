@@ -52,8 +52,30 @@ def test_document_rules():
 def test_join_graph_mixes_cuts_and_fades():
     graph, total = join_graph([4.0, 3.0, 2.0], ["cut", "fade", "cut"], 0.5)
     assert "xfade=transition=fade:duration=0.500:offset=3.500" in graph
-    assert "[v1][a1][2:v][2:a]concat=n=2:v=1:a=1" in graph
+    assert "[v1][a1][p2v][p2a]concat=n=2:v=1:a=1" in graph
     assert total == pytest.approx(4.0 + 3.0 - 0.5 + 2.0)
-    # a fade never takes more than half of either clip
+    # a fade never takes more than half of either clip (0.6 s is 14 frames, so 7 at most)
     graph, total = join_graph([0.6, 0.6], ["cut", "fade"], 2.0)
-    assert "duration=0.300" in graph and total == pytest.approx(0.9)
+    assert "duration=0.292" in graph and total == pytest.approx(21 / 24)
+
+
+def test_the_cut_is_planned_in_whole_frames():
+    from studio.media.timeline import FPS, plan, to_frames
+
+    assert [to_frames(s) for s in (0.5, 1 / 48, 3 / 48, 2.99)] == [12, 1, 2, 72]  # halves round up, as in JS
+    p = plan([4.0, 3.0, 0.1, 2.0], ["cut", "fade", "cut", "fade"], 0.5)
+    assert [(s.start, s.frames, s.overlap) for s in p.segments] == [(0, 96, 0), (84, 72, 12), (156, 5, 0),
+                                                                     (159, 48, 2)]
+    assert p.frames == 207 and p.seconds == pytest.approx(207 / FPS)
+
+
+def test_title_card_text_wraps_inside_the_card():
+    from studio.media.timeline import CARD_TEXT_WIDTH, _font, wrap
+
+    font, width = _font(65), 1280 * CARD_TEXT_WIDTH
+    text = wrap("The keeper climbed the stairs one last time, and the lamp went dark over the harbour", font, width)
+    lines = text.split("\n")
+    assert len(lines) > 1 and all(font.getlength(line) <= width for line in lines)
+    assert wrap("Short\nTwo lines", font, width) == "Short\nTwo lines"  # typed line breaks stay
+    split = wrap("A" * 80, font, 300).split("\n")  # one word wider than the card is split between letters
+    assert len(split) > 1 and all(font.getlength(line) <= 300 for line in split)

@@ -369,6 +369,38 @@ async def test_dialogue_is_voiced_and_lip_synced_on_models_that_dont(client, in_
     assert abs(track_ms - sum(x["duration_ms"] for x in lines) - 350) < 150
     assert abs(takes["lipsync"]["asset"]["duration_ms"] - track_ms) < 200
 
+    # for the cut's dialogue track: the speech the picked take was lip-synced to
+    doc = {"scenes": [{"id": "cone", "shots": [{"id": "sone", "action": "x", "take_asset_id": synced}]}]}
+    assert (await client.put(f"/projects/{pid}", json={"version": 1, "document": doc})).status_code == 200
+    (dialogue,) = (await client.get(f"/projects/{pid}/dialogue")).json()
+    track = steps["track[sone]"]["output"]["asset_id"]
+    assert dialogue["shot_key"] == "sone" and dialogue["asset"]["id"] == track and dialogue["lip_synced"] is True
+    assert abs(dialogue["asset"]["duration_ms"] - track_ms) < 50  # joined audio knows its length
+    # a raw take still finds the shot's track among the run's outputs
+    doc["scenes"][0]["shots"][0]["take_asset_id"] = raw
+    assert (await client.put(f"/projects/{pid}", json={"version": 2, "document": doc})).status_code == 200
+    (dialogue,) = (await client.get(f"/projects/{pid}/dialogue")).json()
+    assert dialogue["asset"]["id"] == track and dialogue["lip_synced"] is False
+
+    # a take extended from the lip-synced one still carries its speech from the start: muting it stays right
+    run = await start(client, "cinema_extend", project_id=pid, shot_key="sone", take_asset_id=synced, side="after",
+                      prompt="She looks back at the sea", model_id="runway-gen-4.5", duration=5)
+    await drain(in_memory_queue)
+    longer = (await get(client, run["id"]))["output"]["asset_id"]
+    doc["scenes"][0]["shots"][0]["take_asset_id"] = longer
+    assert (await client.put(f"/projects/{pid}", json={"version": 3, "document": doc})).status_code == 200
+    (dialogue,) = (await client.get(f"/projects/{pid}/dialogue")).json()
+    assert dialogue["asset"]["id"] == track and dialogue["lip_synced"] is True
+    # a part joined before it moves the speech later: the shot keeps it in its own sound and offers no track
+    run = await start(client, "cinema_extend", project_id=pid, shot_key="sone", take_asset_id=synced, side="before",
+                      prompt="She climbs the last stairs", model_id="kling-3.0", duration=5)
+    await drain(in_memory_queue)
+    led = await get(client, run["id"])
+    assert led["status"] == "succeeded", led["error"]
+    doc["scenes"][0]["shots"][0]["take_asset_id"] = led["output"]["asset_id"]
+    assert (await client.put(f"/projects/{pid}", json={"version": 4, "document": doc})).status_code == 200
+    assert (await client.get(f"/projects/{pid}/dialogue")).json() == []
+
 
 async def test_old_free_text_dialogue_becomes_lines(client):
     p = await new_project(client)

@@ -264,15 +264,16 @@ after/before plus whole-take and region edits, each a new take linked to its par
 Cinema Studio 4.0 vocabulary: 58 grades, eras by decade, focal lengths, a two-light console and an emotion wheel per
 cast member, with golden snapshots per dialect (AMS-37). Not yet: the AI Director chat that revises a plan as a diff
 (AMS-35); storyboard drag-and-drop, split/duplicate shot and cost badges (AMS-36); an end-frame pick and 3×3 frame
-grids (AMS-39); the Remotion preview, audio tracks and title cards in the cut (AMS-42); and live checks of the
-multi-shot payloads and Cinema Studio routing.
+grids (AMS-39); and live checks of the multi-shot payloads and Cinema Studio routing. The cut's Remotion preview,
+reordering, title cards and dialogue, music and SFX tracks followed later (AMS-42), timed in frames so the export
+matches the preview.
 P6 merged (PR #4, mock-tested): lipsync and talking-portrait models (Sync lipsync-3, Kling
 Avatar 2.0, OmniHuman 1.5 and VEED Fabric 1.0 on fal; InfiniteTalk on RunPod's public endpoint, flat $0.25/$0.50 a
 clip, so no wan-core volume growth), a `talking_shot` recipe (script -> TTS -> lipsync, optional compare and pick),
 the /lipsync studio with an A/B view, voices on characters, and dialogue lines on Cinema shots: models that voice
 dialogue (Veo 3.1, Seedance 2.5, Kling 3.0) get the lines in their prompt; others get each line voiced and the take
-lip-synced as a new take. Not yet: live takes on the new routes (AMS-8), and a separate dialogue track in the cut
-(dialogue rides in each take's own audio until the cut has tracks, AMS-42).
+lip-synced as a new take; a shot's speech can sit on the cut's dialogue track (AMS-42). Not yet: live takes on the
+new routes (AMS-8).
 P7 merged (PR #5, mock-tested): 3D blocking (/jutsu3d) with versioned scene
 documents; an R3F editor with primitives, a posable figure with pose presets, GLB import (thumbnails drawn in the
 browser), image-to-3D (TRELLIS.2, Hunyuan3D 3.1, Meshy 7.1 with rigging, Tripo P2), lights, cameras with focal
