@@ -207,6 +207,10 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   `cinema_edit` changes the whole take with an Edit Video model; an `object_swap` run given `project_id` + `shot_key`
   makes a region edit. Clips made by a local step carry `metadata.project_id/shot_key/made_by/parent_asset_id`, which
   is how the takes list finds them and shows what each was made from.
+- Storyboard: cards drag with dnd-kit (pointer on the card, keyboard on its handle; `lib/cinema.ts:moveShot`), and
+  shots duplicate and split there too (a filmed shot's take is shared: the parts' trims meet at the split). Cost
+  badges come from one `cinema_takes` estimate split by shot (`PlannedJob.key` -> `RunEstimateOut.by_key`) and from
+  `GET /projects/{id}/spend` (charged costs per `shot_key`).
 - `POST /projects/{id}/plan` asks Claude (Opus) for scenes and shots in the director's vocabulary; unknown ids are
   dropped and nothing is saved until the editor applies the proposal.
 - Dialogue: a shot's `lines` (who + words; blank lines are kept for editing and skipped when filming) travel to the

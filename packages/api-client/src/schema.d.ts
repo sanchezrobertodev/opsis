@@ -557,9 +557,31 @@ export interface paths {
         /**
          * List Dialogue
          * @description Each shot's speech as its own track, for the cut's dialogue track: the audio the picked take was lip-synced
-         *     to, or else the newest dialogue track a takes run made for the shot (lines voiced and joined).
+         *     to (a take extended or edited from a lip-synced one counts too), or else the newest dialogue track a takes run
+         *     made for the shot (lines voiced and joined). A shot whose take carries its speech somewhere other than its
+         *     start (a part joined before it) is left out: its own sound already has the speech, in the right place.
          */
         get: operations["list_dialogue_projects__project_id__dialogue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/spend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Project Spend
+         * @description What the film's generations have cost so far (charged costs; jobs still running count once they finish).
+         */
+        get: operations["project_spend_projects__project_id__spend_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2679,6 +2701,21 @@ export interface components {
             generations: number;
             /** Cap Usd */
             cap_usd: number;
+            /**
+             * By Key
+             * @description estimate_usd split by what each job is for (a Cinema shot's id), where the recipe says
+             * @default {}
+             */
+            by_key: {
+                [key: string]: number;
+            };
+            /**
+             * Live By Key
+             * @description live_estimate_usd split the same way
+             */
+            live_by_key?: {
+                [key: string]: number;
+            } | null;
         };
         /** RunOut */
         RunOut: {
@@ -2990,6 +3027,21 @@ export interface components {
              * @description This month's charges per provider
              */
             by_provider: components["schemas"]["SpendBreakdown"][];
+        };
+        /** SpendOut */
+        SpendOut: {
+            /**
+             * Total Usd
+             * @description Every generation made for the film, including whole-scene takes
+             */
+            total_usd: number;
+            /**
+             * Shots
+             * @description Spent per shot id, for generations made for one shot (frames, takes, voiced lines, lip syncs, extends and edits)
+             */
+            shots: {
+                [key: string]: number;
+            };
         };
         /** StepOut */
         StepOut: {
@@ -4538,6 +4590,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DialogueOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_spend_projects__project_id__spend_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpendOut"];
                 };
             };
             /** @description Validation Error */

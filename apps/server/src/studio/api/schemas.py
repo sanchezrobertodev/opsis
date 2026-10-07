@@ -441,6 +441,9 @@ class RunEstimateOut(ApiModel):
     live_estimate_usd: float | None = Field(None, description="On the cheapest paid routes")
     generations: int
     cap_usd: float
+    by_key: dict[str, float] = Field({}, description="estimate_usd split by what each job is for (a Cinema shot's "
+                                                     "id), where the recipe says")
+    live_by_key: dict[str, float] | None = Field(None, description="live_estimate_usd split the same way")
 
 
 class StepOut(ApiModel):

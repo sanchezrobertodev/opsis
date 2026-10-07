@@ -1,12 +1,28 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, Clapperboard, Film, ImageIcon, Link2, LoaderCircle, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import {
+  closestCenter, DndContext, type DragEndEvent, type DragOverEvent, DragOverlay, type DragStartEvent, KeyboardSensor,
+  PointerSensor, useDroppable, useSensor, useSensors,
+} from "@dnd-kit/core";
+import { rectSortingStrategy, SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  AlertTriangle, ArrowLeft, ArrowRight, Check, Clapperboard, Copy, Film, GripVertical, ImageIcon, Link2, LoaderCircle,
+  Plus, Scissors, Trash2,
+} from "lucide-react";
+import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { type Asset, isActive, mediaUrl } from "@/lib/api";
-import { cn } from "@/lib/cn";
-import { allShots, type CinemaDoc, type CinemaSettings, type Line, newId, newShot, type Scene, type Shot, type Take } from "@/lib/cinema";
+import { cn, usd } from "@/lib/cn";
+import {
+  allShots, type CinemaDoc, type CinemaSettings, duplicateShot, type Line, moveShot, newId, newShot, type Scene,
+  type Shot, splitShot, type Take, useProjectSpend,
+} from "@/lib/cinema";
+import { clipSeconds } from "@/lib/cut";
 import { useElements } from "@/lib/elements";
+import { useDebounced } from "@/lib/hooks";
 import { useModel, useRegistry } from "@/lib/queries";
+import { useEstimateRun } from "@/lib/runs";
+import type { RunCreate } from "@/lib/runs";
 import { type Direction, DirectorPanel, mentionSlugs } from "@/components/create/DirectorPanel";
 import { AspectPicker, Button, Field, Segmented, Select, Slider } from "@/components/ui/controls";
 import type { Launch } from "./Editor";
@@ -65,6 +81,34 @@ export function takeShots(doc: CinemaDoc, ids: string[], voices: Record<string, 
   });
 }
 
+/** A takes run for these shots, on the film's settings. */
+function takesRun(projectId: string, doc: CinemaDoc, shots: TakeShot[]): RunCreate {
+  return { recipe: "cinema_takes", input: {
+    project_id: projectId, model_id: doc.settings.model_id, takes: doc.settings.takes_per_shot,
+    lipsync_model_id: doc.settings.lipsync_model_id ?? "sync-lipsync-3",
+    params: { ...doc.settings.model_params, aspect_ratio: doc.settings.aspect_ratio, resolution: doc.settings.resolution },
+    shots } };
+}
+
+type ShotEstimate = { usd: number; live: boolean };
+
+/**
+ * What filming each shot would cost: one estimate of filming every described shot, split by shot. With mock
+ * providers on, that's the price on the paid routes.
+ */
+function useShotEstimates(projectId: string, doc: CinemaDoc, voices: Record<string, string>) {
+  const ids = allShots(doc).filter((x) => x.shot.action.trim()).map((x) => x.shot.id);
+  // the wording doesn't change the price, so typing doesn't ask again
+  const shots = takeShots(doc, ids, voices).map((s) => ({ ...s, prompt: "x" }));
+  const { data } = useEstimateRun(useDebounced(shots.length ? takesRun(projectId, doc, shots) : null, 600));
+  return (id: string): ShotEstimate | undefined => {
+    const now = data?.by_key[id];
+    if (now === undefined) return undefined;
+    const live = data?.live_by_key?.[id];
+    return now === 0 && live != null ? { usd: live, live: true } : { usd: now, live: false };
+  };
+}
+
 export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
   projectId: string; doc: CinemaDoc; update: Update; takes: Take[]; launch: Launch; busy: boolean;
 }) {
@@ -76,6 +120,34 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
   const multiShot = Boolean(filmModel?.modes.some((m) => m.ops.includes("multi_shot")));
   const assets = new Map<string, Asset>(takes.flatMap((t) => (t.asset ? [[t.asset.id, t.asset as Asset]] : [])));
   const byShot = (key: string) => takes.filter((t) => t.shot_key === key);
+
+  const spend = useProjectSpend(projectId, busy).data;
+  const estimate = useShotEstimates(projectId, doc, voices);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [overScene, setOverScene] = useState<string | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+                             useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const sceneOf = (id: string) => (id.startsWith("scene:") ? id.slice(6)
+    : doc.scenes.find((sc) => sc.shots.some((s) => s.id === id))?.id ?? null);
+  const endDrag = () => { setDragging(null); setOverScene(null); };
+  const onDragStart = (e: DragStartEvent) => setDragging(String(e.active.id));
+  const onDragOver = (e: DragOverEvent) => setOverScene(e.over ? sceneOf(String(e.over.id)) : null);
+  const onDragEnd = (e: DragEndEvent) => {
+    endDrag();
+    const id = String(e.active.id);
+    const over = e.over ? String(e.over.id) : null;
+    const target = over ? sceneOf(over) : null;
+    if (!over || !target || over === id) return;
+    const there = doc.scenes.find((sc) => sc.id === target)!.shots;
+    // onto a shot: take its place; onto the scene's free space: go last
+    const index = over.startsWith("scene:") ? there.filter((s) => s.id !== id).length : there.findIndex((s) => s.id === over);
+    update((d) => moveShot(d, id, target, index));
+  };
+  const dragged = dragging ? shots.find((x) => x.shot.id === dragging) : undefined;
+  const face = (shot: Shot, n: number): FaceProps => ({
+    shot, n, pic: assets.get(shot.take_asset_id ?? "") ?? assets.get(shot.hero_asset_id ?? ""),
+    takes: byShot(shot.id), spent: spend?.shots[shot.id], estimate: estimate(shot.id),
+  });
 
   const patchShot = (id: string, p: Partial<Shot>) => update((d) => ({
     ...d, scenes: d.scenes.map((sc) => ({ ...sc, shots: sc.shots.map((s) => (s.id === id ? { ...s, ...p } : s)) })) }));
@@ -108,11 +180,7 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
     shots: sceneShots(scene).map((s) => ({ key: s.id, prompt: s.action.trim(), duration: s.duration ?? 5,
                                           direction: withDialogue(mergedDirection(doc.settings, s), s, voices) })) } },
     "Filming the scene");
-  const filmFor = (ids: string[]) => launch({ recipe: "cinema_takes", input: {
-    project_id: projectId, model_id: doc.settings.model_id, takes: doc.settings.takes_per_shot,
-    lipsync_model_id: doc.settings.lipsync_model_id ?? "sync-lipsync-3",
-    params: { ...doc.settings.model_params, aspect_ratio: doc.settings.aspect_ratio, resolution: doc.settings.resolution },
-    shots: takeShots(doc, ids, voices) } }, "Filming");
+  const filmFor = (ids: string[]) => launch(takesRun(projectId, doc, takeShots(doc, ids, voices)), "Filming");
 
   return (
     <div className="grid h-full grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -136,6 +204,8 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
             No shots yet. Write a script and plan it with Claude, or add a scene and describe its shots yourself.
           </p>
         )}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragOver={onDragOver}
+                    onDragEnd={onDragEnd} onDragCancel={endDrag} accessibility={{ announcements: announcements(doc) }}>
         <div className="flex flex-col gap-8">
           {doc.scenes.map((scene) => (
             <section key={scene.id} aria-label={scene.heading || "Untitled scene"} className="flex flex-col gap-3">
@@ -154,35 +224,11 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
                   </Button>
                 )}
               </div>
-              <ol className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
-                {scene.shots.map((shot) => {
-                  const n = shots.find((x) => x.shot.id === shot.id)?.index ?? 0;
-                  const pic = assets.get(shot.take_asset_id ?? "") ?? assets.get(shot.hero_asset_id ?? "");
-                  const pending = byShot(shot.id).some((t) => isActive(t.status));
-                  return (
-                    <li key={shot.id}>
-                      <button type="button" onClick={() => setSelected(shot.id)} aria-pressed={selected === shot.id}
-                              className={cn("flex w-full flex-col overflow-hidden rounded-[var(--radius-panel)] border bg-panel text-left",
-                                            selected === shot.id ? "border-tungsten" : "border-transparent hover:border-line")}>
-                        <span className="relative aspect-video w-full bg-bay">
-                          {pic && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={mediaUrl(pic.thumb_url ?? pic.poster_url ?? pic.url)} alt="" className="size-full object-cover" />
-                          )}
-                          <span className="tabular absolute left-2 top-1.5 text-xs text-chalk drop-shadow">{String(n).padStart(2, "0")}</span>
-                          <span className="absolute right-2 top-1.5 flex gap-1 text-chalk">
-                            {shot.continuity === "continue" && <Link2 className="size-3.5 drop-shadow" aria-label="Continues the previous shot" />}
-                            {shot.take_asset_id && <Check className="size-3.5 text-done drop-shadow" aria-label="Filmed" />}
-                            {pending && <LoaderCircle className="size-3.5 animate-spin text-tungsten" aria-label="Rendering" />}
-                          </span>
-                        </span>
-                        <span className="line-clamp-2 min-h-[2.5rem] px-2.5 py-2 text-xs leading-snug text-muted">
-                          {shot.action || "Describe this shot"}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
+              <SceneShots sceneId={scene.id} ids={scene.shots.map((s) => s.id)} highlight={Boolean(dragging) && overScene === scene.id}>
+                {scene.shots.map((shot) => (
+                  <SortableShot key={shot.id} {...face(shot, shots.find((x) => x.shot.id === shot.id)?.index ?? 0)}
+                                selected={selected === shot.id} onSelect={() => setSelected(shot.id)} />
+                ))}
                 <li>
                   <button type="button" onClick={() => addShot(scene.id)}
                           className="flex aspect-video w-full flex-col items-center justify-center gap-1 rounded-[var(--radius-panel)] border border-dashed border-line-soft text-xs text-faint hover:border-line hover:text-chalk">
@@ -190,10 +236,14 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
                     Add a shot
                   </button>
                 </li>
-              </ol>
+              </SceneShots>
             </section>
           ))}
         </div>
+        <DragOverlay>
+          {dragged && <div className="rotate-1 shadow-2xl"><ShotFace {...face(dragged.shot, dragged.index)} selected /></div>}
+        </DragOverlay>
+        </DndContext>
         <Button size="sm" tone="ghost" className="mt-6" onClick={addScene}>
           <Plus className="size-4" aria-hidden />
           Add a scene
@@ -205,7 +255,8 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
                          scene={current.scene} shot={current.shot}
                          takes={byShot(current.shot.id)} patch={(p) => patchShot(current.shot.id, p)} update={update}
                          onFrames={() => void framesFor([current.shot.id])} onFilm={() => void filmFor([current.shot.id])}
-                         onRemoved={() => setSelected(null)} />
+                         onRemoved={() => setSelected(null)} onAdded={setSelected}
+                         take={current.shot.take_asset_id ? assets.get(current.shot.take_asset_id) : undefined} />
         ) : (
           <FilmSettings doc={doc} update={update} />
         )}
@@ -214,10 +265,186 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
   );
 }
 
-function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, patch, update, onFrames, onFilm, onRemoved }: {
+type FaceProps = { shot: Shot; n: number; pic?: Asset; takes: Take[]; spent?: number; estimate?: ShotEstimate };
+
+/** Where the shot stands, newest news first. */
+function shotStatus(shot: Shot, takes: Take[]): { label: string; tone: string; icon?: ReactNode } {
+  if (takes.some((t) => isActive(t.status))) {
+    return { label: "Rendering", tone: "text-tungsten", icon: <LoaderCircle className="size-3 animate-spin" aria-hidden /> };
+  }
+  if (shot.take_asset_id) return { label: "Filmed", tone: "text-done", icon: <Check className="size-3" aria-hidden /> };
+  if (!shot.action.trim()) return { label: "No description", tone: "text-faint" };
+  const newest = takes.find((t) => t.output_type === "video");
+  if (newest && newest.status !== "succeeded" && !takes.some((t) => t.output_type === "video" && t.asset)) {
+    return { label: "Take failed", tone: "text-fault", icon: <AlertTriangle className="size-3" aria-hidden /> };
+  }
+  if (shot.hero_asset_id) return { label: "Frame picked", tone: "text-muted" };
+  return { label: "Not filmed", tone: "text-muted" };
+}
+
+/** How long the shot plays: the used part of its take, else the length it will be filmed at. */
+function shotLength(shot: Shot, pic: Asset | undefined): string {
+  if (shot.take_asset_id && pic?.id === shot.take_asset_id && pic.duration_ms) {
+    return `${clipSeconds(pic.duration_ms / 1000, shot.trim_in, shot.trim_out)[1].toFixed(1)} s`;
+  }
+  return shot.duration ? `${shot.duration} s` : "Default length";
+}
+
+function ShotFace({ shot, n, pic, takes, spent, estimate, selected }: FaceProps & { selected?: boolean }) {
+  const status = shotStatus(shot, takes);
+  const filmed = Boolean(shot.take_asset_id);
+  const cost = spent || filmed
+    ? { text: `${usd(spent ?? 0)} spent`, title: "Spent on this shot's frames, takes and lines so far" }
+    : estimate && shot.action.trim()
+      ? { text: `about ${usd(estimate.usd)}`,
+          title: estimate.live ? "To film it on paid routes (free while mock providers are on)" : "To film it" }
+      : null;
+  return (
+    <span className={cn("flex w-full flex-col overflow-hidden rounded-[var(--radius-panel)] border bg-panel text-left",
+                        selected ? "border-tungsten" : "border-transparent hover:border-line")}>
+      <span className="relative aspect-video w-full bg-bay">
+        {pic && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={mediaUrl(pic.thumb_url ?? pic.poster_url ?? pic.url)} alt="" className="size-full object-cover" />
+        )}
+        <span className="tabular absolute left-2 top-1.5 text-xs text-chalk drop-shadow">{String(n).padStart(2, "0")}</span>
+        {shot.continuity === "continue" && (
+          <Link2 className="absolute right-2 top-1.5 size-3.5 text-chalk drop-shadow" aria-label="Continues the previous shot" />
+        )}
+        <span className={cn("absolute bottom-1.5 left-2 flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-0.5 text-2xs", status.tone)}>
+          {status.icon}{status.label}
+        </span>
+      </span>
+      <span className="line-clamp-2 min-h-[2.5rem] px-2.5 pt-2 text-xs leading-snug text-muted">
+        {shot.action || "Describe this shot"}
+      </span>
+      <span className="tabular flex items-center justify-between gap-2 px-2.5 pb-2 pt-1 text-2xs text-faint">
+        <span>{shotLength(shot, pic)}</span>
+        {cost && <span title={cost.title}>{cost.text}</span>}
+      </span>
+    </span>
+  );
+}
+
+/** A shot card that can be dragged: by the whole card with a pointer, or by its handle with the keyboard. */
+function SortableShot({ selected, onSelect, ...face }: FaceProps & { selected: boolean; onSelect: () => void }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
+    useSortable({ id: face.shot.id });
+  const onPointerDown = listeners?.onPointerDown as ((e: ReactPointerEvent) => void) | undefined;
+  return (
+    <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}
+        className={cn("group relative", isDragging && "opacity-40")}>
+      <button type="button" onClick={onSelect} onPointerDown={onPointerDown} aria-pressed={selected} className="block w-full">
+        <ShotFace {...face} selected={selected} />
+      </button>
+      <button type="button" ref={setActivatorNodeRef} {...attributes} {...listeners}
+              aria-label={`Move shot ${String(face.n).padStart(2, "0")}`}
+              className="absolute bottom-[3.6rem] right-1.5 grid size-6 cursor-grab place-items-center rounded-full bg-black/60 text-chalk opacity-0 focus-visible:opacity-100 group-hover:opacity-100 active:cursor-grabbing">
+        <GripVertical className="size-3.5" aria-hidden />
+      </button>
+    </li>
+  );
+}
+
+/** A scene's row of shots: sortable, and a place to drop a shot from another scene. */
+function SceneShots({ sceneId, ids, highlight, children }: { sceneId: string; ids: string[]; highlight: boolean; children: ReactNode }) {
+  const { setNodeRef } = useDroppable({ id: `scene:${sceneId}` });
+  return (
+    <SortableContext id={sceneId} items={ids} strategy={rectSortingStrategy}>
+      <ol ref={setNodeRef} className={cn("grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3 rounded-[var(--radius-panel)] transition-colors",
+                                         highlight && "bg-tungsten/5 outline outline-1 outline-tungsten/40 outline-offset-4")}>
+        {children}
+      </ol>
+    </SortableContext>
+  );
+}
+
+/** What a screen reader hears while a shot is dragged with the keyboard. */
+function announcements(doc: CinemaDoc) {
+  const shots = allShots(doc);
+  const name = (id: string | number) => {
+    const x = shots.find((s) => s.shot.id === String(id));
+    return x ? `shot ${x.index}` : "the end of the scene";
+  };
+  return {
+    onDragStart: ({ active }: { active: { id: string | number } }) => `Picked up ${name(active.id)}.`,
+    onDragOver: ({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) =>
+      over ? `${name(active.id)} is over ${name(over.id)}.` : `${name(active.id)} is no longer over a shot.`,
+    onDragEnd: ({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) =>
+      over ? `${name(active.id)} moved to ${name(over.id)}'s place.` : `${name(active.id)} was dropped where it was.`,
+    onDragCancel: ({ active }: { active: { id: string | number } }) => `Moving ${name(active.id)} was canceled.`,
+  };
+}
+
+/**
+ * Where to split a shot. A filmed one splits its take at a moment (each part plays its stretch, the second
+ * continuing the first); an unfilmed one shares out its length (in lengths the film's model offers) and lines.
+ */
+function SplitPanel({ shot, take, durations, onSplit, onCancel }: {
+  shot: Shot; take?: Asset; durations: number[]; onSplit: (at: number, used?: [number, number]) => void; onCancel: () => void;
+}) {
+  const filmed = Boolean(shot.take_asset_id);
+  const used = filmed && take?.duration_ms ? clipSeconds(take.duration_ms / 1000, shot.trim_in, shot.trim_out) : undefined;
+  const length = shot.duration ?? 0;
+  const offered = (d: number) => !durations.length || durations.includes(d);
+  const choices = length ? Array.from({ length: length - 1 }, (_, i) => i + 1).filter((d) => offered(d) && offered(length - d)) : [];
+  const middle = choices.reduce((best, d) => (Math.abs(d - length / 2) < Math.abs(best - length / 2) ? d : best), choices[0] ?? length);
+  const [at, setAt] = useState(used ? Math.round(used[1] * 5) / 10 : middle);
+  const video = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (video.current && used) video.current.currentTime = used[0] + at;
+  }, [at, used]);
+  const max = used ? Math.max(0.2, Math.floor((used[1] - 0.2) * 10) / 10) : length;
+  const canSplit = filmed ? (used?.[1] ?? 0) >= 0.4 : true;
+  let control: ReactNode;
+  if (filmed && !used) {
+    control = <p className="text-2xs text-faint">Loading the take&hellip;</p>;
+  } else if (used) {
+    control = (
+      <Field label={`Split at ${at.toFixed(1)} s`} hint="Both parts play the same take: the first up to here, the second from here on.">
+        <Slider value={Math.min(at, max)} min={0.2} max={max} step={0.1} onChange={setAt} format={(v) => `${v.toFixed(1)} s`} />
+      </Field>
+    );
+  } else if (choices.length) {
+    control = (
+      <Field label="Lengths" htmlFor="split-lengths" hint="The second part continues from the first one's last frame; the lines are shared out between them.">
+        <Select id="split-lengths" value={String(at)} onChange={(v) => setAt(Number(v))}
+                options={choices.map((d) => ({ value: String(d), label: `${d} s, then ${length - d} s` }))} />
+      </Field>
+    );
+  } else {
+    control = (
+      <p className="text-2xs text-faint">
+        {length ? `The film's model can't make shorter parts, so both keep ${length} s;` : "Both parts keep the model's default length;"}
+        {" "}the second continues from the first.
+      </p>
+    );
+  }
+  return (
+    <section aria-label="Split the shot" className="flex flex-col gap-3 rounded-[var(--radius-panel)] border border-line-soft bg-bay p-3">
+      {filmed && take && used && (
+        <video ref={video} src={mediaUrl(take.proxy_url ?? take.url)} muted playsInline preload="auto"
+               className="aspect-video w-full rounded-[var(--radius-frame)] bg-black object-contain" />
+      )}
+      {control}
+      <div className="flex justify-end gap-2">
+        <Button size="sm" tone="ghost" onClick={onCancel}>Cancel</Button>
+        <Button size="sm" tone="primary" disabled={!canSplit} onClick={() => onSplit(Math.min(at, max), used)}>
+          <Scissors className="size-4" aria-hidden />
+          Split
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, patch, update, onFrames, onFilm, onRemoved,
+                        onAdded, take }: {
   projectId: string; launch: Launch; doc: CinemaDoc; number: number; scene: Scene; shot: Shot; takes: Take[];
   patch: (p: Partial<Shot>) => void; update: Update; onFrames: () => void; onFilm: () => void; onRemoved: () => void;
+  onAdded: (id: string) => void; take?: Asset;
 }) {
+  const [splitting, setSplitting] = useState(false);
   const { data: model } = useModel(doc.settings.model_id);
   const order = allShots(doc).map((x) => x.shot);
   const prev = order[order.findIndex((s) => s.id === shot.id) - 1];
@@ -250,8 +477,24 @@ function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, pat
         <span className="min-w-0 flex-1 truncate text-2xs text-faint">{scene.heading}</span>
         <Button size="sm" tone="ghost" aria-label="Move earlier" disabled={index === 0} onClick={() => move(-1)}><ArrowLeft className="size-4" aria-hidden /></Button>
         <Button size="sm" tone="ghost" aria-label="Move later" disabled={index === scene.shots.length - 1} onClick={() => move(1)}><ArrowRight className="size-4" aria-hidden /></Button>
+        <Button size="sm" tone="ghost" aria-label="Duplicate shot" title="A copy right after it, without its take"
+                onClick={() => { const id = newId("s"); update((d) => duplicateShot(d, shot.id, id).doc); onAdded(id); }}>
+          <Copy className="size-4" aria-hidden />
+        </Button>
+        <Button size="sm" tone="ghost" aria-label="Split shot" aria-pressed={splitting} onClick={() => setSplitting((v) => !v)}>
+          <Scissors className="size-4" aria-hidden />
+        </Button>
         <Button size="sm" tone="ghost" aria-label="Delete shot" onClick={remove}><Trash2 className="size-4" aria-hidden /></Button>
       </div>
+      {splitting && (
+        <SplitPanel shot={shot} take={take} durations={durations} onCancel={() => setSplitting(false)}
+                    onSplit={(at, used) => {
+                      const id = newId("s");
+                      update((d) => splitShot(d, shot.id, at, used, id).doc);
+                      setSplitting(false);
+                      onAdded(id);
+                    }} />
+      )}
       <Field label="What happens" htmlFor="shot-action" hint="Present tense, what the camera sees. @mention saved characters.">
         <textarea id="shot-action" value={shot.action} onChange={(e) => patch({ action: e.target.value })} rows={4}
                   className="resize-y rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 py-2 text-sm leading-relaxed outline-none focus:border-tungsten/60" />

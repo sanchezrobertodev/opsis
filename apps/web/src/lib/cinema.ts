@@ -44,7 +44,7 @@ export type CinemaSettings = {
 export type CinemaDoc = { logline: string; script: string; cast: string[]; settings: CinemaSettings; scenes: Scene[];
                           cut?: Cut };
 
-export function newId(prefix: "s" | "c") {
+export function newId(prefix: "s" | "c" | "i" | "a") {
   const bytes = crypto.getRandomValues(new Uint8Array(3));
   return prefix + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -60,6 +60,87 @@ export function newShot(partial: Partial<Shot> = {}): Shot {
 export function allShots(doc: CinemaDoc): { scene: Scene; shot: Shot; index: number }[] {
   let index = 0;
   return doc.scenes.flatMap((scene) => scene.shots.map((shot) => ({ scene, shot, index: ++index })));
+}
+
+/** The film's first shot can't continue anything; after a move it opens on a cut. */
+function openOnCut(doc: CinemaDoc): CinemaDoc {
+  const first = doc.scenes.find((sc) => sc.shots.length)?.shots[0];
+  if (!first || first.continuity === "cut") return doc;
+  return { ...doc, scenes: doc.scenes.map((sc) => ({
+    ...sc, shots: sc.shots.map((s) => (s.id === first.id ? { ...s, continuity: "cut" as const } : s)) })) };
+}
+
+/** Moves a shot to `index` in a scene (the same scene or another). */
+export function moveShot(doc: CinemaDoc, shotId: string, sceneId: string, index: number): CinemaDoc {
+  const shot = allShots(doc).find((x) => x.shot.id === shotId)?.shot;
+  if (!shot || !doc.scenes.some((sc) => sc.id === sceneId)) return doc;
+  const scenes = doc.scenes.map((sc) => ({ ...sc, shots: sc.shots.filter((s) => s.id !== shotId) }));
+  return openOnCut({ ...doc, scenes: scenes.map((sc) => {
+    if (sc.id !== sceneId) return sc;
+    const shots = [...sc.shots];
+    shots.splice(Math.max(0, Math.min(index, shots.length)), 0, shot);
+    return { ...sc, shots };
+  }) });
+}
+
+/** Puts `added` right after the shot `afterId`, in its scene and, if the cut lists that shot, in the cut too. */
+function insertAfter(doc: CinemaDoc, afterId: string, added: Shot, replaced?: Shot): CinemaDoc {
+  const scenes = doc.scenes.map((sc) => {
+    const i = sc.shots.findIndex((s) => s.id === afterId);
+    if (i < 0) return sc;
+    const shots = [...sc.shots];
+    shots.splice(i, 1, replaced ?? shots[i], added);
+    return { ...sc, shots };
+  });
+  if (!doc.cut) return { ...doc, scenes };
+  const at = doc.cut.items.findIndex((it) => it.shot_id === afterId);
+  const items = [...doc.cut.items];
+  if (at >= 0) items.splice(at + 1, 0, { id: newId("i"), shot_id: added.id, volume: doc.cut.items[at].volume });
+  return { ...doc, scenes, cut: { ...doc.cut, items } };
+}
+
+/** A copy of the shot right after it: same description, direction, lines and opening frame, no take yet. */
+export function duplicateShot(doc: CinemaDoc, shotId: string, id = newId("s")): { doc: CinemaDoc; id: string } {
+  const shot = allShots(doc).find((x) => x.shot.id === shotId)?.shot;
+  if (!shot) return { doc, id: shotId };
+  const copy: Shot = { ...structuredClone(shot), id, take_asset_id: null, trim_in: 0, trim_out: null };
+  return { doc: insertAfter(doc, shotId, copy), id: copy.id };
+}
+
+/**
+ * Splits a shot in two at `at` seconds, the second part continuing the first.
+ * A filmed shot keeps its take: the first part plays it up to the split, the second from there (seconds into the
+ * take, so `take` is the take's [trimmed start, used length]), and dialogue in the cut tied to the shot is given to
+ * both parts, each playing its own stretch. An unfilmed shot's length and lines are shared between the parts (`at`
+ * equal to its length gives both parts that length).
+ */
+export function splitShot(doc: CinemaDoc, shotId: string, at: number, take?: [number, number],
+                          id = newId("s")): { doc: CinemaDoc; id: string } {
+  const shot = allShots(doc).find((x) => x.shot.id === shotId)?.shot;
+  if (!shot) return { doc, id: shotId };
+  const base = { id, action: shot.action, direction: structuredClone(shot.direction), continuity: "continue" as const,
+                 transition: "cut" as const };
+  let first: Shot, second: Shot;
+  if (shot.take_asset_id && take) {
+    const point = Math.round((take[0] + at) * 100) / 100;
+    first = { ...shot, trim_out: point };
+    second = newShot({ ...base, duration: shot.duration, take_asset_id: shot.take_asset_id, trim_in: point,
+                       trim_out: shot.trim_out });
+  } else {
+    const lines = shot.lines ?? [];
+    const half = Math.ceil(lines.length / 2);
+    const length = shot.duration;
+    // `at` as long as the shot keeps the length for both parts (the model makes nothing shorter)
+    first = { ...shot, lines: lines.slice(0, half), duration: length ? at : null };
+    second = newShot({ ...base, lines: lines.slice(half), duration: length ? (at < length ? length - at : length) : null });
+  }
+  let out = insertAfter(doc, shotId, second, first);
+  if (out.cut && shot.take_asset_id) {
+    const tied = out.cut.audio.filter((c) => c.shot_id === shotId);
+    out = { ...out, cut: { ...out.cut, audio: [...out.cut.audio, ...tied.map((c) => ({
+      ...c, id: newId("a"), shot_id: second.id }))] } };
+  }
+  return { doc: out, id: second.id };
 }
 
 const projectKey = (id: string) => ["project", id] as const;
@@ -147,6 +228,15 @@ export function useDialogue(id: string) {
   return useQuery({
     queryKey: ["dialogue", id],
     queryFn: () => unwrap(api.GET("/projects/{project_id}/dialogue", { params: { path: { project_id: id } } })),
+  });
+}
+
+/** What the film's generations have cost so far, per shot (refreshed while runs are going). */
+export function useProjectSpend(id: string, active: boolean) {
+  return useQuery({
+    queryKey: ["project-spend", id],
+    queryFn: () => unwrap(api.GET("/projects/{project_id}/spend", { params: { path: { project_id: id } } })),
+    refetchInterval: active ? 3000 : false,
   });
 }
 

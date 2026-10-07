@@ -13,7 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.api.deps import current_user, get_session
@@ -469,6 +469,26 @@ async def list_dialogue(project_id: uuid.UUID, session: AsyncSession = Depends(g
     await session.commit()
     return [DialogueOut(shot_key=shot, asset=asset_out(rows[aid]), lip_synced=synced)
             for shot, (aid, synced) in found.items() if aid in rows]
+
+
+class SpendOut(BaseModel):
+    total_usd: float = Field(description="Every generation made for the film, including whole-scene takes")
+    shots: dict[str, float] = Field(description="Spent per shot id, for generations made for one shot (frames, takes, "
+                                                "voiced lines, lip syncs, extends and edits)")
+
+
+@router.get("/{project_id}/spend", response_model=SpendOut)
+async def project_spend(project_id: uuid.UUID, session: AsyncSession = Depends(get_session),
+                        user: User = Depends(current_user)) -> SpendOut:
+    """What the film's generations have cost so far (charged costs; jobs still running count once they finish)."""
+    p = await _project(session, user, project_id)
+    rows = (await session.execute(
+        select(Generation.shot_key, func.sum(Generation.actual_cost_usd))
+        .where(Generation.project_id == p.id, Generation.user_id == user.id,
+               Generation.actual_cost_usd.is_not(None))
+        .group_by(Generation.shot_key))).all()
+    shots = {key: float(usd) for key, usd in rows if key and usd}
+    return SpendOut(total_usd=float(sum((usd for _, usd in rows if usd), start=0)), shots=shots)
 
 
 @router.get("/{project_id}/takes", response_model=list[TakeOut])
