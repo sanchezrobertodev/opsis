@@ -24,12 +24,14 @@ MediaRole = Literal[
     "control_video",
     "style_image",
     "replacement_image",
+    "character_image",  # motion transfer: who performs
+    "driving_video",  # motion transfer: whose movement is copied
 ]
 MediaKind = Literal["image", "video", "audio"]
 OpTag = Literal[
     "t2v", "i2v", "flf2v", "multi_ref", "multi_shot", "extend", "instruction_edit", "restyle", "reframe",
     "upscale", "interpolate", "bg_remove", "motion_transfer", "object_replace", "lipsync", "avatar",
-    "t2i", "i2i",
+    "t2i", "i2i", "relight", "add_sound", "trim", "retime", "reverse", "loop", "stabilize",
 ]
 OutputType = Literal["video", "image", "audio", "3d", "lora", "mask", "text"]
 Scalar = str | int | float | bool
@@ -90,8 +92,20 @@ class TextParam(_ParamBase):
     default: str | None = None
 
 
+class PathsParam(_ParamBase):
+    """Motion paths drawn on the start frame: [{"points": [[x, y], ...]}] with x, y in 0-1 of the frame as the
+    model will see it (cropped to the output aspect). A path with one point marks something that should hold still.
+    Routes turn the paths into whatever the model wants (per-frame pixel tracks for Wan-Move)."""
+
+    type: Literal["paths"]
+    min_paths: int = 0
+    max_paths: int = 5
+    max_points: int = 256
+    default: list[Any] | None = None
+
+
 Param = Annotated[
-    EnumParam | IntParam | FloatParam | BoolParam | SeedParam | TextParam, Field(discriminator="type")
+    EnumParam | IntParam | FloatParam | BoolParam | SeedParam | TextParam | PathsParam, Field(discriminator="type")
 ]
 
 
@@ -227,7 +241,7 @@ class Example(_Strict):
     name: str
     mode: str
     prompt: str = ""
-    params: dict[str, Scalar] = {}
+    params: dict[str, Any] = {}  # scalars, or structured values such as motion paths
     media: dict[str, str | list[str]] = {}
     smoke: bool = False
     expect: dict[str, Any] = {}
@@ -275,11 +289,25 @@ class ProviderSpec(_Strict):
     name: str
     kind: Literal["aggregator", "direct", "selfhosted", "local", "mock"]
     adapter: str  # adapter key in studio.providers.factory
-    key_setting: str | None = None  # Settings attribute holding the API key
+    # Settings attribute(s) that must be set to use the provider: the API key, plus e.g. a self-hosted endpoint id
+    key_setting: str | list[str] | None = None
     concurrency: int = 2
     poll_min_seconds: float | None = None  # provider asks clients not to poll faster than this
     docs: str | None = None
     notes: str | None = None
+    # Self-hosted endpoints (our own RunPod workers): the Settings attribute holding the endpoint id, and
+    # serverless GPU prices (USD/hour, matched by substring of the GPU name the worker reports).
+    endpoint_setting: str | None = None
+    gpu_usd_per_hour: dict[str, float] = {}
+    # Providers that only take some inputs as web links (RunPod): those media kinds are hosted through the service
+    # named by `hosting_setting` (FAL_KEY), so routes that need them are offered only when it's set.
+    hosted_kinds: list[MediaKind] = []
+    hosting_setting: str | None = None
+
+    def configured(self, settings: Any) -> bool:
+        """True when every setting in `key_setting` has a value (providers without one are always configured)."""
+        names = [self.key_setting] if isinstance(self.key_setting, str) else (self.key_setting or [])
+        return all(getattr(settings, n, "") for n in names)
 
 
 # ---------------------------------------------------------------- presets (effects gallery)

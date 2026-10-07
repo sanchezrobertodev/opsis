@@ -60,3 +60,14 @@ async def test_concat_joins_mixed_clips_with_and_without_sound(tmp_path):
     info, ia = await probe(out), await probe(a)
     assert info.has_audio and (info.width, info.height) == (ia.width, ia.height)
     assert info.duration_ms == pytest.approx((ia.duration_ms or 0) + 2000, abs=300)
+
+
+async def test_tags_build_the_driving_clip_library(client):
+    up = (await client.post("/uploads", files={"file": ("dance.mp4", CLIP.read_bytes(), "video/mp4")})).json()
+    r = await client.patch(f"/assets/{up['id']}", json={"add_tags": ["driving"]})
+    assert r.json()["tags"] == ["driving"]
+    r = await client.patch(f"/assets/{up['id']}", json={"add_tags": ["driving", "dance"]})
+    assert r.json()["tags"] == ["driving", "dance"]
+    listed = (await client.get("/assets", params={"tag": "driving", "kind": "video"})).json()["items"]
+    assert up["id"] in [a["id"] for a in listed]
+    assert all("driving" in a["tags"] for a in listed)

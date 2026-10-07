@@ -18,6 +18,7 @@ export function PromptBox({
   value,
   onChange,
   onSubmit,
+  placeholder = "Describe the shot: subject, action, setting, camera, light and sound. Type @ to bring in a character.",
 }: {
   model: ModelDetail;
   mode: string;
@@ -26,6 +27,7 @@ export function PromptBox({
   value: string;
   onChange: (v: string) => void;
   onSubmit: () => void;
+  placeholder?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const id = useId();
@@ -151,7 +153,7 @@ export function PromptBox({
             onSubmit();
           }
         }}
-        placeholder="Describe the shot: subject, action, setting, camera, light and sound. Type @ to bring in a character."
+        placeholder={placeholder}
         className="min-h-28 resize-y rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 py-2.5 text-sm leading-relaxed text-chalk outline-none placeholder:text-faint focus:border-tungsten/60"
       />
       {open && (

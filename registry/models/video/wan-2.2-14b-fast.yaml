@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: wan-2.2-14b-fast
+name: Wan 2.2 14B Fast
+family: wan
+vendor: alibaba
+description: >-
+  Open-weights Wan 2.2 14B with the Lightning 4-step LoRAs, on your own RunPod endpoint. Text or image to video
+  at 480p or 720p for well under the closed models' price. About two to three minutes per 720p clip once a worker
+  is warm; the first clip after a pause also loads the model.
+output_type: video
+status: active
+license_tier: open_permissive   # Apache 2.0 (Wan 2.2, lightx2v)
+tags: [open-weights, budget, self-hosted]
+prompt: {max_chars: 2000, dialect: wan, supports_negative: true}
+aspect_ratios: ["16:9", "9:16", "1:1"]
+duration: {min: 2, max: 7, default: 5}
+
+parameters:
+  - {name: quality, type: enum, options: ["480p", "720p"], default: "720p", ui: segmented,
+     help: "480p renders about twice as fast."}
+  - {name: duration, label: Duration (s), type: int, min: 2, max: 7, default: 5, ui: slider,
+     help: Wan is trained on 5-second clips; longer ones can drift.}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "1:1"], default: "16:9", ui: aspect}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: t2v
+    label: Text to video
+    ops: [t2v]
+  - id: i2v
+    label: Image to video
+    ops: [i2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+
+routes:
+  - id: wan-2.2-14b-fast@wan_core
+    provider: runpod_wan_core
+    modes:
+      t2v: {endpoint: runpod_wan22_t2v}
+      i2v: {endpoint: runpod_wan22_i2v}
+    transform: studio.providers.transforms.comfy:wan14b_size
+    map:
+      params:
+        duration: {to: length, transform: seconds_to_frames, args: {fps: 16, plus: 1}}
+        quality: {to: null}
+        aspect_ratio: {to: null}
+      media: {start_image: start_image}
+    # Billed per GPU second. Estimate: warm worker on an RTX PRO 6000 ($3.49/h); the take's cost is then the
+    # worker's reported run time at the rate of the GPU it actually used.
+    pricing:
+      basis: per_gpu_second
+      quantity: "(40 + 9 * duration) if quality == '480p' else (60 + 22 * duration)"
+      rates: [{usd: 0.000969}]
+      verified: 2026-10-06
+      source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); run time per docs/research/03 (unbenchmarked)
+    eta: "(40 + 9 * duration) if quality == '480p' else (60 + 22 * duration)"
+    timeout_s: 3600
+    output: {path: output.outputs, kind: video}
+
+examples:
+  - name: t2v_480p_smoke
+    mode: t2v
+    prompt: A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.
+    params: {quality: "480p", duration: 3}
+    smoke: true
+    expect: {cost_usd_range: [0.05, 0.08]}
+  - name: i2v_720p
+    mode: i2v
+    prompt: The camera slowly pushes in as wind moves through the grass.
+    params: {quality: "720p", duration: 5}
+    media: {start_image: "fixture:images/keyframe.png"}
+    expect: {cost_usd_range: [0.15, 0.18]}

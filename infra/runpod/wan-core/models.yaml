@@ -1,0 +1,36 @@
+# Model files for the wan-core workflows (workflows/comfy/runpod_*.json), fetched onto the network volume
+# at /runpod-volume/models/<folder>/<name> by fetch_models.py. Sizes are exact (Hugging Face, 2026-10-06), so a
+# truncated download is caught. URLs come from the official ComfyUI templates (comfyui_workflow_templates 0.11.48).
+# Groups: core = Wan 2.2 14B image-to-video + shared encoders; t2v = text-to-video; camera = Fun Camera moves;
+# move = Wan-Move point trajectories (Wan 2.1 14B, 480p). Licenses: Wan 2.1/2.2, Fun, Wan-Move, lightx2v are Apache 2.0.
+files:
+  - {group: core, folder: diffusion_models, name: wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors, bytes: 14294742832,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"}
+  - {group: core, folder: diffusion_models, name: wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors, bytes: 14294742832,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"}
+  - {group: core, folder: loras, name: wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors, bytes: 1226977424,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"}
+  - {group: core, folder: loras, name: wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors, bytes: 1226977424,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"}
+  - {group: core, folder: text_encoders, name: umt5_xxl_fp8_e4m3fn_scaled.safetensors, bytes: 6735906897,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"}
+  - {group: core, folder: vae, name: wan_2.1_vae.safetensors, bytes: 253815318,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"}
+  - {group: t2v, folder: diffusion_models, name: wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors, bytes: 14293923632,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors"}
+  - {group: t2v, folder: diffusion_models, name: wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors, bytes: 14293923632,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors"}
+  - {group: t2v, folder: loras, name: wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors, bytes: 1226977424,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors"}
+  - {group: t2v, folder: loras, name: wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors, bytes: 1226977424,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors"}
+  - {group: camera, folder: diffusion_models, name: wan2.2_fun_camera_high_noise_14B_fp8_scaled.safetensors, bytes: 15301408048,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_fun_camera_high_noise_14B_fp8_scaled.safetensors"}
+  - {group: camera, folder: diffusion_models, name: wan2.2_fun_camera_low_noise_14B_fp8_scaled.safetensors, bytes: 15301408048,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_fun_camera_low_noise_14B_fp8_scaled.safetensors"}
+  - {group: move, folder: clip_vision, name: clip_vision_h.safetensors, bytes: 1264219396,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"}
+  - {group: move, folder: diffusion_models, name: Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors, bytes: 16402832658,
+     url: "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/WanMove/Wan21-WanMove_fp8_scaled_e4m3fn_KJ.safetensors"}
+  - {group: move, folder: loras, name: lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors, bytes: 738005744,
+     url: "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"}

@@ -6,10 +6,15 @@ import { toast } from "sonner";
 import { type MediaSlot, mediaUrl } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { SlotAsset } from "@/lib/draft";
-import { uploadFile, useAssets } from "@/lib/queries";
-import { Button, Dialog } from "@/components/ui/controls";
+import { uploadFile, useAssets, usePatchAsset } from "@/lib/queries";
+import { Button, Dialog, Segmented } from "@/components/ui/controls";
 
 const ACCEPT: Record<string, string> = { image: "image/*", video: "video/*", audio: "audio/*" };
+
+/** Inputs worth keeping a library of: clips used as movement are tagged so they're easy to reuse. */
+const ROLE_LIBRARY: Record<string, { tag: string; label: string }> = {
+  driving_video: { tag: "driving", label: "Movement clips" },
+};
 
 export function MediaSlotField({
   slot,
@@ -23,11 +28,17 @@ export function MediaSlotField({
   onRemove: (id: string) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const patch = usePatchAsset();
+  const library = ROLE_LIBRARY[slot.role];
   const [uploading, setUploading] = useState<number | null>(null);
   const [picking, setPicking] = useState(false);
   const [dragging, setDragging] = useState(false);
   const max = slot.max ?? 1;
   const full = value.length >= max;
+  const add = (a: SlotAsset) => {
+    onAdd(a);
+    if (library) patch.mutate({ id: a.id, add_tags: [library.tag] });
+  };
   const label = slot.label ?? slot.role.replace(/_/g, " ");
 
   async function upload(files: FileList | File[]) {
@@ -40,7 +51,7 @@ export function MediaSlotField({
       setUploading(0);
       try {
         const asset = await uploadFile(file, setUploading);
-        onAdd({ id: asset.id, kind: asset.kind, thumb: asset.thumb_url, url: asset.url, title: asset.title });
+        add({ id: asset.id, kind: asset.kind, thumb: asset.thumb_url, url: asset.url, title: asset.title });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Upload failed");
       } finally {
@@ -50,7 +61,7 @@ export function MediaSlotField({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div role="group" aria-label={label.charAt(0).toUpperCase() + label.slice(1)} className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
         <span className="text-xs text-muted">
           {label.charAt(0).toUpperCase() + label.slice(1)}
@@ -141,11 +152,12 @@ export function MediaSlotField({
       <LibraryPicker
         open={picking}
         kinds={slot.kinds}
+        library={library}
         picked={max > 1 ? value.map((v) => v.id) : undefined}
         onClose={() => setPicking(false)}
         onPick={(a) => {
           if (value.some((v) => v.id === a.id)) return onRemove(a.id);
-          onAdd(a);
+          add(a);
           if (value.length + 1 >= max) setPicking(false);
         }}
       />
@@ -156,19 +168,26 @@ export function MediaSlotField({
 function LibraryPicker({
   open,
   kinds,
+  library,
   picked,
   onClose,
   onPick,
 }: {
   open: boolean;
   kinds: string[];
+  /** A tagged sub-library to show first (e.g. saved movement clips). */
+  library?: { tag: string; label: string };
   /** Set for slots that take several items: the picker stays open and marks what's chosen. */
   picked?: string[];
   onClose: () => void;
   onPick: (a: SlotAsset) => void;
 }) {
   const kind = kinds.length === 1 ? (kinds[0] as "image" | "video" | "audio") : undefined;
-  const { data, isLoading } = useAssets({ kind });
+  const [scope, setScope] = useState<"tagged" | "all">("tagged");
+  const tagged = useAssets({ kind, tag: library?.tag });
+  const all = useAssets({ kind });
+  const showTagged = Boolean(library) && scope === "tagged" && (tagged.data?.items.length ?? 0) > 0;
+  const { data, isLoading } = showTagged ? tagged : all;
   const items = (data?.items ?? []).filter((a) => kinds.includes(a.kind));
   return (
     <Dialog
@@ -184,6 +203,17 @@ function LibraryPicker({
         )
       }
     >
+      {library && (tagged.data?.items.length ?? 0) > 0 && (
+        <div className="mb-3 max-w-xs">
+          <Segmented
+            label="Show"
+            value={scope}
+            options={["tagged", "all"] as const}
+            render={(v) => (v === "tagged" ? library.label : "Everything")}
+            onChange={setScope}
+          />
+        </div>
+      )}
       {isLoading ? (
         <p>Loading your library…</p>
       ) : items.length === 0 ? (

@@ -43,6 +43,7 @@ class RoutingEnv:
     has_adapter: Callable[[str], bool]  # adapter key -> implemented?
     health: dict[str, RouteHealth] = field(default_factory=dict)
     reachable: Callable[[str], bool] = lambda _provider: True  # local engines: is the server up?
+    setting_set: Callable[[str], bool] = lambda _name: True  # is this Settings field filled in?
     now: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -137,7 +138,7 @@ def candidates(
             reason = f"does not support mode {req.mode}"
         else:
             try:
-                est = estimate(route.pricing, req.params, req.prompt, req.media)
+                est = estimate(route.pricing, req.params, req.prompt, req.media, req.mode)
             except ValueError as exc:
                 reason = f"pricing error: {exc}"
         if reason is None and not route.enabled:
@@ -153,6 +154,11 @@ def candidates(
             reason = f"{provider.name} adapter not implemented yet"
         if reason is None and provider and provider.key_setting and not env.has_key(route.provider):
             reason = (f"{provider.name} isn't configured" if kind == "local" else f"no API key for {provider.name}")
+        if reason is None and provider and provider.hosting_setting and not env.setting_set(provider.hosting_setting):
+            hosted = sorted({m.kind for m in req.media if m.kind in provider.hosted_kinds})
+            if hosted:
+                reason = (f"{provider.name} takes {' and '.join(hosted)} inputs only as web links; set "
+                          f"{provider.hosting_setting.upper()} so they can be hosted")
         if reason is None and kind == "local" and not env.reachable(route.provider):
             reason = f"{provider.name} isn't running. Start it, then try again."
         if reason is None:
@@ -169,7 +175,7 @@ def candidates(
                     break
         out.append(Candidate(route=route, estimate=est, eligible=reason is None, reason=reason,
                              provider_name=provider.name if provider else None, provider_kind=kind,
-                             eta_seconds=eta_seconds(route.eta, req.params) if est else None))
+                             eta_seconds=eta_seconds(route.eta, req.params, req.media, req.mode) if est else None))
 
     def sort_key(c: Candidate) -> tuple:
         h = env.health.get(c.route.id) or RouteHealth()

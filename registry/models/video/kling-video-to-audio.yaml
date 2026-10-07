@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-06 from fal's per-endpoint OpenAPI (fal-ai/kling-video/video-to-audio).
+id: kling-video-to-audio
+name: Kling Video to Audio
+family: kling
+vendor: kuaishou
+description: >-
+  Adds sound effects and ambience (and optional music) that match what happens on screen. Clips of 3-20 s;
+  returns the same clip with its new soundtrack.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [add-sound, audio]
+prompt: {max_chars: 200, dialect: default}
+
+parameters:
+  - {name: music, label: Music, type: text, max_chars: 200, default: "no music, only natural sound",
+     help: "Describe background music, or keep the default for none."}
+  - {name: asmr_mode, label: ASMR detail, type: bool, default: false, group: advanced}
+
+modes:
+  - id: add_sound
+    label: Add sound
+    ops: [add_sound]
+    prompt: optional
+    medias:
+      - {role: input_video, kinds: [video], label: Clip, required: true, max_duration_s: 20, max_mb: 100}
+
+routes:
+  - id: kling-video-to-audio@fal
+    provider: fal
+    modes:
+      add_sound: {endpoint: fal-ai/kling-video/video-to-audio}
+    map:
+      prompt: sound_effect_prompt
+      params:
+        music: background_music_prompt
+        asmr_mode: asmr_mode
+      media: {input_video: video_url}
+    pricing:
+      basis: per_request
+      rates: [{usd: 0.035}]
+      verified: 2026-10-06
+      source: https://fal.ai/models/fal-ai/kling-video/video-to-audio
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: sound_smoke
+    mode: add_sound
+    prompt: Waves on rocks, gulls, wind.
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.03, 0.04]}

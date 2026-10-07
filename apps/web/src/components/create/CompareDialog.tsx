@@ -17,11 +17,14 @@ export function CompareDialog({
   onClose,
   body,
   models,
+  ops,
 }: {
   open: boolean;
   onClose: () => void;
   body: CreateBody;
   models: ModelSummary[];
+  /** The current mode's ops: other models use their mode that does the same thing. */
+  ops: string[];
 }) {
   const router = useRouter();
   const start = useStartRun();
@@ -46,6 +49,7 @@ export function CompareDialog({
           entries: picked.map((id) => (id === body.model_id ? { model_id: id, mode: body.mode, params: body.params } : { model_id: id })),
           media: body.media,
           direction: body.direction ?? null,
+          ops,
           pick: true,
         },
       });
@@ -110,7 +114,7 @@ export function CompareDialog({
               >
                 <span className="text-sm text-chalk">{m.name}</span>
                 <span className="tabular text-2xs text-faint">
-                  {m.id === body.model_id ? "current" : m.tags.includes("local") ? "free on your GPU" : m.from_price_usd != null ? `from ${usd(m.from_price_usd)}` : ""}
+                  {m.id === body.model_id ? "current" : m.tags.includes("local") ? "free on this computer" : m.from_price_usd != null ? `from ${usd(m.from_price_usd)}` : ""}
                 </span>
               </button>
             </li>

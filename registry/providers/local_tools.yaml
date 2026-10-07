@@ -1,0 +1,9 @@
+id: local_tools
+name: This computer (ffmpeg)
+kind: local
+adapter: local_tools
+concurrency: 2
+docs: https://ffmpeg.org/ffmpeg-filters.html
+notes: >-
+  Quick edits that run on this machine with ffmpeg: reframe, trim, speed, reverse, loop, smooth motion,
+  basic upscale and stabilize. Free and offline.

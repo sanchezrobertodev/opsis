@@ -694,8 +694,16 @@ export interface components {
         AssetPatch: {
             /** Title */
             title?: string | null;
-            /** Tags */
+            /**
+             * Tags
+             * @description Replace the tags
+             */
             tags?: string[] | null;
+            /**
+             * Add Tags
+             * @description Add tags, keeping the others
+             */
+            add_tags?: string[] | null;
             /** Favorite */
             favorite?: boolean | null;
         };
@@ -1381,7 +1389,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image";
+            role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image" | "character_image" | "driving_video";
             /** Kinds */
             kinds: ("image" | "video" | "audio")[];
             /** Label */
@@ -1416,7 +1424,7 @@ export interface components {
              * Ops
              * @default []
              */
-            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i")[];
+            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize")[];
             /**
              * Prompt
              * @default required
@@ -1465,7 +1473,7 @@ export interface components {
             aspect_ratios: string[];
             duration: components["schemas"]["DurationSpec"] | null;
             /** Parameters */
-            parameters: (components["schemas"]["EnumParam"] | components["schemas"]["IntParam"] | components["schemas"]["FloatParam"] | components["schemas"]["BoolParam"] | components["schemas"]["SeedParam"] | components["schemas"]["TextParam"])[];
+            parameters: (components["schemas"]["EnumParam"] | components["schemas"]["IntParam"] | components["schemas"]["FloatParam"] | components["schemas"]["BoolParam"] | components["schemas"]["SeedParam"] | components["schemas"]["TextParam"] | components["schemas"]["PathsParam"])[];
             /** Rules */
             rules: components["schemas"]["Rule"][];
             /** Modes */
@@ -1520,6 +1528,56 @@ export interface components {
              * @enum {string}
              */
             speed: "slow" | "normal" | "fast";
+        };
+        /**
+         * PathsParam
+         * @description Motion paths drawn on the start frame: [{"points": [[x, y], ...]}] with x, y in 0-1 of the frame as the
+         *     model will see it (cropped to the output aspect). A path with one point marks something that should hold still.
+         *     Routes turn the paths into whatever the model wants (per-frame pixel tracks for Wan-Move).
+         */
+        PathsParam: {
+            /** Name */
+            name: string;
+            /** Label */
+            label?: string | null;
+            /** Help */
+            help?: string | null;
+            /**
+             * Group
+             * @default basic
+             * @enum {string}
+             */
+            group: "basic" | "advanced";
+            /** Modes */
+            modes?: string[] | null;
+            /** Visible If */
+            visible_if?: {
+                [key: string]: string | number | boolean | (string | number | boolean)[];
+            } | null;
+            /** Ui */
+            ui?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "paths";
+            /**
+             * Min Paths
+             * @default 0
+             */
+            min_paths: number;
+            /**
+             * Max Paths
+             * @default 5
+             */
+            max_paths: number;
+            /**
+             * Max Points
+             * @default 256
+             */
+            max_points: number;
+            /** Default */
+            default?: unknown[] | null;
         };
         /**
          * PresetField
@@ -2870,6 +2928,8 @@ export interface operations {
             query?: {
                 status?: "active" | "all" | "succeeded" | "failed";
                 output_type?: ("video" | "image" | "audio") | null;
+                /** @description Comma-separated op tags (e.g. instruction_edit,upscale): only takes whose model mode does one of these */
+                ops?: string | null;
                 limit?: number;
                 cursor?: string | null;
             };
@@ -3075,6 +3135,8 @@ export interface operations {
                 kind?: ("video" | "image" | "audio") | null;
                 source?: ("upload" | "generation") | null;
                 favorite?: boolean | null;
+                /** @description Only assets with this tag (e.g. `driving` for movement clips) */
+                tag?: string | null;
                 limit?: number;
                 cursor?: string | null;
             };

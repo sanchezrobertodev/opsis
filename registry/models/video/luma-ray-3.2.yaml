@@ -1,0 +1,74 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-06 from fal's per-endpoint OpenAPI (luma/agent/ray/v3.2/video-to-video and /reframe).
+id: luma-ray-3.2
+name: Luma Ray 3.2 Modify
+family: luma
+vendor: luma
+description: >-
+  Luma's video-to-video: restyle or relight a clip while keeping its motion (choose how closely it follows
+  the original), or reframe it to a new shape by generating what's outside the frame.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [edit, video-to-video, restyle, reframe]
+prompt: {max_chars: 6000, dialect: default}
+
+parameters:
+  - {name: resolution, type: enum, options: ["540p", "720p", "1080p"], default: "540p", ui: segmented}
+  - {name: duration, label: Length (s), type: enum, options: [5, 10], default: 5, ui: segmented, modes: [modify]}
+  - {name: edit_strength, label: How much to change, type: enum,
+     options: [adhere_1, adhere_2, adhere_3, flex_1, flex_2, flex_3, reimagine_1, reimagine_2, reimagine_3],
+     default: flex_1, modes: [modify],
+     help: "Adhere stays close to the original, flex balances, reimagine takes liberties. 1 is the lightest touch."}
+  - {name: aspect_ratio, label: New shape, type: enum, options: ["9:16", "1:1", "3:4", "4:3", "16:9", "21:9"],
+     default: "9:16", ui: aspect, modes: [reframe]}
+
+modes:
+  - id: modify
+    label: Restyle or relight
+    ops: [restyle, relight, instruction_edit]
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to change, required: true}
+      - {role: start_image, kinds: [image], label: Styled first frame (optional)}
+  - id: reframe
+    label: Reframe
+    ops: [reframe]
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to reframe, required: true, max_duration_s: 10}
+
+routes:
+  - id: luma-ray-3.2@fal
+    provider: fal
+    modes:
+      modify: {endpoint: luma/agent/ray/v3.2/video-to-video}
+      reframe: {endpoint: luma/agent/ray/v3.2/reframe}
+    map:
+      params:
+        resolution: resolution
+        duration: {to: duration, transform: suffix, args: {suffix: "s"}}
+        edit_strength: edit_strength
+        aspect_ratio: aspect_ratio
+      media: {input_video: video_url, start_image: start_image_url}
+    pricing:
+      # Modify is priced per job ($0.72 per 5 s at 540p); reframe per started source second.
+      basis: per_request
+      quantity: "duration / 5 if mode == 'modify' else ceil(max(input_video_seconds, 1))"
+      rates:
+        - {when: {mode: modify, resolution: "540p"}, usd: 0.72}
+        - {when: {mode: modify, resolution: "720p"}, usd: 1.08}
+        - {when: {mode: modify, resolution: "1080p"}, usd: 2.16}
+        - {when: {mode: reframe, resolution: "540p"}, usd: 0.06}
+        - {when: {mode: reframe, resolution: "720p"}, usd: 0.12}
+        - {when: {mode: reframe, resolution: "1080p"}, usd: 0.36}
+      verified: 2026-10-06
+      source: https://fal.ai/models/luma/agent/ray/v3.2/video-to-video
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: modify_smoke
+    mode: modify
+    prompt: Hand-painted watercolour, soft paper texture.
+    params: {resolution: "540p", duration: 5}
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.7, 0.75]}

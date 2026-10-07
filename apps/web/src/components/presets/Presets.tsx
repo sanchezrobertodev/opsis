@@ -31,7 +31,7 @@ function aspectOf(p: Preset): [number, number] {
 }
 
 function priceText(p: Preset) {
-  if (p.local) return "Free on your GPU";
+  if (p.local) return "Free on this computer";
   if (p.live_price_usd != null) return `from ${usd(p.live_price_usd)}`;
   return "";
 }
@@ -232,7 +232,7 @@ function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) 
           )}
           <dt className="text-faint">Cost</dt>
           <dd className={cn(preset.local ? "text-done" : "text-chalk")}>
-            {preset.local ? "Free on your GPU" : preset.live_price_usd != null ? `About ${usd(preset.live_price_usd)} live` : "Depends on your clip"}
+            {preset.local ? "Free on this computer" : preset.live_price_usd != null ? `About ${usd(preset.live_price_usd)} live` : "Depends on your clip"}
           </dd>
         </dl>
         <p className="leading-relaxed text-faint">

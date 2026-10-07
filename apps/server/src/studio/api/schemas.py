@@ -224,7 +224,8 @@ class FrameIn(ApiModel):
 
 class AssetPatch(ApiModel):
     title: str | None = None
-    tags: list[str] | None = None
+    tags: list[str] | None = Field(None, description="Replace the tags")
+    add_tags: list[str] | None = Field(None, description="Add tags, keeping the others")
     favorite: bool | None = None
 
 

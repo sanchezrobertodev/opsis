@@ -106,3 +106,26 @@ def test_fsm_key_rules():
     assert not can_transition(GenStatus.unknown, GenStatus.queued)  # never auto-resubmit ambiguous work
     assert not can_transition(GenStatus.ingesting, GenStatus.canceled)  # output already paid for
     assert not can_transition(GenStatus.succeeded, GenStatus.queued)
+
+
+def test_runpod_video_routes_need_a_host_for_their_inputs():
+    """RunPod takes videos only as web links (hosted through fal storage): without FAL_KEY those routes aren't
+    offered, instead of failing every take at upload."""
+    from studio.config import get_settings
+    from studio.registry.loader import load_registry
+    from studio.registry.validate import MediaRef
+
+    reg = load_registry(get_settings().resolve_registry_dir())
+    spec = reg.models["kling-2.6-motion-control"]
+    req = normalize(spec, spec.modes[0].id, "dance", {}, [
+        MediaRef("character_image", "a", "image"), MediaRef("driving_video", "b", "video", duration_ms=4000)])
+    route = "kling-2.6-motion-control@runpod"
+
+    def run(fal: bool):
+        e = RoutingEnv(provider_mode="mixed", live_allowlist={route}, has_key=lambda p: p == "runpod",
+                       has_adapter=lambda a: True, setting_set=lambda name: fal or name != "fal_key")
+        return next(c for c in candidates(reg, spec, req, e) if c.route.id == route)
+
+    without = run(fal=False)
+    assert not without.eligible and "FAL_KEY" in without.reason and "video" in without.reason
+    assert run(fal=True).eligible

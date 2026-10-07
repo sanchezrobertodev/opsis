@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-06 from fal's per-endpoint OpenAPI (blackforestlabs/flux-3/edit-video, extend-video).
+id: flux-3-video
+name: FLUX 3 Video Edit
+family: flux
+vendor: bfl
+description: >-
+  Black Forest Labs' video editor: fast, cheap instruction edits on clips under 15 s, and extension that
+  continues a clip for up to 20 more seconds.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [edit, extend, budget]
+prompt: {max_chars: 4096, dialect: flux}
+
+parameters:
+  - {name: duration, label: Add (s), type: int, min: 5, max: 20, default: 5, ui: slider, modes: [extend]}
+  - {name: resolution, type: enum, options: ["720p", "1080p"], default: "720p", ui: segmented, modes: [extend]}
+  - {name: generate_audio, label: Sound, type: bool, default: true, modes: [extend]}
+  - {name: safety_tolerance, label: Safety filter, type: int, min: 0, max: 4, default: 2, group: advanced,
+     help: 0 is strictest.}
+
+modes:
+  - id: edit
+    label: Edit a video
+    ops: [instruction_edit, restyle]
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 15, max_mb: 50}
+  - id: extend
+    label: Extend
+    ops: [extend]
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to continue, required: true, max_duration_s: 15, max_mb: 50}
+
+routes:
+  - id: flux-3-video@fal
+    provider: fal
+    modes:
+      edit: {endpoint: blackforestlabs/flux-3/edit-video}
+      extend: {endpoint: blackforestlabs/flux-3/extend-video, fixed: {aspect_ratio: auto}}
+    map:
+      params:
+        duration: {to: duration, transform: str}
+        resolution: resolution
+        generate_audio: generate_audio
+        safety_tolerance: safety_tolerance
+      media: {input_video: video_url}
+    pricing:
+      basis: per_output_second
+      # Edit: $0.03/s of output, which follows the clip. Extend: the page lists $0.41/s at 720p and $0.53 at
+      # 1080p but its billing field says half that; the higher figure is used until a key confirms it.
+      quantity: "max(input_video_seconds, 1) if mode == 'edit' else duration"
+      rates:
+        - {when: {mode: edit}, usd: 0.03}
+        - {when: {mode: extend, resolution: "720p"}, usd: 0.41}
+        - {when: {mode: extend, resolution: "1080p"}, usd: 0.53}
+      verified: 2026-10-06
+      source: https://fal.ai/models/blackforestlabs/flux-3/edit-video
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: edit_smoke
+    mode: edit
+    prompt: Turn the scene into a neon-lit night.
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.02, 0.5]}

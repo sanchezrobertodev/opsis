@@ -18,6 +18,7 @@ from studio.registry.schema import (
     IntParam,
     ModelSpec,
     Param,
+    PathsParam,
     SeedParam,
     TextParam,
 )
@@ -29,6 +30,7 @@ class MediaRef:
     asset_id: str
     kind: str | None = None  # filled by the API from the asset row
     duration_ms: int | None = None  # for video/audio inputs; some routes bill by input length
+    fps: float | None = None  # for video inputs; some routes bill per input frame
 
 
 @dataclass
@@ -48,8 +50,8 @@ class NormalizedRequest:
             "prompt": self.prompt,
             "negative_prompt": self.negative_prompt,
             "params": self.params,
-            "media": [{"role": m.role, "asset_id": m.asset_id, "kind": m.kind, "duration_ms": m.duration_ms}
-                      for m in self.media],
+            "media": [{"role": m.role, "asset_id": m.asset_id, "kind": m.kind, "duration_ms": m.duration_ms,
+                       "fps": m.fps} for m in self.media],
             "warnings": self.warnings,
         }
 
@@ -69,6 +71,8 @@ def _coerce(param: Param, value: Any) -> Any:
         return int(value)
     if isinstance(param, FloatParam):
         return float(value)
+    if isinstance(param, PathsParam):
+        return _coerce_paths(param, value)
     if isinstance(param, EnumParam):
         # enum options may be ints (e.g. Veo durations 4/6/8); match by string form
         for opt in param.options:
@@ -78,7 +82,35 @@ def _coerce(param: Param, value: Any) -> Any:
     return str(value)
 
 
+def _coerce_paths(param: PathsParam, value: Any) -> list[dict[str, list[list[float]]]]:
+    if not isinstance(value, list):
+        raise ValueError("must be a list of paths")
+    if len(value) > param.max_paths:
+        raise ValueError(f"at most {param.max_paths} paths")
+    paths = []
+    for path in value:
+        points = path.get("points") if isinstance(path, dict) else None
+        if not isinstance(points, list) or not 1 <= len(points) <= param.max_points:
+            raise ValueError(f"each path needs 1 to {param.max_points} points")
+        clean = []
+        for pt in points:
+            if not (isinstance(pt, list | tuple) and len(pt) == 2):
+                raise ValueError("points are [x, y] pairs")
+            x, y = float(pt[0]), float(pt[1])
+            if not (0 <= x <= 1 and 0 <= y <= 1):
+                raise ValueError("points must lie inside the frame (0 to 1)")
+            clean.append([round(x, 4), round(y, 4)])
+        paths.append({"points": clean})
+    return paths
+
+
+def _paths_needed(n: int) -> str:
+    return "Draw at least one motion path on the start frame." if n == 1 else f"Draw at least {n} motion paths."
+
+
 def _check(param: Param, value: Any) -> str | None:
+    if isinstance(param, PathsParam) and len(value) < param.min_paths:
+        return _paths_needed(param.min_paths)
     if isinstance(param, (IntParam, FloatParam)) and not (param.min <= value <= param.max):
         return f"{param.name} must be between {param.min} and {param.max}"
     if isinstance(param, TextParam) and param.max_chars and len(value) > param.max_chars:
@@ -107,6 +139,7 @@ def normalize(
         errors.append("prompt is required")
     if mode.prompt == "none" and prompt:
         warnings.append("this mode ignores the prompt")
+        prompt = ""
     if len(prompt) > spec.prompt.max_chars:
         errors.append(f"prompt exceeds {spec.prompt.max_chars} characters")
     if negative_prompt and not spec.prompt.supports_negative:
@@ -127,6 +160,8 @@ def normalize(
                 out[name] = random.randint(0, 2**31 - 1)
                 continue
             if param.default is None:
+                if isinstance(param, PathsParam) and param.min_paths:
+                    errors.append(_paths_needed(param.min_paths))
                 continue
             raw = param.default
         try:

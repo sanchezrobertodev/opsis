@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, ImageUp, Star, StepForward, Trash2, UserRoundPlus, X } from "lucide-react";
+import { Download, ImageUp, PersonStanding, Star, StepForward, Trash2, UserRoundPlus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -194,6 +194,20 @@ export function AssetViewer({ asset: initial, onClose }: { asset: Asset | null; 
                 >
                   <StepForward className="size-4" aria-hidden />
                   Continue from the last frame
+                </Button>
+              )}
+              {asset.kind === "video" && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    patch.mutate({ id: asset.id, add_tags: ["driving"] });
+                    addMedia("motion", "driving_video", { id: asset.id, kind: "video", thumb: asset.thumb_url, url: asset.url, title: asset.title }, 1);
+                    onClose();
+                    router.push("/motion-transfer");
+                  }}
+                >
+                  <PersonStanding className="size-4" aria-hidden />
+                  Copy this movement
                 </Button>
               )}
               {asset.kind === "image" && (

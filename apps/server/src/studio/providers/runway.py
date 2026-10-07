@@ -118,7 +118,9 @@ class RunwayAdapter(ProviderAdapter):
             raise http_error("Runway", r)
         t = r.json()
         status = t.get("status")
-        usage = {"credits": (t.get("cost") or {}).get("credits")} if t.get("cost") else {}
+        credits = (t.get("cost") or {}).get("credits") if isinstance(t.get("cost"), dict) else None
+        # Runway sells credits at $0.01 each (docs.dev.runwayml.com/guides/pricing, checked 2026-10-06)
+        usage = {"credits": credits, "cost_usd": round(credits * 0.01, 6)} if credits is not None else {}
         if status in ("PENDING", "THROTTLED"):
             return PollResult(status="queued", raw={"status": status})
         if status == "RUNNING":

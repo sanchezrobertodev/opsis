@@ -98,6 +98,7 @@ async def list_assets(
     kind: Literal["video", "image", "audio"] | None = None,
     source: Literal["upload", "generation"] | None = None,
     favorite: bool | None = None,
+    tag: str | None = Query(None, description="Only assets with this tag (e.g. `driving` for movement clips)"),
     limit: int = Query(40, ge=1, le=200),
     cursor: str | None = None,
     session: AsyncSession = Depends(get_session),
@@ -110,6 +111,8 @@ async def list_assets(
         stmt = stmt.where(Asset.source == AssetSource(source))
     if favorite is not None:
         stmt = stmt.where(Asset.favorite == favorite)
+    if tag:
+        stmt = stmt.where(Asset.tags.contains([tag]))
     if cursor:
         try:
             ts, aid = base64.urlsafe_b64decode(cursor.encode()).decode().split("|")
@@ -143,6 +146,8 @@ async def patch_asset(asset_id: uuid.UUID, body: AssetPatch, session: AsyncSessi
         asset.title = body.title[:200]
     if body.tags is not None:
         asset.tags = [t[:64] for t in body.tags][:50]
+    if body.add_tags:
+        asset.tags = list(dict.fromkeys([*(asset.tags or []), *(t[:64] for t in body.add_tags)]))[:50]
     if body.favorite is not None:
         asset.favorite = body.favorite
     await session.commit()

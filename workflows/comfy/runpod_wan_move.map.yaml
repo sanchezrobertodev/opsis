@@ -1,0 +1,20 @@
+# Wan-Move 14B (Wan 2.1, 480p): a start frame plus drawn motion paths (Kling motion-brush style).
+# Runs on the wan-core RunPod endpoint (infra/runpod/wan-core); its models.yaml lists the model files.
+# Source: ComfyUI's official template video_wanmove_480p (comfyui_workflow_templates 0.11.48): lightx2v distill
+# LoRA, 6 steps, cfg 1, er_sde, shift 8. Checked against ComfyUI 0.34 /object_info.
+# track_coords is JSON: a list of tracks, each a list of {"x", "y"} pixel positions in the output size, one per
+# frame. The start frame is scaled and center-cropped to the output size, so paths drawn on that frame line up.
+description: Wan-Move 14B, start frame plus motion paths (480p)
+inputs:
+  prompt: [{node: "9", input: text}]
+  negative_prompt: [{node: "10", input: text, mode: append}]
+  seed: [{node: "14", input: seed}]
+  track_coords: [{node: "22", input: track_coords}]
+  track_strength: [{node: "12", input: strength}]
+  width: [{node: "19", input: width}, {node: "12", input: width}]
+  height: [{node: "19", input: height}, {node: "12", input: height}]
+  length: [{node: "12", input: length}]
+  start_image: [{node: "11", input: image}]
+  filename_prefix: [{node: "17", input: filename_prefix}]
+outputs:
+  - {node: "17", kind: video}

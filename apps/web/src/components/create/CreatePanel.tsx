@@ -9,36 +9,49 @@ import { cn, usd } from "@/lib/cn";
 import { useDraft } from "@/lib/draft";
 import { useDebounced } from "@/lib/hooks";
 import { type CreateBody, useCreateGeneration, useModel } from "@/lib/queries";
+import { KINDS, modeMatches, type StudioKind } from "@/lib/studioKinds";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 import { CompareDialog } from "./CompareDialog";
 import { KeyframeHint } from "./KeyframeHint";
 import { type Direction, DirectorPanel } from "./DirectorPanel";
 import { MediaSlotField } from "./MediaSlots";
 import { ModelPicker } from "./ModelPicker";
+import { MotionPathsField } from "./MotionPathsField";
 import { defaultsFor, isVisible, ParamField } from "./ParamField";
 import { PromptBox } from "./PromptBox";
 
-type Studio = "video" | "image";
+const PLACEHOLDER: Partial<Record<StudioKind, string>> = {
+  edit: "Describe the change: make it snow, swap the jacket for a red raincoat, relight it as golden hour.",
+  motion: "Optional: describe the character, outfit or setting to keep consistent.",
+};
 
 /**
- * Debounce by content, not identity: callers pass freshly built objects every render, and keying on the
- * object would restart the timer on every unrelated re-render (so it might never fire).
+ * The shared Create form. `models` is already narrowed to the studio; `ops` narrows which of a model's modes
+ * show (Create video shows generation modes, Edit video only the chosen edit).
  */
-export function CreatePanel({ studio, models }: { studio: Studio; models: ModelSummary[] }) {
+export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
+  studio: StudioKind;
+  models: ModelSummary[];
+  ops?: string[];
+}) {
   const draft = useDraft((s) => s[studio]);
   const setDraft = useDraft((s) => s.set);
   const setParam = useDraft((s) => s.setParam);
   const addMedia = useDraft((s) => s.addMedia);
   const removeMedia = useDraft((s) => s.removeMedia);
 
-  const preferred = studio === "video" ? "veo-3.1" : "nano-banana-2";
+  const preferred = KINDS[studio].preferred;
   const modelId =
     draft.modelId && models.some((m) => m.id === draft.modelId)
       ? draft.modelId
       : (models.find((m) => m.id === preferred) ?? models[0])?.id;
   const { data: model } = useModel(modelId);
 
-  const mode = model?.modes.find((m) => m.id === draft.mode) ?? model?.modes[0];
+  const modes = model ? (model.modes.filter((m) => modeMatches(m, ops)).length
+    ? model.modes.filter((m) => modeMatches(m, ops))
+    : model.modes) : [];
+  const mode = modes.find((m) => m.id === draft.mode) ?? modes[0];
+  const directed = studio === "video" || studio === "image";
   const params = useMemo(
     () => (model && mode ? model.parameters.filter((p) => !p.modes || p.modes.includes(mode.id)) : []),
     [model, mode],
@@ -69,7 +82,7 @@ export function CreatePanel({ studio, models }: { studio: Studio; models: ModelS
           negative_prompt: model.prompt.supports_negative ? draft.negativePrompt || null : null,
           params: sendParams,
           media,
-          direction: hasDirection(draft.direction) ? draft.direction : null,
+          direction: directed && hasDirection(draft.direction) ? draft.direction : null,
         }
       : null;
 
@@ -116,7 +129,7 @@ export function CreatePanel({ studio, models }: { studio: Studio; models: ModelS
         "No provider can run this right now.")
       : null;
   const blockers = [
-    ...(promptMissing ? ["Describe the shot to generate it."] : []),
+    ...(promptMissing ? [studio === "edit" ? "Describe the change you want." : "Describe the shot to generate it."] : []),
     ...estimateErrors,
     ...(noRoute ? [noRoute] : []),
   ];
@@ -144,7 +157,8 @@ export function CreatePanel({ studio, models }: { studio: Studio; models: ModelS
     return <div className="p-5 text-sm text-muted">Loading models…</div>;
   }
 
-  const basic = params.filter((p) => p.group !== "advanced" && isVisible(p, values));
+  const drawn = params.filter((p) => p.type === "paths" && isVisible(p, values));
+  const basic = params.filter((p) => p.type !== "paths" && p.group !== "advanced" && isVisible(p, values));
   const advanced = params.filter((p) => p.group === "advanced" && isVisible(p, values));
   const chosen = estimate.data?.candidates.find((c) => c.route_id === estimate.data?.chosen_route_id);
   const liveRef = estimate.data?.live_reference;
@@ -164,12 +178,12 @@ export function CreatePanel({ studio, models }: { studio: Studio; models: ModelS
           onChange={(id) => setDraft(studio, { modelId: id, mode: undefined })}
         />
 
-        {model.modes.length > 1 && (
+        {modes.length > 1 && (
           <Segmented
             label="Mode"
             value={mode.id}
-            options={model.modes.map((m) => m.id)}
-            render={(id) => model.modes.find((m) => m.id === id)?.label}
+            options={modes.map((m) => m.id)}
+            render={(id) => modes.find((m) => m.id === id)?.label}
             onChange={(id) => setDraft(studio, { mode: id })}
           />
         )}
@@ -184,6 +198,18 @@ export function CreatePanel({ studio, models }: { studio: Studio; models: ModelS
           />
         ))}
 
+        {/* Drawn on the start frame, so it sits right under it rather than with the other settings. */}
+        {drawn.map((p) => (
+          <MotionPathsField
+            key={p.name}
+            param={p}
+            value={values[p.name]}
+            onChange={(v) => setParam(studio, model.id, p.name, v)}
+            frame={(draft.media.start_image ?? [])[0]}
+            aspect={String(values.aspect_ratio ?? model.aspect_ratios[0] ?? "16:9")}
+          />
+        ))}
+
         {mode.prompt !== "none" && (
           <PromptBox
             model={model}
@@ -192,10 +218,11 @@ export function CreatePanel({ studio, models }: { studio: Studio; models: ModelS
             value={draft.prompt}
             onChange={(prompt) => setDraft(studio, { prompt })}
             onSubmit={() => void submit()}
+            placeholder={PLACEHOLDER[studio]}
           />
         )}
 
-        {mode.prompt !== "none" && (
+        {studio === "video" && mode.prompt !== "none" && (
           <KeyframeHint
             model={model}
             prompt={draft.prompt}
@@ -205,11 +232,13 @@ export function CreatePanel({ studio, models }: { studio: Studio; models: ModelS
           />
         )}
 
-        <DirectorPanel
-          direction={draft.direction as Direction}
-          onChange={(direction) => setDraft(studio, { direction: direction as Record<string, unknown> })}
-          stills={model.output_type === "image"}
-        />
+        {directed && (
+          <DirectorPanel
+            direction={draft.direction as Direction}
+            onChange={(direction) => setDraft(studio, { direction: direction as Record<string, unknown> })}
+            stills={model.output_type === "image"}
+          />
+        )}
 
         {mode.prompt !== "none" && (
           <div>
@@ -326,7 +355,8 @@ export function CreatePanel({ studio, models }: { studio: Studio; models: ModelS
         </button>
       </div>
       {body && comparing && (
-        <CompareDialog open={comparing} onClose={() => setComparing(false)} body={body} models={models} />
+        <CompareDialog open={comparing} onClose={() => setComparing(false)} body={body} ops={mode.ops}
+                       models={models.filter((m) => m.modes.some((x) => modeMatches(x, mode.ops)))} />
       )}
 
       <Dialog
@@ -391,7 +421,7 @@ function CostLine({
   if (isLocal) {
     return (
       <p className="tabular text-xs text-muted">
-        Free on your GPU.
+        Free on this computer.
         {etaSeconds != null && (
           <span className="text-faint">
             {" "}

@@ -108,9 +108,12 @@ def build_payload(
     for role, ref in inputs.items():
         field_name = route_mode.media.get(role) or m.media.get(role, role)
         slot = spec.mode(req.mode).slot(role) if spec.mode(req.mode) else None
-        if slot and slot.max > 1 and not isinstance(ref, list):
+        if field_name.endswith("[]"):  # the provider wants a list even for one file (e.g. `video_urls[]`)
+            field_name = field_name[:-2]
+            ref = ref if isinstance(ref, list) else [ref]
+        elif slot and slot.max > 1 and not isinstance(ref, list):
             ref = [ref]
-        if slot and slot.max == 1 and isinstance(ref, list):
+        elif slot and slot.max == 1 and isinstance(ref, list):
             ref = ref[0]
         _set_path(payload, field_name, ref)
 
@@ -120,4 +123,15 @@ def build_payload(
     if route.transform:
         payload = _load_hook(route.transform)(spec=spec, route=route, req=req, payload=payload)
 
-    return route_mode.endpoint, payload, warnings
+    return endpoint_for(route_mode.endpoint, req.params), payload, warnings
+
+
+def endpoint_for(template: str, params: dict[str, Any]) -> str:
+    """Fill `{param}` placeholders, for providers that put a quality tier in the path
+    (e.g. `fal-ai/kling-video/v3/{tier}/motion-control`). Map such params `to: null` so they stay out of the body."""
+    if "{" not in template:
+        return template
+    try:
+        return template.format_map({k: str(v) for k, v in params.items()})
+    except KeyError as exc:
+        raise ValueError(f"endpoint {template!r} needs the {exc.args[0]!r} parameter") from None

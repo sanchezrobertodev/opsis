@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: video-tools
+name: Video tools (this computer)
+family: ffmpeg
+vendor: local
+description: >-
+  Quick, free edits that run on this computer: reframe for another aspect, trim, change speed, reverse,
+  loop, smooth motion to a higher frame rate, basic upscale and stabilize. No model, no account.
+output_type: video
+status: active
+license_tier: open_permissive   # ffmpeg (LGPL build)
+tags: [local, free, edit]
+prompt: {max_chars: 10, dialect: default}
+
+parameters:
+  - {name: aspect_ratio, label: New shape, type: enum, options: ["9:16", "1:1", "4:5", "16:9", "4:3", "21:9"],
+     default: "9:16", ui: aspect, modes: [reframe]}
+  - {name: fit, label: Fit, type: enum, options: [crop, blur_fill, pad], default: crop, ui: segmented, modes: [reframe],
+     help: "Crop fills the frame and cuts the edges. Blur fill keeps everything over a blurred copy. Pad adds bars."}
+  - {name: start, label: Start (s), type: float, min: 0, max: 600, step: 0.1, default: 0, modes: [trim]}
+  - {name: end, label: End (s), type: float, min: 0, max: 600, step: 0.1, default: 0, modes: [trim],
+     help: 0 keeps everything to the end.}
+  - {name: speed, label: Speed, type: float, min: 0.25, max: 4, step: 0.05, default: 2, ui: slider, modes: [retime],
+     help: Below 1 is slow motion. Sound is re-timed without changing pitch.}
+  - {name: times, label: Plays, type: int, min: 2, max: 10, default: 2, modes: [loop]}
+  - {name: boomerang, label: Boomerang, type: bool, default: false, modes: [loop], help: Forward then backward. Drops the sound.}
+  - {name: fps, label: Frame rate, type: enum, options: [30, 48, 60], default: 60, ui: segmented, modes: [interpolate]}
+  - {name: method, label: Method, type: enum, options: [motion, blend], default: motion, ui: segmented, modes: [interpolate],
+     help: "Motion builds new in-between frames (slow, smoother). Blend cross-fades (fast, softer)."}
+  - {name: scale, label: Factor, type: enum, options: [2, 3, 4], default: 2, ui: segmented, modes: [upscale]}
+  - {name: sharpen, label: Sharpen, type: bool, default: true, modes: [upscale]}
+  - {name: strength, label: Strength, type: enum, options: [gentle, strong], default: gentle, ui: segmented, modes: [stabilize]}
+
+modes:
+  - {id: reframe, label: Reframe, ops: [reframe], prompt: none,
+     medias: [{role: input_video, kinds: [video], label: Clip, required: true}]}
+  - {id: trim, label: Trim, ops: [trim], prompt: none,
+     medias: [{role: input_video, kinds: [video], label: Clip, required: true}]}
+  - {id: retime, label: Change speed, ops: [retime], prompt: none,
+     medias: [{role: input_video, kinds: [video], label: Clip, required: true}]}
+  - {id: reverse, label: Reverse, ops: [reverse], prompt: none,
+     medias: [{role: input_video, kinds: [video], label: Clip, required: true, max_duration_s: 60}]}
+  - {id: loop, label: Loop, ops: [loop], prompt: none,
+     medias: [{role: input_video, kinds: [video], label: Clip, required: true}]}
+  - {id: interpolate, label: Smooth motion, ops: [interpolate], prompt: none,
+     medias: [{role: input_video, kinds: [video], label: Clip, required: true}]}
+  - {id: upscale, label: Basic upscale, ops: [upscale], prompt: none,
+     medias: [{role: input_video, kinds: [video], label: Clip, required: true}]}
+  - {id: stabilize, label: Stabilize, ops: [stabilize], prompt: none,
+     medias: [{role: input_video, kinds: [video], label: Clip, required: true}]}
+
+routes:
+  - id: video-tools@local_tools
+    provider: local_tools
+    modes:
+      reframe: {endpoint: reframe}
+      trim: {endpoint: trim}
+      retime: {endpoint: retime}
+      reverse: {endpoint: reverse}
+      loop: {endpoint: loop}
+      interpolate: {endpoint: interpolate}
+      upscale: {endpoint: upscale}
+      stabilize: {endpoint: stabilize}
+    map: {passthrough: true, media: {input_video: input_video}}
+    pricing:
+      basis: per_request
+      rates: [{usd: 0}]
+      verified: 2026-10-06
+      source: local ffmpeg
+    # Rough, for the progress bar: motion interpolation is the slow one (several x real time).
+    eta: "2 + input_video_seconds * (8 if mode == 'interpolate' and method == 'motion' else 3 if mode in ('stabilize', 'upscale') else 0.5)"
+    timeout_s: 3600
+    output: {path: outputs, kind: video}
+
+examples:
+  - name: reframe_vertical
+    mode: reframe
+    params: {aspect_ratio: "9:16", fit: blur_fill}
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0, 0]}

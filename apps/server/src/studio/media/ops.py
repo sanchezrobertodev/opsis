@@ -31,7 +31,8 @@ async def extract_frame(src: Path, dest: Path, at: Literal["first", "last"] | fl
         await ffmpeg("-ss", f"{max(0.0, float(at)):.3f}", "-i", str(src), "-frames:v", "1", str(dest))
 
 
-async def _encode_args() -> list[str]:
+async def encode_args() -> list[str]:
+    """H.264 encoder flags: NVENC when this machine has it, else x264."""
     global _nvenc_ok
     x264 = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]
     if _nvenc_ok is False:
@@ -70,7 +71,7 @@ async def concat_clips(clips: list[Path], dest: Path, *, fps: float | None = Non
             chains.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={seconds:.3f}[a{i}]")
         joins.append(f"[v{i}][a{i}]")
     graph = ";".join([*chains, f"{''.join(joins)}concat=n={len(clips)}:v=1:a=1[v][a]"])
-    encode = await _encode_args()
+    encode = await encode_args()
     try:
         await ffmpeg(*inputs, "-filter_complex", graph, "-map", "[v]", "-map", "[a]", *encode,
                      "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(dest))

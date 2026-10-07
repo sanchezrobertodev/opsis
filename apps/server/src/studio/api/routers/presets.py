@@ -22,7 +22,7 @@ def _live_price(reg: Registry, spec: ModelSpec, preset: PresetSpec) -> float | N
         if provider is None or provider.kind in ("mock", "local") or not route.enabled or preset.mode not in route.modes:
             continue
         try:
-            prices.append(float(estimate(route.pricing, params).usd))
+            prices.append(float(estimate(route.pricing, params, mode=preset.mode).usd))
         except (ValueError, KeyError, TypeError):
             continue  # priced by input length etc.; unknown until the user picks media
     return min(prices) if prices else None

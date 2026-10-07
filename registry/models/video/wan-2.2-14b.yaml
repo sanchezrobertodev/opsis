@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: wan-2.2-14b
+name: Wan 2.2 14B
+family: wan
+vendor: alibaba
+description: >-
+  The full open-weights Wan 2.2 image-to-video model at 720p, run on RunPod. Much sharper than the 5B model
+  your GPU runs, at a fraction of the price of the closed models.
+output_type: video
+status: active
+license_tier: open_permissive   # Apache 2.0
+tags: [open-weights, budget]
+prompt: {max_chars: 2000, dialect: wan, supports_negative: true}
+aspect_ratios: ["16:9", "9:16"]
+duration: {min: 5, max: 15, default: 5}
+
+parameters:
+  - {name: duration, label: Duration (s), type: enum, options: [5, 8, 10, 15], default: 5, ui: segmented}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16"], default: "16:9", ui: aspect}
+  - {name: steps, type: int, min: 10, max: 50, default: 30, group: advanced, help: Fewer steps render faster and look rougher.}
+  - {name: guidance, label: Prompt adherence, type: float, min: 0, max: 10, step: 0.5, default: 5, group: advanced}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: i2v
+    label: Image to video
+    ops: [i2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+
+routes:
+  - id: wan-2.2-14b@runpod
+    provider: runpod
+    modes:
+      i2v: {endpoint: wan-2-2-i2v-720}
+    map:
+      prompt: prompt
+      negative_prompt: negative_prompt
+      params:
+        duration: duration
+        steps: num_inference_steps
+        guidance: guidance
+        seed: seed
+        # 1280*720 is the documented default; 720*1280 for vertical is assumed (unverified)
+        aspect_ratio: {to: size, transform: enum_map, args: {values: {"16:9": "1280*720", "9:16": "720*1280"}}}
+      media: {start_image: image}
+    pricing:
+      basis: per_output_second
+      rates: [{usd: 0.06}]
+      verified: 2026-10-06
+      source: https://docs.runpod.io/public-endpoints/models/wan-2-2-i2v
+    timeout_s: 1800
+    output: {path: output.video_url, kind: video}
+
+examples:
+  - name: i2v_smoke
+    mode: i2v
+    prompt: The camera slowly pushes in as wind moves through the grass.
+    params: {duration: 5}
+    media: {start_image: "fixture:images/keyframe.png"}
+    smoke: true
+    expect: {cost_usd_range: [0.3, 0.3]}

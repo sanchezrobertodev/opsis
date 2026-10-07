@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: wan-move
+name: Wan-Move
+family: wan
+vendor: alibaba
+description: >-
+  Draw where things should move on the start frame and Wan-Move animates along your paths, like a motion brush.
+  A tap pins something in place. Open weights on your own RunPod endpoint, 480p.
+output_type: video
+status: active
+license_tier: open_permissive   # Apache 2.0 (Wan-Move, lightx2v)
+tags: [open-weights, budget, self-hosted, motion-paths]
+prompt: {max_chars: 2000, dialect: wan, supports_negative: true}
+aspect_ratios: ["16:9", "9:16", "1:1"]
+duration: {min: 3, max: 5, default: 5}
+
+parameters:
+  - {name: motion_paths, label: Motion paths, type: paths, min_paths: 1, max_paths: 5,
+     help: "Drag across the frame to draw where something should go. Tap to pin something in place."}
+  - {name: duration, label: Duration (s), type: int, min: 3, max: 5, default: 5, ui: slider,
+     help: Things travel the whole path over the clip.}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "1:1"], default: "16:9", ui: aspect}
+  - {name: path_strength, label: Path strength, type: float, min: 0.2, max: 2, step: 0.1, default: 1, group: advanced,
+     help: Higher follows the paths more strictly.}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: i2v
+    label: Image to video
+    ops: [i2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+
+routes:
+  - id: wan-move@wan_core
+    provider: runpod_wan_core
+    modes:
+      i2v: {endpoint: runpod_wan_move}
+    # Sets the 480p size for the aspect and turns the drawn paths into per-frame pixel tracks.
+    transform: studio.providers.transforms.comfy:wan_move_tracks
+    map:
+      params:
+        duration: {to: length, transform: seconds_to_frames, args: {fps: 16, plus: 1}}
+        aspect_ratio: {to: null}
+        motion_paths: {to: null}
+        path_strength: track_strength
+      media: {start_image: start_image}
+    pricing:
+      basis: per_gpu_second
+      quantity: "40 + 10 * duration"
+      rates: [{usd: 0.000969}]
+      verified: 2026-10-06
+      source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); 6-step 480p run time estimated (unbenchmarked)
+    eta: "40 + 10 * duration"
+    timeout_s: 3600
+    output: {path: output.outputs, kind: video}
+
+examples:
+  - name: one_path_smoke
+    mode: i2v
+    prompt: A small red sailboat glides across a calm alpine lake.
+    params: {duration: 3, motion_paths: [{points: [[0.3, 0.6], [0.5, 0.58], [0.7, 0.6]]}]}
+    media: {start_image: "fixture:images/keyframe.png"}
+    smoke: true
+    expect: {cost_usd_range: [0.06, 0.08]}

@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-06 from fal's per-endpoint OpenAPI (fal-ai/kling-video/o3/*/video-to-video/edit).
+id: kling-o3-edit
+name: Kling 3.0 Omni Edit
+family: kling
+vendor: kuaishou
+description: >-
+  Kling's instruction editor: change what's in a clip, restyle or relight it, optionally guided by up to four
+  reference images (mention saved characters with @name). Clips of 3-15 s, at least 720 px on each side.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [edit, video-to-video, references]
+prompt: {max_chars: 2500, dialect: kling}
+
+parameters:
+  - {name: tier, label: Quality, type: enum, options: [standard, pro, 4k], default: standard, ui: segmented,
+     help: "Standard and Pro differ in detail; 4K renders natively at 4K."}
+  - {name: keep_audio, label: Keep the sound, type: bool, default: true}
+
+modes:
+  - id: edit
+    label: Edit a video
+    ops: [instruction_edit, restyle, relight]
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 15, max_mb: 200}
+      - {role: image_references, kinds: [image], label: Reference images (optional), max: 4}
+
+elements: {strategy: refs_native, ref_role: image_references, token: "@Image{n}"}
+
+routes:
+  - id: kling-o3-edit@fal
+    provider: fal
+    modes:
+      edit: {endpoint: "fal-ai/kling-video/o3/{tier}/video-to-video/edit"}
+    map:
+      params:
+        tier: {to: null}   # picks the endpoint
+        keep_audio: keep_audio
+      media: {input_video: video_url, image_references: image_urls}
+    pricing:
+      basis: per_output_second
+      quantity: "max(input_video_seconds, 3)"   # the edit is as long as the clip
+      rates:
+        - {when: {tier: standard}, usd: 0.126}
+        - {when: {tier: pro}, usd: 0.168}
+        - {when: {tier: 4k}, usd: 0.42}
+      verified: 2026-10-06
+      source: https://fal.ai/models/fal-ai/kling-video/o3/standard/video-to-video/edit
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: edit_smoke
+    mode: edit
+    prompt: Make it a snowy winter night in @Video1, everything dusted white.
+    params: {tier: standard}
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.3, 0.6]}

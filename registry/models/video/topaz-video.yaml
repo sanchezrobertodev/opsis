@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-06 from fal's per-endpoint OpenAPI (topaz/upscale/video/*, topaz/interpolate/video).
+id: topaz-video
+name: Topaz Video AI
+family: topaz
+vendor: topaz
+description: >-
+  Topaz's video models: Precision upscaling that stays faithful to the source, Starlight generative upscaling
+  that rebuilds detail in AI footage, and frame interpolation for smooth motion or slow motion.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [upscale, interpolate, finishing]
+prompt: {max_chars: 10}
+
+parameters:
+  - {name: upscale_factor, label: Factor, type: enum, options: [2, 4], default: 2, ui: segmented,
+     modes: [upscale_precision, upscale_generative]}
+  - {name: target_fps, label: Frame rate, type: enum, options: [30, 48, 60, 120], default: 60, ui: segmented, modes: [interpolate]}
+  - {name: slowdown_factor, label: Slow motion, type: int, min: 1, max: 8, default: 1, modes: [interpolate],
+     help: 2 plays at half speed with new in-between frames.}
+  - {name: interp_model, label: Model, type: enum, options: [Apollo, Chronos, Aion], default: Apollo, group: advanced,
+     modes: [interpolate], help: Aion handles fast motion best and costs more.}
+
+modes:
+  - id: upscale_precision
+    label: Faithful upscale
+    ops: [upscale]
+    prompt: none
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to upscale, required: true}
+  - id: upscale_generative
+    label: Generative upscale
+    ops: [upscale]
+    prompt: none
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to upscale, required: true}
+  - id: interpolate
+    label: Smooth motion
+    ops: [interpolate]
+    prompt: none
+    medias:
+      - {role: input_video, kinds: [video], label: Clip, required: true}
+
+routes:
+  - id: topaz-video@fal
+    provider: fal
+    modes:
+      # H.264 so browsers can play it (Topaz defaults to H.265)
+      upscale_precision: {endpoint: topaz/upscale/video/precision, fixed: {H264_output: true, model: Proteus}}
+      upscale_generative: {endpoint: topaz/upscale/video/generative, fixed: {H264_output: true, model: Starlight Precise 2.6}}
+      interpolate: {endpoint: topaz/interpolate/video, fixed: {H264_output: true}}
+    map:
+      params:
+        upscale_factor: upscale_factor
+        target_fps: target_fps
+        slowdown_factor: slowdown_factor
+        interp_model: model
+      media: {input_video: video_url}
+    pricing:
+      # Upscales: per second, assuming up to 1080p output at 30 fps (4x lands near 4K). Interpolation: per new
+      # frame, i.e. frames added beyond what the clip already has.
+      basis: per_request
+      quantity: >-
+        input_video_seconds * max(target_fps * slowdown_factor - input_video_frames / max(input_video_seconds, 0.001), 0)
+        if mode == 'interpolate' else max(input_video_seconds, 1)
+      rates:
+        - {usd: 0.02}
+        - {when: {mode: upscale_precision}, usd: 0.02}
+        - {when: {mode: upscale_precision, upscale_factor: 4}, usd: 0.06}
+        - {when: {mode: upscale_generative}, usd: 0.12}
+        - {when: {mode: upscale_generative, upscale_factor: 4}, usd: 0.26}
+        - {when: {mode: interpolate}, usd: 0.001}
+        - {when: {mode: interpolate, interp_model: Aion}, usd: 0.00167}
+      verified: 2026-10-06
+      source: https://fal.ai/models/topaz/upscale/video/precision
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: precision_smoke
+    mode: upscale_precision
+    params: {upscale_factor: 2}
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.01, 0.1]}

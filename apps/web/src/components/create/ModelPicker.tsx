@@ -24,7 +24,7 @@ export function vendorName(id: string) {
 }
 
 function priceNote(m: ModelSummary) {
-  if (m.tags.includes("local")) return ", free on your GPU";
+  if (m.tags.includes("local")) return ", free on this computer";
   const unit = m.output_type === "image" ? "an image" : "a clip";
   return m.from_price_usd != null ? `, live from ${usd(m.from_price_usd)} ${unit}` : "";
 }
@@ -80,7 +80,7 @@ export function ModelPicker({
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="type-title text-[15px] text-chalk">{m.name}</span>
                   <span className="tabular text-2xs text-faint">
-                    {m.tags.includes("local") ? "free, on your GPU" : m.from_price_usd != null ? `from ${usd(m.from_price_usd)}` : ""}
+                    {m.tags.includes("local") ? "free on this computer" : m.from_price_usd != null ? `from ${usd(m.from_price_usd)}` : ""}
                   </span>
                 </span>
                 <span className="text-xs leading-relaxed text-muted">{m.description}</span>

@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-06 from fal's per-endpoint OpenAPI (fal-ai/kling-video/v3/*/motion-control).
+id: kling-3.0-motion-control
+name: Kling 3.0 Motion Control
+family: kling
+vendor: kuaishou
+description: >-
+  Make a character image perform the movement in a reference clip: dances, gestures, fights, walk cycles.
+  Following the clip's framing allows up to 30 s; following the image's framing, up to 10 s.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [motion-transfer]
+prompt: {max_chars: 2500, dialect: kling}
+
+parameters:
+  - {name: tier, label: Quality, type: enum, options: [standard, pro], default: standard, ui: segmented}
+  - {name: character_orientation, label: Follow the framing of, type: enum, options: [video, image], default: video,
+     ui: segmented, help: "Video keeps the clip's camera and framing (up to 30 s). Image keeps your picture's framing (up to 10 s)."}
+  - {name: keep_original_sound, label: Keep the clip's sound, type: bool, default: true}
+
+modes:
+  - id: transfer
+    label: Copy the motion
+    ops: [motion_transfer]
+    prompt: optional
+    medias:
+      - {role: character_image, kinds: [image], label: Character, required: true, max_mb: 10}
+      - {role: driving_video, kinds: [video], label: Movement to copy, required: true, max_duration_s: 30, max_mb: 100}
+
+routes:
+  - id: kling-3.0-motion-control@fal
+    provider: fal
+    modes:
+      transfer: {endpoint: "fal-ai/kling-video/v3/{tier}/motion-control"}
+    map:
+      params:
+        tier: {to: null}
+        character_orientation: character_orientation
+        keep_original_sound: keep_original_sound
+      media: {character_image: image_url, driving_video: video_url}
+    pricing:
+      basis: per_output_second
+      quantity: "max(3, min(driving_video_seconds, 10 if character_orientation == 'image' else 30))"
+      rates:
+        - {when: {tier: standard}, usd: 0.126}
+        - {when: {tier: pro}, usd: 0.168}
+      verified: 2026-10-06
+      source: https://fal.ai/models/fal-ai/kling-video/v3/standard/motion-control
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: transfer_smoke
+    mode: transfer
+    params: {tier: standard, character_orientation: video}
+    media: {character_image: "fixture:images/keyframe.png", driving_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.3, 0.6]}

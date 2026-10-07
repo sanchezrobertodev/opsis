@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: wan-2.2-fun-camera
+name: Wan 2.2 Fun Camera
+family: wan
+vendor: alibaba
+description: >-
+  Wan 2.2 14B trained for camera control, on your own RunPod endpoint: give it a start frame and pick a camera
+  move (zoom, pan, tilt, roll). Camera moves chosen in the Motion library that it knows are applied directly.
+output_type: video
+status: active
+license_tier: open_permissive   # Apache 2.0 (Wan 2.2 Fun, lightx2v)
+tags: [open-weights, budget, self-hosted, camera]
+prompt: {max_chars: 2000, dialect: wan, supports_negative: true}
+aspect_ratios: ["16:9", "9:16", "1:1"]
+duration: {min: 2, max: 7, default: 5}
+# The director maps camera moves with a `wan-fun-camera` native value onto camera_control.
+camera: {native: wan-fun-camera}
+
+parameters:
+  - {name: camera_control, label: Camera move, type: enum, default: ZoomIn, ui: segmented,
+     options: [ZoomIn, ZoomOut, PanLeft, PanRight, TiltUp, TiltDown, RollLeft, RollRight, Static],
+     help: "A camera move picked under Camera takes priority when this model has a preset for it."}
+  - {name: camera_speed, label: Move speed, type: float, min: 0.2, max: 3, step: 0.1, default: 1, group: advanced}
+  - {name: quality, type: enum, options: ["480p", "720p"], default: "720p", ui: segmented,
+     help: "480p renders about twice as fast."}
+  - {name: duration, label: Duration (s), type: int, min: 2, max: 7, default: 5, ui: slider}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "1:1"], default: "16:9", ui: aspect}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: i2v
+    label: Image to video
+    ops: [i2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+
+routes:
+  - id: wan-2.2-fun-camera@wan_core
+    provider: runpod_wan_core
+    modes:
+      i2v: {endpoint: runpod_wan22_fun_camera}
+    transform: studio.providers.transforms.comfy:wan14b_size
+    map:
+      params:
+        duration: {to: length, transform: seconds_to_frames, args: {fps: 16, plus: 1}}
+        quality: {to: null}
+        aspect_ratio: {to: null}
+        # Fun Camera's presets; tilt uses its pan up/down, roll its anti-clockwise/clockwise rotation.
+        camera_control:
+          to: camera_pose
+          transform: enum_map
+          args:
+            values: {ZoomIn: "Zoom In", ZoomOut: "Zoom Out", PanLeft: "Pan Left", PanRight: "Pan Right",
+                     TiltUp: "Pan Up", TiltDown: "Pan Down", RollLeft: "Anti Clockwise (ACW)",
+                     RollRight: "ClockWise (CW)", Static: "Static"}
+        camera_speed: camera_speed
+      media: {start_image: start_image}
+    pricing:
+      basis: per_gpu_second
+      quantity: "(40 + 9 * duration) if quality == '480p' else (60 + 22 * duration)"
+      rates: [{usd: 0.000969}]
+      verified: 2026-10-06
+      source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); run time per docs/research/03 (unbenchmarked)
+    eta: "(40 + 9 * duration) if quality == '480p' else (60 + 22 * duration)"
+    timeout_s: 3600
+    output: {path: output.outputs, kind: video}
+
+examples:
+  - name: pan_left_480p_smoke
+    mode: i2v
+    prompt: A quiet harbor at dusk, boats bobbing on the water.
+    params: {camera_control: PanLeft, quality: "480p", duration: 3}
+    media: {start_image: "fixture:images/keyframe.png"}
+    smoke: true
+    expect: {cost_usd_range: [0.05, 0.08]}

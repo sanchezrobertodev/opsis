@@ -1,0 +1,16 @@
+# Where ComfyUI looks for models: the network volume, which serverless workers mount at /runpod-volume.
+# Replaces worker-comfyui's file, which lacks diffusion_models/ and text_encoders/ (the folders ComfyUI's own
+# templates and fetch_models.py use).
+wan_core:
+  base_path: /runpod-volume/models
+  diffusion_models: diffusion_models/
+  unet: unet/
+  text_encoders: text_encoders/
+  clip: clip/
+  clip_vision: clip_vision/
+  vae: vae/
+  loras: loras/
+  model_patches: model_patches/
+  checkpoints: checkpoints/
+  upscale_models: upscale_models/
+  audio_encoders: audio_encoders/

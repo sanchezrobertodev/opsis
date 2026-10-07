@@ -16,7 +16,7 @@ from studio.providers.comfy_workflows import load_template
 from studio.registry.loader import load_registry
 from studio.registry.mapping import build_payload
 from studio.registry.routing import RoutingEnv, candidates
-from studio.registry.validate import normalize
+from studio.registry.validate import MediaRef, normalize
 
 WORKFLOWS = get_settings().comfyui_workflows_dir
 REG = load_registry(get_settings().resolve_registry_dir())
@@ -257,3 +257,72 @@ def test_local_routes_report_an_eta():
     req = normalize(WAN, "t2v", "x", {"quality": "draft", "duration": 3}, [])
     (local,) = [c for c in candidates(REG, WAN, req, env(url=True, online=True)) if c.eligible]
     assert local.eta_seconds == pytest.approx(70)
+
+
+# ---------------------------------------------------------------- wan-core (RunPod) templates and motion paths
+
+
+def test_wan_core_fun_camera_maps_director_moves_to_camera_poses():
+    spec = REG.models["wan-2.2-fun-camera"]
+    route = spec.route("wan-2.2-fun-camera@wan_core")
+    req = normalize(spec, "i2v", "harbor", {"camera_control": "TiltUp", "quality": "480p", "duration": 3,
+                                            "aspect_ratio": "9:16"},
+                    [MediaRef("start_image", "a", "image")])
+    endpoint, payload, _ = build_payload(spec, route, req, {"start_image": ["frame.png"]})
+    graph, warnings = load_template(WORKFLOWS, endpoint).render(payload)
+    camera = graph["18"]["inputs"]
+    assert camera["camera_pose"] == "Pan Up" and (camera["width"], camera["height"], camera["length"]) == (480, 832, 49)
+    assert graph["12"]["inputs"]["width"] == ["18", 1]  # the video node reads its size from the camera node
+    assert graph["11"]["inputs"]["image"] == "frame.png" and warnings == []
+
+
+def test_wan_move_turns_drawn_paths_into_pixel_tracks():
+
+
+    spec = REG.models["wan-move"]
+    route = spec.route("wan-move@wan_core")
+    paths = [{"points": [[0.1, 0.5], [0.9, 0.5]]}, {"points": [[0.5, 0.25]]}]
+    req = normalize(spec, "i2v", "a boat", {"motion_paths": paths, "duration": 3}, [MediaRef("start_image", "a", "image")])
+    endpoint, payload, _ = build_payload(spec, route, req, {"start_image": ["frame.png"]})
+    assert "motion_paths" not in payload and (payload["width"], payload["height"], payload["length"]) == (832, 480, 49)
+    graph, warnings = load_template(WORKFLOWS, endpoint).render(payload)
+    tracks = json.loads(graph["22"]["inputs"]["track_coords"])
+    assert len(tracks) == 10 and all(len(t) == 49 for t in tracks)  # 5 parallel tracks per stroke, one per frame
+    centre = tracks[2]  # middle track of the first stroke: constant speed from x=83 to x=749 at y=240
+    assert centre[0] == {"x": 83.2, "y": 240.0} and centre[-1] == {"x": 748.8, "y": 240.0}
+    assert centre[24]["x"] == pytest.approx(416.0, abs=0.1)
+    assert {(p["x"], p["y"]) for p in tracks[7]} == {(416.0, 120.0)}  # a pin holds still for the whole clip
+    assert graph["19"]["inputs"]["width"] == graph["12"]["inputs"]["width"] == 832 and warnings == []
+
+
+def test_motion_paths_are_validated():
+    from studio.registry.validate import RequestError
+
+    spec = REG.models["wan-move"]
+    frame = [MediaRef("start_image", "a", "image")]
+    for bad, message in [({}, "Draw at least one motion path"),
+                         ({"motion_paths": []}, "Draw at least one motion path"),
+                         ({"motion_paths": [{"points": [[1.2, 0.5]]}]}, "inside the frame"),
+                         ({"motion_paths": [{"points": []}]}, "1 to 256 points"),
+                         ({"motion_paths": [{"points": [[0.5, 0.5]]}] * 6}, "at most 5 paths")]:
+        with pytest.raises(RequestError, match=message):
+            normalize(spec, "i2v", "x", bad, frame)
+
+
+def test_director_camera_moves_drive_fun_camera_natively():
+    from studio.director.compiler import ShotDirection, compile_prompt
+    from studio.domain.generations import merge_native
+
+    spec = REG.models["wan-2.2-fun-camera"]
+    pan = compile_prompt(spec, "harbor", ShotDirection.model_validate({"camera_moves": [{"id": "dolly_right"}]}))
+    dolly = compile_prompt(spec, "harbor", ShotDirection.model_validate({"camera_moves": [{"id": "dolly_in"}]}))
+    assert dolly.native_params == {"camera_control": "ZoomIn"}
+    # The form always sends its default (ZoomIn); the camera move picked in the Director wins over it, silently.
+    params, warnings = merge_native(spec, {"camera_control": "ZoomIn", "duration": 3}, pan.native_params)
+    assert params == {"camera_control": "PanRight", "duration": 3} and warnings == []
+    # A value the user deliberately picked is still replaced, but they're told.
+    params, warnings = merge_native(spec, {"camera_control": "PanLeft"}, {"camera_control": "ZoomOut"})
+    assert params["camera_control"] == "ZoomOut" and "replacing PanLeft" in warnings[0]
+    # Orbit has a Fun Camera value but this model has no orbit preset: it stays a prompt-only move
+    assert merge_native(spec, {"camera_control": "ZoomIn"}, {"camera_control": "Orbit"}) == ({"camera_control": "ZoomIn"}, [])
+    assert merge_native(REG.models["wan-2.2-14b-fast"], {}, {"camera_control": "ZoomIn"}) == ({}, [])

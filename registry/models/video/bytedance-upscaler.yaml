@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-06 from fal's per-endpoint OpenAPI (fal-ai/bytedance-upscaler/upscale/video).
+id: bytedance-upscaler
+name: ByteDance Video Upscaler
+family: bytedance
+vendor: bytedance
+description: >-
+  Cheap AI upscaling to 1080p, 2K or 4K with optional frame-rate conversion. Good for finishing generated
+  clips; pennies per second.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [upscale, budget]
+prompt: {max_chars: 10}
+
+parameters:
+  - {name: target_resolution, label: Upscale to, type: enum, options: ["1080p", "2k", "4k"], default: "1080p", ui: segmented}
+  - {name: target_fps, label: Frame rate, type: enum, options: [24, 30, 60], default: 30, ui: segmented,
+     help: 60 fps doubles the price.}
+  - {name: enhancement_preset, label: Footage, type: enum, options: [aigc, general, ugc, short_series, old_film],
+     default: aigc, group: advanced, help: AIGC suits generated clips.}
+  - {name: enhancement_tier, label: Effort, type: enum, options: [fast, standard], default: standard, group: advanced}
+  - {name: fidelity, type: enum, options: [high, medium], default: high, group: advanced}
+
+modes:
+  - id: upscale
+    label: Upscale
+    ops: [upscale]
+    prompt: none
+    medias:
+      - {role: input_video, kinds: [video], label: Clip to upscale, required: true}
+
+routes:
+  - id: bytedance-upscaler@fal
+    provider: fal
+    modes:
+      upscale: {endpoint: fal-ai/bytedance-upscaler/upscale/video}
+    map:
+      params:
+        target_resolution: target_resolution
+        target_fps: target_fps
+        enhancement_preset: enhancement_preset
+        enhancement_tier: enhancement_tier
+        fidelity: fidelity
+      media: {input_video: video_url}
+    pricing:
+      basis: per_output_second
+      quantity: "max(input_video_seconds, 1) * (2 if target_fps > 30 else 1)"
+      rates:
+        - {when: {target_resolution: "1080p"}, usd: 0.0072}
+        - {when: {target_resolution: "2k"}, usd: 0.0144}
+        - {when: {target_resolution: "4k"}, usd: 0.0288}
+      verified: 2026-10-06
+      source: https://fal.ai/models/fal-ai/bytedance-upscaler/upscale/video
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: upscale_smoke
+    mode: upscale
+    params: {target_resolution: "1080p", target_fps: 30}
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.005, 0.05]}

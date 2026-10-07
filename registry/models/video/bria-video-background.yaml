@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-06 from fal's per-endpoint OpenAPI (bria/video/background-removal/v3).
+id: bria-video-background
+name: Bria Background Removal
+family: bria
+vendor: bria
+description: >-
+  Cuts the subject out of a clip, leaving a transparent or solid background. Licensed for commercial use.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [bg-remove, compositing]
+prompt: {max_chars: 10}
+
+parameters:
+  - {name: background, label: Background, type: enum, options: [Transparent, Green, Black, White], default: Transparent,
+     ui: segmented, help: Transparent keeps an alpha channel (WebM). Green is handy for keying elsewhere.}
+  - {name: preserve_audio, label: Keep the sound, type: bool, default: true}
+
+modes:
+  - id: remove
+    label: Remove background
+    ops: [bg_remove]
+    prompt: none
+    medias:
+      - {role: input_video, kinds: [video], label: Clip, required: true}
+
+routes:
+  - id: bria-video-background@fal
+    provider: fal
+    modes:
+      # WebM VP9 carries alpha and plays in browsers
+      remove: {endpoint: bria/video/background-removal/v3, fixed: {output_container_and_codec: webm_vp9}}
+    map:
+      params:
+        background: background_color
+        preserve_audio: preserve_audio
+      media: {input_video: video_url}
+    pricing:
+      basis: per_output_second
+      quantity: "max(input_video_seconds, 1)"
+      rates: [{usd: 0.05}]
+      verified: 2026-10-06
+      source: https://fal.ai/models/bria/video/background-removal/v3
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: remove_smoke
+    mode: remove
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.04, 0.2]}

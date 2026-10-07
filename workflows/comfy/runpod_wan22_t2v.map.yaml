@@ -1,0 +1,15 @@
+# Wan 2.2 14B text-to-video (fp8, Lightning 4-step)
+# Runs on the wan-core RunPod endpoint (infra/runpod/wan-core); its models.yaml lists the model files.
+# Source: ComfyUI's official template video_wan2_2_14B_t2v (comfyui_workflow_templates 0.11.48), Lightning path:
+# 4 steps split 2+2 across the high/low-noise experts, cfg 1, 16 fps. Checked against ComfyUI 0.34 /object_info.
+description: Wan 2.2 14B text-to-video (fp8, Lightning 4-step)
+inputs:
+  prompt: [{node: "9", input: text}]
+  negative_prompt: [{node: "10", input: text, mode: append}]
+  seed: [{node: "13", input: noise_seed}]
+  width: [{node: "12", input: width}]
+  height: [{node: "12", input: height}]
+  length: [{node: "12", input: length}]
+  filename_prefix: [{node: "17", input: filename_prefix}]
+outputs:
+  - {node: "17", kind: video}

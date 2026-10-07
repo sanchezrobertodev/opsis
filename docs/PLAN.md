@@ -237,6 +237,17 @@ sequence, compare and keyframe recipes plus ffmpeg assembly. P2 done except the 
 (folded into P5): director and camera moves, Motion control page, Elements/characters with @mentions,
 presets gallery, Claude enhance (mock until a key is added). The opt-in local ComfyUI route (Wan 2.2 5B,
 FLUX.2 klein) runs on the RTX 5070.
+P3 in progress: Edit video studio (instruction edits on Aleph 2, Kling O3 Edit, Luma Ray 3.2 Modify,
+FLUX 3, Seedance 2.5 edit/extend, P-Video-Edit; Topaz and ByteDance upscalers; Topaz interpolation; Bria
+background removal; Kling video-to-audio; free local ffmpeg tools), Motion transfer studio (Kling 3.0 and 2.6
+Motion Control, Wan 2.2 Animate move/replace, Runway Act-Two) with a movement-clip library, and the RunPod
+adapter on Public Endpoints (Wan 2.2 14B, P-Video-Edit, Kling 2.6 MC). Contracts verified 2026-10-06 from
+published schemas; nothing has run live yet. The custom `wan-core` endpoint (infra/runpod/wan-core) is built:
+worker-comfyui 5.10.0 + our handler, a 118 GB model manifest for a network volume, and validated graphs for Wan 2.2
+14B t2v/i2v (Lightning), Fun Camera and Wan-Move, routed by the `runpod_comfy` adapter; camera moves with a native
+Fun Camera value now set its camera control. Deployed 2026-10-06 (endpoint ovktgiubxwld1j). All four workflows ran live through the studio ($0.09
+each on an RTX PRO 6000). Wan-Move has a motion-path editor in the Create form (`type: paths` params: drag to draw,
+tap to pin). Left for later: VACE / Uni3C / Animate-2 graphs (P4 Object Swap and Motion Transfer can add them).
 - **Step 0 — Handoff (this session, after approval):**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.
