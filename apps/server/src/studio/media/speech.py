@@ -7,7 +7,10 @@ Every TTS route ends up with the same shape on its asset (`metadata.alignment.wo
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
+
+from studio.media.ffmpeg import ffmpeg
 
 Word = dict[str, Any]
 
@@ -48,3 +51,29 @@ def estimate_words(text: str, *, chars_per_second: float = CHARS_PER_SECOND) -> 
 def spoken_seconds(words: list[Word], tail: float = 0.25) -> float:
     """How long the clip runs: the last word's end plus a little room."""
     return round(words[-1]["end"] + tail, 3) if words else 0.0
+
+
+def join_graph(count: int, gap: float) -> str:
+    """Filter graph for `count` speech inputs, each conformed to 48 kHz mono, with `gap` seconds of silence
+    between them, into [out]."""
+    parts = [f"[{i}:a]aformat=sample_rates=48000:channel_layouts=mono[s{i}]" for i in range(count)]
+    labels = []
+    for i in range(count):
+        if i:
+            parts.append(f"anullsrc=r=48000:cl=mono,atrim=0:{gap:.3f}[g{i}]")
+            labels.append(f"[g{i}]")
+        labels.append(f"[s{i}]")
+    parts.append(f"{''.join(labels)}concat=n={len(labels)}:v=0:a=1[out]")
+    return ";".join(parts)
+
+
+async def join_speech(paths: list[Path], dest: Path, *, gap: float = 0.35) -> None:
+    """One dialogue track from several spoken lines, in order, with a short pause between speakers."""
+
+    if len(paths) == 1:
+        await ffmpeg("-i", str(paths[0]), "-ar", "48000", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "128k", str(dest))
+        return
+    inputs = [x for p in paths for x in ("-i", str(p))]
+    await ffmpeg(*inputs, "-filter_complex", join_graph(len(paths), gap), "-map", "[out]",
+                 "-c:a", "libmp3lame", "-b:a", "128k", str(dest))
+

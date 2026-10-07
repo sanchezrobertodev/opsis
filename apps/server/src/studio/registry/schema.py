@@ -168,10 +168,12 @@ class Mode(_Strict):
 
 
 class Rule(_Strict):
-    """Cross-param constraint, e.g. Veo: 1080p/4k require an 8 s duration."""
+    """Cross-param constraint, e.g. Veo: 1080p/4k require an 8 s duration. `max_input_seconds` limits how long an
+    input may be while the rule applies (OmniHuman: 30 s of audio at 1080p)."""
 
     when: dict[str, Scalar | list[Scalar]]
-    require: dict[str, list[Scalar]]
+    require: dict[str, list[Scalar]] = {}
+    max_input_seconds: dict[MediaRole, float] = {}
     message: str
 
 
@@ -179,6 +181,8 @@ class PromptSpec(_Strict):
     max_chars: int = 2000
     dialect: str = "default"
     supports_negative: bool = False
+    # speaks dialogue written into the prompt, with lip sync (Veo 3.1, Seedance 2.5, Kling 3.0 with audio on)
+    dialogue: bool = False
 
 
 class DurationSpec(_Strict):

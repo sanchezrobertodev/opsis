@@ -558,7 +558,8 @@ export interface paths {
          * List Takes
          * @description Hero frames and takes made for the project's shots, newest first, finished or not. Besides the generations
          *     made for a shot, this lists takes cut from a multi-shot scene take and takes extended or edited from another
-         *     (derived clips whose metadata names the project and shot), each with the take it came from.
+         *     (derived clips whose metadata names the project and shot), each with the take it came from. Takes the document
+         *     has picked are always listed, however old, so the storyboard and the cut can show and export them.
          */
         get: operations["list_takes_projects__project_id__takes_get"];
         put?: never;
@@ -1185,6 +1186,21 @@ export interface components {
             /** Threshold Usd */
             threshold_usd: number;
         };
+        /**
+         * DialogueLine
+         * @description One spoken line: who says it (an @mention of a cast member, or a name) and the words.
+         */
+        DialogueLine: {
+            /** Who */
+            who: string;
+            /** Text */
+            text: string;
+            /**
+             * Voice Id
+             * @description The voice to speak it with, when it's voiced separately
+             */
+            voice_id?: string | null;
+        };
         /** DirectorLibraryOut */
         DirectorLibraryOut: {
             /** Moves */
@@ -1256,6 +1272,7 @@ export interface components {
              * @default []
              */
             images: components["schemas"]["ElementImageIn"][];
+            voice?: components["schemas"]["VoiceIn"] | null;
         };
         /** ElementImageIn */
         ElementImageIn: {
@@ -1303,6 +1320,13 @@ export interface components {
             attributes: {
                 [key: string]: unknown;
             };
+            /**
+             * Voice
+             * @description {model_id, params}: how this character speaks
+             */
+            voice?: {
+                [key: string]: unknown;
+            } | null;
             cover: components["schemas"]["AssetOut"] | null;
             /** Images */
             images: components["schemas"]["ElementImageOut"][];
@@ -1326,6 +1350,13 @@ export interface components {
             } | null;
             /** Cover Asset Id */
             cover_asset_id?: string | null;
+            /** @description Set the voice; `clear_voice` removes it */
+            voice?: components["schemas"]["VoiceIn"] | null;
+            /**
+             * Clear Voice
+             * @default false
+             */
+            clear_voice: boolean;
         };
         /**
          * EmotionItem
@@ -2342,6 +2373,11 @@ export interface components {
              * @default false
              */
             supports_negative: boolean;
+            /**
+             * Dialogue
+             * @default false
+             */
+            dialogue: boolean;
         };
         /** RecipeOut */
         RecipeOut: {
@@ -2411,16 +2447,27 @@ export interface components {
         };
         /**
          * Rule
-         * @description Cross-param constraint, e.g. Veo: 1080p/4k require an 8 s duration.
+         * @description Cross-param constraint, e.g. Veo: 1080p/4k require an 8 s duration. `max_input_seconds` limits how long an
+         *     input may be while the rule applies (OmniHuman: 30 s of audio at 1080p).
          */
         Rule: {
             /** When */
             when: {
                 [key: string]: string | number | boolean | (string | number | boolean)[];
             };
-            /** Require */
+            /**
+             * Require
+             * @default {}
+             */
             require: {
                 [key: string]: (string | number | boolean)[];
+            };
+            /**
+             * Max Input Seconds
+             * @default {}
+             */
+            max_input_seconds: {
+                [key: string]: number;
             };
             /** Message */
             message: string;
@@ -2646,6 +2693,11 @@ export interface components {
              * @description How each @mentioned cast member feels
              */
             cast_emotions?: components["schemas"]["CastEmotion"][];
+            /**
+             * Dialogue
+             * @description Lines spoken in the shot, in order
+             */
+            dialogue?: components["schemas"]["DialogueLine"][];
         };
         /**
          * ShotsParam
@@ -2836,7 +2888,7 @@ export interface components {
             shot_key: string;
             /**
              * Made By
-             * @description model; multi_shot (cut from a scene take); extend_after or extend_before (joined with a new part); region_edit
+             * @description model; multi_shot (cut from a scene take); extend_after or extend_before (joined with a new part); edit; lipsync; region_edit
              * @default model
              */
             made_by: string;
@@ -2997,6 +3049,24 @@ export interface components {
              * @default []
              */
             director: string[];
+        };
+        /**
+         * VoiceIn
+         * @description The voice a character speaks with: a text-to-speech model and its params (e.g. voice_id).
+         */
+        VoiceIn: {
+            /**
+             * Model Id
+             * @default eleven-v4
+             */
+            model_id: string;
+            /**
+             * Params
+             * @default {}
+             */
+            params: {
+                [key: string]: unknown;
+            };
         };
     };
     responses: never;

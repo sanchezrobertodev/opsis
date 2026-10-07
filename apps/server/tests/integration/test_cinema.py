@@ -316,3 +316,91 @@ async def test_restoring_a_version_unpicks_what_was_deleted_since(client, in_mem
     assert revisions[0]["note"] == "Restored version 2; 1 pick deleted since was cleared"
     # and the restored document saves like any other
     assert (await client.put(f"/projects/{pid}", json={"version": 3, "document": r.json()["document"]})).status_code == 200
+
+
+DIALOGUE = [{"who": "Nova", "text": "It goes dark tonight.", "voice_id": "XrExE9yKIg1WjnnlVkGX"},
+            {"who": "Kai", "text": "Then we light it by hand.", "voice_id": "nPczCjzI2devNBz1zQrb"}]
+
+
+async def test_dialogue_is_spoken_by_models_that_voice_it(client, in_memory_queue):
+    p = await new_project(client)
+    run = await start(client, "cinema_takes", project_id=p["id"], model_id="kling-3.0", takes=1, shots=[
+        {"key": "sone", "prompt": "Nova turns from the window", "duration": 5, "direction": {"dialogue": DIALOGUE}}])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    assert [s["key"] for s in done["steps"]] == ["take[sone:1]"]  # nothing voiced separately
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(done["steps"][0]["generation_id"]))
+    assert 'Nova says: "It goes dark tonight."' in gen.compiled["prompt"]
+    assert 'Kai says: "Then we light it by hand."' in gen.compiled["prompt"]
+    assert gen.request["params"]["generate_audio"] is True  # Kling speaks only with its sound on
+
+
+async def test_dialogue_is_voiced_and_lip_synced_on_models_that_dont(client, in_memory_queue):
+    p = await new_project(client)
+    pid = p["id"]
+    est = (await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
+        "project_id": pid, "model_id": "runway-gen-4.5", "takes": 1,
+        "shots": [{"key": "sone", "prompt": "Nova turns from the window", "duration": 5,
+                   "direction": {"dialogue": DIALOGUE}}]}})).json()
+    assert est["generations"] == 4  # the take, two lines, one lip sync
+
+    run = await start(client, "cinema_takes", project_id=pid, model_id="runway-gen-4.5", takes=1, shots=[
+        {"key": "sone", "prompt": "Nova turns from the window", "duration": 5, "direction": {"dialogue": DIALOGUE}}])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    steps = {s["key"]: s for s in done["steps"]}
+    assert set(steps) == {"take[sone:1]", "line[sone:1]", "line[sone:2]", "track[sone]", "lip[sone:1]"}
+    async with session_scope() as s:
+        take = await s.get(Generation, uuid.UUID(steps["take[sone:1]"]["generation_id"]))
+        line = await s.get(Generation, uuid.UUID(steps["line[sone:2]"]["generation_id"]))
+    assert "says:" not in take.compiled["prompt"] and line.request["params"]["voice_id"] == "nPczCjzI2devNBz1zQrb"
+
+    raw = steps["take[sone:1]"]["output"]["asset_id"]
+    synced = steps["lip[sone:1]"]["output"]["asset_id"]
+    assert done["output"] == {"takes": {"sone": [raw]}, "lip_synced": {"sone": [synced]}}
+    takes = {t["made_by"]: t for t in (await client.get(f"/projects/{pid}/takes")).json()}
+    assert takes["lipsync"]["asset"]["id"] == synced and takes["lipsync"]["parent_asset_id"] == raw
+    # the lip-synced take carries the whole dialogue: both lines and the pause between them
+    track_ms = steps["track[sone]"]["output"]["duration_ms"]
+    lines = [(await client.get(f"/assets/{steps[k]['output']['asset_id']}")).json() for k in ("line[sone:1]", "line[sone:2]")]
+    assert abs(track_ms - sum(x["duration_ms"] for x in lines) - 350) < 150
+    assert abs(takes["lipsync"]["asset"]["duration_ms"] - track_ms) < 200
+
+
+async def test_old_free_text_dialogue_becomes_lines(client):
+    p = await new_project(client)
+    doc = {**p["document"], "scenes": [{"id": "cone", "shots": [
+        {"id": "sone", "action": "x", "dialogue": "@nova: It goes dark.\nKai: Then we light it."}]}]}
+    r = await client.put(f"/projects/{p['id']}", json={"version": 1, "document": doc})
+    assert r.status_code == 200, r.text
+    assert r.json()["document"]["scenes"][0]["shots"][0]["lines"] == [
+        {"who": "@nova", "text": "It goes dark.", "voice_id": None},
+        {"who": "Kai", "text": "Then we light it.", "voice_id": None}]
+
+
+async def test_a_scene_with_dialogue_turns_the_sound_on(client, in_memory_queue):
+    p = await new_project(client)
+    run = await start(client, "cinema_scene", project_id=p["id"], model_id="kling-3.0", scene_key="cone", shots=[
+        {"key": "sone", "prompt": "Nova at the window", "duration": 4, "direction": {"dialogue": DIALOGUE[:1]}},
+        {"key": "stwo", "prompt": "Kai in the doorway", "duration": 4,
+         "direction": {"dialogue": [*DIALOGUE[1:], {"who": "Kai", "text": " "}]}}])  # a blank line is skipped
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(done["steps"][0]["generation_id"]))
+    assert gen.request["params"]["generate_audio"] is True  # Kling is silent unless asked
+    assert 'Kai says: "Then we light it by hand."' in gen.request["params"]["shots"][1]["prompt"]
+
+
+async def test_a_malformed_direction_is_a_request_error(client):
+    p = await new_project(client)
+    for direction, why in (({"dialogue": ["hello"]}, "list of lines"), ({"framing": "wide"}, "Extra inputs"),
+                           ({"dialogue": [{"who": "Kai", "text": "x" * 600}]}, "at most 500")):
+        r = await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
+            "project_id": p["id"], "model_id": "kling-3.0",
+            "shots": [{"key": "sone", "prompt": "x", "direction": direction}]}})
+        assert r.status_code == 422 and why in r.text, r.text

@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names verified 2026-10-06 against fal's per-endpoint OpenAPI (fal-ai/sync-lipsync/v3).
+id: sync-lipsync-3
+name: Sync lipsync-3
+family: sync
+vendor: sync
+description: >-
+  Re-times the mouth in an existing clip to new speech. Native 4K, handles hands and objects in front of the face,
+  and can edit just the lips, the face or the whole head.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [lipsync, dubbing, 4k]
+prompt: {max_chars: 10, dialect: default}
+
+parameters:
+  - name: sync_mode
+    label: When the clip and the speech differ in length
+    type: enum
+    options: [cut_off, loop, bounce, silence, remap]
+    default: cut_off
+    labels: {cut_off: "Stop at the shorter", loop: "Loop the clip", bounce: "Play the clip back and forth",
+             silence: "Pad the speech with silence", remap: "Stretch the clip to fit"}
+  - {name: model_mode, label: What changes, type: enum, options: [lips, face, head], default: lips, group: advanced,
+     labels: {lips: Lips only, face: The face, head: The whole head}}
+  - {name: emotion, label: Emotion, type: enum, options: [neutral, happy, sad, angry, disgusted, surprised],
+     default: neutral, group: advanced}
+  - {name: temperature, label: Expressiveness, type: float, min: 0, max: 1, step: 0.05, default: 0.5, group: advanced}
+
+modes:
+  - id: lipsync
+    label: Lip sync a clip
+    ops: [lipsync]
+    prompt: none
+    medias:
+      - {role: input_video, kinds: [video], label: Clip with a face, required: true, max_mb: 500}
+      - {role: input_audio, kinds: [audio], label: Speech, required: true}
+
+routes:
+  - id: sync-lipsync-3@fal
+    provider: fal
+    modes:
+      lipsync: {endpoint: fal-ai/sync-lipsync/v3}
+    map:
+      params:
+        sync_mode: sync_mode
+        model_mode: options.model_mode
+        emotion: options.prompt
+        temperature: options.temperature
+      media: {input_video: video_url, input_audio: audio_url}
+    pricing:
+      # $8 per minute of output; the output follows the speech unless the clip is cut short
+      basis: per_output_second
+      quantity: "min(input_audio_seconds, input_video_seconds) if sync_mode == 'cut_off' else input_audio_seconds"
+      rates:
+        - {usd: 0.1333}
+      verified: 2026-10-07
+      source: https://fal.ai/models/fal-ai/sync-lipsync/v3
+    timeout_s: 1800
+    output: {path: video.url, kind: video}
+    notes: The direct Sync.so API is cheaper at volume; add it when usage grows.
+
+examples:
+  - name: lipsync_smoke
+    mode: lipsync
+    media: {input_video: "fixture:videos/clip_3s.mp4", input_audio: "fixture:audio/line.mp3"}
+    smoke: true
+    expect: {cost_usd_range: [0, 1.0]}

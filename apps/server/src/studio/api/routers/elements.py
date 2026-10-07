@@ -16,6 +16,7 @@ from studio.api.schemas import AssetOut
 from studio.api.serializers import asset_out
 from studio.db.models import Asset, Element, ElementAsset, ElementKind, User
 from studio.director.elements import slugify
+from studio.registry.loader import get_registry
 
 router = APIRouter(prefix="/elements", tags=["elements"])
 
@@ -29,6 +30,31 @@ class ElementImageIn(BaseModel):
     view: View = "front"
 
 
+class VoiceIn(BaseModel):
+    """The voice a character speaks with: a text-to-speech model and its params (e.g. voice_id)."""
+
+    model_config = ConfigDict(extra="forbid")
+    model_id: str = "eleven-v4"
+    params: dict[str, Any] = {}
+
+
+def _check_voice(voice: VoiceIn) -> dict[str, Any]:
+    from studio.pipelines.recipes.common import mode_with_op
+    from studio.registry.validate import RequestError, normalize
+
+    spec = get_registry().model(voice.model_id)
+    mode = mode_with_op(spec, "tts") if spec else None
+    if spec is None or mode is None:
+        raise HTTPException(422, f"{voice.model_id!r} can't speak")
+    try:
+        req = normalize(spec, mode.id, "voice check", voice.params, [])
+    except RequestError as exc:
+        raise HTTPException(422, "; ".join(exc.errors)) from None
+    if unknown := [w for w in req.warnings if "unknown parameter" in w]:
+        raise HTTPException(422, "; ".join(unknown))
+    return {"model_id": spec.id, "params": {k: v for k, v in voice.params.items() if v is not None}}
+
+
 class ElementCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: Kind = "character"
@@ -36,6 +62,7 @@ class ElementCreate(BaseModel):
     description: str = Field("", max_length=600)
     attributes: dict[str, Any] = {}
     images: list[ElementImageIn] = []
+    voice: VoiceIn | None = None
 
 
 class ElementPatch(BaseModel):
@@ -45,6 +72,8 @@ class ElementPatch(BaseModel):
     description: str | None = Field(None, max_length=600)
     attributes: dict[str, Any] | None = None
     cover_asset_id: uuid.UUID | None = None
+    voice: VoiceIn | None = Field(None, description="Set the voice; `clear_voice` removes it")
+    clear_voice: bool = False
 
 
 class ElementImageOut(BaseModel):
@@ -61,6 +90,7 @@ class ElementOut(BaseModel):
     handle: str
     description: str
     attributes: dict[str, Any]
+    voice: dict[str, Any] | None = Field(None, description="{model_id, params}: how this character speaks")
     cover: AssetOut | None
     images: list[ElementImageOut]
     created_at: datetime
@@ -102,8 +132,8 @@ async def _out(session: AsyncSession, e: Element) -> ElementOut:
     images = [ElementImageOut(asset=asset_out(a), view=link.view, is_primary=link.is_primary) for link, a in links]
     cover = next((i.asset for i in images if str(i.asset.id) == str(e.cover_asset_id)), images[0].asset if images else None)
     return ElementOut(id=e.id, kind=e.kind.value, name=e.name, slug=e.slug, handle=f"@{e.slug}",
-                      description=e.description, attributes=e.attributes or {}, cover=cover, images=images,
-                      created_at=e.created_at)
+                      description=e.description, attributes=e.attributes or {}, voice=e.voice or None,
+                      cover=cover, images=images, created_at=e.created_at)
 
 
 async def _get(session: AsyncSession, user: User, element_id: uuid.UUID, lock: bool = False) -> Element:
@@ -133,7 +163,7 @@ async def create_element(body: ElementCreate, session: AsyncSession = Depends(ge
     assets = await _owned_assets(session, user, [i.asset_id for i in body.images])
     e = Element(user_id=user.id, kind=ElementKind(body.kind), name=body.name.strip(),
                 slug=await _unique_slug(session, user.id, body.name), description=body.description.strip(),
-                attributes=body.attributes)
+                attributes=body.attributes, voice=_check_voice(body.voice) if body.voice else {})
     session.add(e)
     await session.flush()
     for n, img in enumerate(body.images):
@@ -166,6 +196,10 @@ async def patch_element(element_id: uuid.UUID, body: ElementPatch, session: Asyn
         e.attributes = body.attributes
     if body.cover_asset_id is not None:
         e.cover_asset_id = body.cover_asset_id
+    if body.voice is not None:
+        e.voice = _check_voice(body.voice)
+    elif body.clear_voice:
+        e.voice = {}
     await session.commit()
     return await _out(session, e)
 

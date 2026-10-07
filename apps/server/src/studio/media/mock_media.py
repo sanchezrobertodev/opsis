@@ -42,7 +42,9 @@ async def make_video(
     fps: int = 24,
     audio: bool = False,
     seed: int | None = None,
+    voice: Path | None = None,
 ) -> None:
+    """`voice`: a speech file to play under the pattern (lipsync stand-in); the clip then lasts as long as it."""
     w, h = mock_dims(resolution, aspect)
     duration = max(0.5, float(duration))
     workdir.mkdir(parents=True, exist_ok=True)
@@ -60,7 +62,10 @@ async def make_video(
     # Seed picks the test pattern hue so different seeds look different.
     hue = int(hashlib.sha1(str(seed).encode()).hexdigest(), 16) % 360 if seed is not None else 0
     args = ["-f", "lavfi", "-i", f"testsrc2=size={w}x{h}:rate={fps}:duration={duration:.3f}"]
-    if audio:
+    if voice is not None:
+        args += ["-i", str(voice)]
+        audio = True
+    elif audio:
         args += ["-f", "lavfi", "-i", f"sine=frequency={220 + hue}:sample_rate=48000:duration={duration:.3f}"]
     args += ["-vf", f"hue=h={hue},{vf}", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
     if audio:

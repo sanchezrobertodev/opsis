@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names verified 2026-10-06 against fal's per-endpoint OpenAPI (veed/fabric-1.0).
+id: veed-fabric-1.0
+name: VEED Fabric 1.0
+family: fabric
+vendor: veed
+description: Any picture talks, from a face to a drawing or a mascot, for as long as the speech runs (up to 5 minutes).
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [lipsync, avatar, long]
+prompt: {max_chars: 10, dialect: default}
+
+parameters:
+  - {name: resolution, type: enum, options: ["480p", "720p"], default: "720p", ui: segmented}
+
+modes:
+  - id: avatar
+    label: Talking picture
+    ops: [lipsync, avatar]
+    prompt: none
+    medias:
+      - {role: character_image, kinds: [image], label: Picture, required: true}
+      - {role: input_audio, kinds: [audio], label: Speech, required: true, max_duration_s: 300}
+
+routes:
+  - id: veed-fabric-1.0@fal
+    provider: fal
+    modes:
+      avatar: {endpoint: veed/fabric-1.0}
+    map:
+      params: {resolution: resolution}
+      media: {character_image: image_url, input_audio: audio_url}
+    pricing:
+      basis: per_output_second
+      quantity: input_audio_seconds
+      rates:
+        - {when: {resolution: "480p"}, usd: 0.08}
+        - {when: {resolution: "720p"}, usd: 0.15}
+      verified: 2026-10-07
+      source: https://fal.ai/models/veed/fabric-1.0
+    timeout_s: 1800
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: avatar_smoke
+    mode: avatar
+    params: {resolution: "480p"}
+    media: {character_image: "fixture:images/keyframe.png", input_audio: "fixture:audio/line.mp3"}
+    smoke: true
+    expect: {cost_usd_range: [0, 1.0]}

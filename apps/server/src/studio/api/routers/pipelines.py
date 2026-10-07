@@ -85,7 +85,7 @@ async def _estimate(session: AsyncSession, user: User, body: RunCreate) -> tuple
         known = await resolve_media_kinds(session, user.id, [{"role": r, "asset_id": a} for r, a in job.media])             if job.media else None
         usd, live_usd = await quick_estimate(session, job.model_id, job.mode, job.params, list(job.roles), reg,
                                              prompt="x" * job.prompt_chars if job.prompt_chars else "planned",
-                                             known=known)
+                                             known=known, seconds=dict(job.planned_seconds))
         total += usd
         if live_usd is None:
             live_known = False

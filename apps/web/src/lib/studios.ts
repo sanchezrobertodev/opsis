@@ -94,7 +94,7 @@ export const STUDIOS: Studio[] = [
       "photoreal angles and animate them.",
   },
   {
-    slug: "lipsync", name: "Lipsync", href: "/soon/lipsync", icon: MessageCircle, phase: "P6", group: "studios",
+    slug: "lipsync", name: "Lipsync", href: "/lipsync", icon: MessageCircle, group: "studios",
     summary: "Make an image or clip speak a script or recording: Sync lipsync-3, Kling Avatar, OmniHuman, " +
       "VEED Fabric and InfiniteTalk.",
   },

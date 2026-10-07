@@ -11,13 +11,16 @@ export type Project = Schemas["ProjectOut"];
 export type Revision = Schemas["RevisionOut"];
 export type Take = Schemas["TakeOut"];
 
+/** One spoken line; voice_id overrides the speaker's own voice. */
+export type Line = { who: string; text: string; voice_id?: string | null };
+
 /** Mirrors studio/cinema/document.py. */
 export type Shot = {
   id: string;
   action: string;
   duration: number | null;
   direction: Direction;
-  dialogue: string;
+  lines: Line[];
   continuity: "cut" | "continue";
   hero_asset_id: string | null;
   take_asset_id: string | null;
@@ -30,6 +33,7 @@ export type CinemaSettings = {
   model_id: string;
   model_params: Record<string, unknown>;
   image_model_id: string;
+  lipsync_model_id: string;
   aspect_ratio: string;
   resolution: string;
   direction: Direction;
@@ -45,7 +49,7 @@ export function newId(prefix: "s" | "c") {
 
 export function newShot(partial: Partial<Shot> = {}): Shot {
   return {
-    id: newId("s"), action: "", duration: null, direction: { camera_moves: [] } as unknown as Direction, dialogue: "",
+    id: newId("s"), action: "", duration: null, direction: { camera_moves: [] } as unknown as Direction, lines: [],
     continuity: "cut", hero_asset_id: null, take_asset_id: null, trim_in: 0, trim_out: null, transition: "cut",
     ...partial,
   };

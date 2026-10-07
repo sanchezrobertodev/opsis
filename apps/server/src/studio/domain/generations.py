@@ -308,7 +308,7 @@ async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: Cre
 
 async def quick_estimate(
     session: AsyncSession, model_id: str, mode: str, params: dict[str, Any], roles: list[str], reg: Registry | None = None,
-    prompt: str = "planned", known: list[MediaRef] | None = None,
+    prompt: str = "planned", known: list[MediaRef] | None = None, seconds: dict[str, float] | None = None,
 ) -> tuple[Decimal, Decimal | None]:
     """(cost on the route that would run now, cost on the cheapest live route) without real inputs.
 
@@ -329,7 +329,8 @@ async def quick_estimate(
         raise GenerationRequestError([f"{spec.name} has no mode {mode!r}"])
     refs = list(known or [])  # inputs that exist already; stand-ins for the rest
     have = {r.role for r in refs}
-    refs += [MediaRef(role=r, asset_id=f"planned-{i}", kind=slot.kinds[0])
+    refs += [MediaRef(role=r, asset_id=f"planned-{i}", kind=slot.kinds[0],
+                      duration_ms=round((seconds or {}).get(r, 0) * 1000) or None)
              for i, r in enumerate(roles) if r not in have and (slot := m.slot(r))]
     try:
         req = normalize(spec, mode, prompt, params, refs)

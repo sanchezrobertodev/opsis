@@ -51,6 +51,8 @@ class PlannedJob:
     roles: tuple[str, ...] = ()
     prompt_chars: int = 0  # for routes priced by text length (narration)
     media: tuple[tuple[str, str], ...] = ()  # (role, asset_id) of inputs that already exist, priced at their length
+    # (role, seconds) for inputs a run makes before this job, priced at that guess (lipsync on speech from a script)
+    planned_seconds: tuple[tuple[str, float], ...] = ()
 
 
 Settled = dict[str, dict[str, Any]]  # step key -> output (succeeded, or optional-and-failed)

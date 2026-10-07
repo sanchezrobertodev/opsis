@@ -276,6 +276,15 @@ def normalize(
                 errors.append(f"{slot.label or slot.role} can be at most {slot.max_duration_s:g} s; "
                               f"this one is {seconds:.1f} s")
 
+    for rule in spec.rules:  # input lengths some settings can't take (OmniHuman at 1080p: 30 s of audio)
+        context = {**out, "mode": mode_id}
+        if rule.max_input_seconds and all(
+                context.get(k) in (v if isinstance(v, list) else [v]) for k, v in rule.when.items()):
+            for role, limit in rule.max_input_seconds.items():
+                seconds = sum((r.duration_ms or 0) for r in by_role.get(role, [])) / 1000
+                if seconds > limit + 0.05:
+                    errors.append(rule.message)
+
     if errors:
         raise RequestError(errors)
     return NormalizedRequest(

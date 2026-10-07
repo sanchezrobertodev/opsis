@@ -125,3 +125,16 @@ async def test_compile_preview_resolves_mentions_like_a_real_run(client):
     assert r.json()["prompt"].startswith("@wren waves")
     bad = await client.post("/director/compile", json={"model_id": "veo-3.1", "mode": "nope", "prompt": "x"})
     assert bad.status_code == 422
+
+
+async def test_a_character_keeps_a_voice(client):
+    r = await client.post("/elements", json={"name": "Nova Reyes", "voice": {"params": {"voice_id": "XrExE9yKIg1WjnnlVkGX"}}})
+    assert r.status_code == 201, r.text
+    e = r.json()
+    assert e["voice"] == {"model_id": "eleven-v4", "params": {"voice_id": "XrExE9yKIg1WjnnlVkGX"}}
+    bad = await client.patch(f"/elements/{e['id']}", json={"voice": {"params": {"voice_id": "nobody"}}})
+    assert bad.status_code == 422 and "voice_id" in bad.text
+    not_tts = await client.patch(f"/elements/{e['id']}", json={"voice": {"model_id": "veo-3.1", "params": {}}})
+    assert not_tts.status_code == 422 and "can't speak" in not_tts.text
+    cleared = await client.patch(f"/elements/{e['id']}", json={"clear_voice": True})
+    assert cleared.json()["voice"] is None
