@@ -19,9 +19,10 @@ reference clip, on the Wan 2.2 experts). The studio reaches it through the
 ## Layout on RunPod
 
 - **Network volume** `wan-core-models`, 180 GB, STANDARD, in **US-NE-1**: models at `/runpod-volume/models/...`.
-  US-NE-1 has both GPU types below plus standard volumes. A volume pins the endpoint to its data center.
-- **Endpoint** `wan-core`: queue-based, workers 0 to 2, GPU pools `BLACKWELL_96` (RTX PRO 6000, $3.49/h) and
-  `ADA_80_PRO` (H100, $4.79/h), idle timeout 60 s, execution timeout 3600 s, FlashBoot on.
+  US-NE-1 has the RTX PRO 6000 plus standard volumes. A volume pins the endpoint to its data center.
+- **Endpoint** `wan-core`: queue-based, workers 0 to 2, GPU pool `BLACKWELL_96` (RTX PRO 6000, $3.49/h), idle
+  timeout 60 s, execution timeout 3600 s, FlashBoot on. The `ADA_80_PRO` pool (H100, $4.79/h) was dropped on
+  2026-10-08 (AMS-13): every H100 job was slower and dearer, so a take now waits for a PRO 6000 instead.
 - Costs: the volume is $0.07/GB/month ($12.60/month for 180 GB, grown from 130 GB on 2026-10-08) whether or not you
   use it. Workers
   bill per second only while running, plus the 60 s idle tail. The first take after a pause also loads about
@@ -34,7 +35,7 @@ reference clip, on the Wan 2.2 experts). The studio reaches it through the
 | Image | `sanchezrobertodev/wan-core:0.2.0` | Docker Hub, public; 0.2.0 (2026-10-08) puts big results in upload slots, 0.1.0 still there |
 | Network volume | `w5wwmiagkn` (`wan-core-models`) | 180 GB STANDARD, US-NE-1; the first 15 files fetched 2026-10-06 (14 min on a CPU pod), the VACE, Animate-2 and Uni3C groups 2026-10-08 |
 | Template | `2gfqvv1ajl` (`wan-core-0.2.0`) | serverless, 30 GB container disk; `hgugk70qn7` (`wan-core-0.1.0`) is the previous one |
-| Endpoint | `ovktgiubxwld1j` (`wan-core`) | pools BLACKWELL_96 + ADA_80_PRO, workers 0 to 2, idle 60 s, timeout 3600 s |
+| Endpoint | `ovktgiubxwld1j` (`wan-core`) | pool BLACKWELL_96 (ADA_80_PRO dropped 2026-10-08), workers 0 to 2, idle 60 s, timeout 3600 s |
 
 First live take through the studio: Wan 2.2 14B Fast, text-to-video, 480p, 3 s. It took 92.7 s on an RTX PRO 6000
 from a cold worker, including loading the text encoder and both experts from the volume. Cost: $0.090, against a
@@ -50,7 +51,13 @@ All four workflows have now rendered through the studio (480p, 3 s, start frame 
 | Wan 2.2 Fun Camera, pan right | H100 (the PRO 6000s were throttled) | 174.2 s | $0.232 |
 
 Every run was a cold load of that workflow's weights. On this job the H100 was about twice as slow and 2.6 times
-the price, so dropping the `ADA_80_PRO` pool is worth considering if waiting for a PRO 6000 is acceptable.
+the price, and a 720p take on 0.2.0 landed there too (192 s, $0.336), so the `ADA_80_PRO` pool was dropped.
+
+Wan-Move pins (AMS-16, 2026-10-08): the "one path plus one pin" take, re-run twice with the same frame, paths and
+seed ($0.147 each), measured by phase correlation and frame differences. None of the takes moved the camera (0 px
+shift), and the pinned spot changed 3.1-3.2 / 255 between its first and last frame, the same as untouched background.
+Packing the pin with a disc of still tracks made it worse: Wan-Move drew the patch on as a visible ring (9.4 / 255).
+Asking for a locked-off camera in the prompt changed nothing measurable here, so neither change shipped.
 
 Known: the worker logs "You need pytorch with cu130 or higher to use optimized CUDA operations". The base
 image's torch is cu128, so ComfyUI's comfy-kitchen CUDA kernels stay off. A cu130 build may run faster on
