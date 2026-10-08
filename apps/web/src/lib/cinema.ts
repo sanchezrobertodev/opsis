@@ -211,6 +211,21 @@ export function usePlanShots(id: string) {
   });
 }
 
+export type DirectorTurn = { role: "user" | "director"; text: string };
+export type DirectorAnswer = Schemas["DirectorOut"];
+export type StoryboardChange = Schemas["StoryboardChange"];
+
+/** The AI Director chat: a request in words, answered with proposed scenes and their diff. Nothing is saved. */
+export function useDirector(id: string) {
+  return useMutation({
+    mutationFn: (body: { message: string; history: DirectorTurn[]; scenes: Scene[] }) =>
+      unwrap(api.POST("/projects/{project_id}/director", {
+        params: { path: { project_id: id } },
+        body: { ...body, scenes: body.scenes as unknown as Record<string, unknown>[] },
+      })),
+  });
+}
+
 /** Hero frames and takes for the project, refreshed while any are being made or a run is still planning them. */
 export function useTakes(id: string, runsActive: boolean) {
   const qc = useQueryClient();

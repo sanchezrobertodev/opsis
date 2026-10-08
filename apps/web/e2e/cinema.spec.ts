@@ -147,3 +147,38 @@ test("Cinema: pick an opening and a closing frame, then film from one to the oth
   await page.getByRole("button", { name: /^Film \d$/ }).click();
   await expect(page.getByRole("button", { name: "Use this take" }).first()).toBeVisible({ timeout: 90_000 });
 });
+
+test("Cinema: the AI Director proposes changes as a diff, applied only when asked", async ({ page }) => {
+  await page.goto("/cinema");
+  await page.getByRole("button", { name: "New film" }).click();
+  await page.getByLabel("Title").fill(`e2e director ${Date.now()}`);
+  await page.getByRole("button", { name: "Create" }).click();
+  await expect(page).toHaveURL(/\/cinema\/[0-9a-f-]+$/);
+  await page.getByRole("radio", { name: "Script" }).click();
+  await page.getByLabel("Script").fill("A kite lifts off the beach. It climbs into the wind. The string snaps.");
+  await page.getByRole("button", { name: "Plan shots with Claude" }).click();
+  await page.getByRole("button", { name: "Use this plan" }).click();
+  await expect(page.getByText("Saved, version 2")).toBeVisible();
+
+  await page.getByRole("button", { name: "Director" }).click();
+  const director = page.getByRole("complementary", { name: "AI Director" });
+  await director.getByLabel("Message the director").fill("Remove shot 2");
+  await director.getByLabel("Message the director").press("Enter");
+  const changes = director.getByRole("list", { name: "Proposed changes" });
+  await expect(changes).toContainText("Removed");
+  await expect(changes).toContainText("Shot 2");
+  await expect(page.getByText("It climbs into the wind.")).toBeVisible();  // not yet
+
+  await director.getByRole("button", { name: "Apply changes" }).click();
+  await expect(director.getByText("Applied")).toBeVisible();
+  await expect(page.getByText("Saved, version 3")).toBeVisible();
+  await expect(page.getByText("It climbs into the wind.")).toHaveCount(0);
+
+  // the conversation carries on, and a discarded answer changes nothing
+  await director.getByLabel("Message the director").fill("Make shot 1 tighter");
+  await director.getByRole("button", { name: "Send" }).click();
+  await expect(director.getByText(/Shot 1 is now a close-up/)).toBeVisible();
+  await director.getByRole("button", { name: "Discard" }).click();
+  await expect(director.getByText("Discarded")).toBeVisible();
+  await expect(page.getByText("Saved, version 3")).toBeVisible();
+});

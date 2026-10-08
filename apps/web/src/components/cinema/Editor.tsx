@@ -1,6 +1,6 @@
 "use client";
 
-import { History } from "lucide-react";
+import { History, MessageSquareText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
@@ -10,6 +10,7 @@ import { type RunCreate, useStartRun } from "@/lib/runs";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 import { WHEN } from "@/components/runs/Runs";
 import { CutTab } from "./CutTab";
+import { DirectorChat } from "./DirectorChat";
 import { ScriptTab } from "./ScriptTab";
 import { Storyboard } from "./Storyboard";
 
@@ -28,6 +29,7 @@ export function CinemaEditor({ id }: { id: string }) {
   const [tab, setTab] = useState<Tab>("storyboard");
   const [runIds, setRunIds] = useState<string[]>([]);
   const [history, setHistory] = useState(false);
+  const [director, setDirector] = useState(false);
   const { active: mine, runs } = useRunsActive(runIds);
   const elsewhere = useProjectRunsActive(id);
   const active = mine || elsewhere;
@@ -93,6 +95,10 @@ export function CinemaEditor({ id }: { id: string }) {
         />
         <span className={cn("tabular text-2xs", edited ? "text-tungsten" : "text-faint")} aria-live="polite">{status}</span>
         {active && <span className="text-2xs text-tungsten">Rendering…</span>}
+        <Button size="sm" tone={director ? "quiet" : "ghost"} onClick={() => setDirector((v) => !v)} aria-pressed={director}>
+          <MessageSquareText className="size-4" aria-hidden />
+          Director
+        </Button>
         <Button size="sm" tone="ghost" onClick={() => setHistory(true)}>
           <History className="size-4" aria-hidden />
           History
@@ -102,13 +108,19 @@ export function CinemaEditor({ id }: { id: string }) {
                      onChange={setTab} />
         </div>
       </div>
-      <div className="min-h-0 flex-1">
-        {tab === "script" && <ScriptTab projectId={id} doc={doc} update={update} onPlanned={() => setTab("storyboard")} />}
-        {tab === "storyboard" && (
-          <Storyboard projectId={id} doc={doc} update={update} takes={takes.data ?? []} launch={launch} busy={active} />
-        )}
-        {tab === "cut" && <CutTab projectId={id} title={title} doc={doc} update={update} takes={takes.data ?? []}
-                                  launch={launch} runs={runs} />}
+      <div className="flex min-h-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1">
+          {tab === "script" && <ScriptTab projectId={id} doc={doc} update={update} onPlanned={() => setTab("storyboard")} />}
+          {tab === "storyboard" && (
+            <Storyboard projectId={id} doc={doc} update={update} takes={takes.data ?? []} launch={launch} busy={active} />
+          )}
+          {tab === "cut" && <CutTab projectId={id} title={title} doc={doc} update={update} takes={takes.data ?? []}
+                                    launch={launch} runs={runs} />}
+        </div>
+        {/* kept mounted while closed, so the conversation survives */}
+        <div className={cn("shrink-0 max-lg:fixed max-lg:inset-0 max-lg:z-40 lg:w-[400px]", !director && "hidden")}>
+          <DirectorChat projectId={id} doc={doc} update={update} onClose={() => setDirector(false)} />
+        </div>
       </div>
       <HistoryDialog id={id} open={history} onClose={() => setHistory(false)} onRestored={() => setEdited(null)} />
     </div>

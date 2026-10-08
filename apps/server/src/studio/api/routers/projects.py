@@ -20,6 +20,7 @@ from studio.api.deps import current_user, get_session
 from studio.api.schemas import AssetOut
 from studio.api.serializers import asset_out
 from studio.budget.guard import BudgetBlocked
+from studio.cinema.director_chat import DirectorTooLong, Turn, diff, revise
 from studio.cinema.document import CinemaDocument
 from studio.cinema.planner import MAX_SHOTS, plan_shots
 from studio.db.models import (
@@ -103,6 +104,38 @@ class PlanIn(BaseModel):
 
 class PlanOut(BaseModel):
     scenes: list[dict[str, Any]]
+    warnings: list[str]
+    model: str
+    mock: bool
+    cost_usd: float
+
+
+class DirectorIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    message: str = Field(min_length=1, max_length=4000)
+    history: list[Turn] = Field(default_factory=list, max_length=40, description="Earlier turns, oldest first")
+    scenes: list[dict[str, Any]] | None = Field(None, description="The storyboard on screen (autosave may not have "
+                                                                  "stored it yet); defaults to the saved one")
+
+
+class FieldChange(BaseModel):
+    field: str
+    before: Any = None
+    after: Any = None
+
+
+class StoryboardChange(BaseModel):
+    kind: Literal["added", "removed", "moved", "changed"]
+    scene_id: str
+    shot_id: str | None = Field(None, description="None when the change is to the scene itself")
+    label: str = Field(description="Shot 4, Shot 2 (was 5), or the scene heading")
+    fields: list[FieldChange]
+
+
+class DirectorOut(BaseModel):
+    reply: str
+    scenes: list[dict[str, Any]] = Field(description="The storyboard with the edits applied; apply it to keep them")
+    changes: list[StoryboardChange] = Field(description="The diff against the storyboard that was sent")
     warnings: list[str]
     model: str
     mock: bool
@@ -373,6 +406,45 @@ async def plan(project_id: uuid.UUID, body: PlanIn, session: AsyncSession = Depe
     await session.commit()
     return PlanOut(scenes=[s.model_dump(mode="json") for s in scenes], warnings=warnings, model=result.model,
                    mock=result.mock, cost_usd=float(result.cost_usd))
+
+
+@router.post("/{project_id}/director", response_model=DirectorOut,
+             responses={402: {"description": "Spending limit"}, 502: {"description": "Claude failed"},
+                        503: {"description": "No Anthropic key"}})
+async def director(project_id: uuid.UUID, body: DirectorIn, session: AsyncSession = Depends(get_session),
+                   user: User = Depends(current_user)) -> DirectorOut:
+    """The AI Director chat: Claude answers a request with edits to the storyboard, returned as proposed scenes and a
+    diff. Nothing is saved; apply the scenes to the document to keep them."""
+    p = await _project(session, user, project_id)
+    if p.kind != "cinema":
+        raise HTTPException(422, "the director works on films")
+    stored = dict(p.document)
+    if body.scenes is not None:
+        stored["scenes"] = body.scenes
+    try:
+        doc = CinemaDocument.model_validate(stored)
+    except ValidationError as exc:
+        raise HTTPException(422, f"the storyboard sent isn't valid: {exc.errors()[0]['msg']}") from exc
+    cast_rows = (await session.execute(select(Element).where(
+        Element.user_id == user.id, Element.slug.in_(doc.cast), Element.deleted_at.is_(None)))).scalars().all() \
+        if doc.cast else []
+    cast = [(e.slug, f"{e.name}. {e.description}".strip()) for e in cast_rows]
+    try:
+        result, scenes, warnings = await revise(session, user.id, doc=doc, message=body.message,
+                                                history=body.history, cast=cast)
+    except DirectorTooLong as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except BudgetBlocked as exc:
+        raise HTTPException(402, f"Asking the director would go over your spending limit: {exc}") from exc
+    except LLMUnavailable as exc:
+        raise HTTPException(503, exc.message) from exc
+    except LLMError as exc:
+        await session.commit()  # a refusal was still billed
+        raise HTTPException(502, exc.message) from exc
+    await session.commit()
+    return DirectorOut(reply=result.output.reply, scenes=[s.model_dump(mode="json") for s in scenes],
+                       changes=[StoryboardChange(**c) for c in diff(doc.scenes, scenes)], warnings=warnings,
+                       model=result.model, mock=result.mock, cost_usd=float(result.cost_usd))
 
 
 TAKES_PAGE = 400  # newest generations and derived clips listed per kind; picked ones are always included
