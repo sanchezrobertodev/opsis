@@ -108,7 +108,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   inputs are redone, finished work is kept. Editing a run (`POST /pipelines/{id}/revise`) reruns only what changed.
 - Generate steps are normal Generations (`group_id` = run id, `pipeline_step_id` set), capped by the run's
   `cap_usd`. When one finishes, `fsm.transition()` marks the run and `pipeline.advance` is deferred after commit
-  (`pipelines/hooks.py`); the reaper re-advances runs that look stuck. Local ops live in `pipelines/ops.py`.
+  (`pipelines/hooks.py`); the reaper re-advances runs that look stuck. When a step fails the run ends, but takes
+  still rendering finish and are folded into their steps (kept for a retry); the reaper wakes any it missed. Local ops live in `pipelines/ops.py`.
 - Add a recipe: subclass `Recipe` in `pipelines/recipes/`, register it in `recipes/__init__.py`, and test it with
   the in-memory `drain()` helper in `tests/integration/test_pipelines.py`. Use `recipes/common.py` to pick
   modes by what they need, never by model id.
@@ -150,6 +151,9 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 ```
 - The API runs on **8400**, not 8000 (other local containers publish 8000). Web reads `NEXT_PUBLIC_API_URL`.
 - Run the API via `python -m studio.api`, not bare uvicorn: on Windows it must use `asyncio:SelectorEventLoop`.
+  `pnpm dev` adds `--reload`, so saving server code restarts the API and drops requests in flight (`/health`
+  reports `reloads_on_change`). For a long live run, start it without `--reload` or don't edit `apps/server/src`
+  meanwhile; `smoke_live.py` retries dropped requests either way. Generations aren't affected: the worker runs them.
 - Media is served by the API at `/media/{key}` with Range support; files live under `data/media/`.
 
 ## Backups and schema checks

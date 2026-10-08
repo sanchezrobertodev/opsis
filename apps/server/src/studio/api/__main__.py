@@ -1,15 +1,20 @@
 """API launcher: `python -m studio.api [--reload]`.
 
 On Windows psycopg (the queue driver) needs a SelectorEventLoop; uvicorn's default there is Proactor.
+With --reload every saved source file restarts the server, dropping requests in flight; /health reports it
+(`reloads_on_change`) so long live runs can warn. Run without it for those.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 import uvicorn
+
+RELOAD_ENV = "STUDIO_API_RELOAD"
 
 
 def main() -> None:
@@ -19,6 +24,7 @@ def main() -> None:
     parser.add_argument("--reload", action="store_true")
     args = parser.parse_args()
     src = Path(__file__).resolve().parents[2]
+    os.environ[RELOAD_ENV] = "1" if args.reload else ""  # the server process inherits it
     uvicorn.run(
         "studio.api.main:app",
         host=args.host,

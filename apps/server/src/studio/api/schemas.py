@@ -374,6 +374,8 @@ class HealthOut(ApiModel):
     local_engine: LocalEngineOut
     llm_mode: str = Field(description="mock or live (Claude prompt enhancement, scripts)")
     llm_key_set: bool
+    reloads_on_change: bool = Field(False, description="The API restarts when its code changes (started with "
+                                                       "--reload); a restart drops requests in flight")
 
 
 # ---------------------------------------------------------------- presets
