@@ -130,6 +130,12 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   ElevenLabs report one; free reads kept for a minute; the others link to their billing pages) and where the money
   went (`GET /budget/breakdown`): ledger charges by studio feature (`studio/budget/features.py`: the run's recipe, the
   project, else the mode's op tags; a new op tag must join a feature, a test checks) and by model.
+- Bills correct the estimates (`studio/budget/reconcile.py`, hourly in the worker and `POST /budget/reconcile`, reads
+  only): fal per request (`/v1/models/billing-events`, admin key; matched by the request id in `provider_job_id`), our
+  RunPod endpoints per settled hour (`/v2/billing/serverless`; the hour's difference spread over its charges, idle
+  time with no charge booked on its own). Each correction is an `adjustment` row dated like its charge, one per
+  attempt; sum spend with `domain.enums.SPENT` (charge + adjustment), never `charge` alone. Google, ElevenLabs and
+  Replicate report no per-request cost and stay estimates. A provider's `idle_seconds` is added to its run time.
 
 ## Claude
 - `LLM_MODE=mock` (default) returns canned results and never bills; `live` needs `ANTHROPIC_API_KEY`.

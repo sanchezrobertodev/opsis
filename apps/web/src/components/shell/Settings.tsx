@@ -190,28 +190,64 @@ type Period = "today" | "month" | "all";
 const PERIOD_LABEL: Record<Period, string> = { today: "Today", month: "This month", all: "All time" };
 
 /** Spend split by studio feature and by model, with how much of it is the studio's own estimate. */
+const BILL_NAME: Record<string, string> = { fal: "fal", runpod_wan_core: "wan-core" };
+
 function WhereItWent() {
+  const qc = useQueryClient();
   const [period, setPeriod] = useState<Period>("month");
+  const [checking, setChecking] = useState(false);
   const { data } = useQuery({
     queryKey: ["spend-breakdown", period],
     queryFn: () => unwrap(api.GET("/budget/breakdown", { params: { query: { period } } })),
   });
+
+  // the worker does this every hour; the button is for "right now"
+  const checkBills = async () => {
+    setChecking(true);
+    try {
+      const results = await unwrap(api.POST("/budget/reconcile", { params: { query: { days: 3 } } }));
+      const booked = results.filter((r) => r.status === "ok" && Math.abs(r.booked_usd) >= 0.0005)
+        .map((r) => `${BILL_NAME[r.provider] ?? r.provider} ${r.booked_usd > 0 ? "+" : "−"}${usd(Math.abs(r.booked_usd))}`);
+      const problems = results.filter((r) => r.status === "unavailable" || r.status === "error")
+        .map((r) => `${BILL_NAME[r.provider] ?? r.provider}: ${r.detail}`);
+      toast(booked.length ? `Corrected to the bills: ${booked.join(", ")}` : "Everything matches the bills read so far",
+            problems.length ? { description: problems.join(". ") } : undefined);
+      await Promise.all(["spend-breakdown", "budget", "spend-history"].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't read the bills");
+    } finally {
+      setChecking(false);
+    }
+  };
+
   return (
     <section className="space-y-4 lg:col-span-2" aria-label="Where it went">
       <div className="flex flex-wrap items-baseline justify-between gap-4">
         <h2 className="type-title text-xl">Where it went</h2>
-        <div className="w-72">
-          <Segmented label="Period" value={period} options={["today", "month", "all"] as const}
-                     render={(p) => PERIOD_LABEL[p]} onChange={setPeriod} />
+        <div className="flex items-center gap-3">
+          <Button size="sm" tone="ghost" onClick={() => void checkBills()} disabled={checking}>
+            {checking ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <RefreshCw className="size-4" aria-hidden />}
+            Check against bills
+          </Button>
+          <div className="w-72">
+            <Segmented label="Period" value={period} options={["today", "month", "all"] as const}
+                       render={(p) => PERIOD_LABEL[p]} onChange={setPeriod} />
+          </div>
         </div>
       </div>
       {data && data.total_usd === 0 ? (
         <p className="text-sm text-muted">Nothing billed {period === "all" ? "yet" : PERIOD_LABEL[period].toLowerCase()}.</p>
       ) : data ? (
+        <>
+        <p className="text-xs text-muted">
+          {usd(data.checked_usd ?? 0)} checked against fal and RunPod bills, {usd(data.estimated_usd ?? 0)} still the
+          studio&rsquo;s estimate<span className="text-faint">*</span>; the rest the provider reported as it ran.
+        </p>
         <div className="grid gap-6 lg:grid-cols-2">
           <SpendTable title="By feature" groups={data.features} total={data.total_usd} />
           <SpendTable title="By model" groups={data.models} total={data.total_usd} />
         </div>
+        </>
       ) : null}
     </section>
   );

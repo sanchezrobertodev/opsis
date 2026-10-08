@@ -9,7 +9,9 @@ Job contract (infra/runpod/wan-core/handler.py):
   `inputs`, so the worker downloads it into ComfyUI's input folder.
 - out: {"outputs": [{"node", "filename", "kind", "mime", "data": base64}], "gpu", "seconds"}. RunPod keeps the
   result for 30 minutes, so `download` re-reads it instead of the database holding the bytes.
-Cost: the worker's run time (`executionTime`) priced at the provider's `gpu_usd_per_hour` for the GPU it ran on.
+Cost: the worker's run time (`executionTime`) plus the provider's `idle_seconds` (a worker stays billed that long after
+its job), priced at `gpu_usd_per_hour` for the GPU it ran on. Still an estimate (back-to-back jobs share an idle tail);
+the hourly reconcile corrects it to RunPod's bill.
 It stays marked estimated: RunPod bills cold starts and idle time per worker, not per job.
 """
 
@@ -71,12 +73,14 @@ class RunPodComfyAdapter(RunPodAdapter):
 
     def _cost(self, route: Route, status: dict[str, Any], gpu: str | None) -> dict[str, Any]:
         ms = status.get("executionTime")
-        rates = self._spec(route).gpu_usd_per_hour
+        spec = self._spec(route)
+        rates = spec.gpu_usd_per_hour
         if not isinstance(ms, int | float) or not rates:
             return {}
         rate = next((usd for name, usd in rates.items() if gpu and name.lower() in gpu.lower()), max(rates.values()))
-        return {"cost_usd": round(ms / 1000 * rate / 3600, 6), "cost_estimated": True, "gpu": gpu,
-                "execution_s": round(ms / 1000, 1)}
+        seconds = ms / 1000 + spec.idle_seconds
+        return {"cost_usd": round(seconds * rate / 3600, 6), "cost_estimated": True, "gpu": gpu,
+                "execution_s": round(ms / 1000, 1), "idle_s": spec.idle_seconds}
 
     # ------------------------------------------------------------------ adapter
 

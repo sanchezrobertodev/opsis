@@ -34,7 +34,7 @@ from studio.db.models import (
     SpendLedger,
     User,
 )
-from studio.domain.enums import AssetKind, LedgerEntry
+from studio.domain.enums import SPENT, AssetKind
 from studio.jutsu3d.document import Jutsu3dDocument, starter_scene
 from studio.llm.client import LLMError, LLMUnavailable
 from studio.media.ffmpeg import probe
@@ -579,7 +579,7 @@ async def project_spend(project_id: uuid.UUID, session: AsyncSession = Depends(g
         .join(GenerationAttempt, GenerationAttempt.generation_id == Generation.id)
         .join(SpendLedger, SpendLedger.generation_attempt_id == GenerationAttempt.id)
         .where(Generation.project_id == p.id, Generation.user_id == user.id, SpendLedger.user_id == user.id,
-               SpendLedger.entry_type == LedgerEntry.charge)
+               SpendLedger.entry_type.in_(SPENT))
         .group_by(Generation.shot_key))).all()
     shots = {key: float(usd) for key, usd in rows if key and usd}
     return SpendOut(total_usd=float(sum((usd for _, usd in rows if usd), start=0)), shots=shots)

@@ -49,9 +49,10 @@ routes:
         temperature: options.temperature
       media: {input_video: video_url, input_audio: audio_url}
     pricing:
-      # $8 per minute of output; the output follows the speech unless the clip is cut short
+      # $8 per minute of output, billed in whole seconds (a 3.06 s line billed 4 s, fal billing events 2026-10-08);
+      # the output follows the speech unless the clip is cut short
       basis: per_output_second
-      quantity: "min(input_audio_seconds, input_video_seconds) if sync_mode == 'cut_off' else input_audio_seconds"
+      quantity: "ceil(min(input_audio_seconds, input_video_seconds) if sync_mode == 'cut_off' else input_audio_seconds)"
       rates:
         - {usd: 0.1333}
       verified: 2026-10-07

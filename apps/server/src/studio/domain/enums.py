@@ -93,6 +93,11 @@ class LedgerEntry(StrEnum):
     adjustment = "adjustment"
 
 
+# What counts as spend wherever it's summed: charges, and the corrections booked against them once a provider's bill
+# is read (studio/budget/reconcile.py).
+SPENT = (LedgerEntry.charge, LedgerEntry.adjustment)
+
+
 class BreakerState(StrEnum):
     closed = "closed"
     open = "open"

@@ -313,6 +313,18 @@ class SpendBreakdown(ApiModel):
     count: int
 
 
+class ReconcileOut(ApiModel):
+    provider: str
+    status: Literal["ok", "unavailable", "error", "skipped"]
+    checked: int = Field(description="Charges (fal) or hours (our RunPod endpoints) compared with the bill")
+    billed_usd: float
+    charged_usd: float
+    booked_usd: float = Field(description="Corrections booked by this check (the bill minus what was charged)")
+    outside_usd: float = Field(description="Billed for requests the studio didn't make (another app on the key); "
+                                           "not booked")
+    detail: str | None = None
+
+
 class BalanceOut(ApiModel):
     provider: str
     label: str
@@ -331,12 +343,16 @@ class SpendGroup(ApiModel):
     label: str
     usd: float
     count: int
-    estimated_usd: float = Field(description="How much of `usd` is the studio's estimate (the provider didn't say)")
+    estimated_usd: float = Field(description="How much of `usd` is still the studio's estimate (no bill read yet)")
+    checked_usd: float = Field(0.0, description="How much of `usd` was checked against the provider's bill")
 
 
 class SpendBreakdownOut(ApiModel):
     period: Literal["today", "month", "all"]
     total_usd: float
+    estimated_usd: float = Field(0.0, description="Still the studio's estimate")
+    checked_usd: float = Field(0.0, description="Checked against a provider's bill (the rest the provider reported "
+                                                "as it ran, or is still an estimate)")
     features: list[SpendGroup] = Field(description="By studio feature, most spent first")
     models: list[SpendGroup] = Field(description="By model (Claude by its model), most spent first")
 

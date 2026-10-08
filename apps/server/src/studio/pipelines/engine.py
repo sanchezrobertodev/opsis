@@ -34,7 +34,7 @@ from studio.db.models import (
     StepStatus,
 )
 from studio.domain import fsm
-from studio.domain.enums import ACTIVE_STATUSES, GenStatus, LedgerEntry
+from studio.domain.enums import ACTIVE_STATUSES, SPENT, GenStatus
 from studio.domain.generations import (
     ConfirmationRequired,
     CreateRequest,
@@ -96,7 +96,7 @@ async def run_spent(session: AsyncSession, run: PipelineRun) -> Decimal:
         select(func.coalesce(func.sum(SpendLedger.amount_usd), 0))
         .join(GenerationAttempt, SpendLedger.generation_attempt_id == GenerationAttempt.id)
         .join(Generation, GenerationAttempt.generation_id == Generation.id)
-        .where(Generation.group_id == run.id, SpendLedger.entry_type == LedgerEntry.charge)
+        .where(Generation.group_id == run.id, SpendLedger.entry_type.in_(SPENT))
     )).scalar_one()
     pending = (await session.execute(
         select(func.coalesce(func.sum(Generation.estimated_cost_usd), 0))

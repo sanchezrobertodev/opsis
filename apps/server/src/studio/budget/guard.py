@@ -55,8 +55,10 @@ async def summary(session: AsyncSession, user_id: uuid.UUID, *, lock: bool = Fal
     day, month = _windows(datetime.now(UTC))
     row = (await session.execute(text("""
         SELECT
-          COALESCE(SUM(amount_usd) FILTER (WHERE entry_type = 'charge' AND created_at >= :day), 0)   AS today,
-          COALESCE(SUM(amount_usd) FILTER (WHERE entry_type = 'charge' AND created_at >= :month), 0) AS month,
+          COALESCE(SUM(amount_usd) FILTER (WHERE entry_type IN ('charge', 'adjustment') AND created_at >= :day), 0)
+            AS today,
+          COALESCE(SUM(amount_usd) FILTER (WHERE entry_type IN ('charge', 'adjustment') AND created_at >= :month), 0)
+            AS month,
           COALESCE((
             SELECT SUM(r.amount_usd) FROM spend_ledger r
             WHERE r.user_id = :u AND r.entry_type = 'reservation'

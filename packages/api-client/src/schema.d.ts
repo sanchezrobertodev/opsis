@@ -950,6 +950,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/budget/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile
+         * @description Read fal's and our RunPod endpoints' bills for the last `days` days (free) and book what estimates missed.
+         *     The worker also does this every hour.
+         */
+        post: operations["reconcile_budget_reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/budget/breakdown": {
         parameters: {
             query?: never;
@@ -959,7 +980,8 @@ export interface paths {
         };
         /**
          * Spend Breakdown
-         * @description Charges grouped by studio feature and by model, with how much of each is an estimate.
+         * @description Charges grouped by studio feature and by model, with how much of each was checked against a provider's bill and
+         *     how much is still an estimate. Corrections from the bills (adjustments) count with what they correct.
          */
         get: operations["spend_breakdown_budget_breakdown_get"];
         put?: never;
@@ -2691,6 +2713,37 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** ReconcileOut */
+        ReconcileOut: {
+            /** Provider */
+            provider: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "unavailable" | "error" | "skipped";
+            /**
+             * Checked
+             * @description Charges (fal) or hours (our RunPod endpoints) compared with the bill
+             */
+            checked: number;
+            /** Billed Usd */
+            billed_usd: number;
+            /** Charged Usd */
+            charged_usd: number;
+            /**
+             * Booked Usd
+             * @description Corrections booked by this check (the bill minus what was charged)
+             */
+            booked_usd: number;
+            /**
+             * Outside Usd
+             * @description Billed for requests the studio didn't make (another app on the key); not booked
+             */
+            outside_usd: number;
+            /** Detail */
+            detail?: string | null;
+        };
         /** RegistryOut */
         RegistryOut: {
             /** Hash */
@@ -3149,6 +3202,18 @@ export interface components {
             /** Total Usd */
             total_usd: number;
             /**
+             * Estimated Usd
+             * @description Still the studio's estimate
+             * @default 0
+             */
+            estimated_usd: number;
+            /**
+             * Checked Usd
+             * @description Checked against a provider's bill (the rest the provider reported as it ran, or is still an estimate)
+             * @default 0
+             */
+            checked_usd: number;
+            /**
              * Features
              * @description By studio feature, most spent first
              */
@@ -3208,9 +3273,15 @@ export interface components {
             count: number;
             /**
              * Estimated Usd
-             * @description How much of `usd` is the studio's estimate (the provider didn't say)
+             * @description How much of `usd` is still the studio's estimate (no bill read yet)
              */
             estimated_usd: number;
+            /**
+             * Checked Usd
+             * @description How much of `usd` was checked against the provider's bill
+             * @default 0
+             */
+            checked_usd: number;
         };
         /** SpendHistoryOut */
         SpendHistoryOut: {
@@ -5633,6 +5704,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BalanceOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_budget_reconcile_post: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReconcileOut"][];
                 };
             };
             /** @description Validation Error */

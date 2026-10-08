@@ -645,3 +645,16 @@ async def test_fal_downloads_a_glb(keys, tmp_path):
     out = ProviderOutput(index=0, kind="model3d", url="https://v3.fal.media/files/x/model.glb")
     mime = await FalAdapter().download(route(kind="model3d"), out, tmp_path / "m.bin", tmp_path)
     assert mime == "model/gltf-binary" and (tmp_path / "m.bin").read_bytes().startswith(b"glTF")
+
+
+@respx.mock
+async def test_runpod_comfy_adds_the_idle_tail_a_worker_is_billed_for(wan_core, monkeypatch):
+    from studio.providers.runpod_comfy import RunPodComfyAdapter
+
+    spec = wan_core._spec(route()).model_copy(update={"idle_seconds": 60})
+    monkeypatch.setattr(RunPodComfyAdapter, "_spec", lambda self, r: spec)
+    respx.get(f"{RP}/ep1/status/j4").respond(200, json={"status": "COMPLETED", "executionTime": 40_000, "output": {
+        "gpu": "NVIDIA RTX PRO 6000", "outputs": []}})
+    done = await wan_core.poll(route(), "ep1::j4")
+    # 40 s of work + 60 s idle on a PRO 6000 at $3.60/h = $0.10
+    assert done.usage["cost_usd"] == pytest.approx(0.1) and done.usage["idle_s"] == 60

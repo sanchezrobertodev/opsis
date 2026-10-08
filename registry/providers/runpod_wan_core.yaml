@@ -12,6 +12,8 @@ notes: >-
   Your own RunPod serverless endpoint running ComfyUI with Wan 2.2 14B, Fun Camera and Wan-Move (infra/runpod/wan-core).
   It scales to zero: you pay per second while a worker runs, and the first clip after a pause also loads the model.
   Inputs are hosted through fal storage, so set FAL_KEY too (small images go inline without it).
+# A worker stays billed this long after its last job (the endpoint's idle timeout): added to each take's run time.
+idle_seconds: 60
 # Serverless flex prices, USD per hour (get-gpu-type, 2026-10-06). The worker reports which GPU it ran on.
 gpu_usd_per_hour:
   RTX PRO 6000: 3.49
