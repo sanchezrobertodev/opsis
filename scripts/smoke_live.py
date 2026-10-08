@@ -31,15 +31,16 @@ TERMINAL = {"succeeded", "failed", "canceled"}
 RETRY_WAITS = (5, 15, 30, 60)  # a restarting API (a code change under --reload) can be away for a minute
 
 
-def call(api: httpx.Client, method: str, url: str, **kw) -> httpx.Response:
+def call(api: httpx.Client, method: str, url: str, *, replay: bool = True, **kw) -> httpx.Response:
     """One request to the local API, tried again when the connection drops instead of ending the run. Safe for
     POST /generations because it carries an Idempotency-Key: a repeat returns the same generation, never a
-    second paid submit."""
+    second paid submit. With replay=False (a request that isn't idempotent, like an upload) it is only tried again
+    when it never reached the API (a refused or timed-out connect), never after an answer may have been lost."""
     for wait in (*RETRY_WAITS, None):
         try:
             return api.request(method, url, **kw)
         except httpx.TransportError as exc:
-            if wait is None:
+            if wait is None or not (replay or isinstance(exc, httpx.ConnectError | httpx.ConnectTimeout)):
                 raise
             print(f"  (the API didn't answer: {exc!r}; trying again in {wait}s)", flush=True)
             time.sleep(wait)
@@ -60,11 +61,18 @@ def plan(routes_filter: set[str] | None):
     return items, sorted(missing)
 
 
+_uploaded: dict[str, str] = {}
+
+
 def upload_fixture(api: httpx.Client, ref: str) -> str:
-    path = ROOT / "fixtures" / ref.removeprefix("fixture:")
-    r = call(api, "POST", "/uploads", files={"file": (path.name, path.read_bytes())})
-    r.raise_for_status()
-    return r.json()["id"]
+    """Each test file is uploaded once per run. Uploads aren't idempotent, so one is never replayed after a lost
+    answer (that would leave a duplicate asset); a failure there ends the run before anything is spent."""
+    if ref not in _uploaded:
+        path = ROOT / "fixtures" / ref.removeprefix("fixture:")
+        r = call(api, "POST", "/uploads", replay=False, files={"file": (path.name, path.read_bytes())})
+        r.raise_for_status()
+        _uploaded[ref] = r.json()["id"]
+    return _uploaded[ref]
 
 
 def main() -> int:

@@ -41,3 +41,40 @@ def test_an_api_that_stays_away_still_fails():
     api = httpx.Client(base_url="http://api", transport=httpx.MockTransport(handler))
     with pytest.raises(httpx.ConnectError):
         smoke.call(api, "GET", "/generations/g1")
+
+
+def test_an_upload_is_never_replayed_after_its_answer_may_be_lost():
+    calls = []
+
+    def lost(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        raise httpx.ReadError("[WinError 10054] reset after the upload was sent")
+
+    api = httpx.Client(base_url="http://api", transport=httpx.MockTransport(lost))
+    with pytest.raises(httpx.ReadError):
+        smoke.call(api, "POST", "/uploads", replay=False, files={"file": ("a.png", b"x")})
+    assert calls == ["/uploads"]  # once: a second try could leave a duplicate asset
+
+    tries = []
+
+    def refused_then_up(request: httpx.Request) -> httpx.Response:
+        tries.append(1)
+        if len(tries) == 1:
+            raise httpx.ConnectError("refused")  # the API was restarting: nothing reached it
+        return httpx.Response(201, json={"id": "a1"})
+
+    api = httpx.Client(base_url="http://api", transport=httpx.MockTransport(refused_then_up))
+    assert smoke.call(api, "POST", "/uploads", replay=False, files={"file": ("a.png", b"x")}).json() == {"id": "a1"}
+
+
+def test_each_test_file_is_uploaded_once_per_run(monkeypatch):
+    posts = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        posts.append(1)
+        return httpx.Response(201, json={"id": f"a{len(posts)}"})
+
+    monkeypatch.setattr(smoke, "_uploaded", {})
+    api = httpx.Client(base_url="http://api", transport=httpx.MockTransport(handler))
+    first = smoke.upload_fixture(api, "fixture:images/keyframe.png")
+    assert smoke.upload_fixture(api, "fixture:images/keyframe.png") == first and len(posts) == 1
