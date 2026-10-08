@@ -1,12 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ExternalLink, LoaderCircle, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api, unwrap } from "@/lib/api";
-import { usd } from "@/lib/cn";
+import { cn, usd } from "@/lib/cn";
 import { useBudget, useHealth, useRegistry, useUpdateBudget } from "@/lib/queries";
-import { Button, Field, Switch } from "@/components/ui/controls";
+import { Button, Field, Segmented, Switch } from "@/components/ui/controls";
 
 const MODE_TEXT: Record<string, string> = {
   mock: "Every generation runs on the local mock provider. Nothing is sent to a provider and nothing is billed.",
@@ -115,9 +116,135 @@ export function Settings() {
           )}
         </section>
 
+        <Balances />
+        <WhereItWent />
         <SpendHistory />
       </div>
     </div>
+  );
+}
+
+/** What's left on each provider account, for the providers that report it; links to the billing page for the rest. */
+function Balances() {
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const { data } = useQuery({
+    queryKey: ["balances"],
+    queryFn: () => unwrap(api.GET("/budget/balances")),
+    staleTime: 60_000,
+  });
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      qc.setQueryData(["balances"], await unwrap(api.GET("/budget/balances", { params: { query: { refresh: true } } })));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  return (
+    <section className="space-y-4 lg:col-span-2" aria-label="Provider balances">
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 className="type-title text-xl">Provider balances</h2>
+        <Button size="sm" tone="ghost" onClick={() => void refresh()} disabled={refreshing}>
+          {refreshing ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <RefreshCw className="size-4" aria-hidden />}
+          Check again
+        </Button>
+      </div>
+      {!data ? (
+        <p className="text-sm text-muted">Asking the providers&hellip;</p>
+      ) : data.length === 0 ? (
+        <p className="text-sm text-muted">No provider keys in .env yet.</p>
+      ) : (
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {data.map((b) => (
+            <li key={b.provider} className="flex items-start justify-between gap-3 rounded-[var(--radius-panel)] bg-panel px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm">{b.label}</p>
+                <p className={cn("mt-0.5 text-2xs", b.status === "error" ? "text-fault" : "text-faint")}>
+                  {b.detail ?? (b.status === "ok" ? "Read just now" : "")}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <span className="tabular text-sm text-chalk">{amountText(b)}</span>
+                <a href={b.link} target="_blank" rel="noreferrer"
+                   className="flex items-center gap-1 text-2xs text-muted hover:text-chalk">
+                  Billing <ExternalLink className="size-3" aria-hidden />
+                </a>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function amountText(b: { status: string; amount?: number | null; unit?: string | null; usd?: number | null }) {
+  if (b.status !== "ok" || b.amount == null) return "–";
+  if (b.unit === "usd") return usd(b.amount);
+  const credits = `${Math.round(b.amount).toLocaleString()} credits`;
+  return b.usd != null ? `${credits} (${usd(b.usd)})` : credits;
+}
+
+type Period = "today" | "month" | "all";
+const PERIOD_LABEL: Record<Period, string> = { today: "Today", month: "This month", all: "All time" };
+
+/** Spend split by studio feature and by model, with how much of it is the studio's own estimate. */
+function WhereItWent() {
+  const [period, setPeriod] = useState<Period>("month");
+  const { data } = useQuery({
+    queryKey: ["spend-breakdown", period],
+    queryFn: () => unwrap(api.GET("/budget/breakdown", { params: { query: { period } } })),
+  });
+  return (
+    <section className="space-y-4 lg:col-span-2" aria-label="Where it went">
+      <div className="flex flex-wrap items-baseline justify-between gap-4">
+        <h2 className="type-title text-xl">Where it went</h2>
+        <div className="w-72">
+          <Segmented label="Period" value={period} options={["today", "month", "all"] as const}
+                     render={(p) => PERIOD_LABEL[p]} onChange={setPeriod} />
+        </div>
+      </div>
+      {data && data.total_usd === 0 ? (
+        <p className="text-sm text-muted">Nothing billed {period === "all" ? "yet" : PERIOD_LABEL[period].toLowerCase()}.</p>
+      ) : data ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <SpendTable title="By feature" groups={data.features} total={data.total_usd} />
+          <SpendTable title="By model" groups={data.models} total={data.total_usd} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function SpendTable({ title, groups, total }: {
+  title: string; groups: { key: string; label: string; usd: number; count: number; estimated_usd: number }[];
+  total: number;
+}) {
+  return (
+    <table className="w-full text-xs">
+      <caption className="mb-2 text-left text-xs text-muted">{title}</caption>
+      <thead className="sr-only">
+        <tr><th>Name</th><th>Charges</th><th>Spent</th></tr>
+      </thead>
+      <tbody className="divide-y divide-line-soft">
+        {groups.map((g) => (
+          <tr key={g.key}>
+            <td className="py-2 pr-3">
+              <span className="block truncate text-chalk">{g.label}</span>
+              <span className="mt-1 block h-1 rounded-full bg-bay" aria-hidden>
+                <span className="block h-1 rounded-full bg-tungsten/70" style={{ width: `${total ? (g.usd / total) * 100 : 0}%` }} />
+              </span>
+            </td>
+            <td className="tabular w-12 py-2 pr-3 text-right text-faint">{g.count}&times;</td>
+            <td className="tabular w-20 py-2 text-right text-chalk"
+                title={g.estimated_usd ? `${usd(g.estimated_usd)} of it is the studio's estimate` : undefined}>
+              {usd(g.usd)}{g.estimated_usd > 0 && <span className="text-faint">*</span>}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

@@ -16,21 +16,35 @@ from sse_starlette.sse import EventSourceResponse
 
 from studio.api.deps import current_user, get_session
 from studio.api.schemas import (
+    BalanceOut,
     BudgetOut,
     BudgetUpdate,
     HealthOut,
     LocalEngineOut,
     SpendBreakdown,
+    SpendBreakdownOut,
     SpendEntryOut,
+    SpendGroup,
     SpendHistoryOut,
 )
 from studio.api.sse import hub
 from studio.budget import guard
+from studio.budget.balances import balances as read_balances
+from studio.budget.features import LABELS, claude_name, feature_of
 from studio.config import get_settings
-from studio.db.models import Generation, GenerationAttempt, JobEvent, SpendLedger, User
+from studio.db.models import (
+    Generation,
+    GenerationAttempt,
+    JobEvent,
+    PipelineRun,
+    PipelineStep,
+    Project,
+    SpendLedger,
+    User,
+)
 from studio.domain.enums import LedgerEntry
 from studio.providers.local_status import comfy_stats
-from studio.registry.loader import get_registry_holder
+from studio.registry.loader import get_registry, get_registry_holder
 from studio.storage.local import get_storage
 
 router = APIRouter()
@@ -161,6 +175,73 @@ async def spend_history(
     )).all()
     return SpendHistoryOut(entries=entries, by_provider=[
         SpendBreakdown(provider=p or "unknown", usd=float(usd), count=n) for p, usd, n in totals])
+
+
+@router.get("/budget/balances", response_model=list[BalanceOut], tags=["budget"])
+async def provider_balances(refresh: bool = Query(False, description="Read again now, not from the last minute"),
+                            user: User = Depends(current_user)) -> list[BalanceOut]:
+    """What's left on each provider account with a key set (read from providers that report it; free)."""
+    return [BalanceOut(**vars(b)) for b in await read_balances(refresh=refresh)]
+
+
+def _since(period: str) -> datetime | None:
+    now = datetime.now(UTC)
+    if period == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if period == "month":
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return None
+
+
+@router.get("/budget/breakdown", response_model=SpendBreakdownOut, tags=["budget"])
+async def spend_breakdown(period: str = Query("month", pattern="^(today|month|all)$"),
+                          session: AsyncSession = Depends(get_session),
+                          user: User = Depends(current_user)) -> SpendBreakdownOut:
+    """Charges grouped by studio feature and by model, with how much of each is an estimate."""
+    q = (select(SpendLedger.amount_usd, SpendLedger.estimated, SpendLedger.provider, SpendLedger.basis,
+                Generation.model_id, Generation.mode, PipelineRun.recipe, Project.kind)
+         .outerjoin(GenerationAttempt, GenerationAttempt.id == SpendLedger.generation_attempt_id)
+         .outerjoin(Generation, Generation.id == GenerationAttempt.generation_id)
+         .outerjoin(PipelineStep, PipelineStep.id == Generation.pipeline_step_id)
+         .outerjoin(PipelineRun, PipelineRun.id == PipelineStep.run_id)
+         .outerjoin(Project, Project.id == Generation.project_id)
+         .where(SpendLedger.user_id == user.id, SpendLedger.entry_type == LedgerEntry.charge))
+    if (since := _since(period)) is not None:
+        q = q.where(SpendLedger.created_at >= since)
+    reg = get_registry()
+    features: dict[str, list[float]] = {}
+    models: dict[str, list[float]] = {}
+    names: dict[str, str] = {}
+
+    def add(groups: dict[str, list[float]], key: str, usd: float, estimated: bool) -> None:
+        g = groups.setdefault(key, [0.0, 0, 0.0])
+        g[0] += usd
+        g[1] += 1
+        g[2] += usd if estimated else 0.0
+
+    total = 0.0
+    for usd, estimated, provider, basis, model_id, mode, recipe, kind in (await session.execute(q)).all():
+        usd = float(usd)
+        total += usd
+        if model_id is None and provider == "anthropic":
+            feature, model = "claude", str((basis or {}).get("model") or "claude")
+            names.setdefault(model, claude_name(model))
+        else:
+            spec = reg.model(model_id) if model_id else None
+            feature = feature_of(recipe=recipe, project_kind=kind, spec=spec, mode_id=mode)
+            model = model_id or "other"
+            names.setdefault(model, spec.name if spec else model)
+        add(features, feature, usd, estimated)
+        add(models, model, usd, estimated)
+
+    def out(groups: dict[str, list[float]], label) -> list[SpendGroup]:
+        rows = [SpendGroup(key=k, label=label(k), usd=round(v[0], 6), count=int(v[1]), estimated_usd=round(v[2], 6))
+                for k, v in groups.items()]
+        return sorted(rows, key=lambda g: -g.usd)
+
+    return SpendBreakdownOut(period=period, total_usd=round(total, 6),  # type: ignore[arg-type]
+                             features=out(features, lambda k: LABELS.get(k, k)),
+                             models=out(models, lambda k: names.get(k, k)))
 
 
 @router.get("/health", response_model=HealthOut, tags=["health"])

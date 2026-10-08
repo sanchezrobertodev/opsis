@@ -124,6 +124,12 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   script) are priced at a guessed length with `planned_seconds=((role, seconds), ...)`.
 - Revising a run while a checkpoint waits updates that checkpoint's question in place; it keeps waiting.
 
+## Spending
+- Settings shows provider balances (`GET /budget/balances`, `studio/budget/balances.py`: fal, RunPod, Runway and
+  ElevenLabs report one; free reads kept for a minute; the others link to their billing pages) and where the money
+  went (`GET /budget/breakdown`): ledger charges by studio feature (`studio/budget/features.py`: the run's recipe, the
+  project, else the mode's op tags; a new op tag must join a feature, a test checks) and by model.
+
 ## Claude
 - `LLM_MODE=mock` (default) returns canned results and never bills; `live` needs `ANTHROPIC_API_KEY`.
 - Call Claude only through `studio/llm/client.structured()`: Pydantic structured output, refusal fallback,
