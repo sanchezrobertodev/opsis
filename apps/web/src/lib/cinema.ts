@@ -115,7 +115,8 @@ export function duplicateShot(doc: CinemaDoc, shotId: string, id = newId("s")): 
  * A filmed shot keeps its take: the first part plays it up to the split, the second from there (seconds into the
  * take, so `take` is the take's [trimmed start, used length]), and dialogue in the cut tied to the shot is given to
  * both parts, each playing its own stretch. An unfilmed shot's length and lines are shared between the parts (`at`
- * equal to its length gives both parts that length).
+ * equal to its length gives both parts that length). Either way a picked closing frame goes to the second part, which
+ * now ends the shot.
  */
 export function splitShot(doc: CinemaDoc, shotId: string, at: number, take?: [number, number],
                           id = newId("s")): { doc: CinemaDoc; id: string } {
@@ -126,9 +127,9 @@ export function splitShot(doc: CinemaDoc, shotId: string, at: number, take?: [nu
   let first: Shot, second: Shot;
   if (shot.take_asset_id && take) {
     const point = Math.round((take[0] + at) * 100) / 100;
-    first = { ...shot, trim_out: point };
+    first = { ...shot, trim_out: point, end_asset_id: null };
     second = newShot({ ...base, duration: shot.duration, take_asset_id: shot.take_asset_id, trim_in: point,
-                       trim_out: shot.trim_out });
+                       trim_out: shot.trim_out, end_asset_id: shot.end_asset_id ?? null });
   } else {
     const lines = shot.lines ?? [];
     const half = Math.ceil(lines.length / 2);

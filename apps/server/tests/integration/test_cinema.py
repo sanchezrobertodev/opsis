@@ -533,3 +533,25 @@ async def test_a_closing_frame_needs_an_opening_one_and_a_model_that_takes_both(
     r = await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
         "project_id": p["id"], "model_id": "wan-2.2-14b", "shots": [{**shot, "start_asset_id": str(uuid.uuid4())}]}})
     assert r.status_code == 422 and "can't end on a picked frame" in r.text
+
+
+@pytest.mark.parametrize(("engine", "base"), [("seedance", "seedance-2.5/i2v"), ("kling", "kling-3.0/i2v"),
+                                               ("veo", "veo-3.1/flf2v")])
+async def test_a_closing_frame_runs_on_each_engines_own_mode(client, engine, base):
+    p = await new_project(client)
+    r = await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
+        "project_id": p["id"], "model_id": "cinema-studio", "takes": 1, "params": {"engine": engine},
+        "shots": [{"key": "sabc", "prompt": "A pier at dawn", "duration": 8, "start_asset_id": str(uuid.uuid4()),
+                   "end_asset_id": str(uuid.uuid4())}]}})
+    assert r.status_code == 200, r.text
+    from studio.pipelines.recipes.cinema import take_mode
+    from studio.registry.loader import get_registry
+    from studio.registry.virtual import resolve
+
+    reg = get_registry()
+    spec = reg.model("cinema-studio")
+    from studio.pipelines.recipes.cinema import TakeShot
+    mode = take_mode(spec, TakeShot(key="sabc", prompt="x", start_asset_id=uuid.uuid4(), end_asset_id=uuid.uuid4()))
+    v = resolve(reg, spec, mode.id, {"engine": engine}, None)
+    assert f"{v.spec.id}/{v.mode}" == base
+
