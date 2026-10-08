@@ -62,3 +62,24 @@ async def test_the_tracker_route_keeps_the_masks_for_ingest():
     assert out.kind == "mask_video" and out.data == answer["rle"] and out.url is None
     empty = FakeFal([fal_client.Completed(logs=[], metrics={})], result={**answer, "rle": []})
     assert (await FalAdapter(client=empty).poll(route, "fal-ai/sam-3::req-2")).status == "failed"
+
+
+@pytest.mark.parametrize("body", [
+    '["0 4", "", "4 4"]',                     # a JSON list
+    '{"rle": ["0 4", "", "4 4"]}',            # a JSON object holding it
+    "0 4\n\n4 4",                             # one mask per line
+])
+async def test_masks_in_a_linked_file_are_downloaded_first(tmp_path, body):
+    import respx
+
+    from studio.media.rle import parse_masks
+
+    assert parse_masks(body) == ["0 4", "", "4 4"]
+    clip = MediaRef("input_video", "v", "video", fps=24.0, width=4, height=2)
+    with respx.mock:
+        respx.get("https://v3.fal.media/files/masks.json").respond(200, text=body)
+        dest = tmp_path / "matte.mp4"
+        await mask_video({"url": "https://v3.fal.media/files/masks.json", "content_type": "application/json"},
+                         media=[clip], dest=dest, workdir=tmp_path)
+    frames = read_back(dest, 4, 2)
+    assert len(frames) == 3 and frames[0][1] > 200 and frames[0][5] < 50 and max(frames[1]) < 50
