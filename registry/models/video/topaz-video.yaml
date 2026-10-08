@@ -58,10 +58,11 @@ routes:
         interp_model: model
       media: {input_video: video_url}
     pricing:
-      # Upscales: per second, assuming up to 1080p output at 30 fps (4x lands near 4K), at least 5 s a job: fal bills
-      # per 10 s of output by resolution, "rounded once per job", and a 3 s 2x precision upscale (854x480 -> 1708x960)
-      # was billed $0.10, not $0.06 (2026-10-08, one bill; the exact rounding is unconfirmed, AMS-9). Interpolation:
-      # per new frame, i.e. frames added beyond what the clip already has.
+      # Upscales: per second, assuming up to 1080p output at 30 fps (4x lands near 4K), at least 5 s a job. fal bills
+      # per 10 s of output by resolution, "rounded once per job": a 3 s precision upscale of an 854x480 clip was billed
+      # $0.10 at 2x (1708x960) and $0.10 at 4x (3416x1920) (2026-10-08, AMS-9). Short clips cost $0.10 whatever the
+      # factor; the 4x rate below is a ceiling from the page's 4K price until a clip over 10 s shows the real one.
+      # Interpolation: per new frame, i.e. frames added beyond what the clip already has.
       basis: per_request
       quantity: >-
         input_video_seconds * max(target_fps * slowdown_factor - input_video_frames / max(input_video_seconds, 0.001), 0)
@@ -75,7 +76,7 @@ routes:
         - {when: {mode: interpolate}, usd: 0.001}
         - {when: {mode: interpolate, interp_model: Aion}, usd: 0.00167}
       verified: 2026-10-08
-      source: https://fal.ai/models/topaz/upscale/video/precision; fal billing event for a 3 s 2x upscale ($0.10)
+      source: https://fal.ai/models/topaz/upscale/video/precision; fal billing events for 3 s 2x and 4x upscales ($0.10 each)
     output: {path: video.url, kind: video}
 
 examples:
