@@ -172,7 +172,9 @@ async def spend_history(
         ))
     month = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     totals = (await session.execute(
-        select(SpendLedger.provider, func.sum(SpendLedger.amount_usd), func.count())
+        # corrections add to the sum but aren't more charges
+        select(SpendLedger.provider, func.sum(SpendLedger.amount_usd),
+               func.count().filter(SpendLedger.entry_type == LedgerEntry.charge))
         .where(SpendLedger.user_id == user.id, SpendLedger.entry_type.in_(SPENT),
                SpendLedger.created_at >= month)
         .group_by(SpendLedger.provider).order_by(func.sum(SpendLedger.amount_usd).desc())

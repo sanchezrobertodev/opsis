@@ -4,13 +4,14 @@
   attempt by request id (`provider_job_id` is `app::request_id`), including failed requests fal billed that the
   studio never charged.
 - Our own RunPod endpoints (wan-core) are billed per worker second, idle tail and model loading included; RunPod
-  reports that per endpoint per hour (`/v2/billing/serverless`). Once an hour has settled, its difference is spread
-  over the charges made in it (by their size); billed time with no charge (an idle tail running into the next hour)
-  is booked on its own.
+  reports that per endpoint per hour (`/v2/billing/serverless`). Each settled hour's bill is shared by the jobs that
+  ran in it, by how long (sent until finished plus the idle tail), so a job across an hour boundary gets a share of
+  both; billed time with no job running is booked on its own.
 
 Each correction is an `adjustment` ledger row (the bill minus what was charged, so it can be negative), dated like
-the charge it corrects so the day and month totals land where the spend happened. One per attempt, and wan-core hours
-are marked in `basis.bucket`, so running this again books nothing twice. Requests the studio didn't make (other
+the charge it corrects so the day and month totals land where the spend happened. One per attempt (a constraint), and
+idle hours once per provider hour (a unique index); runs take an advisory lock, so the worker and the Settings button
+never book the same bill twice. Requests the studio didn't make (other
 apps on the same key) are reported, never booked. Other providers keep their estimates: Google, ElevenLabs and
 Replicate don't report a cost per request.
 """
@@ -25,7 +26,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.config import get_settings
@@ -62,6 +63,8 @@ async def reconcile(session: AsyncSession, *, days: int = 3, now: datetime | Non
     now = now or datetime.now(UTC)
     since = (now - timedelta(days=days)).replace(minute=0, second=0, microsecond=0)
     out: list[Result] = []
+    # one check at a time (the hourly worker and the Settings button share it), so a bill is never booked twice
+    await session.execute(text("SELECT pg_advisory_xact_lock(hashtext('studio.budget.reconcile'))"))
     async with httpx.AsyncClient(timeout=TIMEOUT, transport=transport) as c:
         out.append(await _guarded("fal", _fal(session, c, since, now)))
         reg = get_registry()
@@ -159,6 +162,10 @@ async def _ledger_by_attempt(session: AsyncSession, ids: list[uuid.UUID]) -> dic
 # ---------------------------------------------------------------- our RunPod endpoints
 
 
+def _overlap(a: datetime, b: datetime, start: datetime, end: datetime) -> float:
+    return max(0.0, (min(b, end) - max(a, start)).total_seconds())
+
+
 async def _runpod_endpoint(session: AsyncSession, c: httpx.AsyncClient, spec, since: datetime, now: datetime) -> Result:
     s = get_settings()
     endpoint = getattr(s, spec.endpoint_setting, "")
@@ -176,49 +183,58 @@ async def _runpod_endpoint(session: AsyncSession, c: httpx.AsyncClient, spec, si
     r.raise_for_status()
     billed = {datetime.fromisoformat(x["startTime"].replace("Z", "+00:00")): _money(x.get("totalAmount") or 0)
               for x in r.json().get("records") or []}
+    billed = {h: usd for h, usd in billed.items() if since <= h < until}
 
-    charges = (await session.execute(select(SpendLedger).where(
-        SpendLedger.provider == spec.id, SpendLedger.entry_type.in_(SPENT),
-        SpendLedger.created_at >= since, SpendLedger.created_at < until))).scalars().all()
-    done = {x.basis.get("bucket") for x in charges if x.entry_type == LedgerEntry.adjustment}
-    by_hour: dict[datetime, list[SpendLedger]] = {}
-    for x in charges:
-        if x.entry_type == LedgerEntry.charge:
-            by_hour.setdefault(x.created_at.replace(minute=0, second=0, microsecond=0), []).append(x)
+    # Each job is billed from when it was sent (a cold worker loads while it waits) until its idle tail ends, so an
+    # hour's bill is shared by the jobs that ran in it, by how long; a job across an hour boundary takes a share of
+    # both. A job is corrected once, when every hour it touched has settled.
+    idle = timedelta(seconds=spec.idle_seconds)
+    rows = (await session.execute(
+        select(GenerationAttempt, Generation.user_id)
+        .join(Generation, Generation.id == GenerationAttempt.generation_id)
+        .where(GenerationAttempt.provider == spec.id, GenerationAttempt.submitted_at.is_not(None),
+               GenerationAttempt.finished_at.is_not(None), GenerationAttempt.submitted_at < until,
+               GenerationAttempt.finished_at >= since - idle))).all()
+    jobs = [(a, user, a.submitted_at, a.finished_at + idle) for a, user in rows]
+    ledger = await _ledger_by_attempt(session, [a.id for a, *_ in jobs])
+    idle_done = set((await session.execute(select(SpendLedger.basis["bucket"].astext).where(
+        SpendLedger.provider == spec.id, SpendLedger.entry_type == LedgerEntry.adjustment,
+        SpendLedger.generation_attempt_id.is_(None), SpendLedger.created_at >= since,
+        SpendLedger.created_at < until))).scalars().all())
 
-    for hour in sorted(set(billed) | set(by_hour)):
-        key = hour.isoformat()
-        if key in done:
-            continue
-        bill, rows = billed.get(hour, Decimal(0)), by_hour.get(hour, [])
-        charged = sum((x.amount_usd for x in rows), Decimal(0))
+    share: dict[uuid.UUID, Decimal] = {}
+    for hour, bill in sorted(billed.items()):
+        end = hour + timedelta(hours=1)
+        weights = {a.id: w for a, _, start, stop in jobs if (w := _overlap(start, stop, hour, end)) > 0}
         res.checked += 1
         res.billed_usd += float(bill)
-        res.charged_usd += float(charged)
-        basis = {"source": "runpod billing", "bucket": key, "billed_usd": float(bill), "charged_usd": float(charged)}
-        if rows:
-            # spread the hour's difference over its charges by size; the last takes the rounding
-            delta, left = bill - charged, bill - charged
-            for i, x in enumerate(rows):
-                share = left if i == len(rows) - 1 else _money(delta * x.amount_usd / charged if charged else delta / len(rows))
-                left -= share
-                session.add(SpendLedger(
-                    user_id=x.user_id, entry_type=LedgerEntry.adjustment, amount_usd=share, provider=spec.id,
-                    route_id=x.route_id, generation_attempt_id=x.generation_attempt_id, estimated=False,
-                    created_at=x.created_at, basis=basis))
-            res.booked_usd += float(delta)
-        elif bill > 0:
-            # billed with nothing charged in the hour: a worker idling on after a job, or loading
-            user = (await session.execute(select(SpendLedger.user_id).where(
-                SpendLedger.provider == spec.id, SpendLedger.entry_type == LedgerEntry.charge,
-                SpendLedger.created_at < hour + timedelta(hours=1)).order_by(SpendLedger.created_at.desc())
-                .limit(1))).scalar_one_or_none()
+        total = sum(weights.values())
+        if total:
+            for aid, w in weights.items():
+                share[aid] = share.get(aid, Decimal(0)) + bill * Decimal(w) / Decimal(total)
+        elif bill > 0 and hour.isoformat() not in idle_done:
+            # billed with no job running: a worker idling on or loading. Booked to whoever last used the endpoint.
+            user = next((u for a, u, start, _ in sorted(jobs, key=lambda j: j[2], reverse=True) if start < end), None)
             if user is None:
                 res.outside_usd += float(bill)
                 continue
             session.add(SpendLedger(
                 user_id=user, entry_type=LedgerEntry.adjustment, amount_usd=bill, provider=spec.id,
                 route_id=f"{spec.id} idle", estimated=False, created_at=hour,
-                basis={**basis, "label": f"{spec.name}: workers idling or loading"}))
+                basis={"source": "runpod billing", "bucket": hour.isoformat(), "billed_usd": float(bill),
+                       "label": f"{spec.name}: workers idling or loading"}))
             res.booked_usd += float(bill)
+
+    for a, user, start, stop in jobs:
+        charged, adjusted, when = ledger.get(a.id, (Decimal(0), False, None))
+        if adjusted or start < since or stop > until or a.id not in share:
+            continue  # done before, or an hour it ran in is outside this window or not settled yet
+        usd = _money(share[a.id])
+        res.charged_usd += float(charged)
+        session.add(SpendLedger(
+            user_id=user, entry_type=LedgerEntry.adjustment, amount_usd=usd - charged, provider=spec.id,
+            route_id=a.route_id, generation_attempt_id=a.id, estimated=False, created_at=when or a.finished_at,
+            basis={"source": "runpod billing", "billed_usd": float(usd), "charged_usd": float(charged),
+                   "hours": sorted(h.isoformat() for h in billed if _overlap(start, stop, h, h + timedelta(hours=1)))}))
+        res.booked_usd += float(usd - charged)
     return res
