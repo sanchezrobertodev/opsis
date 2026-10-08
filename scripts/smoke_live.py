@@ -28,6 +28,23 @@ from studio.config import get_settings  # noqa: E402
 from studio.registry.loader import MOCK_PROVIDER, load_registry  # noqa: E402
 
 TERMINAL = {"succeeded", "failed", "canceled"}
+RETRY_WAITS = (5, 15, 30, 60)  # a restarting API (a code change under --reload) can be away for a minute
+
+
+def call(api: httpx.Client, method: str, url: str, *, replay: bool = True, **kw) -> httpx.Response:
+    """One request to the local API, tried again when the connection drops instead of ending the run. Safe for
+    POST /generations because it carries an Idempotency-Key: a repeat returns the same generation, never a
+    second paid submit. With replay=False (a request that isn't idempotent, like an upload) it is only tried again
+    when it never reached the API (a refused or timed-out connect), never after an answer may have been lost."""
+    for wait in (*RETRY_WAITS, None):
+        try:
+            return api.request(method, url, **kw)
+        except httpx.TransportError as exc:
+            if wait is None or not (replay or isinstance(exc, httpx.ConnectError | httpx.ConnectTimeout)):
+                raise
+            print(f"  (the API didn't answer: {exc!r}; trying again in {wait}s)", flush=True)
+            time.sleep(wait)
+    raise AssertionError("unreachable")
 
 
 def plan(routes_filter: set[str] | None):
@@ -44,12 +61,18 @@ def plan(routes_filter: set[str] | None):
     return items, sorted(missing)
 
 
+_uploaded: dict[str, str] = {}
+
+
 def upload_fixture(api: httpx.Client, ref: str) -> str:
-    path = ROOT / "fixtures" / ref.removeprefix("fixture:")
-    with path.open("rb") as fh:
-        r = api.post("/uploads", files={"file": (path.name, fh)})
-    r.raise_for_status()
-    return r.json()["id"]
+    """Each test file is uploaded once per run. Uploads aren't idempotent, so one is never replayed after a lost
+    answer (that would leave a duplicate asset); a failure there ends the run before anything is spent."""
+    if ref not in _uploaded:
+        path = ROOT / "fixtures" / ref.removeprefix("fixture:")
+        r = call(api, "POST", "/uploads", replay=False, files={"file": (path.name, path.read_bytes())})
+        r.raise_for_status()
+        _uploaded[ref] = r.json()["id"]
+    return _uploaded[ref]
 
 
 def main() -> int:
@@ -72,6 +95,9 @@ def main() -> int:
         print(f"API not reachable at {args.api}. Start it with `pnpm dev`.")
         return 2
     print(f"provider mode: {health['provider_mode']}")
+    if health.get("reloads_on_change") and args.confirm_spend:
+        print("note: the API restarts whenever its code changes (--reload), dropping requests in flight; requests "
+              "are retried, but for a long live run start it without: uv run python -m studio.api")
 
     total, runs = 0.0, []
     for spec, route, ex in items:
@@ -84,7 +110,7 @@ def main() -> int:
         media = [{"role": role, "asset_id": upload_fixture(api, ref)} for role, ref in refs]
         body = {"model_id": spec.id, "mode": ex.mode, "prompt": ex.prompt, "params": ex.params, "media": media,
                 "route_policy": f"pinned:{route.id}"}
-        est = api.post("/registry/estimate", json=body)
+        est = call(api, "POST", "/registry/estimate", json=body)
         if est.status_code != 200:
             print(f"  skip {route.id}: {est.json().get('errors')}")
             continue
@@ -114,19 +140,16 @@ def main() -> int:
         out.write_text(json.dumps({"cap_usd": args.cap, "planned_usd": total, "runs": report}, indent=2))
 
     def fetch(gen_id: str) -> dict | None:
-        """The generation's state; a dropped connection to the local API is retried rather than ending the run."""
-        for wait in (5, 15, 30):
-            try:
-                return api.get(f"/generations/{gen_id}").json()
-            except httpx.HTTPError as exc:
-                print(f"  (the API didn't answer: {exc!r}; trying again in {wait}s)")
-                time.sleep(wait)
-        return None
+        """The generation's state, or None if the API stayed away (the run goes on polling)."""
+        try:
+            return call(api, "GET", f"/generations/{gen_id}").json()
+        except httpx.TransportError:
+            return None
 
     for route_id, body, usd in runs:
         started = time.monotonic()
-        r = api.post("/generations", json={**body, "confirm_cost_usd": usd},
-                     headers={"Idempotency-Key": f"smoke-{route_id}-{datetime.now(UTC):%Y%m%d%H%M}"})
+        key = f"smoke-{route_id}-{datetime.now(UTC):%Y%m%d%H%M}"  # fixed before any retry
+        r = call(api, "POST", "/generations", json={**body, "confirm_cost_usd": usd}, headers={"Idempotency-Key": key})
         if r.status_code != 201:
             report.append({"route": route_id, "status": "rejected", "detail": r.json()})
             save()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -269,4 +270,5 @@ async def health(session: AsyncSession = Depends(get_session)) -> HealthOut:
         database=db_ok, provider_mode=get_settings().provider_mode, registry_hash=holder.current.hash,
         registry_errors=holder.last_error, ffmpeg=ff, media_root=str(get_storage().root), local_engine=local,
         llm_mode=get_settings().llm_mode, llm_key_set=bool(get_settings().anthropic_api_key),
+        reloads_on_change=os.environ.get("STUDIO_API_RELOAD") == "1",
     )

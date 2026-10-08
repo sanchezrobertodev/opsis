@@ -1983,6 +1983,12 @@ export interface components {
             llm_mode: string;
             /** Llm Key Set */
             llm_key_set: boolean;
+            /**
+             * Reloads On Change
+             * @description The API restarts when its code changes (started with --reload); a restart drops requests in flight
+             * @default false
+             */
+            reloads_on_change: boolean;
         };
         /** IntParam */
         IntParam: {

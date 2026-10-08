@@ -7,7 +7,16 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
 
-from studio.db.models import Generation, GenerationAttempt, JobEvent, PipelineRun, RunStatus
+from studio.db.models import (
+    Generation,
+    GenerationAttempt,
+    JobEvent,
+    PipelineRun,
+    PipelineStep,
+    RunStatus,
+    StepKind,
+    StepStatus,
+)
 from studio.db.session import session_scope
 from studio.domain import fsm
 from studio.domain.enums import AttemptStatus, ErrorClass, GenStatus
@@ -64,6 +73,15 @@ async def reap(now: datetime) -> dict[str, int]:
         # a run whose wake-up was lost (process died between commit and defer)
         runs = (await s.execute(select(PipelineRun.id).where(
             PipelineRun.status == RunStatus.running, PipelineRun.updated_at < now - STALE_RUN))).scalars().all()
+        # a run that ended (a step failed) while other takes rendered: settle the steps whose take has finished
+        runs += (await s.execute(select(PipelineStep.run_id).distinct()
+                                 .join(PipelineRun, PipelineRun.id == PipelineStep.run_id)
+                                 .join(Generation, Generation.id == PipelineStep.generation_id)
+                                 .where(PipelineRun.status.in_([RunStatus.failed, RunStatus.canceled]),
+                                        PipelineStep.kind == StepKind.generate,
+                                        PipelineStep.status == StepStatus.running,
+                                        Generation.status.in_([GenStatus.succeeded, GenStatus.failed,
+                                                               GenStatus.canceled])))).scalars().all()
 
         await s.execute(delete(JobEvent).where(JobEvent.created_at < now - EVENT_RETENTION))
 

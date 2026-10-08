@@ -237,3 +237,61 @@ async def test_a_run_spends_only_what_was_charged_plus_what_is_still_running(cli
         before = await run_spent(s, row)  # whatever the compare run itself made on the mock: free
         assert before == Decimal("0.40")  # the billed failure ($0.10) and the queued job's estimate ($0.30)
         await s.rollback()
+
+
+async def test_takes_still_rendering_when_a_run_fails_settle_into_their_steps(client, in_memory_queue):
+    """A run fails on one step while others render; when those finish, their steps say so instead of "running",
+    including runs left that way before (the reaper wakes them)."""
+    from datetime import UTC, datetime
+
+    from studio.config import get_settings
+    from studio.db.models import PipelineRun, PipelineStep, RunStatus, StepKind, StepStatus
+    from studio.domain.enums import AssetKind, AssetSource, AssetStatus, GenStatus
+    from studio.worker.tasks.maintenance import reap
+
+    user = get_settings().owner_user_id
+    async with session_scope() as s:
+        run = PipelineRun(user_id=user, recipe="sequence", title="halfway", status=RunStatus.failed,
+                          error="Shot 2: moderation", input={"model_id": "kling-3.0", "shots": [{"prompt": "a"}]})
+        s.add(run)
+        await s.flush()
+        gens, steps = [], []
+        for i, status in enumerate([GenStatus.in_progress, GenStatus.in_progress]):
+            g = Generation(user_id=user, model_id="kling-3.0", mode="t2v", output_type="video", status=status,
+                           request={}, group_id=run.id)
+            s.add(g)
+            await s.flush()
+            st = PipelineStep(run_id=run.id, key=f"shot[{i + 1:02d}]", kind=StepKind.generate, input={},
+                              input_hash="x", status=StepStatus.running, generation_id=g.id)
+            s.add(st)
+            gens.append(g)
+            steps.append(st)
+        await s.commit()
+        run_id, ids = run.id, [g.id for g in gens]
+
+    async def finish(gen_id, status, error=None):
+        async with session_scope() as s:
+            g = await s.get(Generation, gen_id)
+            g.status, g.error_message = status, error
+            if status == GenStatus.succeeded:
+                s.add(Asset(user_id=user, kind=AssetKind.video, status=AssetStatus.ready, source=AssetSource.generation,
+                            mime="video/mp4", storage_key=f"test/{gen_id}.mp4", generation_id=gen_id, output_index=0,
+                            duration_ms=5000))
+            await s.commit()
+
+    await finish(ids[0], GenStatus.succeeded)
+    await worker.tasks["pipeline.advance"].func(run_id=str(run_id))  # the wake-up a finished take sends
+    out = await get(client, str(run_id))
+    assert out["status"] == "failed" and out["error"] == "Shot 2: moderation"  # still failed
+    assert [st["status"] for st in out["steps"]] == ["succeeded", "running"]
+    assert out["steps"][0]["output"]["duration_ms"] == 5000
+
+    # a wake-up that never came: the reaper notices the finished take
+    await finish(ids[1], GenStatus.failed, "the provider timed out")
+    counts = await reap(datetime.now(UTC))
+    assert counts["runs"] >= 1
+    await drain(in_memory_queue)
+    out = await get(client, str(run_id))
+    assert [(st["status"], st["error"]) for st in out["steps"]] == [
+        ("succeeded", None), ("failed", "the provider timed out")]
+    assert (await reap(datetime.now(UTC)))["runs"] == 0  # nothing left to settle

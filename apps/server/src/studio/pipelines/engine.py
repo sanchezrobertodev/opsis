@@ -165,9 +165,25 @@ def _apply_spec(step: PipelineStep, spec: StepSpec, sort: int) -> None:
     step.input_hash = spec.digest()
 
 
+async def _settle_after_end(session: AsyncSession, run: PipelineRun) -> None:
+    """A run that failed while other takes were still rendering: they keep going (they're paid for, and a retry
+    reuses them), so fold each one into its step when it finishes instead of leaving the step "running"."""
+    rows = (await session.execute(select(PipelineStep).where(
+        PipelineStep.run_id == run.id, PipelineStep.kind == StepKind.generate,
+        PipelineStep.status == StepStatus.running, PipelineStep.generation_id.is_not(None))
+        .with_for_update())).scalars().all()
+    changed = False
+    for st in rows:
+        await _sync_generation(session, st)
+        changed |= st.status != StepStatus.running
+    if changed:
+        await emit_run(session, run)
+
+
 async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> None:
     """Bring a locked run up to date and start ready steps. Caller commits and then applies `fx`."""
     if run.status in RUN_DONE:
+        await _settle_after_end(session, run)
         return
     recipe = get_recipe(run.recipe)
     if recipe is None:
