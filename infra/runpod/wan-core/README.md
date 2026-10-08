@@ -11,7 +11,7 @@ reference clip, on the Wan 2.2 experts). The studio reaches it through the
 
 | File | Purpose |
 |---|---|
-| `Dockerfile` | `runpod/worker-comfyui:5.10.0-base` (ComfyUI 0.34.0, CUDA 12.8, torch 2.11) plus the files below. No custom nodes: every node the workflows use is built into ComfyUI 0.34. |
+| `Dockerfile` | `runpod/worker-comfyui:5.10.0-base` (ComfyUI 0.34.0) with torch 2.11 reinstalled for CUDA 13 (cu130, from 0.3.0), plus the files below. No custom nodes: every node the workflows use is built into ComfyUI 0.34. |
 | `handler.py` | Replaces worker-comfyui's handler. Takes `{"workflow", "inputs": [{name, url or data}], "uploads": [{url, file_url}]}`, returns `{"outputs": [{node, filename, kind, mime, data or url}], "gpu", "seconds"}`. Also `{"action": "check"}` and `{"action": "fetch_models"}`. |
 | `fetch_models.py`, `models.yaml` | The 19 model files (172 GB, exact sizes) and an idempotent downloader for the network volume. |
 | `extra_model_paths.yaml` | Points ComfyUI at `/runpod-volume/models/<folder>` (upstream's file lacks `diffusion_models` and `text_encoders`). |
@@ -32,9 +32,9 @@ reference clip, on the Wan 2.2 experts). The studio reaches it through the
 
 | Resource | Id | Notes |
 |---|---|---|
-| Image | `sanchezrobertodev/wan-core:0.2.0` | Docker Hub, public; 0.2.0 (2026-10-08) puts big results in upload slots, 0.1.0 still there |
+| Image | `sanchezrobertodev/wan-core:0.3.0` | Docker Hub, public; 0.3.0 (2026-10-08) runs torch on CUDA 13, 0.2.0 puts big results in upload slots; older tags still there |
 | Network volume | `w5wwmiagkn` (`wan-core-models`) | 180 GB STANDARD, US-NE-1; the first 15 files fetched 2026-10-06 (14 min on a CPU pod), the VACE, Animate-2 and Uni3C groups 2026-10-08 |
-| Template | `2gfqvv1ajl` (`wan-core-0.2.0`) | serverless, 30 GB container disk; `hgugk70qn7` (`wan-core-0.1.0`) is the previous one |
+| Template | `1nphescjl4` (`wan-core-0.3.0`) | serverless, 30 GB container disk; `2gfqvv1ajl` (0.2.0) and `hgugk70qn7` (0.1.0) are the previous ones |
 | Endpoint | `ovktgiubxwld1j` (`wan-core`) | pool BLACKWELL_96 (ADA_80_PRO dropped 2026-10-08), workers 0 to 2, idle 60 s, timeout 3600 s |
 
 First live take through the studio: Wan 2.2 14B Fast, text-to-video, 480p, 3 s. It took 92.7 s on an RTX PRO 6000
@@ -59,16 +59,26 @@ shift), and the pinned spot changed 3.1-3.2 / 255 between its first and last fra
 Packing the pin with a disc of still tracks made it worse: Wan-Move drew the patch on as a visible ring (9.4 / 255).
 Asking for a locked-off camera in the prompt changed nothing measurable here, so neither change shipped.
 
-Known: the worker logs "You need pytorch with cu130 or higher to use optimized CUDA operations". The base
-image's torch is cu128, so ComfyUI's comfy-kitchen CUDA kernels stay off. A cu130 build may run faster on
-Blackwell hosts, which report CUDA 13.2.
+CUDA 13 (0.3.0, AMS-12, 2026-10-08): the base image's torch is cu128, and ComfyUI only turns on comfy-kitchen's CUDA
+kernels (fused rope/norm, int8 and quantized-weight ops) with a cu130 torch, so 0.3.0 reinstalls the same torch 2.11 for
+CUDA 13 and the endpoint asks for hosts with CUDA 13 drivers (`minCudaVersion` 13.0; the PRO 6000 hosts report 13.2).
+Same takes and seeds on an RTX PRO 6000, one after another on one worker (cost includes the 60 s idle tail):
+
+| Take | 0.2.0 (cu128) | 0.3.0 (cu130) |
+|---|---|---|
+| Wan 2.2 14B Fast t2v, 480p 3 s, cold | 106.9 s, $0.162 | 81.1 s, $0.137 |
+| Wan Animate-2, 480p, after it (its model loads cold) | 114.6 s, $0.169 | 65.7 s, $0.122 |
+| Wan 2.2 14B Fast t2v, warm, new seed | - | 10.3 s, $0.068 |
+
+The same seed twice is served from ComfyUI's cache (1.2 s), so warm runs need a new seed. Pictures from the same seeds
+look the same (small shifts from the different kernels). Cold times include reading weights from the volume, which varies.
 
 ### VACE, Animate-2 and Uni3C (2026-10-08, AMS-11)
 
 The three workflows use only nodes built into ComfyUI 0.34 (`WanVaceToVideo`, `WanAnimate2ToVideo` + `WanAnimate2Cache`,
 `ModelPatchLoader` + `WanUni3CControlnetApply`), so the image didn't change: the graphs travel with each request and
-`model_patches/` was already mapped. The image's own `models.yaml` predates them, so its `check` action doesn't list
-the new files until the next rebuild. Live takes through the studio (480p, cold worker each time, RTX PRO 6000; cost includes the 60 s idle tail):
+`model_patches/` was already mapped. Images before 0.3.0 carry an older `models.yaml`, so their `check` action doesn't list
+the new files. Live takes through the studio (480p, cold worker each time, RTX PRO 6000; cost includes the 60 s idle tail):
 
 | Workflow | Input | Wall time | Cost | Result |
 |---|---|---|---|---|
@@ -105,19 +115,19 @@ return inline.
 Checked 2026-10-08: a Wan 2.2 14B Fast take at 720p, 5 s through the studio on 0.2.0 (H100, 192 s from a cold
 worker, $0.336) came back inline as it should at 1.9 MB; the same file put through the handler's upload code into a
 real slot was ingested byte for byte from its link. Wan clips are small (0.3-1.9 MB for 3-5 s), so uploads are for
-longer or higher-quality outputs. Slots took uploads 1 and 15 minutes after they were made; fal doesn't document how
-long they last, which is why a failed upload falls back inline.
+longer or higher-quality outputs. Slots took uploads 1, 15, 40 and 70 minutes after they were made; fal doesn't document
+how long they last, which is why a failed upload falls back inline.
 
 ## Build and push
 
 ```bash
 cd infra/runpod/wan-core
-docker build --platform linux/amd64 -t <dockerhub-user>/wan-core:0.2.0 .
-docker push <dockerhub-user>/wan-core:0.2.0
+docker build --platform linux/amd64 -t <dockerhub-user>/wan-core:0.3.0 .
+docker push <dockerhub-user>/wan-core:0.3.0
 ```
 
 On Docker Hub, the 15 GB of base layers are mounted from `runpod/worker-comfyui`, so the push uploads only
-the few KB this image adds.
+what this image adds (the CUDA 13 torch layer, a few GB, from 0.3.0).
 
 ## Test locally (free, uses your GPU)
 
