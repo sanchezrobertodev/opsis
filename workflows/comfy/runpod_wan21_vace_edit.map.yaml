@@ -3,8 +3,8 @@
 # Source: ComfyUI's official template video_wan_vace_inpainting (comfyui_workflow_templates 0.11.48): CausVid LoRA at
 # 0.3, 6 steps, cfg 1, uni_pc, shift 5; the mask grows 20 px and the masked area is blanked in the control video, and
 # the reference picture's latent frame is trimmed off before decoding. The template's own SAM 3 step is left out: the
-# studio sends the tracked matte (white = change). Up to 81 frames are edited, at the clip's frame rate (the route's
-# transform sizes width/height/length from the clip). Checked against ComfyUI 0.34 /prompt.
+# studio sends the tracked matte (white = change). The route re-times the clip and matte to 16 fps (`media_fps`), so up
+# to 81 frames cover 5 s, and its transform sizes width/height/length from the clip; the output plays at 16 fps. Checked against ComfyUI 0.34 /prompt.
 description: Wan 2.1 VACE 14B, masked edit of a clip with an optional reference picture
 inputs:
   prompt: [{node: "6", input: text}]

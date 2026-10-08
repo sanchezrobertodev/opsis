@@ -72,7 +72,9 @@ the new files until the next rebuild. Live takes through the studio (480p, cold 
 | VACE via Object swap | Veo paper boat (4 s, 24 fps), SAM 3 matte | ~190 s | $0.190 | the boat became a yellow rubber toy; the rest untouched |
 
 So Uni3C is applied to the high-noise expert only (the camera path is set early; the low-noise expert leaked the
-guidance clip's picture), and VACE edits up to 81 frames (3.4 s at 24 fps); the composite runs the whole clip.
+guidance clip's picture). Clip inputs are re-timed to Wan's 16 fps before upload (the routes' `media_fps`), so the 81
+frames cover up to 5 s of any clip; those slots take clips up to 5 s. (The takes above ran before that change, when a
+24 fps clip's first 81 frames, 3.4 s, were used.)
 
 The new groups were fetched with the 0.1.0 image on a CPU pod (4 files, 53.6 GB at 8-11 MB/s per file, about 55 min,
 $0.15), the manifest passed in an env var:

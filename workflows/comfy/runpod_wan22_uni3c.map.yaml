@@ -4,7 +4,8 @@
 # WanUni3CControlnetApply (ModelPatchLoader + Kijai's Wan21_Uni3C_controlnet_fp16), applied after the shift to the
 # high-noise expert only: the camera path is set in the early steps, and on the low-noise expert the guidance clip's own
 # picture leaked into the detail (seen live 2026-10-08). The reference clip is the guidance ("render") video, scaled
-# and center-cropped to the output size, its first frames used 1:1. Uni3C was trained on Wan 2.1 14B (same width as the 2.2 experts). Checked against ComfyUI 0.34 /prompt.
+# and center-cropped to the output size; the route re-times it to 16 fps (`media_fps`), the output's rate, so its
+# frames line up with the output's in time (a 5 s output follows the first 5 s of the reference's camera). Uni3C was trained on Wan 2.1 14B (same width as the 2.2 experts). Checked against ComfyUI 0.34 /prompt.
 description: Wan 2.2 14B image-to-video copying a reference clip's camera move (Uni3C)
 inputs:
   prompt: [{node: "9", input: text}]

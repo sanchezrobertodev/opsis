@@ -283,6 +283,9 @@ class Route(_Strict):
     modes: dict[str, RouteMode]
     map: ParamMap = ParamMap()
     transform: str | None = None  # dotted path to a payload hook for odd shapes
+    # inputs re-timed to this frame rate before sending, keeping their duration (role -> fps): a model that takes
+    # a fixed number of frames then covers the whole clip, not its first second or two (wan-core: Wan runs at 16)
+    media_fps: dict[str, float] = {}
     constraints: dict[str, dict[str, Any]] = {}  # param -> {options|min|max}
     unsupported_params: list[str] = []
     pricing: Pricing

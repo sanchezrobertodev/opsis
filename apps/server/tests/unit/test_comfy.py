@@ -333,12 +333,55 @@ def test_clip_driven_wan_core_workflows_keep_the_clips_shape_and_length():
 
     from studio.providers.transforms.comfy import wan_clip_size
 
+    route = N(media_fps={"input_video": 16, "driving_video": 16})  # the routes re-time clips to Wan's 16 fps
+
     def size(quality, *, w, h, ms, fps, role="input_video"):
         req = N(params={"quality": quality}, media=[N(role=role, width=w, height=h, duration_ms=ms, fps=fps)])
-        out = wan_clip_size(spec=None, route=None, req=req, payload={})
+        out = wan_clip_size(spec=None, route=route, req=req, payload={})
         return out["width"], out["height"], out["length"]
 
-    # a portrait 1080x1920 clip stays portrait at 480p's pixel budget, sides a multiple of 16
-    assert size("480p", w=1080, h=1920, ms=3000, fps=24) == (464, 832, 69)  # 72 frames -> 4k + 1
-    assert size("720p", w=1920, h=1080, ms=10_000, fps=30, role="driving_video") == (1280, 720, 81)  # capped at 81
+    # a portrait 1080x1920 clip stays portrait at 480p's pixel budget, sides a multiple of 16; 3 s at 16 fps
+    assert size("480p", w=1080, h=1920, ms=3000, fps=24) == (464, 832, 49)
+    # a 5 s 30 fps clip is all covered: re-timed to 16 fps it's 81 frames, not its first 2.7 s
+    assert size("720p", w=1920, h=1080, ms=5000, fps=30, role="driving_video") == (1280, 720, 81)
     assert size("480p", w=640, h=480, ms=200, fps=16)[2] == 5  # at least a few frames
+
+
+async def test_wan_core_re_times_clips_the_route_names(monkeypatch, tmp_path):
+    """Clips named in `media_fps` are re-encoded at that rate (same duration) and hosted afresh, not from the
+    per-asset upload cache that holds the original; other inputs are staged as usual."""
+    from types import SimpleNamespace as N
+
+    from studio.config import get_settings
+    from studio.media.ffmpeg import ffmpeg, probe
+    from studio.providers import factory
+    from studio.providers.base import ResolvedMedia
+    from studio.providers.runpod_comfy import RunPodComfyAdapter
+
+    clip = tmp_path / "clip.mp4"  # 2 s at 30 fps
+    await ffmpeg("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=2", "-pix_fmt", "yuv420p", str(clip))
+    uploaded = []
+
+    class Fal:
+        class client:
+            @staticmethod
+            async def upload_file(path):
+                info = await probe(path)
+                uploaded.append((path.name, round(info.fps or 0), info.duration_ms))
+                return "https://fal.media/retimed.mp4"
+
+    monkeypatch.setattr(get_settings(), "fal_key", "k")
+    monkeypatch.setattr(factory, "get_adapter", lambda key: Fal)
+    adapter = RunPodComfyAdapter()
+
+    async def original(route, m):
+        return "https://fal.media/original.png"
+
+    monkeypatch.setattr(adapter, "_public_url", original)
+    route = N(media_fps={"video_references": 16})
+    staged = await adapter.stage_inputs(route, [
+        ResolvedMedia(role="video_references", asset_id="a1", path=clip, mime="video/mp4", kind="video"),
+        ResolvedMedia(role="start_image", asset_id="a2", path=clip, mime="image/png", kind="image")])
+    assert staged["video_references"] == ["https://fal.media/retimed.mp4#name=a1-16fps.mp4"]
+    assert staged["start_image"][0].startswith("https://fal.media/original.png")
+    assert uploaded == [("a1-16fps.mp4", 16, 2000)]

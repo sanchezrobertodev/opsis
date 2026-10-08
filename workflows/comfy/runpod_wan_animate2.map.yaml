@@ -2,7 +2,8 @@
 # Runs on the wan-core RunPod endpoint (infra/runpod/wan-core); its models.yaml lists the model files.
 # Source: ComfyUI's official template video_wan_animate2_distilled (comfyui_workflow_templates 0.11.48), one segment:
 # pose cache on the GPU (int8), 10 steps, lcm, cfg 1, shift 5, CLIP vision of the character and of the clip's first
-# frame. Up to 81 frames, at the clip's frame rate (the route's transform sizes width/height/length from the clip).
+# frame. The route re-times the clip to 16 fps (`media_fps`), so up to 81 frames cover 5 s; its transform sizes
+# width/height/length from the clip.
 # Animate-2 has no replace mode: the character moves in the picture's own setting. Checked against ComfyUI 0.34 /prompt.
 description: Wan Animate-2 (distilled), a character performs a clip's movement
 inputs:

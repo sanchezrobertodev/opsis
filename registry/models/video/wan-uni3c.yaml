@@ -29,7 +29,7 @@ modes:
     ops: [i2v]
     medias:
       - {role: start_image, kinds: [image], label: Start frame, required: true}
-      - {role: video_references, kinds: [video], label: Camera move to copy, required: true, max_duration_s: 10}
+      - {role: video_references, kinds: [video], label: Camera move to copy, required: true, max_duration_s: 5}
 
 routes:
   - id: wan-uni3c@wan_core
@@ -56,6 +56,8 @@ routes:
     eta: "((50 + 11 * duration) if quality == '480p' else (70 + 26 * duration)) + 150"
     timeout_s: 3600
     output: {path: output.outputs, kind: video}
+    # Wan works at 16 fps: clips are re-timed to it, so its 81 frames cover up to 5 s of them
+    media_fps: {video_references: 16}
 
 examples:
   - name: camera_copy_smoke

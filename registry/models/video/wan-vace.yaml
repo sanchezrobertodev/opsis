@@ -5,7 +5,7 @@ family: wan
 vendor: alibaba
 description: >-
   Wan 2.1 VACE 14B on your own RunPod endpoint: changes what's under a mask in a clip (a tracked object) to match the
-  prompt and an optional reference picture, and keeps the rest. Edits up to 81 frames at the clip's frame rate.
+  prompt and an optional reference picture, and keeps the rest. Clips up to 5 s, rendered at 16 fps.
 output_type: video
 status: active
 license_tier: open_permissive   # Apache 2.0 (Wan 2.1 VACE, CausVid)
@@ -24,7 +24,7 @@ modes:
     label: Change the masked part
     ops: [object_replace]
     medias:
-      - {role: input_video, kinds: [video], label: Clip, required: true, max_duration_s: 10}
+      - {role: input_video, kinds: [video], label: Clip, required: true, max_duration_s: 5}
       - {role: mask, kinds: [mask_video], label: Mask (white = change), required: true}
       - {role: image_references, kinds: [image], label: Looks like (optional), max: 1}
 
@@ -33,7 +33,7 @@ routes:
     provider: runpod_wan_core
     modes:
       masked_edit: {endpoint: runpod_wan21_vace_edit}
-    # width/height from the clip's aspect at the quality's pixel budget; up to 81 of its frames
+    # width/height from the clip's aspect at the quality's pixel budget; length from its duration at 16 fps
     transform: studio.providers.transforms.comfy:wan_clip_size
     map:
       params:
@@ -45,13 +45,15 @@ routes:
     # the 60 s idle tail and ~200 s to load the 35 GB model on a cold worker: a ceiling, corrected to RunPod's bill.
     pricing:
       basis: per_gpu_second
-      quantity: "(90 if quality == '480p' else 240) * min(input_video_frames, 81) / 81 + 60 + 200"
+      quantity: "(90 if quality == '480p' else 240) * min(input_video_seconds * 16 + 1, 81) / 81 + 60 + 200"
       rates: [{usd: 0.000969}]
       verified: 2026-10-08
       source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); run time estimated, not yet benchmarked
-    eta: "(90 if quality == '480p' else 240) * min(input_video_frames, 81) / 81 + 200"
+    eta: "(90 if quality == '480p' else 240) * min(input_video_seconds * 16 + 1, 81) / 81 + 200"
     timeout_s: 3600
     output: {path: output.outputs, kind: video}
+    # Wan works at 16 fps: clips are re-timed to it, so its 81 frames cover up to 5 s of them
+    media_fps: {input_video: 16, mask: 16}
 
 examples:
   - name: masked_edit_smoke

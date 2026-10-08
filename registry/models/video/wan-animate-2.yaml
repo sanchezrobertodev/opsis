@@ -5,7 +5,7 @@ family: wan
 vendor: alibaba
 description: >-
   Wan Animate-2 (distilled) on your own RunPod endpoint: the character in your picture performs a clip's movement,
-  body, hands and face, in the picture's own setting. Up to 81 frames at the clip's frame rate.
+  body, hands and face, in the picture's own setting. Clips up to 5 s, rendered at 16 fps.
 output_type: video
 status: active
 license_tier: open_permissive   # Apache 2.0
@@ -25,14 +25,14 @@ modes:
     ops: [motion_transfer]
     medias:
       - {role: character_image, kinds: [image], label: Character, required: true}
-      - {role: driving_video, kinds: [video], label: Movement to copy, required: true, max_duration_s: 10}
+      - {role: driving_video, kinds: [video], label: Movement to copy, required: true, max_duration_s: 5}
 
 routes:
   - id: wan-animate-2@wan_core
     provider: runpod_wan_core
     modes:
       move: {endpoint: runpod_wan_animate2}
-    # width/height from the clip's aspect at the quality's pixel budget; up to 81 of its frames
+    # width/height from the clip's aspect at the quality's pixel budget; length from its duration at 16 fps
     transform: studio.providers.transforms.comfy:wan_clip_size
     map:
       params:
@@ -51,6 +51,8 @@ routes:
     eta: "(90 if quality == '480p' else 240) + 120"
     timeout_s: 3600
     output: {path: output.outputs, kind: video}
+    # Wan works at 16 fps: clips are re-timed to it, so its 81 frames cover up to 5 s of them
+    media_fps: {driving_video: 16}
 
 examples:
   - name: move_smoke
