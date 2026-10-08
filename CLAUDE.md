@@ -196,6 +196,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   afresh, not from the per-asset upload cache), so 81 frames cover 5 s of any clip; clip-driven ones size the output
   from the clip (`transforms/comfy.py:wan_clip_size`). New weights go in `models.yaml` with exact sizes; the
   graphs travel with each request, so adding a workflow needs no image rebuild.
+  Results over 5 MB go to a fal storage upload slot the adapter makes per output at submit (`uploads`, kept a day)
+  and are ingested from its link; smaller ones, and any whose upload fails (up to 20 MB), come back inline as base64.
 
 - `elevenlabs`: Eleven v4 TTS (with word timings), sound effects and music (`ELEVENLABS_API_KEY`). The API is
   synchronous, so submit parks the audio in a ResultStore (like Gemini images). TTS word timings land on the asset

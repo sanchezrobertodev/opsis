@@ -12,7 +12,7 @@ reference clip, on the Wan 2.2 experts). The studio reaches it through the
 | File | Purpose |
 |---|---|
 | `Dockerfile` | `runpod/worker-comfyui:5.10.0-base` (ComfyUI 0.34.0, CUDA 12.8, torch 2.11) plus the files below. No custom nodes: every node the workflows use is built into ComfyUI 0.34. |
-| `handler.py` | Replaces worker-comfyui's handler. Takes `{"workflow", "inputs": [{name, url or data}]}`, returns `{"outputs": [{node, filename, kind, mime, data}], "gpu", "seconds"}`. Also `{"action": "check"}` and `{"action": "fetch_models"}`. |
+| `handler.py` | Replaces worker-comfyui's handler. Takes `{"workflow", "inputs": [{name, url or data}], "uploads": [{url, file_url}]}`, returns `{"outputs": [{node, filename, kind, mime, data or url}], "gpu", "seconds"}`. Also `{"action": "check"}` and `{"action": "fetch_models"}`. |
 | `fetch_models.py`, `models.yaml` | The 19 model files (172 GB, exact sizes) and an idempotent downloader for the network volume. |
 | `extra_model_paths.yaml` | Points ComfyUI at `/runpod-volume/models/<folder>` (upstream's file lacks `diffusion_models` and `text_encoders`). |
 
@@ -31,9 +31,9 @@ reference clip, on the Wan 2.2 experts). The studio reaches it through the
 
 | Resource | Id | Notes |
 |---|---|---|
-| Image | `sanchezrobertodev/wan-core:0.1.0` | Docker Hub, public |
+| Image | `sanchezrobertodev/wan-core:0.2.0` | Docker Hub, public; 0.2.0 (2026-10-08) puts big results in upload slots, 0.1.0 still there |
 | Network volume | `w5wwmiagkn` (`wan-core-models`) | 180 GB STANDARD, US-NE-1; the first 15 files fetched 2026-10-06 (14 min on a CPU pod), the VACE, Animate-2 and Uni3C groups 2026-10-08 |
-| Template | `hgugk70qn7` (`wan-core-0.1.0`) | serverless, 30 GB container disk |
+| Template | `2gfqvv1ajl` (`wan-core-0.2.0`) | serverless, 30 GB container disk; `hgugk70qn7` (`wan-core-0.1.0`) is the previous one |
 | Endpoint | `ovktgiubxwld1j` (`wan-core`) | pools BLACKWELL_96 + ADA_80_PRO, workers 0 to 2, idle 60 s, timeout 3600 s |
 
 First live take through the studio: Wan 2.2 14B Fast, text-to-video, 480p, 3 s. It took 92.7 s on an RTX PRO 6000
@@ -84,12 +84,29 @@ echo "$MANIFEST_B64" | base64 -d > /tmp/new.yaml
 WAN_CORE_MANIFEST=/tmp/new.yaml python -u /fetch_models.py --dest /runpod-volume/models
 ```
 
+## Big results (0.2.0)
+
+RunPod refuses very large job results, so the handler returns each output inline as base64 only while it is small.
+With each job the studio sends one fal storage upload slot per output the workflow saves (`uploads`: a one-file
+PUT link and the address it will be served at, kept a day; free to make, needs `FAL_KEY`). An output over
+`WAN_CORE_INLINE_MB` (5) is put there and comes back as `url`, and the adapter ingests it from that link at once.
+If an upload fails, say because the link lapsed while the job queued, the output comes back inline if the whole
+result is still under `WAN_CORE_MAX_OUTPUT_MB` (20); otherwise the job fails with a readable message. Without
+`FAL_KEY` no slots are sent and the 20 MB inline limit applies. Images before 0.2.0 ignore `uploads` and always
+return inline.
+
+Checked 2026-10-08: a Wan 2.2 14B Fast take at 720p, 5 s through the studio on 0.2.0 (H100, 192 s from a cold
+worker, $0.336) came back inline as it should at 1.9 MB; the same file put through the handler's upload code into a
+real slot was ingested byte for byte from its link. Wan clips are small (0.3-1.9 MB for 3-5 s), so uploads are for
+longer or higher-quality outputs. Slots took uploads 1 and 15 minutes after they were made; fal doesn't document how
+long they last, which is why a failed upload falls back inline.
+
 ## Build and push
 
 ```bash
 cd infra/runpod/wan-core
-docker build --platform linux/amd64 -t <dockerhub-user>/wan-core:0.1.0 .
-docker push <dockerhub-user>/wan-core:0.1.0
+docker build --platform linux/amd64 -t <dockerhub-user>/wan-core:0.2.0 .
+docker push <dockerhub-user>/wan-core:0.2.0
 ```
 
 On Docker Hub, the 15 GB of base layers are mounted from `runpod/worker-comfyui`, so the push uploads only

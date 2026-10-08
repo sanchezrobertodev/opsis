@@ -4,11 +4,13 @@ Routes name a workflow template in workflows/comfy, the same kind the local engi
 `endpoint_setting` names the Settings field holding the RunPod endpoint id (e.g. RUNPOD_WAN_CORE_ENDPOINT).
 
 Job contract (infra/runpod/wan-core/handler.py):
-- in:  {"workflow": <API graph>, "inputs": [{"name", "url"} | {"name", "data"}]}. Media values in the payload
-  are web links (fal storage) or data URIs from staging; submit swaps each for a file name and lists it in
-  `inputs`, so the worker downloads it into ComfyUI's input folder.
-- out: {"outputs": [{"node", "filename", "kind", "mime", "data": base64}], "gpu", "seconds"}. RunPod keeps the
-  result for 30 minutes, so `download` re-reads it instead of the database holding the bytes.
+- in:  {"workflow": <API graph>, "inputs": [{"name", "url"} | {"name", "data"}], "uploads": [{"url", "file_url"}]}.
+  Media values in the payload are web links (fal storage) or data URIs from staging; submit swaps each for a file name
+  and lists it in `inputs`, so the worker downloads it into ComfyUI's input folder. `uploads` are one-file fal storage
+  slots (one per output the template saves, kept a day) for results too big to return inline.
+- out: {"outputs": [{"node", "filename", "kind", "mime", "data": base64 | "url": hosted}], "gpu", "seconds"}. RunPod
+  keeps the result for 30 minutes, so `download` re-reads it instead of the database holding the bytes; a hosted
+  output is fetched from its link.
 Cost: the worker's run time (`executionTime`) plus the provider's `idle_seconds` (a worker stays billed that long after
 its job), priced at `gpu_usd_per_hour` for the GPU it ran on. Still an estimate (back-to-back jobs share an idle tail);
 the hourly reconcile corrects it to RunPod's bill.
@@ -19,6 +21,8 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
+import logging
 import mimetypes
 import secrets
 import tempfile
@@ -41,11 +45,16 @@ from studio.providers.base import (
     SubmitResult,
 )
 from studio.providers.comfy_workflows import load_template
-from studio.providers.common import http_error, looks_like_moderation
+from studio.providers.common import best_mime, download_url, http_error, looks_like_moderation
 from studio.providers.runpod import RunPodAdapter
 from studio.registry.schema import ProviderSpec, Route
 
+log = logging.getLogger(__name__)
+
 NAME_MARK = "#name="  # staged links carry the file name the workflow should see; stripped before sending
+FAL_UPLOAD_INITIATE = "https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3"
+UPLOAD_KEEP_S = 86_400  # hosted results are ingested at once; a day leaves room for ingest retries
+UPLOAD_MIME = {"video": "video/mp4", "image": "image/png", "audio": "audio/wav"}
 
 
 class RunPodComfyAdapter(RunPodAdapter):
@@ -125,9 +134,13 @@ class RunPodComfyAdapter(RunPodAdapter):
             values["seed"] = secrets.randbelow(2**32)  # a fresh take each time unless the user pinned a seed
         graph, warnings = template.render(values)
         runpod_endpoint = self._endpoint(route)
+        uploads = await _upload_slots([o.kind for o in template.map.outputs], client_ref)
+        job_input: dict[str, Any] = {"workflow": graph, "inputs": inputs}
+        if uploads:
+            job_input["uploads"] = uploads
         try:
             async with self._client() as c:
-                r = await c.post(f"/{runpod_endpoint}/run", json={"input": {"workflow": graph, "inputs": inputs}})
+                r = await c.post(f"/{runpod_endpoint}/run", json={"input": job_input})
         except httpx.TimeoutException as exc:
             raise AmbiguousSubmitError(f"RunPod submit timed out: {exc!r}") from exc
         except httpx.HTTPError as exc:
@@ -139,7 +152,7 @@ class RunPodComfyAdapter(RunPodAdapter):
             raise AmbiguousSubmitError(f"RunPod accepted the request but returned no job id: {r.text[:300]}")
         return SubmitResult(job_id=f"{runpod_endpoint}::{job}",
                             raw={"template": endpoint, "warnings": warnings, "seed": values.get("seed"),
-                                 "inputs": [i["name"] for i in inputs]})
+                                 "inputs": [i["name"] for i in inputs], "upload_slots": len(uploads)})
 
     async def _status(self, job_id: str) -> httpx.Response:
         endpoint, _, job = job_id.partition("::")
@@ -183,13 +196,18 @@ class RunPodComfyAdapter(RunPodAdapter):
                               error_message="The worker finished without returning a file")
         outputs = [
             ProviderOutput(index=i, kind=o.get("kind") or "video", ref=f"{job_id}#{i}", mime=o.get("mime"),
-                           meta={"filename": o.get("filename"), "bytes": o.get("bytes"), "node": o.get("node")})
+                           url=o["url"] if isinstance(o.get("url"), str) else None,
+                           meta={"filename": o.get("filename"), "bytes": o.get("bytes"), "node": o.get("node"),
+                                 "hosted": isinstance(o.get("url"), str)})
             for i, o in enumerate(produced)
         ]
         return PollResult(status="succeeded", progress=1.0, outputs=outputs, usage=usage,
                           raw={"gpu": output.get("gpu"), "seconds": output.get("seconds")})
 
     async def download(self, route: Route, output: ProviderOutput, dest: Path, workdir: Path) -> str:
+        if output.url:  # too big to return inline: the worker put it in the fal storage slot we gave it
+            content_type = await download_url(output.url, dest)
+            return best_mime(output.mime, content_type, kind=output.kind)
         job_id, _, index = (output.ref or "").rpartition("#")
         r = await self._status(job_id)
         if r.status_code == 404:
@@ -204,6 +222,34 @@ class RunPodComfyAdapter(RunPodAdapter):
             raise ProviderError(ErrorClass.ingest_error, f"the job result has no output {index}") from exc
         await anyio.Path(dest).write_bytes(data)
         return item.get("mime") or output.mime or "application/octet-stream"
+
+
+async def _upload_slots(kinds: list[str], client_ref: str) -> list[dict[str, str]]:
+    """One fal storage slot per output the template saves, for results too big to return inline. Free to make; without
+    FAL_KEY, or if fal won't make them, the worker returns results inline (up to its limit) as before."""
+    key = get_settings().fal_key
+    if not key:
+        return []
+    slots = []
+    # fal's storage client sends the lifecycle under both names (storage reads one, the CDN the other); so do we
+    lifecycle = json.dumps({"expiration_duration_seconds": UPLOAD_KEEP_S})
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            for i, kind in enumerate(kinds):
+                mime = UPLOAD_MIME.get(kind, "application/octet-stream")
+                r = await c.post(FAL_UPLOAD_INITIATE, headers={
+                    "Authorization": f"Key {key}",
+                    "X-Fal-Object-Lifecycle": lifecycle,
+                    "X-Fal-Object-Lifecycle-Preference": lifecycle,
+                }, json={"file_name": f"wan-core-{client_ref[:8]}-{i}{mimetypes.guess_extension(mime) or ''}",
+                         "content_type": mime})
+                r.raise_for_status()
+                body = r.json()
+                slots.append({"url": body["upload_url"], "file_url": body["file_url"]})
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        log.warning("wan-core: no upload slots, results return inline: %r", exc)
+        return []
+    return slots
 
 
 def _to_file(value: Any, inputs: list[dict[str, str]]) -> Any:

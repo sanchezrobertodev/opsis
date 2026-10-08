@@ -448,6 +448,7 @@ def wan_core(runpod_key, tmp_path, monkeypatch):
                         endpoint_setting="runpod_wan_core_endpoint",
                         gpu_usd_per_hour={"RTX PRO 6000": 3.6, "H100": 7.2})
     monkeypatch.setattr(get_settings(), "runpod_wan_core_endpoint", "ep1")
+    monkeypatch.setattr(get_settings(), "fal_key", "")  # no upload slots unless a test asks for them
     monkeypatch.setattr(RunPodComfyAdapter, "_spec", lambda self, route: spec)
     return RunPodComfyAdapter(workflows_dir=tmp_path)
 
@@ -500,6 +501,50 @@ async def test_runpod_comfy_failures_still_report_gpu_time(wan_core, monkeypatch
     monkeypatch.setattr(get_settings(), "runpod_wan_core_endpoint", "")
     with pytest.raises(ProviderError, match="RUNPOD_WAN_CORE_ENDPOINT"):
         await wan_core.submit(route(), "t", {"prompt": "x"}, client_ref="c")
+
+
+@respx.mock
+async def test_runpod_comfy_gives_big_results_an_upload_slot_and_ingests_from_it(wan_core, tmp_path, monkeypatch):
+    monkeypatch.setattr(get_settings(), "fal_key", "fal-key")
+    initiate = respx.post(url__startswith="https://rest.fal.ai/storage/upload/initiate").respond(200, json={
+        "upload_url": "https://v3b.fal.media/files/up/slot0?signature=s", "file_url": "https://v3b.fal.media/files/up/o.mp4"})
+    submit = respx.post(f"{RP}/ep1/run").respond(200, json={"id": "j5", "status": "IN_QUEUE"})
+    res = await wan_core.submit(route(endpoint="t"), "t", {"prompt": "a fox"}, client_ref="abcdef123456")
+
+    # one slot per output the template saves, typed by its kind and kept a day
+    sent = json.loads(initiate.calls.last.request.content)
+    assert initiate.call_count == 1 and sent["content_type"] == "video/mp4" and sent["file_name"].endswith(".mp4")
+    for header in ("X-Fal-Object-Lifecycle", "X-Fal-Object-Lifecycle-Preference"):
+        assert json.loads(initiate.calls.last.request.headers[header]) == {"expiration_duration_seconds": 86_400}
+    body = json.loads(submit.calls.last.request.content)["input"]
+    assert body["uploads"] == [{"url": "https://v3b.fal.media/files/up/slot0?signature=s",
+                                "file_url": "https://v3b.fal.media/files/up/o.mp4"}]
+    assert res.raw["upload_slots"] == 1 and "signature" not in json.dumps(res.raw)  # the link isn't stored
+
+    respx.get(f"{RP}/ep1/status/j5").respond(200, json={"status": "COMPLETED", "executionTime": 90_000, "output": {
+        "gpu": "NVIDIA RTX PRO 6000", "outputs": [{"node": "3", "filename": "o.mp4", "kind": "video",
+                                                  "mime": "video/mp4", "bytes": 48_000_000,
+                                                  "url": "https://v3b.fal.media/files/up/o.mp4"}]}})
+    done = await wan_core.poll(route(), "ep1::j5")
+    out = done.outputs[0]
+    assert done.status == "succeeded" and out.url == "https://v3b.fal.media/files/up/o.mp4" and out.meta["hosted"]
+    respx.get("https://v3b.fal.media/files/up/o.mp4").respond(200, content=b"big-mp4",
+                                                               headers={"content-type": "video/mp4"})
+    dest = tmp_path / "o.mp4"
+    assert await wan_core.download(route(), out, dest, tmp_path) == "video/mp4" and dest.read_bytes() == b"big-mp4"
+
+
+@respx.mock
+async def test_runpod_comfy_submits_without_slots_when_fal_cant_make_them(wan_core, monkeypatch):
+    submit = respx.post(f"{RP}/ep1/run").respond(200, json={"id": "j6", "status": "IN_QUEUE"})
+    await wan_core.submit(route(endpoint="t"), "t", {"prompt": "x"}, client_ref="c1")  # no FAL_KEY: no slots
+    assert "uploads" not in json.loads(submit.calls.last.request.content)["input"]
+
+    monkeypatch.setattr(get_settings(), "fal_key", "fal-key")
+    respx.post(url__startswith="https://rest.fal.ai/storage/upload/initiate").respond(500, json={"detail": "down"})
+    res = await wan_core.submit(route(endpoint="t"), "t", {"prompt": "x"}, client_ref="c2")
+    assert res.job_id == "ep1::j6" and res.raw["upload_slots"] == 0
+    assert "uploads" not in json.loads(submit.calls.last.request.content)["input"]
 
 
 # ---------------------------------------------------------------- World Labs (Marble)

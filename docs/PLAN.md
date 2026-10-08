@@ -247,7 +247,7 @@ worker-comfyui 5.10.0 + our handler, a 118 GB model manifest for a network volum
 14B t2v/i2v (Lightning), Fun Camera and Wan-Move, routed by the `runpod_comfy` adapter; camera moves with a native
 Fun Camera value now set its camera control. Deployed 2026-10-06 (endpoint ovktgiubxwld1j). All four workflows ran live through the studio ($0.09
 each on an RTX PRO 6000). Wan-Move has a motion-path editor in the Create form (`type: paths` params: drag to draw,
-tap to pin). VACE (masked edit, the Object swap route), Uni3C (camera copied from a reference clip) and Animate-2 (motion transfer) followed on 2026-10-08 (AMS-11, AMS-32), each rendered live.
+tap to pin). VACE (masked edit, the Object swap route), Uni3C (camera copied from a reference clip) and Animate-2 (motion transfer) followed on 2026-10-08 (AMS-11, AMS-32), each rendered live. Results over 5 MB now go to a fal storage slot made per job instead of the job's base64 result (AMS-14; handler 0.2.0).
 P4 done (merged 2026-10-07, PR #2; mock-tested, nothing live yet): ElevenLabs TTS with word timings,
 SFX and music; Claude steps in the pipeline engine; the Faceless studio (4 themes, 12 styles with caption looks,
 channels, topic ideas, script approval and editing, narrated stills or animated clips, ducked music, burned-in
@@ -367,7 +367,8 @@ use offline (AMS-56, AMS-59). Still to come: the local gpu-worker (when asked), 
   no automatic resubmit of ambiguous submits.
 - **Output expiry:** ingest immediately; ingest retries are separate from generation retries.
 - **Local storage limits** (no public URLs, RunPod output size): InputStager plus fal storage as the URL host;
-  base64 RunPod outputs; add the R2 implementation if limits bite.
+  small RunPod outputs inline as base64, big wan-core ones put in a per-job fal upload slot; add the R2
+  implementation if limits bite.
 - **Windows async quirks:** SelectorEventLoop for the worker; threaded subprocess calls for ffmpeg.
 - **Policy limits** (Seedance blocks real faces in refs; Veo person-generation rules): per-model capability flags
   with fallbacks.
