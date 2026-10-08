@@ -385,6 +385,7 @@ class ProviderSpec(_Strict):
     # serverless GPU prices (USD/hour, matched by substring of the GPU name the worker reports).
     endpoint_setting: str | None = None
     gpu_usd_per_hour: dict[str, float] = {}
+    idle_seconds: float = 0  # a worker stays billed this long after its job (RunPod's idle timeout)
     # Providers that only take some inputs as web links (RunPod): those media kinds are hosted through the service
     # named by `hosting_setting` (FAL_KEY), so routes that need them are offered only when it's set.
     hosted_kinds: list[MediaKind] = []

@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from studio.db.base import Base, IdMixin, Money
@@ -29,7 +29,12 @@ class SpendLedger(IdMixin, Base):
     """Append-only money log: reservations at submit, then a charge or release when settled."""
 
     __tablename__ = "spend_ledger"
-    __table_args__ = (UniqueConstraint("generation_attempt_id", "entry_type"),)
+    __table_args__ = (
+        UniqueConstraint("generation_attempt_id", "entry_type"),
+        # a bill correction no take paid for (an idle RunPod worker) is booked once per provider hour
+        Index("uq_spend_ledger_idle_bucket", "provider", text("(basis->>'bucket')"), unique=True,
+              postgresql_where=text("entry_type = 'adjustment' AND generation_attempt_id IS NULL")),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
     entry_type: Mapped[LedgerEntry] = mapped_column(str_enum(LedgerEntry))

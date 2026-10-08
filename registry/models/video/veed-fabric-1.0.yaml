@@ -33,7 +33,7 @@ routes:
       media: {character_image: image_url, input_audio: audio_url}
     pricing:
       basis: per_output_second
-      quantity: input_audio_seconds
+      quantity: ceil(input_audio_seconds)  # billed in whole seconds (5.46 s billed 6, fal billing events 2026-10-08)
       rates:
         - {when: {resolution: "480p"}, usd: 0.08}
         - {when: {resolution: "720p"}, usd: 0.15}

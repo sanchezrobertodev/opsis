@@ -100,3 +100,17 @@ async def reap(now: datetime) -> dict[str, int]:
     if any(counts.values()):
         log.info("reaper: %s", counts)
     return counts
+
+
+@app.periodic(cron="23 * * * *")
+@app.task(name="budget.reconcile", queue=Q_MAINT, queueing_lock="budget.reconcile")
+async def budget_reconcile(timestamp: int) -> None:
+    """Every hour: read fal's and our RunPod endpoints' bills (free) and book what the estimates missed."""
+    from studio.budget.reconcile import reconcile
+
+    async with session_scope() as s:
+        results = await reconcile(s, days=3)
+    for r in results:
+        if r.booked_usd or r.status not in ("ok", "skipped"):
+            log.info("reconcile %s: %s, %d checked, booked %+.4f%s", r.provider, r.status, r.checked, r.booked_usd,
+                     f" ({r.detail})" if r.detail else "")

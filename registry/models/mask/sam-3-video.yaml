@@ -40,8 +40,8 @@ routes:
     transform: studio.providers.transforms.segment:sam_points
     pricing:
       basis: formula
-      formula: "0.005 * ceil(input_video_frames / 16)"
-      verified: 2026-10-06
+      formula: "0.005"  # one unit per request: a 5 s clip was billed $0.005 (fal billing events, 2026-10-08)
+      verified: 2026-10-08
       source: https://fal.ai/models/fal-ai/sam-3/video-rle
     eta: "20 + input_video_seconds * 2"
     # fal's schema still lists `video` and `boundingbox_frames_zip`; the live answer is `rle`, `boxes`, `metadata`

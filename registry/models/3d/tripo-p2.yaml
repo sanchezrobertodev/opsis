@@ -39,6 +39,7 @@ routes:
       basis: per_request
       rates:
         - {when: {texture: false}, usd: 1.00}
+        - {when: {texture: false, pbr: true}, usd: 1.10}  # PBR materials: 110 credits (fal billing events, 2026-10-08)
         - {when: {texture: true, texture_quality: [fast, standard]}, usd: 1.10}
         - {when: {texture: true, texture_quality: detailed}, usd: 1.20}
         - {when: {texture: true, texture_quality: extreme}, usd: 1.30}
@@ -54,4 +55,4 @@ examples:
     params: {texture: false}
     media: {input_image: "fixture:images/keyframe.png"}
     smoke: true
-    expect: {cost_usd_range: [1.0, 1.0]}
+    expect: {cost_usd_range: [1.1, 1.1]}  # PBR on by default

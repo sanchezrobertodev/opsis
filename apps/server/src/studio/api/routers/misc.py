@@ -11,8 +11,9 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select, text
+from sqlalchemy import exists, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from sse_starlette.sse import EventSourceResponse
 
 from studio.api.deps import current_user, get_session
@@ -22,6 +23,7 @@ from studio.api.schemas import (
     BudgetUpdate,
     HealthOut,
     LocalEngineOut,
+    ReconcileOut,
     SpendBreakdown,
     SpendBreakdownOut,
     SpendEntryOut,
@@ -32,6 +34,7 @@ from studio.api.sse import hub
 from studio.budget import guard
 from studio.budget.balances import balances as read_balances
 from studio.budget.features import LABELS, claude_name, feature_of
+from studio.budget.reconcile import reconcile as reconcile_bills
 from studio.config import get_settings
 from studio.db.models import (
     Generation,
@@ -43,7 +46,7 @@ from studio.db.models import (
     SpendLedger,
     User,
 )
-from studio.domain.enums import LedgerEntry
+from studio.domain.enums import SPENT, LedgerEntry
 from studio.providers.local_status import comfy_stats
 from studio.registry.loader import get_registry, get_registry_holder
 from studio.storage.local import get_storage
@@ -169,8 +172,10 @@ async def spend_history(
         ))
     month = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     totals = (await session.execute(
-        select(SpendLedger.provider, func.sum(SpendLedger.amount_usd), func.count())
-        .where(SpendLedger.user_id == user.id, SpendLedger.entry_type == LedgerEntry.charge,
+        # corrections add to the sum but aren't more charges
+        select(SpendLedger.provider, func.sum(SpendLedger.amount_usd),
+               func.count().filter(SpendLedger.entry_type == LedgerEntry.charge))
+        .where(SpendLedger.user_id == user.id, SpendLedger.entry_type.in_(SPENT),
                SpendLedger.created_at >= month)
         .group_by(SpendLedger.provider).order_by(func.sum(SpendLedger.amount_usd).desc())
     )).all()
@@ -183,6 +188,16 @@ async def provider_balances(refresh: bool = Query(False, description="Read again
                             user: User = Depends(current_user)) -> list[BalanceOut]:
     """What's left on each provider account with a key set (read from providers that report it; free)."""
     return [BalanceOut(**vars(b)) for b in await read_balances(refresh=refresh)]
+
+
+@router.post("/budget/reconcile", response_model=list[ReconcileOut], tags=["budget"])
+async def reconcile(days: int = Query(3, ge=1, le=30), session: AsyncSession = Depends(get_session),
+                    user: User = Depends(current_user)) -> list[ReconcileOut]:
+    """Read fal's and our RunPod endpoints' bills for the last `days` days (free) and book what estimates missed.
+    The worker also does this every hour."""
+    results = await reconcile_bills(session, days=days)
+    await session.commit()
+    return [ReconcileOut(**vars(r)) for r in results]
 
 
 def _since(period: str) -> datetime | None:
@@ -198,15 +213,20 @@ def _since(period: str) -> datetime | None:
 async def spend_breakdown(period: str = Query("month", pattern="^(today|month|all)$"),
                           session: AsyncSession = Depends(get_session),
                           user: User = Depends(current_user)) -> SpendBreakdownOut:
-    """Charges grouped by studio feature and by model, with how much of each is an estimate."""
+    """Charges grouped by studio feature and by model, with how much of each was checked against a provider's bill and
+    how much is still an estimate. Corrections from the bills (adjustments) count with what they correct."""
+    adj = aliased(SpendLedger)
+    checked = exists().where(adj.generation_attempt_id == SpendLedger.generation_attempt_id,
+                             adj.entry_type == LedgerEntry.adjustment)
     q = (select(SpendLedger.amount_usd, SpendLedger.estimated, SpendLedger.provider, SpendLedger.basis,
+                SpendLedger.entry_type, SpendLedger.route_id, checked.label("checked"),
                 Generation.model_id, Generation.mode, PipelineRun.recipe, Project.kind)
          .outerjoin(GenerationAttempt, GenerationAttempt.id == SpendLedger.generation_attempt_id)
          .outerjoin(Generation, Generation.id == GenerationAttempt.generation_id)
          .outerjoin(PipelineStep, PipelineStep.id == Generation.pipeline_step_id)
          .outerjoin(PipelineRun, PipelineRun.id == PipelineStep.run_id)
          .outerjoin(Project, Project.id == Generation.project_id)
-         .where(SpendLedger.user_id == user.id, SpendLedger.entry_type == LedgerEntry.charge))
+         .where(SpendLedger.user_id == user.id, SpendLedger.entry_type.in_(SPENT)))
     if (since := _since(period)) is not None:
         q = q.where(SpendLedger.created_at >= since)
     reg = get_registry()
@@ -214,33 +234,45 @@ async def spend_breakdown(period: str = Query("month", pattern="^(today|month|al
     models: dict[str, list[float]] = {}
     names: dict[str, str] = {}
 
-    def add(groups: dict[str, list[float]], key: str, usd: float, estimated: bool) -> None:
-        g = groups.setdefault(key, [0.0, 0, 0.0])
+    def add(groups: dict[str, list[float]], key: str, usd: float, count: int, estimated: float, ok: float) -> None:
+        g = groups.setdefault(key, [0.0, 0, 0.0, 0.0])
         g[0] += usd
-        g[1] += 1
-        g[2] += usd if estimated else 0.0
+        g[1] += count
+        g[2] += estimated
+        g[3] += ok
 
-    total = 0.0
-    for usd, estimated, provider, basis, model_id, mode, recipe, kind in (await session.execute(q)).all():
+    total = est_total = ok_total = 0.0
+    for usd, estimated, provider, basis, entry, route_id, was_checked, model_id, mode, recipe, kind in (
+            await session.execute(q)).all():
         usd = float(usd)
         total += usd
+        # a charge counts once; its correction adds to it. Checked: corrected from a bill (even by $0)
+        is_charge = entry == LedgerEntry.charge
+        ok = usd if (was_checked or not is_charge) else 0.0
+        est = usd if (is_charge and estimated and not was_checked) else 0.0
+        est_total, ok_total = est_total + est, ok_total + ok
         if model_id is None and provider == "anthropic":
             feature, model = "claude", str((basis or {}).get("model") or "claude")
             names.setdefault(model, claude_name(model))
+        elif model_id is None and not is_charge:
+            # billed time no take paid for (a worker idling on after its job)
+            feature, model = "other", route_id or "other"
+            names.setdefault(model, str((basis or {}).get("label") or model))
         else:
             spec = reg.model(model_id) if model_id else None
             feature = feature_of(recipe=recipe, project_kind=kind, spec=spec, mode_id=mode)
             model = model_id or "other"
             names.setdefault(model, spec.name if spec else model)
-        add(features, feature, usd, estimated)
-        add(models, model, usd, estimated)
+        add(features, feature, usd, int(is_charge), est, ok)
+        add(models, model, usd, int(is_charge), est, ok)
 
     def out(groups: dict[str, list[float]], label) -> list[SpendGroup]:
-        rows = [SpendGroup(key=k, label=label(k), usd=round(v[0], 6), count=int(v[1]), estimated_usd=round(v[2], 6))
-                for k, v in groups.items()]
+        rows = [SpendGroup(key=k, label=label(k), usd=round(v[0], 6), count=int(v[1]), estimated_usd=round(v[2], 6),
+                           checked_usd=round(v[3], 6)) for k, v in groups.items()]
         return sorted(rows, key=lambda g: -g.usd)
 
     return SpendBreakdownOut(period=period, total_usd=round(total, 6),  # type: ignore[arg-type]
+                             estimated_usd=round(est_total, 6), checked_usd=round(ok_total, 6),
                              features=out(features, lambda k: LABELS.get(k, k)),
                              models=out(models, lambda k: names.get(k, k)))
 

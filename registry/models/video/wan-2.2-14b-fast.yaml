@@ -46,11 +46,14 @@ routes:
         quality: {to: null}
         aspect_ratio: {to: null}
       media: {start_image: start_image}
-    # Billed per GPU second. Estimate: warm worker on an RTX PRO 6000 ($3.49/h); the take's cost is then the
-    # worker's reported run time at the rate of the GPU it actually used.
+    # Billed per GPU second on an RTX PRO 6000 ($3.49/h). The take is charged its run time plus the idle tail at the
+    # rate of the GPU it used, then corrected to RunPod's bill (studio/budget/reconcile.py).
     pricing:
       basis: per_gpu_second
-      quantity: "(40 + 9 * duration) if quality == '480p' else (60 + 22 * duration)"
+      # + 60 s the worker stays billed after its job (idle timeout) + ~150 s loading the model on a cold worker
+      # (measured 2026-10-08: warm runs 70-93 s, cold 218-239 s). A ceiling for caps: a warm run costs less, and the
+      # hourly reconcile books what RunPod billed.
+      quantity: "((40 + 9 * duration) if quality == '480p' else (60 + 22 * duration)) + 60 + 150"
       rates: [{usd: 0.000969}]
       verified: 2026-10-06
       source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); run time per docs/research/03 (unbenchmarked)
@@ -64,10 +67,10 @@ examples:
     prompt: A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.
     params: {quality: "480p", duration: 3}
     smoke: true
-    expect: {cost_usd_range: [0.05, 0.08]}
+    expect: {cost_usd_range: [0.25, 0.29]}
   - name: i2v_720p
     mode: i2v
     prompt: The camera slowly pushes in as wind moves through the grass.
     params: {quality: "720p", duration: 5}
     media: {start_image: "fixture:images/keyframe.png"}
-    expect: {cost_usd_range: [0.15, 0.18]}
+    expect: {cost_usd_range: [0.35, 0.39]}
