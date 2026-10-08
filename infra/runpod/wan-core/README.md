@@ -1,7 +1,9 @@
 # wan-core: your own RunPod endpoint for open Wan models
 
 A RunPod serverless endpoint running ComfyUI with Wan 2.2 14B (text and image to video, Lightning 4-step),
-Wan 2.2 Fun Camera (preset camera moves) and Wan-Move (drawn motion paths). The studio reaches it through the
+Wan 2.2 Fun Camera (preset camera moves), Wan-Move (drawn motion paths), Wan 2.1 VACE (masked edits with a
+reference picture, the Object swap route), Wan Animate-2 (motion transfer) and Uni3C (camera copied from a
+reference clip, on the Wan 2.2 experts). The studio reaches it through the
 `runpod_wan_core` provider (`apps/server/src/studio/providers/runpod_comfy.py`); the workflows are the
 `workflows/comfy/runpod_*.json` templates.
 
@@ -11,16 +13,17 @@ Wan 2.2 Fun Camera (preset camera moves) and Wan-Move (drawn motion paths). The 
 |---|---|
 | `Dockerfile` | `runpod/worker-comfyui:5.10.0-base` (ComfyUI 0.34.0, CUDA 12.8, torch 2.11) plus the files below. No custom nodes: every node the workflows use is built into ComfyUI 0.34. |
 | `handler.py` | Replaces worker-comfyui's handler. Takes `{"workflow", "inputs": [{name, url or data}]}`, returns `{"outputs": [{node, filename, kind, mime, data}], "gpu", "seconds"}`. Also `{"action": "check"}` and `{"action": "fetch_models"}`. |
-| `fetch_models.py`, `models.yaml` | The 15 model files (118 GB, exact sizes) and an idempotent downloader for the network volume. |
+| `fetch_models.py`, `models.yaml` | The 19 model files (172 GB, exact sizes) and an idempotent downloader for the network volume. |
 | `extra_model_paths.yaml` | Points ComfyUI at `/runpod-volume/models/<folder>` (upstream's file lacks `diffusion_models` and `text_encoders`). |
 
 ## Layout on RunPod
 
-- **Network volume** `wan-core-models`, 130 GB, STANDARD, in **US-NE-1**: models at `/runpod-volume/models/...`.
+- **Network volume** `wan-core-models`, 180 GB, STANDARD, in **US-NE-1**: models at `/runpod-volume/models/...`.
   US-NE-1 has both GPU types below plus standard volumes. A volume pins the endpoint to its data center.
 - **Endpoint** `wan-core`: queue-based, workers 0 to 2, GPU pools `BLACKWELL_96` (RTX PRO 6000, $3.49/h) and
   `ADA_80_PRO` (H100, $4.79/h), idle timeout 60 s, execution timeout 3600 s, FlashBoot on.
-- Costs (2026-10-06): the volume is $0.07/GB/month ($9.10/month for 130 GB) whether or not you use it. Workers
+- Costs: the volume is $0.07/GB/month ($12.60/month for 180 GB, grown from 130 GB on 2026-10-08) whether or not you
+  use it. Workers
   bill per second only while running, plus the 60 s idle tail. The first take after a pause also loads about
   35 GB of weights from the volume.
 
@@ -29,7 +32,7 @@ Wan 2.2 Fun Camera (preset camera moves) and Wan-Move (drawn motion paths). The 
 | Resource | Id | Notes |
 |---|---|---|
 | Image | `sanchezrobertodev/wan-core:0.1.0` | Docker Hub, public |
-| Network volume | `w5wwmiagkn` (`wan-core-models`) | 130 GB STANDARD, US-NE-1; all 15 files fetched (14 min on a CPU pod) |
+| Network volume | `w5wwmiagkn` (`wan-core-models`) | 180 GB STANDARD, US-NE-1; the first 15 files fetched 2026-10-06 (14 min on a CPU pod), the VACE, Animate-2 and Uni3C groups 2026-10-08 |
 | Template | `hgugk70qn7` (`wan-core-0.1.0`) | serverless, 30 GB container disk |
 | Endpoint | `ovktgiubxwld1j` (`wan-core`) | pools BLACKWELL_96 + ADA_80_PRO, workers 0 to 2, idle 60 s, timeout 3600 s |
 
@@ -52,6 +55,34 @@ the price, so dropping the `ADA_80_PRO` pool is worth considering if waiting for
 Known: the worker logs "You need pytorch with cu130 or higher to use optimized CUDA operations". The base
 image's torch is cu128, so ComfyUI's comfy-kitchen CUDA kernels stay off. A cu130 build may run faster on
 Blackwell hosts, which report CUDA 13.2.
+
+### VACE, Animate-2 and Uni3C (2026-10-08, AMS-11)
+
+The three workflows use only nodes built into ComfyUI 0.34 (`WanVaceToVideo`, `WanAnimate2ToVideo` + `WanAnimate2Cache`,
+`ModelPatchLoader` + `WanUni3CControlnetApply`), so the image didn't change: the graphs travel with each request and
+`model_patches/` was already mapped. The image's own `models.yaml` predates them, so its `check` action doesn't list
+the new files until the next rebuild. Live takes through the studio (480p, cold worker each time, RTX PRO 6000; cost includes the 60 s idle tail):
+
+| Workflow | Input | Wall time | Cost | Result |
+|---|---|---|---|---|
+| Animate-2 (`wan-animate-2`) | portrait + 3 s dance clip, 49 frames | 201 s | $0.305 | the character performs the clip's motion |
+| Uni3C (`wan-uni3c`), on both experts | keyframe + the color-bar test clip | 157 s | $0.267 | copied the test clip's picture: no camera move to copy |
+| Uni3C, high-noise expert only | ramen-shop still + Seedance lighthouse push-in, 4 s | ~150 s | $0.174 | clean; a gentle push-in, weaker than the reference's |
+| VACE (`wan-vace`) | color-bar test clip + matte, 69 frames | 180 s | $0.211 | edited only the masked bar, but no bricks |
+| VACE via Object swap | Veo paper boat (4 s, 24 fps), SAM 3 matte | ~190 s | $0.190 | the boat became a yellow rubber toy; the rest untouched |
+
+So Uni3C is applied to the high-noise expert only (the camera path is set early; the low-noise expert leaked the
+guidance clip's picture). Clip inputs are re-timed to Wan's 16 fps before upload (the routes' `media_fps`), so the 81
+frames cover up to 5 s of any clip; those slots take clips up to 5 s. (The takes above ran before that change, when a
+24 fps clip's first 81 frames, 3.4 s, were used.)
+
+The new groups were fetched with the 0.1.0 image on a CPU pod (4 files, 53.6 GB at 8-11 MB/s per file, about 55 min,
+$0.15), the manifest passed in an env var:
+
+```bash
+echo "$MANIFEST_B64" | base64 -d > /tmp/new.yaml
+WAN_CORE_MANIFEST=/tmp/new.yaml python -u /fetch_models.py --dest /runpod-volume/models
+```
 
 ## Build and push
 

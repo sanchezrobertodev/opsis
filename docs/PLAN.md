@@ -247,7 +247,7 @@ worker-comfyui 5.10.0 + our handler, a 118 GB model manifest for a network volum
 14B t2v/i2v (Lightning), Fun Camera and Wan-Move, routed by the `runpod_comfy` adapter; camera moves with a native
 Fun Camera value now set its camera control. Deployed 2026-10-06 (endpoint ovktgiubxwld1j). All four workflows ran live through the studio ($0.09
 each on an RTX PRO 6000). Wan-Move has a motion-path editor in the Create form (`type: paths` params: drag to draw,
-tap to pin). Left for later: VACE / Uni3C / Animate-2 graphs (P4 Object Swap and Motion Transfer can add them).
+tap to pin). VACE (masked edit, the Object swap route), Uni3C (camera copied from a reference clip) and Animate-2 (motion transfer) followed on 2026-10-08 (AMS-11, AMS-32), each rendered live.
 P4 done (merged 2026-10-07, PR #2; mock-tested, nothing live yet): ElevenLabs TTS with word timings,
 SFX and music; Claude steps in the pipeline engine; the Faceless studio (4 themes, 12 styles with caption looks,
 channels, topic ideas, script approval and editing, narrated stills or animated clips, ducked music, burned-in

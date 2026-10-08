@@ -1,0 +1,21 @@
+# Wan Animate-2 (distilled, int8): the character in a picture performs a clip's movement (body, hands and face).
+# Runs on the wan-core RunPod endpoint (infra/runpod/wan-core); its models.yaml lists the model files.
+# Source: ComfyUI's official template video_wan_animate2_distilled (comfyui_workflow_templates 0.11.48), one segment:
+# pose cache on the GPU (int8), 10 steps, lcm, cfg 1, shift 5, CLIP vision of the character and of the clip's first
+# frame. The route re-times the clip to 16 fps (`media_fps`), so up to 81 frames cover 5 s; its transform sizes
+# width/height/length from the clip.
+# Animate-2 has no replace mode: the character moves in the picture's own setting. Checked against ComfyUI 0.34 /prompt.
+description: Wan Animate-2 (distilled), a character performs a clip's movement
+inputs:
+  prompt: [{node: "7", input: text}]
+  negative_prompt: [{node: "8", input: text, mode: append}]
+  seed: [{node: "22", input: noise_seed}]
+  width: [{node: "11", input: resize_type.width}, {node: "16", input: resize_type.width}, {node: "19", input: width}]
+  height: [{node: "11", input: resize_type.height}, {node: "16", input: resize_type.height}, {node: "19", input: height}]
+  length: [{node: "15", input: length}, {node: "19", input: length}]
+  pose_strength: [{node: "19", input: pose_strength}]
+  character_image: [{node: "10", input: image}]
+  driving_video: [{node: "13", input: file}]
+  filename_prefix: [{node: "26", input: filename_prefix}]
+outputs:
+  - {node: "26", kind: video}

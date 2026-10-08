@@ -21,6 +21,7 @@ import base64
 import hashlib
 import mimetypes
 import secrets
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,7 @@ import httpx
 
 from studio.config import get_settings
 from studio.domain.enums import ErrorClass
+from studio.media.ffmpeg import ffmpeg
 from studio.providers.base import (
     AmbiguousSubmitError,
     PollResult,
@@ -87,10 +89,32 @@ class RunPodComfyAdapter(RunPodAdapter):
     async def stage_inputs(self, route: Route, media: list[ResolvedMedia]) -> dict[str, Any]:
         staged: dict[str, Any] = {}
         for m in media:
-            url = await self._public_url(route, m)
-            name = f"{m.asset_id}{m.path.suffix.lower() or mimetypes.guess_extension(m.mime) or ''}"
+            fps = route.media_fps.get(m.role)
+            if fps and m.kind in ("video", "mask_video"):
+                url, name = await self._retimed_url(route, m, fps)
+            else:
+                url = await self._public_url(route, m)
+                name = f"{m.asset_id}{m.path.suffix.lower() or mimetypes.guess_extension(m.mime) or ''}"
             staged.setdefault(m.role, []).append(url if url.startswith("data:") else f"{url}{NAME_MARK}{name}")
         return staged
+
+    async def _retimed_url(self, route: Route, m: ResolvedMedia, fps: float) -> tuple[str, str]:
+        """The clip re-timed to `fps` (same duration, frames dropped or repeated), hosted afresh: the per-asset upload
+        cache holds the original, which other routes expect."""
+        from studio.providers.factory import get_adapter
+
+        if not get_settings().fal_key:
+            raise ProviderError(ErrorClass.invalid_request, "RunPod needs a web link for this clip. Add FAL_KEY to .env.")
+        name = f"{m.asset_id}-{fps:g}fps.mp4"
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / name
+            await ffmpeg("-y", "-i", str(m.path), "-vf", f"fps={fps:g}", "-an", "-c:v", "libx264", "-crf", "12",
+                         "-pix_fmt", "yuv420p", str(out))
+            try:
+                url = await get_adapter("fal").client.upload_file(out)
+            except Exception as exc:
+                raise ProviderError(ErrorClass.transient, f"hosting the re-timed clip failed: {exc!r}") from exc
+        return url, name
 
     async def submit(self, route: Route, endpoint: str, payload: dict[str, Any], *, client_ref: str) -> SubmitResult:
         template = load_template(self.workflows_dir, endpoint)

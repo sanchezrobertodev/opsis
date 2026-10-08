@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: wan-vace
+name: Wan VACE masked edit
+family: wan
+vendor: alibaba
+description: >-
+  Wan 2.1 VACE 14B on your own RunPod endpoint: changes what's under a mask in a clip (a tracked object) to match the
+  prompt and an optional reference picture, and keeps the rest. Clips up to 5 s, rendered at 16 fps.
+output_type: video
+status: active
+license_tier: open_permissive   # Apache 2.0 (Wan 2.1 VACE, CausVid)
+tags: [open-weights, self-hosted, vace, masked-edit, object-swap]
+prompt: {max_chars: 2000, dialect: wan, supports_negative: true}
+
+parameters:
+  - {name: quality, type: enum, options: ["480p", "720p"], default: "480p", ui: segmented,
+     help: "480p renders about twice as fast. The clip keeps its own shape."}
+  - {name: mask_grow, label: Grow the mask (px), type: int, min: 0, max: 64, default: 20, group: advanced,
+     help: Edges blend better when the edit reaches a little past the object.}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: masked_edit
+    label: Change the masked part
+    ops: [object_replace]
+    medias:
+      - {role: input_video, kinds: [video], label: Clip, required: true, max_duration_s: 5}
+      - {role: mask, kinds: [mask_video], label: Mask (white = change), required: true}
+      - {role: image_references, kinds: [image], label: Looks like (optional), max: 1}
+
+routes:
+  - id: wan-vace@wan_core
+    provider: runpod_wan_core
+    modes:
+      masked_edit: {endpoint: runpod_wan21_vace_edit}
+    # width/height from the clip's aspect at the quality's pixel budget; length from its duration at 16 fps
+    transform: studio.providers.transforms.comfy:wan_clip_size
+    map:
+      params:
+        quality: {to: null}
+        mask_grow: mask_grow
+        seed: seed
+      media: {input_video: input_video, mask: mask, image_references: image_references}
+    # Billed per GPU second on an RTX PRO 6000 ($3.49/h). Run time unbenchmarked (6 CausVid steps on 81 frames), plus
+    # the 60 s idle tail and ~200 s to load the 35 GB model on a cold worker: a ceiling, corrected to RunPod's bill.
+    pricing:
+      basis: per_gpu_second
+      quantity: "(90 if quality == '480p' else 240) * min(input_video_seconds * 16 + 1, 81) / 81 + 60 + 200"
+      rates: [{usd: 0.000969}]
+      verified: 2026-10-08
+      source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); run time estimated, not yet benchmarked
+    eta: "(90 if quality == '480p' else 240) * min(input_video_seconds * 16 + 1, 81) / 81 + 200"
+    timeout_s: 3600
+    output: {path: output.outputs, kind: video}
+    # Wan works at 16 fps: clips are re-timed to it, so its 81 frames cover up to 5 s of them
+    media_fps: {input_video: 16, mask: 16}
+
+examples:
+  - name: masked_edit_smoke
+    mode: masked_edit
+    # the mask comes from SAM 3 video (uploads are never masks), so the smoke script skips this; Object swap runs it
+    prompt: A red vintage bicycle leaning on the wall.
+    params: {quality: "480p"}
+    media: {input_video: "fixture:videos/clip_3s.mp4", mask: "made-by:sam-3-video"}
+    smoke: true
+    expect: {cost_usd_range: [0.2, 0.45]}

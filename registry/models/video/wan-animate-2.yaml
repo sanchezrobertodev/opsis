@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: wan-animate-2
+name: Wan Animate-2
+family: wan
+vendor: alibaba
+description: >-
+  Wan Animate-2 (distilled) on your own RunPod endpoint: the character in your picture performs a clip's movement,
+  body, hands and face, in the picture's own setting. Clips up to 5 s, rendered at 16 fps.
+output_type: video
+status: active
+license_tier: open_permissive   # Apache 2.0
+tags: [open-weights, self-hosted, motion-transfer]
+prompt: {max_chars: 1000, dialect: wan, supports_negative: true}
+
+parameters:
+  - {name: quality, type: enum, options: ["480p", "720p"], default: "480p", ui: segmented,
+     help: "480p renders about twice as fast. The clip's shape is kept."}
+  - {name: pose_strength, label: Follow the movement, type: float, min: 0, max: 2, step: 0.05, default: 1,
+     group: advanced, help: Lower lets the character move more freely; higher sticks closer to the clip.}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: move
+    label: Animate my character
+    ops: [motion_transfer]
+    medias:
+      - {role: character_image, kinds: [image], label: Character, required: true}
+      - {role: driving_video, kinds: [video], label: Movement to copy, required: true, max_duration_s: 5}
+
+routes:
+  - id: wan-animate-2@wan_core
+    provider: runpod_wan_core
+    modes:
+      move: {endpoint: runpod_wan_animate2}
+    # width/height from the clip's aspect at the quality's pixel budget; length from its duration at 16 fps
+    transform: studio.providers.transforms.comfy:wan_clip_size
+    map:
+      params:
+        quality: {to: null}
+        pose_strength: pose_strength
+        seed: seed
+      media: {character_image: character_image, driving_video: driving_video}
+    # Billed per GPU second on an RTX PRO 6000 ($3.49/h). Run time unbenchmarked (10 distilled steps on 81 frames),
+    # plus the 60 s idle tail and ~120 s to load the 17 GB model on a cold worker: a ceiling, corrected to the bill.
+    pricing:
+      basis: per_gpu_second
+      quantity: "(90 if quality == '480p' else 240) + 60 + 120"
+      rates: [{usd: 0.000969}]
+      verified: 2026-10-08
+      source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); run time estimated, not yet benchmarked
+    eta: "(90 if quality == '480p' else 240) + 120"
+    timeout_s: 3600
+    output: {path: output.outputs, kind: video}
+    # Wan works at 16 fps: clips are re-timed to it, so its 81 frames cover up to 5 s of them
+    media_fps: {driving_video: 16}
+
+examples:
+  - name: move_smoke
+    mode: move
+    prompt: A person in a yellow raincoat.
+    params: {quality: "480p"}
+    media: {character_image: "fixture:images/person.jpg", driving_video: "fixture:videos/person_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.2, 0.3]}
