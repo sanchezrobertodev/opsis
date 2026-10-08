@@ -29,7 +29,14 @@ log = logging.getLogger(__name__)
 
 # Server-side refusal fallback, routed by refusal category (Claude API only).
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
-INPUT_TOKEN_GUESS = 3000  # for the pre-call ceiling; enhancement prompts are far smaller
+# the pre-call ceiling counts ~3 characters a token (English runs nearer 4, so it errs high) plus room for the
+# output schema, which the API adds to the prompt
+CHARS_PER_TOKEN = 3
+SCHEMA_TOKENS = 2000
+
+
+def input_ceiling(system: str, prompt: str) -> int:
+    return (len(system) + len(prompt)) // CHARS_PER_TOKEN + SCHEMA_TOKENS
 
 
 class LLMError(Exception):
@@ -99,7 +106,8 @@ async def structured[T: BaseModel](
         return LLMResult(output=mock(), model=f"{model} (mock)", mock=True)
 
     client = get_client()
-    await _check_budget(session, user_id, pricing.ceiling(model, input_tokens=INPUT_TOKEN_GUESS, max_tokens=max_tokens))
+    await _check_budget(session, user_id, pricing.ceiling(model, input_tokens=input_ceiling(system, prompt),
+                                                                max_tokens=max_tokens))
     try:
         response = await client.beta.messages.parse(
             model=model,

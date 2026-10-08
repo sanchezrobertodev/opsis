@@ -20,7 +20,7 @@ from studio.api.deps import current_user, get_session
 from studio.api.schemas import AssetOut
 from studio.api.serializers import asset_out
 from studio.budget.guard import BudgetBlocked
-from studio.cinema.director_chat import Turn, diff, revise
+from studio.cinema.director_chat import DirectorTooLong, Turn, diff, revise
 from studio.cinema.document import CinemaDocument
 from studio.cinema.planner import MAX_SHOTS, plan_shots
 from studio.db.models import (
@@ -432,6 +432,8 @@ async def director(project_id: uuid.UUID, body: DirectorIn, session: AsyncSessio
     try:
         result, scenes, warnings = await revise(session, user.id, doc=doc, message=body.message,
                                                 history=body.history, cast=cast)
+    except DirectorTooLong as exc:
+        raise HTTPException(422, str(exc)) from exc
     except BudgetBlocked as exc:
         raise HTTPException(402, f"Asking the director would go over your spending limit: {exc}") from exc
     except LLMUnavailable as exc:

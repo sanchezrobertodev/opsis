@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from studio.cinema.director_chat import DirectorEdit, apply_edits, diff, mock_reply
+from studio.cinema.director_chat import DirectorEdit, DirectorShot, apply_edits, diff, mock_reply
 from studio.cinema.document import CinemaDocument, Scene, Shot, ShotLine
-from studio.cinema.planner import PlannedShot
 from studio.director.compiler import MoveChoice, ShotDirection
 from studio.director.library import get_library
 
@@ -25,12 +24,12 @@ def board() -> list[Scene]:
     ]
 
 
-def planned(shot: Shot, **change) -> PlannedShot:
+def planned(shot: Shot, **change) -> DirectorShot:
     d = shot.direction
     base = dict(action=shot.action, shot_size=d.shot_size, angle=d.angle, camera_moves=[m.id for m in d.camera_moves],
-                duration=shot.duration or 5, continuity=shot.continuity,
+                duration=shot.duration, continuity=shot.continuity,
                 lines=[{"who": x.who, "text": x.text} for x in shot.lines])
-    return PlannedShot(**{**base, **change})
+    return DirectorShot(**{**base, **change})
 
 
 def test_an_update_keeps_picks_trims_look_and_voices():
@@ -56,12 +55,12 @@ def test_an_update_keeps_picks_trims_look_and_voices():
 def test_add_move_remove_and_scenes():
     after, warnings = apply_edits(board(), [
         DirectorEdit(op="add_shot", scene_id="cdock", after_id="sone",
-                     shot=PlannedShot(action="Gulls.", shot_size="nope", camera_moves=["warp_9"], duration=40)),
+                     shot=DirectorShot(action="Gulls.", shot_size="nope", camera_moves=["warp_9"], duration=40)),
         DirectorEdit(op="move_shot", shot_id="sfour", scene_id="cdock", after_id=None),
         DirectorEdit(op="remove_shot", shot_id="stwo"),
         DirectorEdit(op="remove_scene", scene_id="csea"),
         DirectorEdit(op="add_scene", after_id="cdock", heading="INT. CABIN - NIGHT",
-                     shots=[PlannedShot(action="A lamp swings.")]),
+                     shots=[DirectorShot(action="A lamp swings.")]),
         DirectorEdit(op="update_scene", scene_id="cdock", summary="Leaving."),
         DirectorEdit(op="remove_shot", shot_id="sghost"),
     ], LIB)
@@ -82,7 +81,7 @@ def test_a_shot_that_now_opens_its_scene_is_a_cut():
 
 def test_the_result_is_still_a_valid_document():
     after, _ = apply_edits(board(), [DirectorEdit(op="add_shot", scene_id="csea", after_id="sfour",
-                                                  shot=PlannedShot(action="Rain.", continuity="continue"))], LIB)
+                                                  shot=DirectorShot(action="Rain.", continuity="continue"))], LIB)
     doc = CinemaDocument(scenes=after)
     assert doc.scenes[1].shots[1].continuity == "continue"
 
@@ -93,7 +92,7 @@ def test_the_diff_names_shots_as_they_will_read():
         DirectorEdit(op="update_shot", shot_id="sone", shot=planned(before[0].shots[0], shot_size="close_up",
                                                                     action="Fog, thick.")),
         DirectorEdit(op="move_shot", shot_id="sthree", scene_id="cdock", after_id=None),
-        DirectorEdit(op="add_shot", scene_id="csea", after_id="sfour", shot=PlannedShot(action="Rain.", duration=4)),
+        DirectorEdit(op="add_shot", scene_id="csea", after_id="sfour", shot=DirectorShot(action="Rain.", duration=4)),
     ], LIB)
     changes = diff(before, after)
     got = {(c["kind"], c["label"]): {f["field"]: (f["before"], f["after"]) for f in c["fields"]} for c in changes}
@@ -122,3 +121,74 @@ def test_the_mock_understands_shot_numbers():
     tight = mock_reply(doc, "make shot 4 tighter").edits[0]
     assert tight.shot_id == "sfour" and tight.shot.shot_size == "close_up"
     assert mock_reply(CinemaDocument(), "anything").edits == []
+
+
+def chained() -> list[Scene]:
+    return [Scene(id="cdock", shots=[Shot(id="sone", action="A."), Shot(id="stwo", action="B.", continuity="continue"),
+                                     Shot(id="sthree", action="C.", continuity="continue"), Shot(id="sfour", action="D.")])]
+
+
+def test_a_shot_whose_predecessor_changed_stops_continuing():
+    # removing shot 2: shot 3 was written to pick up from shot 2's last frame, not shot 1's
+    after, _ = apply_edits(chained(), [DirectorEdit(op="remove_shot", shot_id="stwo")], LIB)
+    assert [(x.id, x.continuity) for x in after[0].shots] == [("sone", "cut"), ("sthree", "cut"), ("sfour", "cut")]
+    # moving a continuing shot elsewhere; and the shot that followed it now follows another
+    after, _ = apply_edits(chained(), [DirectorEdit(op="move_shot", shot_id="stwo", after_id="sfour")], LIB)
+    assert [(x.id, x.continuity) for x in after[0].shots] == [
+        ("sone", "cut"), ("sthree", "cut"), ("sfour", "cut"), ("stwo", "cut")]
+    # restating a shot leaves its continuity alone while its predecessor stays
+    board_ = chained()
+    after, _ = apply_edits(board_, [DirectorEdit(op="update_shot", shot_id="sthree",
+                                                 shot=planned(board_[0].shots[2], action="C, again."))], LIB)
+    assert after[0].shots[2].continuity == "continue"
+
+
+def test_an_edit_can_choose_to_continue():
+    board_ = chained()
+    after, _ = apply_edits(board_, [
+        DirectorEdit(op="add_shot", scene_id="cdock", after_id="sone", shot=DirectorShot(action="Z.", continuity="continue")),
+        DirectorEdit(op="update_shot", shot_id="sfour", shot=planned(board_[0].shots[3], continuity="continue")),
+    ], LIB)
+    # the new shot continues from shot 1, and shot 2 (now after it) no longer follows shot 1, so it cuts
+    assert [x.continuity for x in after[0].shots] == ["cut", "continue", "cut", "continue", "continue"]
+
+
+def test_an_explicit_five_seconds_is_kept():
+    board_ = board()
+    two = board_[0].shots[1]  # no length of its own
+    after, _ = apply_edits(board_, [DirectorEdit(op="update_shot", shot_id="stwo", shot=planned(two, duration=5))], LIB)
+    assert after[0].shots[1].duration == 5
+    new, _ = apply_edits(board_, [DirectorEdit(op="add_shot", scene_id="csea", shot=DirectorShot(action="X."))], LIB)
+    assert new[1].shots[0].duration is None  # no length: the model's default
+
+
+def test_edits_that_break_a_limit_are_not_applied():
+    full = [Scene(id="cbig", shots=[Shot(action=f"Shot {i}.") for i in range(60)])]
+    after, warnings = apply_edits(full, [DirectorEdit(op="add_shot", scene_id="cbig", shot=DirectorShot(action="One more."))],
+                                  LIB)
+    assert after is full and len(after[0].shots) == 60
+    assert any("weren't applied" in w for w in warnings)
+
+
+async def test_long_storyboards_and_histories_are_bounded(monkeypatch):
+    import pytest
+
+    from studio.cinema import director_chat as dc
+    from studio.llm.client import input_ceiling
+
+    assert input_ceiling("s" * 300, "p" * 30000) == 10100 + 2000  # grows with what's sent, not a fixed guess
+    sent = {}
+
+    async def fake_structured(session, user_id, **kw):
+        sent.update(kw)
+        from studio.llm.client import LLMResult
+        return LLMResult(output=kw["mock"](), model="m", mock=True)
+
+    monkeypatch.setattr(dc, "structured", fake_structured)
+    doc = CinemaDocument(scenes=board())
+    history = [dc.Turn(role="user", text=f"turn {i} " + "x" * 3000) for i in range(12)]
+    await dc.revise(None, None, doc=doc, message="make shot 1 tighter", history=history, cast=[])
+    assert "turn 11" in sent["prompt"] and "turn 6" not in sent["prompt"]  # the newest turns that fit
+    monkeypatch.setattr(dc, "MAX_PROMPT_CHARS", 500)
+    with pytest.raises(dc.DirectorTooLong):
+        await dc.revise(None, None, doc=doc, message="hi", history=[], cast=[])
