@@ -83,6 +83,9 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   Shared params are fitted (durations rounded, unknown values dropped with a warning); `virtual.director` params
   become shot direction. Generations store the base model and `request.via` names the studio.
 - Rules can limit input length while they apply: `max_input_seconds: {input_audio: 30}` (OmniHuman at 1080p).
+- An output can be decoded on our side when the answer isn't a file: `output: {path: rle, kind: mask_video, decode:
+  studio.media.rle:mask_video}` (SAM 3 video's per-frame run-length masks become the matte clip at ingest). Mark
+  `unpublished: true` when a provider returns a field its published schema doesn't list (the drift check skips it).
 - Media slots can require `min_side` (px, both sides) and `min_fps` for pictures and clips (Kling O3 Edit: 720, 23 fps), so a
   clip a provider would refuse is turned away before submit with a clear message.
 - Lipsync models carry the `lipsync` op and take `input_audio`; picture-driven ones also carry `avatar` and take

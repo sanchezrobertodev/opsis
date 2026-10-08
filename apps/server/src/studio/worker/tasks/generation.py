@@ -43,7 +43,7 @@ from studio.providers.base import (
 )
 from studio.providers.factory import get_adapter
 from studio.registry.loader import get_registry
-from studio.registry.mapping import build_payload
+from studio.registry.mapping import build_payload, load_hook
 from studio.registry.pricing import eta_seconds
 from studio.registry.routing import candidates
 from studio.registry.schema import ModelSpec, Route
@@ -548,7 +548,10 @@ async def run_ingest(attempt_id: uuid.UUID) -> None:
         workdir.mkdir(parents=True, exist_ok=True)
         try:
             tmp = workdir / "download.bin"
-            mime = await adapter.download(route, out, tmp, workdir)
+            if out.data is not None and route.output.decode:
+                mime = await load_hook(route.output.decode)(out.data, media=req.media, dest=tmp, workdir=workdir)
+            else:
+                mime = await adapter.download(route, out, tmp, workdir)
             digest = await anyio.to_thread.run_sync(_sha256, tmp)
             if out.kind in NOT_MEDIA:
                 ext = EXT.get(mime or "") or Path(urlsplit(out.url or "").path).suffix or NOT_MEDIA[out.kind]

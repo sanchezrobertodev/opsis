@@ -6,6 +6,7 @@ import re
 from datetime import date
 from typing import TYPE_CHECKING
 
+from studio.registry.mapping import load_hook
 from studio.registry.schema import EnumParam, FloatParam, IntParam, ModelSpec, Route
 
 if TYPE_CHECKING:
@@ -124,6 +125,12 @@ def lint(reg: Registry) -> tuple[list[str], list[str]]:
             route_ids.add(route.id)
             if route.provider not in reg.providers:
                 errors.append(f"{rwhere}: unknown provider {route.provider!r}")
+            for hook in (route.transform, route.output.decode):
+                if hook:
+                    try:
+                        load_hook(hook)
+                    except (ImportError, AttributeError, ValueError):
+                        errors.append(f"{rwhere}: hook {hook!r} can't be loaded")
             if not set(route.modes) <= mode_ids:
                 errors.append(f"{rwhere}: unknown modes {set(route.modes) - mode_ids}")
             for name in route.map.params:

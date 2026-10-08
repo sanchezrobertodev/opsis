@@ -43,6 +43,7 @@ class ProviderOutput:
     ref: str | None = None  # provider handle when there is no URL (mock job id, Google file uri…)
     mime: str | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+    data: Any = None  # the provider's value itself, when the route decodes it into a file (OutputSpec.decode)
 
 
 @dataclass

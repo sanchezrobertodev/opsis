@@ -105,8 +105,13 @@ def extract_outputs(result: Any, path: str, kind: str) -> list[ProviderOutput]:
 
 def route_outputs(result: Any, spec: OutputSpec) -> list[ProviderOutput]:
     """The route's main output(s), then any extras it declares, each carrying the metadata the route gives it.
-    An empty list means the main output is missing (extras alone don't count as a result)."""
-    main = extract_outputs(result, spec.path, spec.kind)
+    An empty list means the main output is missing (extras alone don't count as a result). A route that decodes its
+    answer gets one output holding the value at `path`, made into a file at ingest."""
+    if spec.decode:
+        value = next((v for alt in spec.path.split("|") if (v := dig(result, alt.strip()))), None)
+        main = [ProviderOutput(index=0, kind=spec.kind, data=value)] if value else []
+    else:
+        main = extract_outputs(result, spec.path, spec.kind)
     if not main:
         return []
     for o in main:

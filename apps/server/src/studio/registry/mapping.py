@@ -87,7 +87,7 @@ def _set_path(payload: dict[str, Any], dotted: str, value: Any) -> None:
     node[parts[-1]] = value
 
 
-def _load_hook(path: str) -> Callable[..., dict[str, Any]]:
+def load_hook(path: str) -> Callable[..., Any]:
     module, _, attr = path.partition(":")
     return getattr(importlib.import_module(module), attr)
 
@@ -145,7 +145,7 @@ def build_payload(
         _set_path(payload, key, value)
 
     if route.transform:
-        payload = _load_hook(route.transform)(spec=spec, route=route, req=req, payload=payload)
+        payload = load_hook(route.transform)(spec=spec, route=route, req=req, payload=payload)
 
     return endpoint_for(route_mode.endpoint, req.params), payload, warnings
 

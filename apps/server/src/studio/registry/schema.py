@@ -269,6 +269,11 @@ class OutputSpec(_Strict):
     # stored on the asset's metadata, e.g. {projection: equirectangular} marks a 360 panorama for the viewer
     meta: dict[str, Scalar] = {}
     extras: list[ExtraOutput] = []
+    # "module:function" that turns the value at `path` into a file on our side, for answers that aren't files
+    # (SAM 3 video's per-frame run-length masks: studio.media.rle:mask_video)
+    decode: str | None = None
+    # the endpoint returns `path` though its published schema doesn't list it (seen live); the drift check skips it
+    unpublished: bool = False
 
 
 class Route(_Strict):

@@ -30,7 +30,7 @@ test("Object swap: click the object on a frame, find it, swap it, keep the rest 
   await page.getByRole("button", { name: "Find the object" }).click();
   await expect(page.getByText(/^Highlighted is what will change/)).toBeVisible({ timeout: 60_000 });
 
-  await page.getByLabel("Replace it with").fill("Replace it with a small potted cactus");
+  await page.getByLabel("Replace it with", { exact: true }).fill("Replace it with a small potted cactus");
   await expect(page.getByText(/free on mock routes/)).toBeVisible();
   await page.getByRole("button", { name: "Swap it" }).click();
   await expect(page).toHaveURL(/\/runs\//);

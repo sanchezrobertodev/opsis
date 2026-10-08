@@ -164,3 +164,39 @@ async def test_a_region_edit_of_a_cinema_take_becomes_a_take_of_its_shot(client,
     takes = (await client.get(f"/projects/{project['id']}/takes", params={"shot_key": "sone"})).json()
     assert [(t["made_by"], t["parent_asset_id"]) for t in takes] == [("region_edit", video["id"])]
     assert takes[0]["asset"]["id"] == done["output"]["asset_id"]
+
+
+async def test_live_tracking_masks_are_stored_as_a_matte_clip(client, in_memory_queue):
+    # what fal's sam-3/video-rle answers (one run-length mask per frame) becomes a mask_video asset at ingest
+    from studio.db.models import GenerationAttempt
+    from studio.domain.enums import AttemptStatus, GenStatus
+    from studio.worker.tasks.generation import run_ingest
+
+    video, mask = await selected_object(client, in_memory_queue)
+    w, h = video["width"], video["height"]
+    square = " ".join(f"{row * w + 600} 80" for row in range(320, 400))  # an 80 x 80 square at (600, 320)
+    media = [{"role": "input_video", "asset_id": video["id"], "kind": "video", "width": w, "height": h,
+              "fps": video["fps"], "duration_ms": video["duration_ms"]},
+             {"role": "mask", "asset_id": mask["id"], "kind": "mask", "width": w, "height": h}]
+    async with session_scope() as s:
+        user = (await s.get(Asset, uuid.UUID(video["id"]))).user_id
+        gen = Generation(user_id=user, model_id="sam-3-video", mode="track", output_type="mask_video",
+                         status=GenStatus.ingesting, request={"model_id": "sam-3-video", "mode": "track", "prompt": "",
+                                                              "params": {"points": CLICK}, "media": media})
+        s.add(gen)
+        await s.flush()
+        attempt = GenerationAttempt(generation_id=gen.id, attempt_no=1, route_id="sam-3-video@fal", provider="fal",
+                                    status=AttemptStatus.succeeded,
+                                    last_response={"outputs": [{"index": 0, "kind": "mask_video",
+                                                                "data": [square] * 24}], "usage": {}})
+        s.add(attempt)
+        await s.commit()
+        gen_id, attempt_id = gen.id, attempt.id
+    await run_ingest(attempt_id)
+    async with session_scope() as s:
+        matte = (await s.execute(select(Asset).where(Asset.generation_id == gen_id))).scalar_one()
+        done = await s.get(Generation, gen_id)
+    assert done.status == GenStatus.succeeded
+    assert matte.kind.value == "mask_video" and (matte.width, matte.height) == (w, h)
+    info = await probe(get_storage().path_for(matte.storage_key))
+    assert info.duration_ms == pytest.approx(24 / video["fps"] * 1000, abs=60)
