@@ -22,5 +22,5 @@ gpu_usd_per_hour:
   A40: 1.22
 # Videos and audio must be web links; they're hosted through fal storage, so these routes need FAL_KEY.
 # Images under 6 MB go inline without it.
-hosted_kinds: [video, audio]
+hosted_kinds: [video, audio, mask_video]
 hosting_setting: fal_key

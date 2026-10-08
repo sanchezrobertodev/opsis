@@ -190,6 +190,11 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   `RUNPOD_API_KEY` + `RUNPOD_WAN_CORE_ENDPOINT` (a provider's `key_setting` may list several settings). Cost is the
   worker's `executionTime` at the provider's `gpu_usd_per_hour`, kept flagged as an estimate. Check new graphs
   against the local ComfyUI 0.34 (same version) before pushing: `/prompt` validates them without the models.
+  Workflows: Wan 2.2 14B Fast (t2v/i2v), Fun Camera, Wan-Move, VACE masked edit (`wan-vace`, `object_replace`, so Object
+  swap uses it with the tracked matte), Animate-2 (`wan-animate-2`, motion transfer) and Uni3C camera copy
+  (`wan-uni3c`, high-noise expert only). Clip-driven ones size the output from the clip (`transforms/comfy.py:
+  wan_clip_size`, up to 81 frames at the clip's frame rate). New weights go in `models.yaml` with exact sizes; the
+  graphs travel with each request, so adding a workflow needs no image rebuild.
 
 - `elevenlabs`: Eleven v4 TTS (with word timings), sound effects and music (`ELEVENLABS_API_KEY`). The API is
   synchronous, so submit parks the audio in a ResultStore (like Gemini images). TTS word timings land on the asset

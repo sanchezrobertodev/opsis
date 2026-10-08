@@ -326,3 +326,19 @@ def test_director_camera_moves_drive_fun_camera_natively():
     # Orbit has a Fun Camera value but this model has no orbit preset: it stays a prompt-only move
     assert merge_native(spec, {"camera_control": "ZoomIn"}, {"camera_control": "Orbit"}) == ({"camera_control": "ZoomIn"}, [])
     assert merge_native(REG.models["wan-2.2-14b-fast"], {}, {"camera_control": "ZoomIn"}) == ({}, [])
+
+
+def test_clip_driven_wan_core_workflows_keep_the_clips_shape_and_length():
+    from types import SimpleNamespace as N
+
+    from studio.providers.transforms.comfy import wan_clip_size
+
+    def size(quality, *, w, h, ms, fps, role="input_video"):
+        req = N(params={"quality": quality}, media=[N(role=role, width=w, height=h, duration_ms=ms, fps=fps)])
+        out = wan_clip_size(spec=None, route=None, req=req, payload={})
+        return out["width"], out["height"], out["length"]
+
+    # a portrait 1080x1920 clip stays portrait at 480p's pixel budget, sides a multiple of 16
+    assert size("480p", w=1080, h=1920, ms=3000, fps=24) == (464, 832, 69)  # 72 frames -> 4k + 1
+    assert size("720p", w=1920, h=1080, ms=10_000, fps=30, role="driving_video") == (1280, 720, 81)  # capped at 81
+    assert size("480p", w=640, h=480, ms=200, fps=16)[2] == 5  # at least a few frames

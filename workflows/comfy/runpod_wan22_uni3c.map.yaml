@@ -1,0 +1,21 @@
+# Wan 2.2 14B image-to-video (fp8, Lightning 4-step) that copies the camera move of a reference clip with the Uni3C
+# ControlNet. Runs on the wan-core RunPod endpoint (infra/runpod/wan-core); its models.yaml lists the model files.
+# The image-to-video part is runpod_wan22_i2v (official template video_wan2_2_14B_i2v). Uni3C is ComfyUI's built-in
+# WanUni3CControlnetApply (ModelPatchLoader + Kijai's Wan21_Uni3C_controlnet_fp16), applied after the shift to the
+# high-noise expert only: the camera path is set in the early steps, and on the low-noise expert the guidance clip's own
+# picture leaked into the detail (seen live 2026-10-08). The reference clip is the guidance ("render") video, scaled
+# and center-cropped to the output size, its first frames used 1:1. Uni3C was trained on Wan 2.1 14B (same width as the 2.2 experts). Checked against ComfyUI 0.34 /prompt.
+description: Wan 2.2 14B image-to-video copying a reference clip's camera move (Uni3C)
+inputs:
+  prompt: [{node: "9", input: text}]
+  negative_prompt: [{node: "10", input: text, mode: append}]
+  seed: [{node: "13", input: noise_seed}]
+  width: [{node: "12", input: width}, {node: "22", input: resize_type.width}]
+  height: [{node: "12", input: height}, {node: "22", input: resize_type.height}]
+  length: [{node: "12", input: length}, {node: "21", input: length}]
+  camera_strength: [{node: "23", input: strength}]
+  start_image: [{node: "11", input: image}]
+  video_references: [{node: "19", input: file}]
+  filename_prefix: [{node: "17", input: filename_prefix}]
+outputs:
+  - {node: "17", kind: video}

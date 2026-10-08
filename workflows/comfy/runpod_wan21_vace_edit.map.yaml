@@ -1,0 +1,25 @@
+# Wan 2.1 VACE 14B masked edit: change what's under a mask in a clip, optionally to look like a reference picture.
+# Runs on the wan-core RunPod endpoint (infra/runpod/wan-core); its models.yaml lists the model files.
+# Source: ComfyUI's official template video_wan_vace_inpainting (comfyui_workflow_templates 0.11.48): CausVid LoRA at
+# 0.3, 6 steps, cfg 1, uni_pc, shift 5; the mask grows 20 px and the masked area is blanked in the control video, and
+# the reference picture's latent frame is trimmed off before decoding. The template's own SAM 3 step is left out: the
+# studio sends the tracked matte (white = change). Up to 81 frames are edited, at the clip's frame rate (the route's
+# transform sizes width/height/length from the clip). Checked against ComfyUI 0.34 /prompt.
+description: Wan 2.1 VACE 14B, masked edit of a clip with an optional reference picture
+inputs:
+  prompt: [{node: "6", input: text}]
+  negative_prompt: [{node: "7", input: text, mode: append}]
+  seed: [{node: "23", input: seed}]
+  width: [{node: "11", input: resize_type.width}, {node: "15", input: resize_type.width}, {node: "22", input: width}]
+  height: [{node: "11", input: resize_type.height}, {node: "15", input: resize_type.height}, {node: "22", input: height}]
+  length: [{node: "10", input: length}, {node: "14", input: length}, {node: "22", input: length}]
+  mask_grow: [{node: "17", input: expand}]
+  input_video: [{node: "8", input: file}]
+  mask: [{node: "12", input: file}]
+  image_references: [{node: "21", input: image}]
+  filename_prefix: [{node: "27", input: filename_prefix}]
+optional:
+  # no reference picture: VACE fills the area from the prompt alone
+  image_references: {node: "21", unlink: [{node: "22", input: reference_image}]}
+outputs:
+  - {node: "27", kind: video}

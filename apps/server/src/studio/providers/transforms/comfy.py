@@ -121,3 +121,20 @@ def _resample(pts: list[tuple[float, float]], frames: int) -> list[tuple[float, 
         (ax, ay), (bx, by) = pts[seg], pts[seg + 1]
         out.append((ax + (bx - ax) * t, ay + (by - ay) * t))
     return out
+
+
+# Clip-driven wan-core workflows (VACE edits, Animate-2) keep the clip's own aspect at the quality's pixel budget and
+# take up to 81 frames of it (Wan's native length), played back at the clip's frame rate.
+CLIP_PIXELS = {"480p": 832 * 480, "720p": 1280 * 720}
+MAX_CLIP_FRAMES = 81
+
+
+def wan_clip_size(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    clip = next((m for m in req.media if m.role in ("input_video", "driving_video")), None)
+    w, h = (clip.width, clip.height) if clip is not None and clip.width and clip.height else (16, 9)
+    scale = (CLIP_PIXELS.get(str(req.params.get("quality", "480p")), CLIP_PIXELS["480p"]) / (w * h)) ** 0.5
+    payload["width"], payload["height"] = max(16, int(w * scale) // 16 * 16), max(16, int(h * scale) // 16 * 16)
+    frames = round(clip.duration_ms / 1000 * (clip.fps or 16)) if clip is not None and clip.duration_ms else MAX_CLIP_FRAMES
+    n = min(max(frames, 5), MAX_CLIP_FRAMES)
+    payload["length"] = (n - 1) // 4 * 4 + 1  # Wan wants 4k + 1 frames
+    return payload

@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: wan-uni3c
+name: Wan 2.2 camera copy (Uni3C)
+family: wan
+vendor: alibaba
+description: >-
+  Wan 2.2 14B image-to-video on your own RunPod endpoint that copies the camera move of a reference clip (Uni3C):
+  give it a start frame and a clip whose camera does what you want, whatever is in it.
+output_type: video
+status: active
+license_tier: open_permissive   # Apache 2.0 (Wan 2.2, Uni3C, lightx2v)
+tags: [open-weights, self-hosted, camera, budget]
+prompt: {max_chars: 2000, dialect: wan, supports_negative: true}
+aspect_ratios: ["16:9", "9:16", "1:1"]
+duration: {min: 2, max: 5, default: 5}
+
+parameters:
+  - {name: quality, type: enum, options: ["480p", "720p"], default: "480p", ui: segmented,
+     help: "480p renders about twice as fast."}
+  - {name: duration, label: Duration (s), type: int, min: 2, max: 5, default: 5, ui: slider}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "1:1"], default: "16:9", ui: aspect}
+  - {name: camera_strength, label: Follow the camera, type: float, min: 0, max: 2, step: 0.05, default: 1,
+     group: advanced, help: How closely the camera follows the reference clip.}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: i2v
+    label: Image to video
+    ops: [i2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+      - {role: video_references, kinds: [video], label: Camera move to copy, required: true, max_duration_s: 10}
+
+routes:
+  - id: wan-uni3c@wan_core
+    provider: runpod_wan_core
+    modes:
+      i2v: {endpoint: runpod_wan22_uni3c}
+    transform: studio.providers.transforms.comfy:wan14b_size
+    map:
+      params:
+        duration: {to: length, transform: seconds_to_frames, args: {fps: 16, plus: 1}}
+        quality: {to: null}
+        aspect_ratio: {to: null}
+        camera_strength: camera_strength
+        seed: seed
+      media: {start_image: start_image, video_references: video_references}
+    # Billed per GPU second on an RTX PRO 6000 ($3.49/h): Wan 2.2 Fast's run time plus ~20% for the ControlNet
+    # (unbenchmarked), the 60 s idle tail and ~150 s loading on a cold worker: a ceiling, corrected to the bill.
+    pricing:
+      basis: per_gpu_second
+      quantity: "((50 + 11 * duration) if quality == '480p' else (70 + 26 * duration)) + 60 + 150"
+      rates: [{usd: 0.000969}]
+      verified: 2026-10-08
+      source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); run time estimated, not yet benchmarked
+    eta: "((50 + 11 * duration) if quality == '480p' else (70 + 26 * duration)) + 150"
+    timeout_s: 3600
+    output: {path: output.outputs, kind: video}
+
+examples:
+  - name: camera_copy_smoke
+    mode: i2v
+    prompt: The camera glides past the scene.
+    params: {quality: "480p", duration: 3}
+    media: {start_image: "fixture:images/keyframe.png", video_references: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.25, 0.32]}
