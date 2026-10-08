@@ -121,3 +121,29 @@ test("Cinema storyboard: duplicate, drag to reorder, split, and what each shot c
   await expect(page.getByRole("radio", { name: "From last" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("button", { name: /^Film 4 unfilmed shots/ })).toBeVisible();
 });
+
+test("Cinema: pick an opening and a closing frame, then film from one to the other", async ({ page }) => {
+  test.setTimeout(150_000);
+  await page.goto("/cinema");
+  await page.getByRole("button", { name: "New film" }).click();
+  await page.getByLabel("Title").fill(`e2e frames ${Date.now()}`);
+  await page.getByRole("button", { name: "Create" }).click();
+  await expect(page).toHaveURL(/\/cinema\/[0-9a-f-]+$/);
+  await page.getByRole("radio", { name: "Script" }).click();
+  await page.getByLabel("Script").fill("A kite lifts off the beach.");
+  await page.getByRole("button", { name: "Plan shots with Claude" }).click();
+  await page.getByRole("button", { name: "Use this plan" }).click();
+  await expect(page.getByText("Saved, version 2")).toBeVisible();
+
+  await page.getByRole("button", { name: /A kite lifts off the beach\./ }).click();
+  await page.getByRole("button", { name: /^Make 4$/ }).first().click();
+  await page.getByRole("button", { name: "Opening frame option" }).first().click({ timeout: 60_000 });
+  const closing = page.getByRole("region", { name: "Closing frame" });
+  await closing.getByRole("button", { name: /^Make 4$/ }).click();
+  await closing.getByRole("button", { name: "Closing frame option" }).first().click({ timeout: 60_000 });
+  await expect(closing.getByRole("button", { name: "Closing frame option" })).toHaveCount(4);
+  await expect(page.getByText("Ends on the picked closing frame.")).toBeVisible();
+
+  await page.getByRole("button", { name: /^Film \d$/ }).click();
+  await expect(page.getByRole("button", { name: "Use this take" }).first()).toBeVisible({ timeout: 90_000 });
+});

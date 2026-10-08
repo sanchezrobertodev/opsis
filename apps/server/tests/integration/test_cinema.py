@@ -482,3 +482,54 @@ async def test_a_malformed_direction_is_a_request_error(client):
             "project_id": p["id"], "model_id": "kling-3.0",
             "shots": [{"key": "sone", "prompt": "x", "direction": direction}]}})
         assert r.status_code == 422 and why in r.text, r.text
+
+
+async def test_a_three_by_three_grid_and_closing_frames(client, in_memory_queue):
+    p = await new_project(client)
+    pid = p["id"]
+    # nine frames on a model that makes four at a time: three calls (4 + 4 + 1)
+    run = await start(client, "cinema_frames", project_id=pid, count=9, shots=[{"key": "sabc", "prompt": "A pier at dawn"}])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    assert sorted(s["key"] for s in done["steps"]) == ["frames[sabc:1]", "frames[sabc:2]", "frames[sabc:3]"]
+    assert len(done["output"]["frames"]["sabc"]) == 9
+    async with session_scope() as s:
+        sizes = sorted([(await s.get(Generation, uuid.UUID(x["generation_id"]))).request["params"].get("num_images", 1)
+                        for x in done["steps"]])
+    assert sizes == [1, 4, 4]
+
+    ends = await start(client, "cinema_frames", project_id=pid, count=4, which="end",
+                       shots=[{"key": "sabc", "prompt": "A pier at dawn"}])
+    await drain(in_memory_queue)
+    ended = await get(client, ends["id"])
+    assert [s["key"] for s in ended["steps"]] == ["ends[sabc]"] and len(ended["output"]["frames"]["sabc"]) == 4
+    frames = [t for t in (await client.get(f"/projects/{pid}/takes")).json() if t["output_type"] == "image" and t["asset"]]
+    assert sorted({t["frame"] for t in frames}) == ["end", "start"]
+    assert sum(t["frame"] == "end" for t in frames) == 4
+
+    # a take from the picked opening frame to the picked closing one
+    opening = done["output"]["frames"]["sabc"][0]
+    closing = ended["output"]["frames"]["sabc"][0]
+    doc = {"scenes": [{"id": "cone", "shots": [{"id": "sabc", "action": "A pier at dawn", "hero_asset_id": opening,
+                                                "end_asset_id": closing}]}]}
+    assert (await client.put(f"/projects/{pid}", json={"version": 1, "document": doc})).status_code == 200
+    takes = await start(client, "cinema_takes", project_id=pid, model_id="kling-3.0", takes=1, shots=[
+        {"key": "sabc", "prompt": "A pier at dawn", "start_asset_id": opening, "end_asset_id": closing, "duration": 5}])
+    await drain(in_memory_queue)
+    filmed = await get(client, takes["id"])
+    assert filmed["status"] == "succeeded", filmed["error"]
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(filmed["steps"][0]["generation_id"]))
+    assert {m["role"]: m["asset_id"] for m in gen.request["media"]} == {"start_image": opening, "end_image": closing}
+
+
+async def test_a_closing_frame_needs_an_opening_one_and_a_model_that_takes_both(client):
+    p = await new_project(client)
+    shot = {"key": "sabc", "prompt": "x", "end_asset_id": str(uuid.uuid4())}
+    r = await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
+        "project_id": p["id"], "model_id": "kling-3.0", "shots": [shot]}})
+    assert r.status_code == 422 and "needs an opening frame too" in r.text
+    r = await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
+        "project_id": p["id"], "model_id": "wan-2.2-14b", "shots": [{**shot, "start_asset_id": str(uuid.uuid4())}]}})
+    assert r.status_code == 422 and "can't end on a picked frame" in r.text

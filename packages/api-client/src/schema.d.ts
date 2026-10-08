@@ -3112,6 +3112,11 @@ export interface components {
              * @description None for a take cut or joined from others
              */
             generation_id: string | null;
+            /**
+             * Frame
+             * @description For hero frames: made as an opening frame or a closing one
+             */
+            frame?: ("start" | "end") | null;
             /** Shot Key */
             shot_key: string;
             /**

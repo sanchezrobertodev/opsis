@@ -24,6 +24,8 @@ export type Shot = {
   lines: Line[];
   continuity: "cut" | "continue";
   hero_asset_id: string | null;
+  /** The picked closing frame: the take animates from the opening frame to this one. */
+  end_asset_id?: string | null;
   take_asset_id: string | null;
   trim_in: number;
   trim_out: number | null;
@@ -52,7 +54,8 @@ export function newId(prefix: "s" | "c" | "i" | "a") {
 export function newShot(partial: Partial<Shot> = {}): Shot {
   return {
     id: newId("s"), action: "", duration: null, direction: { camera_moves: [] } as unknown as Direction, lines: [],
-    continuity: "cut", hero_asset_id: null, take_asset_id: null, trim_in: 0, trim_out: null, transition: "cut",
+    continuity: "cut", hero_asset_id: null, end_asset_id: null, take_asset_id: null, trim_in: 0, trim_out: null,
+    transition: "cut",
     ...partial,
   };
 }
@@ -131,8 +134,9 @@ export function splitShot(doc: CinemaDoc, shotId: string, at: number, take?: [nu
     const half = Math.ceil(lines.length / 2);
     const length = shot.duration;
     // `at` as long as the shot keeps the length for both parts (the model makes nothing shorter)
-    first = { ...shot, lines: lines.slice(0, half), duration: length ? at : null };
-    second = newShot({ ...base, lines: lines.slice(half), duration: length ? (at < length ? length - at : length) : null });
+    first = { ...shot, lines: lines.slice(0, half), duration: length ? at : null, end_asset_id: null };
+    second = newShot({ ...base, lines: lines.slice(half), duration: length ? (at < length ? length - at : length) : null,
+                       end_asset_id: shot.end_asset_id ?? null });
   }
   let out = insertAfter(doc, shotId, second, first);
   if (out.cut && shot.take_asset_id) {
