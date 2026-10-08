@@ -8,8 +8,11 @@ Input (job["input"]):
   workflow: ComfyUI API-format graph (action=run)
   inputs:   [{"name": "start.png", "url": "https://..."} | {"name": "start.png", "data": "<base64>"}]
             written to ComfyUI's input folder under these names before the graph is queued
+  uploads:  [{"url": "<one-file upload link, PUT>", "file_url": "https://..."}] (optional) places to put results
+            too big to return inline: each output over WAN_CORE_INLINE_MB takes the next one
 Output (action=run):
-  {"outputs": [{"node": "58", "filename": "x.mp4", "kind": "video", "mime": "video/mp4", "data": "<base64>"}],
+  {"outputs": [{"node": "58", "filename": "x.mp4", "kind": "video", "mime": "video/mp4",
+                "data": "<base64>" | "url": "<file_url it was put at>"}],
    "gpu": "NVIDIA RTX PRO 6000 ...", "seconds": 81.2}
 Errors come back as {"error": "..."} so RunPod marks the job FAILED with that message.
 """
@@ -38,6 +41,8 @@ OUTPUT_DIR = COMFY_DIR / "output"
 JOB_TIMEOUT_S = int(os.environ.get("WAN_CORE_JOB_TIMEOUT_S", "3300"))  # stay under the endpoint's execution timeout
 # RunPod keeps a job's result for 30 minutes; very large results are refused, so keep the base64 payload modest.
 MAX_OUTPUT_MB = float(os.environ.get("WAN_CORE_MAX_OUTPUT_MB", "20"))
+# Outputs bigger than this go to an upload slot when the job brought one (smaller ones stay inline: one less hop)
+INLINE_MB = float(os.environ.get("WAN_CORE_INLINE_MB", "5"))
 MAX_INPUT_MB = float(os.environ.get("WAN_CORE_MAX_INPUT_MB", "500"))
 OUTPUT_KEYS = ("images", "gifs", "videos", "video", "audio")
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,150}$")
@@ -164,16 +169,37 @@ def collect_outputs(entry: dict[str, Any]) -> list[dict[str, Any]]:
     return found
 
 
-def encode_outputs(found: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    total = sum(f["path"].stat().st_size for f in found)
-    if total > MAX_OUTPUT_MB * 1e6:
-        raise ValueError(f"the result is {total / 1e6:.0f} MB, over the {MAX_OUTPUT_MB:.0f} MB this worker returns; "
-                         "render a shorter or smaller clip")
+def put_file(slot: dict[str, Any], path: Path, mime: str) -> str:
+    with open(path, "rb") as fh:
+        r = requests.put(str(slot["url"]), data=fh, headers={"Content-Type": mime}, timeout=(15, 600))
+    r.raise_for_status()
+    return str(slot["file_url"])
+
+
+def encode_outputs(found: list[dict[str, Any]], slots: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Big outputs go to the job's upload slots (largest first); the rest return inline as base64, within the limit.
+    A slot that fails (say its link lapsed while the job queued) leaves that output inline if it still fits."""
+    free = [s for s in slots or [] if isinstance(s, dict) and s.get("url") and s.get("file_url")]
+    for f in sorted(found, key=lambda f: f["path"].stat().st_size, reverse=True):
+        size = f["path"].stat().st_size
+        if size <= INLINE_MB * 1e6 or not free:
+            continue
+        slot = free.pop(0)
+        try:
+            f["url"] = put_file(slot, f["path"], f["mime"])
+            log(f"put {f['filename']} ({size / 1e6:.1f} MB) in its upload slot")
+        except (requests.RequestException, OSError) as exc:
+            log(f"upload of {f['filename']} failed, returning it inline if it fits: {exc!r}"[:500])
+    inline = sum(f["path"].stat().st_size for f in found if "url" not in f)
+    if inline > MAX_OUTPUT_MB * 1e6:
+        raise ValueError(f"the result is {inline / 1e6:.0f} MB, over the {MAX_OUTPUT_MB:.0f} MB this worker returns "
+                         "inline" + (" and its upload failed" if slots else "") + "; render a shorter or smaller clip")
     out = []
     for f in found:
         path: Path = f.pop("path")
         f["bytes"] = path.stat().st_size
-        f["data"] = base64.b64encode(path.read_bytes()).decode()
+        if "url" not in f:
+            f["data"] = base64.b64encode(path.read_bytes()).decode()
         out.append(f)
     return out
 
@@ -232,7 +258,7 @@ def run_workflow(job_input: dict[str, Any], job_id: str) -> dict[str, Any]:
         return {"error": "the workflow finished without saving an output"}
     paths = [f["path"] for f in found]
     try:
-        outputs = encode_outputs(found)
+        outputs = encode_outputs(found, list(job_input.get("uploads") or []))
     except ValueError as exc:
         return {"error": str(exc)}
     finally:
