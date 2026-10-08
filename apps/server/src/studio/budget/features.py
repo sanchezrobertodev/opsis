@@ -11,8 +11,10 @@ LABELS = {
     "cinema": "Cinema studio", "jutsu3d": "3D blocking", "worlds": "Worlds", "claude": "Claude", "other": "Other",
 }
 
+# recipes that belong to one studio; compare runs from several (image, video, edit, motion), so its charges are
+# classified by the mode each generation ran
 RECIPES = {"faceless": "faceless", "object_swap": "swap", "talking_shot": "lipsync", "jutsu3d": "jutsu3d",
-           "sequence": "create_video", "compare": "create_video", "keyframe": "create_video"}
+           "sequence": "create_video", "keyframe": "create_video"}
 PROJECTS = {"cinema": "cinema", "jutsu3d": "jutsu3d"}
 # first match wins, so a lipsync or tracking mode isn't counted as plain video
 OPS = [({"lipsync"}, "lipsync"), ({"motion_transfer"}, "motion"), ({"segment", "track"}, "swap"),

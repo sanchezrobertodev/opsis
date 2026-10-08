@@ -18,6 +18,9 @@ REG = load_registry(get_settings().resolve_registry_dir())
     ("cinema_takes", None, "kling-3.0", "i2v", "cinema"),
     ("faceless", None, "eleven-v4", "tts", "faceless"),     # the recipe wins over the model's own tags
     ("compare", None, "veo-3.1", "t2v", "create_video"),
+    ("compare", None, "nano-banana-2", "t2i", "create_image"),   # a compare from Create image
+    ("compare", None, "topaz-video", "upscale", "edit"),         # or from Edit video
+    ("sequence", None, "kling-3.0", "i2v", "create_video"),
     (None, "cinema", "sync-lipsync-3", "lipsync", "cinema"),  # a take of a film shot is the film's
     (None, None, "sync-lipsync-3", "lipsync", "lipsync"),
     (None, None, "kling-3.0-motion-control", "transfer", "motion"),
