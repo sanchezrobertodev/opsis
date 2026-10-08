@@ -185,7 +185,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 - `runpod`: Public Endpoints now (`/run` + `/status`, `RUNPOD_API_KEY`). Inputs must be web links, so files are
   hosted through fal storage (needs `FAL_KEY`); small images go inline without it. Never call `/retry`.
 - `runpod_wan_core` (adapter `runpod_comfy`): our own serverless endpoint, `infra/runpod/wan-core` (worker-comfyui
-  5.10.0 = ComfyUI 0.34, models on a network volume). Routes name `workflows/comfy/runpod_*.json` templates, like
+  5.10.0 = ComfyUI 0.34 with a CUDA 13 torch, which turns on comfy-kitchen's kernels; models on a network volume;
+  RTX PRO 6000 hosts with CUDA 13 drivers only). Routes name `workflows/comfy/runpod_*.json` templates, like
   `comfy_local`; the lint checks every field a ComfyUI route sends has an input in its template. Needs
   `RUNPOD_API_KEY` + `RUNPOD_WAN_CORE_ENDPOINT` (a provider's `key_setting` may list several settings). Cost is the
   worker's `executionTime` at the provider's `gpu_usd_per_hour`, kept flagged as an estimate. Check new graphs
