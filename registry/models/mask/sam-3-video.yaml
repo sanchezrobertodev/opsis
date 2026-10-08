@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=../../schema/model.schema.json
 # Contract verified 2026-10-06 from fal's OpenAPI (fal-ai/sam-3/video-rle) and its model page ($0.005 per 16 frames).
-# With apply_mask off the returned video should be the black-and-white matte; confirm on the first live run (AMS-9).
+# Live 2026-10-08: the answer isn't a video but one run-length mask per frame (`rle`), decoded into the matte clip
+# on our side; a mask alone isn't a prompt, so the clicks that made it go along, each with its frame.
 id: sam-3-video
 name: SAM 3 (track through a clip)
 family: sam
@@ -43,7 +44,8 @@ routes:
       verified: 2026-10-06
       source: https://fal.ai/models/fal-ai/sam-3/video-rle
     eta: "20 + input_video_seconds * 2"
-    output: {path: video, kind: mask_video}
+    # fal's schema still lists `video` and `boundingbox_frames_zip`; the live answer is `rle`, `boxes`, `metadata`
+    output: {path: rle, kind: mask_video, decode: studio.media.rle:mask_video, unpublished: true}
 
 examples:
   - name: track_smoke

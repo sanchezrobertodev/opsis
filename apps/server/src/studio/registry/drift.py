@@ -395,7 +395,8 @@ def check_route(spec: ModelSpec, route: Route, mode: Mode, summary: Summary, tar
                 note(f"{mode.id}: `{name}` can be {', '.join(map(str, out_of_range))}, outside the endpoint's "
                      f"range ({low if low is not None else '…'} to {high if high is not None else '…'})")
     if checks_output and summary.output:
-        for path in [route.output.path, *(x.path for x in route.output.extras)]:
+        main = [] if route.output.unpublished else [route.output.path]
+        for path in [*main, *(x.path for x in route.output.extras)]:
             tops = {_top(alt.strip()) for alt in path.split("|")}
             if not tops & set(summary.output):
                 note(f"returns {', '.join(summary.output)}; the route reads `{path}`")
