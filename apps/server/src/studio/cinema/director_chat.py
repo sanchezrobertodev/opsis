@@ -1,0 +1,297 @@
+"""The AI Director chat: the user asks for changes to the storyboard in words, Claude answers with edits by shot
+and scene id, and the studio turns them into a proposed set of scenes plus a diff against the current ones.
+
+Nothing is saved here. Edits only touch what Claude can see (the action, framing, moves, length, continuity, lines
+and feelings); a shot's picks, trims and the rest of its look are kept. Unknown ids are skipped with a warning.
+"""
+
+from __future__ import annotations
+
+import re
+import uuid
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from studio.cinema.document import CinemaDocument, Scene, Shot, ShotLine
+from studio.cinema.planner import MAX_SHOTS, PlannedScene, PlannedShot, ShotPlan, _vocabulary, to_scenes
+from studio.config import get_settings
+from studio.director.compiler import MoveChoice
+from studio.director.library import DirectorLibrary, get_library
+from studio.llm.client import LLMResult, structured
+
+MAX_TURNS = 12  # earlier turns of the conversation sent back to Claude
+MAX_SCENES = 40
+
+
+class DirectorEdit(BaseModel):
+    op: Literal["update_shot", "add_shot", "remove_shot", "move_shot", "update_scene", "add_scene", "remove_scene"]
+    shot_id: str | None = Field(None, description="The shot to update, remove or move")
+    scene_id: str | None = Field(None, description="The scene to update or remove, or where add_shot/move_shot "
+                                                    "puts the shot")
+    after_id: str | None = Field(None, description="add_shot/move_shot: the shot it goes after (null: the scene's "
+                                                   "start). add_scene: the scene it goes after (null: the start)")
+    shot: PlannedShot | None = Field(None, description="update_shot: the whole shot as it should read now. "
+                                                       "add_shot: the new shot")
+    heading: str | None = Field(None, description="update_scene/add_scene")
+    summary: str | None = Field(None, description="update_scene/add_scene")
+    shots: list[PlannedShot] = Field(default_factory=list, description="add_scene: its shots")
+
+
+class DirectorReply(BaseModel):
+    reply: str = Field(description="One to three sentences to the user: what you changed and why, or a question "
+                                   "when the request is unclear")
+    edits: list[DirectorEdit] = Field(default_factory=list, description="The changes, applied in order; none when "
+                                                                        "you are only answering or asking")
+
+
+class Turn(BaseModel):
+    role: Literal["user", "director"]
+    text: str = Field(max_length=4000)
+
+
+SYSTEM = """You are the film's director, revising its storyboard with the user in a chat.
+
+The storyboard is listed with scene and shot ids. Answer each message with a short reply and the edits that carry
+it out, and change only what the user asked for (plus what a change forces, like continuity after a removed shot).
+- update_shot restates the whole shot as it should read; keep the parts you aren't changing as they are.
+- Each shot is one continuous camera setup of 3 to 10 seconds. Describe only what the camera sees, name cast
+  members by their @handle and don't describe their looks.
+- Pick shot sizes, angles, camera moves and emotions from the id lists; use null or [] when nothing fits.
+- continuity "continue" only when a shot starts exactly where the previous one ends; otherwise "cut".
+- Refer to shots by number in your reply ("shot 4"), never by id.
+If the request is unclear or asks for something a storyboard can't hold, ask instead and return no edits."""
+
+
+def _storyboard(doc: CinemaDocument) -> str:
+    rows, n = [], 0
+    for scene in doc.scenes:
+        rows.append(f"Scene [{scene.id}] {scene.heading or '(no heading)'}: {scene.summary}".rstrip(": "))
+        for shot in scene.shots:
+            n += 1
+            d = shot.direction
+            framing = ", ".join(x for x in [d.shot_size, d.angle, " + ".join(m.id for m in d.camera_moves),
+                                            f"{shot.duration}s" if shot.duration else "", shot.continuity] if x)
+            rows.append(f"  Shot {n} [{shot.id}] ({framing}) {shot.action}")
+            rows += [f"    {line.who}: {line.text}" for line in shot.lines if line.text.strip()]
+            rows += [f"    feels: {e.who} {e.emotion}" for e in d.cast_emotions]
+    return "\n".join(rows) or "(empty: no scenes yet)"
+
+
+async def revise(session: AsyncSession, user_id: uuid.UUID, *, doc: CinemaDocument, message: str,
+                 history: list[Turn], cast: list[tuple[str, str]]) -> tuple[LLMResult[DirectorReply], list[Scene], list[str]]:
+    """Returns Claude's answer, the scenes with its edits applied, and warnings about edits that were skipped."""
+    lib = get_library()
+    talk = "\n".join(f"{'User' if t.role == 'user' else 'You'}: {t.text}" for t in history[-MAX_TURNS:])
+    prompt = "\n".join(part for part in [
+        f"Logline: {doc.logline}" if doc.logline else "",
+        "Cast (use these handles): " + "; ".join(f"@{slug}: {desc}" for slug, desc in cast) if cast else "",
+        _vocabulary(lib),
+        f"\nStoryboard:\n{_storyboard(doc)}",
+        f"\nThe conversation so far:\n{talk}" if talk else "",
+        f"\nUser: {message}",
+    ] if part)
+    result = await structured(
+        session, user_id, purpose="cinema.director", model=get_settings().llm_smart_model, system=SYSTEM,
+        prompt=prompt, output=DirectorReply, mock=lambda: mock_reply(doc, message), effort="medium", max_tokens=12000)
+    scenes, warnings = apply_edits(doc.scenes, result.output.edits, lib)
+    return result, scenes, warnings
+
+
+def _planned(p: PlannedShot, lib: DirectorLibrary) -> tuple[Shot, list[str]]:
+    """A planned shot as a document shot, through the planner's own checks."""
+    scenes, warnings = to_scenes(ShotPlan(scenes=[PlannedScene(heading="", summary="", shots=[p])]), lib, 1)
+    # alone in its scene here, the planner would make it a cut; where it lands decides (fixed up after the edits)
+    return scenes[0].shots[0].model_copy(update={"continuity": p.continuity}), warnings
+
+
+def _revised(old: Shot, p: PlannedShot, lib: DirectorLibrary) -> tuple[Shot, list[str]]:
+    """The old shot with what Claude can see replaced, keeping its picks, trims and the rest of its look."""
+    new, warnings = _planned(p, lib)
+    speeds = {m.id: m.speed for m in old.direction.camera_moves}
+    direction = old.direction.model_copy(update={
+        "shot_size": new.direction.shot_size, "angle": new.direction.angle,
+        "camera_moves": [MoveChoice(id=m.id, speed=speeds.get(m.id, m.speed)) for m in new.direction.camera_moves],
+        "cast_emotions": new.direction.cast_emotions})
+    voices = {(line.who, line.text): line.voice_id for line in old.lines}
+    lines = [ShotLine(who=x.who, text=x.text, voice_id=voices.get((x.who, x.text))) for x in new.lines]
+    # an unchanged length stays as it was, even when the planner's 3-10 s range or default would move it
+    duration = old.duration if p.duration == (old.duration or PlannedShot.model_fields["duration"].default) \
+        else new.duration
+    return old.model_copy(update={"action": new.action, "duration": duration, "direction": direction,
+                                  "lines": lines, "continuity": new.continuity}), warnings
+
+
+def apply_edits(scenes: list[Scene], edits: list[DirectorEdit], lib: DirectorLibrary) -> tuple[list[Scene], list[str]]:
+    out = [s.model_copy(update={"shots": list(s.shots)}) for s in scenes]
+    warnings: list[str] = []
+
+    def scene_of(shot_id: str | None) -> Scene | None:
+        return next((s for s in out if any(x.id == shot_id for x in s.shots)), None)
+
+    def place(scene: Scene, shot: Shot, after_id: str | None) -> None:
+        at = next((i + 1 for i, x in enumerate(scene.shots) if x.id == after_id), 0 if after_id is None else None)
+        if at is None:
+            warnings.append(f"a shot went at the end of its scene: the shot it should follow ({after_id}) isn't there")
+            at = len(scene.shots)
+        scene.shots.insert(at, shot)
+
+    for e in edits:
+        if e.op in ("update_shot", "remove_shot", "move_shot"):
+            home = scene_of(e.shot_id)
+            if home is None:
+                warnings.append(f"skipped {e.op.replace('_', ' ')}: no shot {e.shot_id}")
+                continue
+            i = next(i for i, x in enumerate(home.shots) if x.id == e.shot_id)
+            if e.op == "update_shot":
+                if e.shot is None:
+                    warnings.append("skipped an update with no shot")
+                    continue
+                home.shots[i], w = _revised(home.shots[i], e.shot, lib)
+                warnings += w
+            elif e.op == "remove_shot":
+                home.shots.pop(i)
+            else:
+                dest = next((s for s in out if s.id == (e.scene_id or home.id)), None)
+                if dest is None:
+                    warnings.append(f"skipped move shot: no scene {e.scene_id}")
+                    continue
+                place(dest, home.shots.pop(i), e.after_id)
+        elif e.op == "add_shot":
+            dest = next((s for s in out if s.id == e.scene_id), None) or scene_of(e.after_id)
+            if dest is None or e.shot is None:
+                warnings.append(f"skipped add shot: no scene {e.scene_id}" if e.shot else "skipped an empty new shot")
+                continue
+            shot, w = _planned(e.shot, lib)
+            warnings += w
+            place(dest, shot, e.after_id)
+        elif e.op == "add_scene":
+            new, w = to_scenes(ShotPlan(scenes=[PlannedScene(heading=e.heading or "", summary=e.summary or "",
+                                                             shots=e.shots)]), lib, MAX_SHOTS)
+            warnings += w
+            scene = new[0] if new else Scene(heading=(e.heading or "")[:200], summary=(e.summary or "")[:1000])
+            at = next((i + 1 for i, s in enumerate(out) if s.id == e.after_id), 0 if e.after_id is None else len(out))
+            out.insert(at, scene)
+        else:  # update_scene, remove_scene
+            i = next((i for i, s in enumerate(out) if s.id == e.scene_id), None)
+            if i is None:
+                warnings.append(f"skipped {e.op.replace('_', ' ')}: no scene {e.scene_id}")
+            elif e.op == "remove_scene":
+                out.pop(i)
+            else:
+                out[i] = out[i].model_copy(update={
+                    "heading": (e.heading if e.heading is not None else out[i].heading)[:200],
+                    "summary": (e.summary if e.summary is not None else out[i].summary)[:1000]})
+
+    # a shot that now opens its scene has nothing to continue from
+    for s in out:
+        if s.shots and s.shots[0].continuity == "continue":
+            s.shots[0] = s.shots[0].model_copy(update={"continuity": "cut"})
+    total = sum(len(s.shots) for s in out)
+    if total > MAX_SHOTS * 2 or len(out) > MAX_SCENES:
+        warnings.append("the storyboard would be too long; the edits weren't applied")
+        return scenes, sorted(set(warnings))
+    return out, sorted(set(warnings))
+
+
+# ---------------------------------------------------------------- the diff the editor shows
+
+FIELDS = ("action", "shot_size", "angle", "camera_moves", "duration", "continuity", "lines", "feelings")
+
+
+def _view(shot: Shot) -> dict[str, Any]:
+    d = shot.direction
+    return {"action": shot.action, "shot_size": d.shot_size, "angle": d.angle,
+            "camera_moves": " + ".join(m.id for m in d.camera_moves) or None,
+            "duration": shot.duration, "continuity": shot.continuity,
+            "lines": "\n".join(f"{x.who}: {x.text}" for x in shot.lines if x.text.strip()) or None,
+            "feelings": ", ".join(f"{e.who} {e.emotion}" for e in d.cast_emotions) or None}
+
+
+def diff(before: list[Scene], after: list[Scene]) -> list[dict[str, Any]]:
+    """What changed, in the new story order: scenes and shots added, removed, moved or changed (field by field).
+    Shots are numbered as they'll read after the change; removed ones keep their old number."""
+    changes: list[dict[str, Any]] = []
+    old_shots = {x.id: (n, s, x) for n, (s, x) in enumerate(((s, x) for s in before for x in s.shots), start=1)}
+    old_scenes = {s.id: s for s in before}
+    old_order = [x.id for s in before for x in s.shots]
+    kept = [x.id for s in after for x in s.shots if x.id in old_shots]
+    stayed = set(_longest_run(old_order, kept))
+    n = 0
+    for scene in after:
+        if scene.id not in old_scenes:
+            changes.append({"kind": "added", "scene_id": scene.id, "label": scene.heading or "New scene",
+                            "fields": []})
+        else:
+            old = old_scenes[scene.id]
+            fields = [{"field": f, "before": getattr(old, f), "after": getattr(scene, f)}
+                      for f in ("heading", "summary") if getattr(old, f) != getattr(scene, f)]
+            if fields:
+                changes.append({"kind": "changed", "scene_id": scene.id, "label": scene.heading or "Scene",
+                                "fields": fields})
+        for shot in scene.shots:
+            n += 1
+            if shot.id not in old_shots:
+                changes.append({"kind": "added", "scene_id": scene.id, "shot_id": shot.id, "label": f"Shot {n}",
+                                "fields": [{"field": f, "before": None, "after": v}
+                                           for f, v in _view(shot).items() if v not in (None, "")]})
+                continue
+            was, old_scene, old = old_shots[shot.id]
+            fields = [{"field": f, "before": a, "after": b}
+                      for f, (a, b) in ((f, (_view(old)[f], _view(shot)[f])) for f in FIELDS) if a != b]
+            moved = shot.id not in stayed or old_scene.id != scene.id
+            if fields or moved:
+                changes.append({"kind": "moved" if moved else "changed", "scene_id": scene.id, "shot_id": shot.id,
+                                "label": f"Shot {n}" + (f" (was {was})" if moved else ""), "fields": fields})
+    gone_scenes = {s.id for s in before} - {s.id for s in after}
+    for scene in before:
+        if scene.id in gone_scenes:
+            changes.append({"kind": "removed", "scene_id": scene.id, "label": scene.heading or "Scene", "fields": []})
+    now = {x.id for s in after for x in s.shots}
+    for shot_id, (was, scene, _) in old_shots.items():
+        if shot_id not in now:
+            changes.append({"kind": "removed", "scene_id": scene.id, "shot_id": shot_id, "label": f"Shot {was}",
+                            "fields": []})
+    return changes
+
+
+def _longest_run(order: list[str], kept: list[str]) -> list[str]:
+    """The longest subsequence of `kept` that is still in its old order: those shots didn't move."""
+    rank = {x: i for i, x in enumerate(order)}
+    seq = [rank[x] for x in kept]
+    best: list[list[int]] = []
+    for v in seq:  # O(n^2) is plenty for 80 shots
+        best.append([*max((b for j, b in enumerate(best) if seq[j] < v), key=len, default=[]), v])
+    run = max(best, key=len, default=[])
+    return [order[i] for i in run]
+
+
+# ---------------------------------------------------------------- LLM_MODE=mock
+
+
+def mock_reply(doc: CinemaDocument, message: str) -> DirectorReply:
+    """Understands a few plain requests about "shot N": remove it, add one after it, or (anything else) tighten
+    it into a close-up with a slow push in."""
+    shots = [x for s in doc.scenes for x in s.shots]
+    if not shots:
+        return DirectorReply(reply="There are no shots yet. Plan the script first, then tell me what to change.")
+    m = re.search(r"shot\s+(\d+)", message, re.I)
+    n = min(max(int(m.group(1)), 1), len(shots)) if m else 1
+    target = shots[n - 1]
+    text = message.lower()
+    if "remove" in text or "cut shot" in text or "delete" in text:
+        return DirectorReply(reply=f"Removed shot {n}.", edits=[DirectorEdit(op="remove_shot", shot_id=target.id)])
+    if "add" in text or "insert" in text:
+        scene = next(s for s in doc.scenes if target in s.shots)
+        new = PlannedShot(action="A quiet insert: hands, a detail, the room breathing.", shot_size="close_up",
+                          duration=3)
+        return DirectorReply(reply=f"Added a three-second insert after shot {n}.",
+                             edits=[DirectorEdit(op="add_shot", scene_id=scene.id, after_id=target.id, shot=new)])
+    d = target.direction
+    shot = PlannedShot(action=target.action, shot_size="close_up", angle=d.angle, camera_moves=["dolly_in"],
+                       duration=target.duration or 5, continuity=target.continuity,
+                       lines=[{"who": x.who, "text": x.text} for x in target.lines if x.text.strip()],
+                       emotions=[{"who": e.who, "emotion": e.emotion} for e in d.cast_emotions])
+    return DirectorReply(reply=f"Shot {n} is now a close-up with a slow push in, to stay with the moment.",
+                         edits=[DirectorEdit(op="update_shot", shot_id=target.id, shot=shot)])

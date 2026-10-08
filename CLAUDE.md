@@ -225,6 +225,10 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   `GET /projects/{id}/spend` (charged costs per `shot_key`).
 - `POST /projects/{id}/plan` asks Claude (Opus) for scenes and shots in the director's vocabulary; unknown ids are
   dropped and nothing is saved until the editor applies the proposal.
+- The AI Director chat (`POST /projects/{id}/director`, `cinema/director_chat.py`, the editor's Director panel): Claude
+  answers a request with edits by shot and scene id (update, add, move, remove), applied to the storyboard on screen
+  and returned as proposed scenes plus a diff (`changes`, shots numbered as they'll read). An update keeps the shot's
+  picks, trims and the rest of its look. Applying is refused in the browser if the storyboard changed since asking.
 - Dialogue: a shot's `lines` (who + words; blank lines are kept for editing and skipped when filming) travel to the
   takes run as `direction.dialogue` with each speaker's voice from their Element (`elements.voice` =
   `{model_id, params}`). Models with `prompt.dialogue` speak them; on others `cinema_takes` voices each line

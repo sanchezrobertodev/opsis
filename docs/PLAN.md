@@ -265,8 +265,8 @@ Cinema Studio 4.0 vocabulary: 58 grades, eras by decade, focal lengths, a two-li
 cast member, with golden snapshots per dialect (AMS-37). The storyboard's cards drag between places and scenes (by
 keyboard too), shots duplicate and split (a filmed shot splits its take: each part plays its stretch), and each card
 shows its length, its status and what it cost or would cost to film (AMS-36). Hero frames come in 2×2 or 3×3 grids, and a shot can also pick a closing
-frame that its takes end on (AMS-39). Not yet: the AI Director chat that revises a plan as a diff (AMS-35),
-and live checks of the multi-shot payloads and Cinema Studio routing. The cut's Remotion preview,
+frame that its takes end on (AMS-39). The AI Director chat revises the storyboard in words and shows each answer
+as a diff to apply or discard (AMS-35). Not yet: live checks of the multi-shot payloads and Cinema Studio routing. The cut's Remotion preview,
 reordering, title cards and dialogue, music and SFX tracks followed later (AMS-42), timed in frames so the export
 matches the preview.
 P6 merged (PR #4, mock-tested): lipsync and talking-portrait models (Sync lipsync-3, Kling

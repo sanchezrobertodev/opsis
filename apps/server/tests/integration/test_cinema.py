@@ -71,6 +71,31 @@ async def test_plan_proposes_scenes_without_saving(client):
     assert (await client.post(f"/projects/{empty['id']}/plan", json={})).status_code == 422
 
 
+async def test_director_chat_proposes_edits_as_a_diff_without_saving(client):
+    p = await new_project(client, scenes=[{"id": "cdock", "heading": "EXT. DOCK", "shots": [
+        {"id": "sone", "action": "Fog.", "direction": {"shot_size": "wide", "palette": "teal_orange"}},
+        {"id": "stwo", "action": "A rope.", "continuity": "continue"}]}])
+    r = await client.post(f"/projects/{p['id']}/director", json={"message": "Make shot 2 tighter"})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["mock"] and "Shot 2" in out["reply"] and out["warnings"] == []
+    assert out["changes"] == [{"kind": "changed", "scene_id": "cdock", "shot_id": "stwo", "label": "Shot 2", "fields": [
+        {"field": "shot_size", "before": None, "after": "close_up"},
+        {"field": "camera_moves", "before": None, "after": "dolly_in"}]}]
+    assert out["scenes"][0]["shots"][1]["continuity"] == "continue"
+    assert (await client.get(f"/projects/{p['id']}")).json()["version"] == 1  # nothing saved
+
+    # the storyboard on screen wins over the saved one, and the history rides along
+    on_screen = [{"id": "cdock", "heading": "EXT. DOCK", "shots": [{"id": "sone", "action": "Fog."}]}]
+    r = await client.post(f"/projects/{p['id']}/director", json={
+        "message": "remove shot 1", "scenes": on_screen,
+        "history": [{"role": "user", "text": "Make shot 2 tighter"}, {"role": "director", "text": "Done."}]})
+    assert [c["kind"] for c in r.json()["changes"]] == ["removed"] and r.json()["scenes"][0]["shots"] == []
+    bad = await client.post(f"/projects/{p['id']}/director", json={"message": "hi", "scenes": [{"shots": [
+        {"id": "sone"}, {"id": "sone"}]}]})
+    assert bad.status_code == 422 and "isn't valid" in bad.text
+
+
 async def test_frames_takes_chaining_and_the_cut(client, in_memory_queue):
     p = await new_project(client)
     pid = p["id"]

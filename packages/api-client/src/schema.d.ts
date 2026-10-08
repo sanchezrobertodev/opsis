@@ -547,6 +547,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/director": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Director
+         * @description The AI Director chat: Claude answers a request with edits to the storyboard, returned as proposed scenes and a
+         *     diff. Nothing is saved; apply the scenes to the document to keep them.
+         */
+        post: operations["director_projects__project_id__director_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/dialogue": {
         parameters: {
             query?: never;
@@ -1412,6 +1433,23 @@ export interface components {
              */
             lip_synced: boolean;
         };
+        /** DirectorIn */
+        DirectorIn: {
+            /** Message */
+            message: string;
+            /**
+             * History
+             * @description Earlier turns, oldest first
+             */
+            history?: components["schemas"]["Turn"][];
+            /**
+             * Scenes
+             * @description The storyboard on screen (autosave may not have stored it yet); defaults to the saved one
+             */
+            scenes?: {
+                [key: string]: unknown;
+            }[] | null;
+        };
         /** DirectorLibraryOut */
         DirectorLibraryOut: {
             /** Moves */
@@ -1446,6 +1484,31 @@ export interface components {
             pacing: components["schemas"]["LookItem"][];
             /** Emotions */
             emotions: components["schemas"]["EmotionItem"][];
+        };
+        /** DirectorOut */
+        DirectorOut: {
+            /** Reply */
+            reply: string;
+            /**
+             * Scenes
+             * @description The storyboard with the edits applied; apply it to keep them
+             */
+            scenes: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Changes
+             * @description The diff against the storyboard that was sent
+             */
+            changes: components["schemas"]["StoryboardChange"][];
+            /** Warnings */
+            warnings: string[];
+            /** Model */
+            model: string;
+            /** Mock */
+            mock: boolean;
+            /** Cost Usd */
+            cost_usd: number;
         };
         /** DurationSpec */
         DurationSpec: {
@@ -1709,6 +1772,15 @@ export interface components {
             };
             /** Compiled Prompt */
             compiled_prompt?: string | null;
+        };
+        /** FieldChange */
+        FieldChange: {
+            /** Field */
+            field: string;
+            /** Before */
+            before?: unknown;
+            /** After */
+            after?: unknown;
         };
         /** FloatParam */
         FloatParam: {
@@ -3200,6 +3272,28 @@ export interface components {
             /** Finished At */
             finished_at: string | null;
         };
+        /** StoryboardChange */
+        StoryboardChange: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "added" | "removed" | "moved" | "changed";
+            /** Scene Id */
+            scene_id: string;
+            /**
+             * Shot Id
+             * @description None when the change is to the scene itself
+             */
+            shot_id?: string | null;
+            /**
+             * Label
+             * @description Shot 4, Shot 2 (was 5), or the scene heading
+             */
+            label: string;
+            /** Fields */
+            fields: components["schemas"]["FieldChange"][];
+        };
         /** StyleOut */
         StyleOut: {
             /** Id */
@@ -3329,6 +3423,16 @@ export interface components {
             mock: boolean;
             /** Cost Usd */
             cost_usd: number;
+        };
+        /** Turn */
+        Turn: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "director";
+            /** Text */
+            text: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -4659,6 +4763,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanOut"];
+                };
+            };
+            /** @description Spending limit */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Claude failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No Anthropic key */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    director_projects__project_id__director_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DirectorIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectorOut"];
                 };
             };
             /** @description Spending limit */
