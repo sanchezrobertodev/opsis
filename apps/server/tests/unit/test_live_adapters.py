@@ -514,8 +514,8 @@ async def test_runpod_comfy_gives_big_results_an_upload_slot_and_ingests_from_it
     # one slot per output the template saves, typed by its kind and kept a day
     sent = json.loads(initiate.calls.last.request.content)
     assert initiate.call_count == 1 and sent["content_type"] == "video/mp4" and sent["file_name"].endswith(".mp4")
-    assert json.loads(initiate.calls.last.request.headers["X-Fal-Object-Lifecycle-Preference"]) == {
-        "expiration_duration_seconds": 86_400}
+    for header in ("X-Fal-Object-Lifecycle", "X-Fal-Object-Lifecycle-Preference"):
+        assert json.loads(initiate.calls.last.request.headers[header]) == {"expiration_duration_seconds": 86_400}
     body = json.loads(submit.calls.last.request.content)["input"]
     assert body["uploads"] == [{"url": "https://v3b.fal.media/files/up/slot0?signature=s",
                                 "file_url": "https://v3b.fal.media/files/up/o.mp4"}]

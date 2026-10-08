@@ -231,13 +231,16 @@ async def _upload_slots(kinds: list[str], client_ref: str) -> list[dict[str, str
     if not key:
         return []
     slots = []
+    # fal's storage client sends the lifecycle under both names (storage reads one, the CDN the other); so do we
+    lifecycle = json.dumps({"expiration_duration_seconds": UPLOAD_KEEP_S})
     try:
         async with httpx.AsyncClient(timeout=30) as c:
             for i, kind in enumerate(kinds):
                 mime = UPLOAD_MIME.get(kind, "application/octet-stream")
                 r = await c.post(FAL_UPLOAD_INITIATE, headers={
                     "Authorization": f"Key {key}",
-                    "X-Fal-Object-Lifecycle-Preference": json.dumps({"expiration_duration_seconds": UPLOAD_KEEP_S}),
+                    "X-Fal-Object-Lifecycle": lifecycle,
+                    "X-Fal-Object-Lifecycle-Preference": lifecycle,
                 }, json={"file_name": f"wan-core-{client_ref[:8]}-{i}{mimetypes.guess_extension(mime) or ''}",
                          "content_type": mime})
                 r.raise_for_status()
