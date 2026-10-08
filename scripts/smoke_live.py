@@ -129,6 +129,7 @@ def main() -> int:
                      headers={"Idempotency-Key": f"smoke-{route_id}-{datetime.now(UTC):%Y%m%d%H%M}"})
         if r.status_code != 201:
             report.append({"route": route_id, "status": "rejected", "detail": r.json()})
+            save()
             print(f"  {route_id}: rejected {r.json()}")
             continue
         gen = r.json()

@@ -119,8 +119,12 @@ def test_media_shorter_than_a_slot_allows_is_rejected():
     normalize(spec, "edit", "x", {}, [MediaRef("input_video", "v", "video", width=1280, height=720)])
     normalize(spec, "edit", "x", {}, [MediaRef("input_video", "v", "video")])  # size unknown: left to the provider
     small = MediaRef("input_video", "v", "video", width=854, height=480)
-    with pytest.raises(RequestError, match=r"Clip to edit must be at least 720 px tall; this one is 480 px"):
+    with pytest.raises(RequestError, match=r"Clip to edit must be at least 720 px on each side; this one is 854x480"):
         normalize(spec, "edit", "x", {}, [small])
+    portrait = MediaRef("input_video", "v", "video", width=480, height=854)  # tall enough, too narrow
+    with pytest.raises(RequestError, match=r"this one is 480x854"):
+        normalize(spec, "edit", "x", {}, [portrait])
+    normalize(spec, "edit", "x", {}, [MediaRef("input_video", "v", "video", width=720, height=1280)])
     slow = MediaRef("input_video", "v", "video", width=1280, height=720, fps=16.0)  # a Wan clip
     with pytest.raises(RequestError, match=r"Clip to edit must be at least 23 fps; this one is 16 fps"):
         normalize(spec, "edit", "x", {}, [slow])

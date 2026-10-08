@@ -24,7 +24,7 @@ modes:
     ops: [instruction_edit, restyle, relight, object_replace]
     medias:
       - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 15, max_mb: 200,
-         min_height: 720, min_fps: 23}  # fal refuses shorter clips and under 23 fps (seen live 2026-10-07)
+         min_side: 720, min_fps: 23}  # fal refuses clips under 720 px a side or 23 fps (seen live 2026-10-07)
       - {role: image_references, kinds: [image], label: Reference images (optional), max: 4}
 
 elements: {strategy: refs_native, ref_role: image_references, token: "@Image{n}"}
