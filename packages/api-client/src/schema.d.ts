@@ -909,6 +909,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/budget/balances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Provider Balances
+         * @description What's left on each provider account with a key set (read from providers that report it; free).
+         */
+        get: operations["provider_balances_budget_balances_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/budget/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Spend Breakdown
+         * @description Charges grouped by studio feature and by model, with how much of each is an estimate.
+         */
+        get: operations["spend_breakdown_budget_breakdown_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1019,6 +1059,40 @@ export interface components {
             add_tags?: string[] | null;
             /** Favorite */
             favorite?: boolean | null;
+        };
+        /** BalanceOut */
+        BalanceOut: {
+            /** Provider */
+            provider: string;
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @description ok: read now; unavailable: the key can't read it; no_api: see the billing page; error: unreachable
+             * @enum {string}
+             */
+            status: "ok" | "unavailable" | "no_api" | "error";
+            /**
+             * Link
+             * @description The provider's billing page
+             */
+            link: string;
+            /** Amount */
+            amount?: number | null;
+            /** Unit */
+            unit?: ("usd" | "credits") | null;
+            /**
+             * Usd
+             * @description The amount in dollars, when credits have a known price
+             */
+            usd?: number | null;
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
         };
         /** Body_set_thumbnail_assets__asset_id__thumbnail_post */
         Body_set_thumbnail_assets__asset_id__thumbnail_post: {
@@ -2987,6 +3061,26 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** SpendBreakdownOut */
+        SpendBreakdownOut: {
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "today" | "month" | "all";
+            /** Total Usd */
+            total_usd: number;
+            /**
+             * Features
+             * @description By studio feature, most spent first
+             */
+            features: components["schemas"]["SpendGroup"][];
+            /**
+             * Models
+             * @description By model (Claude by its model), most spent first
+             */
+            models: components["schemas"]["SpendGroup"][];
+        };
         /** SpendEntryOut */
         SpendEntryOut: {
             /**
@@ -3023,6 +3117,22 @@ export interface components {
             model_id?: string | null;
             /** Generation Id */
             generation_id?: string | null;
+        };
+        /** SpendGroup */
+        SpendGroup: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Usd */
+            usd: number;
+            /** Count */
+            count: number;
+            /**
+             * Estimated Usd
+             * @description How much of `usd` is the studio's estimate (the provider didn't say)
+             */
+            estimated_usd: number;
         };
         /** SpendHistoryOut */
         SpendHistoryOut: {
@@ -5325,6 +5435,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SpendHistoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provider_balances_budget_balances_get: {
+        parameters: {
+            query?: {
+                /** @description Read again now, not from the last minute */
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BalanceOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    spend_breakdown_budget_breakdown_get: {
+        parameters: {
+            query?: {
+                period?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpendBreakdownOut"];
                 };
             };
             /** @description Validation Error */

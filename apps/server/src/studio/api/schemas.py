@@ -313,6 +313,34 @@ class SpendBreakdown(ApiModel):
     count: int
 
 
+class BalanceOut(ApiModel):
+    provider: str
+    label: str
+    status: Literal["ok", "unavailable", "no_api", "error"] = Field(
+        description="ok: read now; unavailable: the key can't read it; no_api: see the billing page; error: unreachable")
+    link: str = Field(description="The provider's billing page")
+    amount: float | None = None
+    unit: Literal["usd", "credits"] | None = None
+    usd: float | None = Field(None, description="The amount in dollars, when credits have a known price")
+    detail: str | None = None
+    checked_at: datetime
+
+
+class SpendGroup(ApiModel):
+    key: str
+    label: str
+    usd: float
+    count: int
+    estimated_usd: float = Field(description="How much of `usd` is the studio's estimate (the provider didn't say)")
+
+
+class SpendBreakdownOut(ApiModel):
+    period: Literal["today", "month", "all"]
+    total_usd: float
+    features: list[SpendGroup] = Field(description="By studio feature, most spent first")
+    models: list[SpendGroup] = Field(description="By model (Claude by its model), most spent first")
+
+
 class SpendHistoryOut(ApiModel):
     entries: list[SpendEntryOut]
     by_provider: list[SpendBreakdown] = Field(description="This month's charges per provider")
