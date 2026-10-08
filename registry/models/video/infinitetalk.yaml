@@ -42,7 +42,7 @@ routes:
       verified: 2026-10-07
       source: https://docs.runpod.io/public-endpoints/models/infinitetalk
     timeout_s: 1800
-    output: {path: output.video_url, kind: video}
+    output: {path: output.video_url | output.result, kind: video}  # live jobs answer with output.result (2026-10-07)
     notes: >-
       Priced per clip, not per second, so long speech is where it pays off. Adding its graph to wan-core would cost
       volume space and GPU time for no saving, so it stays on the public endpoint.
@@ -52,6 +52,6 @@ examples:
     mode: avatar
     prompt: A lighthouse keeper speaks quietly to camera.
     params: {resolution: "480p"}
-    media: {character_image: "fixture:images/keyframe.png", input_audio: "fixture:audio/line.mp3"}
+    media: {character_image: "fixture:images/person.jpg", input_audio: "fixture:audio/line.mp3"}
     smoke: true
     expect: {cost_usd_range: [0.25, 0.25]}

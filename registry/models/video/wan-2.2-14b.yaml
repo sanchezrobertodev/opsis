@@ -50,7 +50,7 @@ routes:
       verified: 2026-10-06
       source: https://docs.runpod.io/public-endpoints/models/wan-2-2-i2v
     timeout_s: 1800
-    output: {path: output.video_url, kind: video}
+    output: {path: output.video_url | output.result, kind: video}  # RunPod public endpoints answer with output.result (2026-10-07)
 
 examples:
   - name: i2v_smoke

@@ -16,6 +16,8 @@ parameters:
   - {name: frame_index, label: Frame, type: int, min: 0, max: 100000, default: 0,
      help: The frame the mask was drawn on.}
   - {name: detection_threshold, type: float, min: 0.05, max: 1.0, step: 0.05, default: 0.5, group: advanced}
+  - {name: points, label: Clicks, type: points, min_points: 1, max_points: 20,
+     help: "The clicks that made the mask, on its frame. fal's tracker needs a prompt besides the mask (seen live 2026-10-07)."}
 
 modes:
   - id: track
@@ -32,7 +34,9 @@ routes:
     modes:
       track: {endpoint: fal-ai/sam-3/video-rle, fixed: {apply_mask: false}}
     map:
+      params: {points: point_prompts}
       media: {input_video: video_url, mask: mask_url}
+    transform: studio.providers.transforms.segment:sam_points
     pricing:
       basis: formula
       formula: "0.005 * ceil(input_video_frames / 16)"
@@ -45,5 +49,6 @@ examples:
   - name: track_smoke
     mode: track
     # the mask comes from SAM 3 image (uploads are never masks), so the smoke script skips this; Object swap runs it
+    params: {points: [[0.75, 0.74, 1]]}
     media: {input_video: "fixture:videos/clip_3s.mp4", mask: "made-by:sam-3-image"}
     smoke: true

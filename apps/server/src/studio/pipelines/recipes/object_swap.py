@@ -32,6 +32,9 @@ class ObjectSwapInput(BaseModel):
     video_asset_id: uuid.UUID
     mask_asset_id: uuid.UUID = Field(description="The object's mask on one frame (from SAM 3 image)")
     frame_index: int = Field(0, ge=0, description="The frame the mask was drawn on")
+    points: list[list[float]] = Field(default_factory=list, max_length=20,
+                                      description="The clicks that made the mask ([x, y, label], 0-1 of the frame); "
+                                                  "the tracker starts from them as well as the mask")
     action: Literal["swap", "remove"] = "swap"
     prompt: str = Field("", max_length=2000, description="Swap: what it becomes. Remove: what it is (optional)")
     reference_asset_ids: list[uuid.UUID] = Field(default_factory=list, max_length=8)
@@ -112,10 +115,14 @@ class ObjectSwapRecipe(Recipe):
             media += [{"role": "image_references", "asset_id": str(a)} for a in inp.reference_asset_ids[:refs.max]]
         return media
 
+    @staticmethod
+    def _track_params(inp: ObjectSwapInput) -> dict[str, Any]:
+        return {"frame_index": inp.frame_index, **({"points": inp.points} if inp.points else {})}
+
     def jobs(self, inp: ObjectSwapInput, reg: Registry) -> list[PlannedJob]:
         """The clip, mask and references exist already, so each take is priced on the real clip length."""
         track = reg.models[inp.track_model]
-        out = [PlannedJob(track.id, mode_with_op(track, "track").id, {"frame_index": inp.frame_index},
+        out = [PlannedJob(track.id, mode_with_op(track, "track").id, self._track_params(inp),
                           ("input_video", "mask"), media=(("input_video", str(inp.video_asset_id)),
                                                           ("mask", str(inp.mask_asset_id))))]
         for entry in inp.models:
@@ -130,7 +137,7 @@ class ObjectSwapRecipe(Recipe):
         track_spec = reg.models[inp.track_model]
         specs = [StepSpec("track", StepKind.generate, "Track the object", {
             "model_id": track_spec.id, "mode": mode_with_op(track_spec, "track").id, "prompt": "",
-            "params": {"frame_index": inp.frame_index},
+            "params": self._track_params(inp),
             "media": [{"role": "input_video", "asset_id": str(inp.video_asset_id)},
                       {"role": "mask", "asset_id": str(inp.mask_asset_id)}]})]
         tracked = ok(settled, "track")

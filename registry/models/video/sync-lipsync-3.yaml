@@ -63,6 +63,6 @@ routes:
 examples:
   - name: lipsync_smoke
     mode: lipsync
-    media: {input_video: "fixture:videos/clip_3s.mp4", input_audio: "fixture:audio/line.mp3"}
+    media: {input_video: "fixture:videos/person_3s.mp4", input_audio: "fixture:audio/line.mp3"}
     smoke: true
     expect: {cost_usd_range: [0, 1.0]}

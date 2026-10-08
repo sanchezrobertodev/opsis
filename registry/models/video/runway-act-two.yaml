@@ -44,7 +44,7 @@ routes:
       media: {character_image: character, driving_video: reference}
     pricing:
       basis: per_output_second
-      quantity: "max(driving_video_seconds, 3)"   # 5 credits per second of the performance
+      quantity: "max(ceil(driving_video_seconds), 3)"   # 5 credits a second, whole seconds (3.06 s billed 20 credits, 2026-10-07)
       rates: [{usd: 0.05}]
       verified: 2026-10-06
       source: https://docs.dev.runwayml.com/guides/pricing
@@ -53,6 +53,6 @@ routes:
 examples:
   - name: perform_smoke
     mode: perform
-    media: {character_image: "fixture:images/keyframe.png", driving_video: "fixture:videos/clip_3s.mp4"}
+    media: {character_image: "fixture:images/person.jpg", driving_video: "fixture:videos/person_3s.mp4"}
     smoke: true
     expect: {cost_usd_range: [0.1, 0.3]}

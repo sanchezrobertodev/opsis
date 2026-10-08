@@ -435,8 +435,11 @@ async def test_the_estimate_and_the_spend_split_by_shot(client, in_memory_queue)
             await s.flush()
             s.add(SpendLedger(user_id=g.user_id, entry_type=LedgerEntry.charge, amount_usd=Decimal(usd),
                               generation_attempt_id=attempt.id))
+            # a settled reservation isn't spend (and an open one would hold the test user's daily cap)
             s.add(SpendLedger(user_id=g.user_id, entry_type=LedgerEntry.reservation, amount_usd=Decimal("9"),
-                              generation_attempt_id=attempt.id))  # a reservation isn't spend
+                              generation_attempt_id=attempt.id))
+            s.add(SpendLedger(user_id=g.user_id, entry_type=LedgerEntry.release, amount_usd=Decimal("-9"),
+                              generation_attempt_id=attempt.id))
         await s.commit()
     spend = (await client.get(f"/projects/{pid}/spend")).json()
     assert spend["shots"]["sone"] == pytest.approx(0.75) and spend["shots"]["stwo"] == pytest.approx(1.0)

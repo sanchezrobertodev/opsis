@@ -42,12 +42,12 @@ routes:
       verified: 2026-10-06
       source: https://docs.runpod.io/public-endpoints/models/kling-v2-6-motion-control
     timeout_s: 1800
-    output: {path: output.video_url, kind: video}
+    output: {path: output.video_url | output.result, kind: video}  # RunPod public endpoints answer with output.result (2026-10-07)
 
 examples:
   - name: transfer_smoke
     mode: transfer
     params: {character_orientation: video}
-    media: {character_image: "fixture:images/keyframe.png", driving_video: "fixture:videos/clip_3s.mp4"}
+    media: {character_image: "fixture:images/person.jpg", driving_video: "fixture:videos/person_3s.mp4"}
     smoke: true
     expect: {cost_usd_range: [0.2, 0.45]}

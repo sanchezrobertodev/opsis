@@ -205,3 +205,35 @@ async def test_character_shot_renders_a_keyframe_from_references_then_animates_i
     assert [m["asset_id"] for m in frame_gen.request["media"]] == [up["id"]]  # the character's picture
     assert frame_gen.request["params"]["aspect_ratio"] == "16:9"
     assert shot_gen.mode == "i2v" and shot_gen.request["media"][0]["asset_id"] == done["output"]["keyframe_asset_id"]
+
+
+async def test_a_run_spends_only_what_was_charged_plus_what_is_still_running(client, in_memory_queue):
+    from decimal import Decimal
+
+    from studio.db.models import GenerationAttempt, PipelineRun, SpendLedger
+    from studio.domain.enums import AttemptStatus, GenStatus, LedgerEntry
+    from studio.pipelines.engine import run_spent
+
+    run = await start(client, "compare", prompt="A kite over the dunes",
+                      entries=[{"model_id": "kling-3.0"}, {"model_id": "seedance-2.5"}])
+    async with session_scope() as s:
+        row = await s.get(PipelineRun, uuid.UUID(run["id"]))
+        user = row.user_id
+
+        def gen(status: GenStatus, estimate: str) -> Generation:
+            return Generation(user_id=user, group_id=row.id, model_id="kling-3.0", mode="t2v", output_type="video",
+                              status=status, estimated_cost_usd=Decimal(estimate))
+
+        rejected, billed, running = gen(GenStatus.failed, "0.40"), gen(GenStatus.failed, "0.50"), gen(GenStatus.queued, "0.30")
+        s.add_all([rejected, billed, running])
+        await s.flush()
+        attempt = GenerationAttempt(generation_id=billed.id, attempt_no=1, route_id="kling-3.0@fal", provider="fal",
+                                    status=AttemptStatus.failed)
+        s.add(attempt)
+        await s.flush()
+        s.add(SpendLedger(user_id=user, entry_type=LedgerEntry.charge, amount_usd=Decimal("0.10"),
+                          generation_attempt_id=attempt.id))
+        await s.flush()
+        before = await run_spent(s, row)  # whatever the compare run itself made on the mock: free
+        assert before == Decimal("0.40")  # the billed failure ($0.10) and the queued job's estimate ($0.30)
+        await s.rollback()

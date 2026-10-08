@@ -53,6 +53,6 @@ examples:
   - name: transfer_smoke
     mode: transfer
     params: {tier: standard, character_orientation: video}
-    media: {character_image: "fixture:images/keyframe.png", driving_video: "fixture:videos/clip_3s.mp4"}
+    media: {character_image: "fixture:images/person.jpg", driving_video: "fixture:videos/person_3s.mp4"}
     smoke: true
     expect: {cost_usd_range: [0.3, 0.6]}

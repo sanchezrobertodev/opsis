@@ -37,6 +37,8 @@ export function Swap() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const { data: segment } = useGeneration(selection?.jobId);
   const maskId = segment?.status === "succeeded" ? segment.assets?.[0]?.id : undefined;
+  // the clicks that made the mask: the tracker starts from them as well as the mask
+  const clicks = (segment?.request as { params?: { points?: number[][] } } | undefined)?.params?.points ?? [];
   const [action, setAction] = useState<"swap" | "remove">("swap");
   const [prompt, setPrompt] = useState("");
   const [refs, setRefs] = useState<SlotAsset[]>([]);
@@ -57,6 +59,7 @@ export function Swap() {
         recipe: "object_swap",
         input: {
           video_asset_id: video.id, mask_asset_id: maskId, frame_index: selection.frameIndex, action,
+          points: clicks,
           prompt: prompt.trim(), reference_asset_ids: action === "swap" ? refs.map((r) => r.id) : [],
           models: models.map((model_id) => ({ model_id })), keep_background: keepBackground, feather,
           review_mask: reviewMask, ...(film ? { project_id: film.project, shot_key: film.shot } : {}),

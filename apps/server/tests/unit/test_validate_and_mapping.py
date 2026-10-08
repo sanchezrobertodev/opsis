@@ -109,3 +109,19 @@ def test_media_longer_than_a_slot_allows_is_rejected():
     long = MediaRef("input_video", "v", "video", duration_ms=16_000)
     with pytest.raises(RequestError, match=r"Clip to edit can be at most 15 s; this one is 16.0 s"):
         normalize(spec, "edit", "x", {}, [long])
+
+
+def test_media_shorter_than_a_slot_allows_is_rejected():
+    from studio.config import get_settings
+    from studio.registry.loader import load_registry
+
+    spec = load_registry(get_settings().resolve_registry_dir()).model("kling-o3-edit")  # fal refuses under 720p
+    normalize(spec, "edit", "x", {}, [MediaRef("input_video", "v", "video", width=1280, height=720)])
+    normalize(spec, "edit", "x", {}, [MediaRef("input_video", "v", "video")])  # size unknown: left to the provider
+    small = MediaRef("input_video", "v", "video", width=854, height=480)
+    with pytest.raises(RequestError, match=r"Clip to edit must be at least 720 px tall; this one is 480 px"):
+        normalize(spec, "edit", "x", {}, [small])
+    slow = MediaRef("input_video", "v", "video", width=1280, height=720, fps=16.0)  # a Wan clip
+    with pytest.raises(RequestError, match=r"Clip to edit must be at least 23 fps; this one is 16 fps"):
+        normalize(spec, "edit", "x", {}, [slow])
+    normalize(spec, "edit", "x", {}, [MediaRef("input_video", "v", "video", width=1280, height=720, fps=23.976)])

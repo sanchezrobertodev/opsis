@@ -66,6 +66,6 @@ examples:
   - name: move_smoke
     mode: move
     params: {resolution: "480p"}
-    media: {character_image: "fixture:images/keyframe.png", driving_video: "fixture:videos/clip_3s.mp4"}
+    media: {character_image: "fixture:images/person.jpg", driving_video: "fixture:videos/person_3s.mp4"}
     smoke: true
     expect: {cost_usd_range: [0.1, 0.5]}

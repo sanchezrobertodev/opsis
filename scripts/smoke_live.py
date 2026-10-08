@@ -107,6 +107,22 @@ def main() -> int:
         return 0
 
     report = []
+    out = ROOT / "smoke_reports" / f"{datetime.now(UTC):%Y-%m-%d-%H%M%S}.json"
+    out.parent.mkdir(exist_ok=True)
+
+    def save() -> None:  # after every route, so a crash part-way loses nothing
+        out.write_text(json.dumps({"cap_usd": args.cap, "planned_usd": total, "runs": report}, indent=2))
+
+    def fetch(gen_id: str) -> dict | None:
+        """The generation's state; a dropped connection to the local API is retried rather than ending the run."""
+        for wait in (5, 15, 30):
+            try:
+                return api.get(f"/generations/{gen_id}").json()
+            except httpx.HTTPError as exc:
+                print(f"  (the API didn't answer: {exc!r}; trying again in {wait}s)")
+                time.sleep(wait)
+        return None
+
     for route_id, body, usd in runs:
         started = time.monotonic()
         r = api.post("/generations", json={**body, "confirm_cost_usd": usd},
@@ -118,17 +134,17 @@ def main() -> int:
         gen = r.json()
         while gen["status"] not in TERMINAL and time.monotonic() - started < args.timeout:
             time.sleep(5)
-            gen = api.get(f"/generations/{gen['id']}").json()
+            gen = fetch(gen["id"]) or gen
         seconds = round(time.monotonic() - started)
         entry = {"route": route_id, "generation_id": gen["id"], "status": gen["status"], "seconds": seconds,
                  "estimated_usd": usd, "actual_usd": gen.get("actual_cost_usd"), "error": gen.get("error_message"),
                  "assets": [a["url"] for a in gen.get("assets", [])]}
         report.append(entry)
-        print(f"  {route_id}: {gen['status']} in {seconds}s" + (f" ({gen['error_message']})" if gen.get("error_message") else ""))
+        save()
+        print(f"  {route_id}: {gen['status']} in {seconds}s" + (f" ({gen['error_message']})" if gen.get("error_message") else ""),
+              flush=True)
 
-    out = ROOT / "smoke_reports" / f"{datetime.now(UTC):%Y-%m-%d-%H%M%S}.json"
-    out.parent.mkdir(exist_ok=True)
-    out.write_text(json.dumps({"cap_usd": args.cap, "planned_usd": total, "runs": report}, indent=2))
+    save()
     print(f"report: {out}")
     return 0 if all(x["status"] == "succeeded" for x in report) else 1
 
