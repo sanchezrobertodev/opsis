@@ -64,6 +64,10 @@ WAN_MOVE_SIZES = {"16:9": (832, 480), "9:16": (480, 832), "1:1": (624, 624)}
 # rather than a single pixel.
 TRACKS_PER_PATH = 5
 TRACK_SPREAD = 0.015  # fraction of the average side between neighbouring tracks
+# Wan-Move copies the start frame's latent cell (8 x 8 px) under each track to where the track is later, so a pin's 5
+# still tracks hold a thin strip of cells. Live takes (AMS-16, 2026-10-08) showed that is enough: the pinned spot
+# changed no more than untouched background. Don't pack a pin with a disc of still tracks: Wan-Move drew that patch on
+# as a visible ring.
 
 
 def wan_move_tracks(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -> dict[str, Any]:
