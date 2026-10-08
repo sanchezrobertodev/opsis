@@ -195,8 +195,9 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 - A film is a `projects` row (`kind: cinema`) whose JSONB `document` is `studio/cinema/document.py:CinemaDocument`
   (script, cast slugs, settings, scenes of shots with short stable ids). Saves send the `version` they started from
   (stale -> 409) and every save is kept in `project_revisions`; restoring makes a new version.
-- Runs never write the document. `cinema_frames` (hero frames) and `cinema_takes` (takes, chained from the previous
-  shot's last frame where a shot continues) make generations tagged `project_id` + `shot_key`
+- Runs never write the document. `cinema_frames` (hero frames: grids up to 3 x 3, opening or closing frames,
+  split into calls the image model can make) and `cinema_takes` (takes, chained from the previous shot's last frame
+  where a shot continues, and ending on the shot's picked closing frame `end_asset_id` with the model's start+end mode) make generations tagged `project_id` + `shot_key`
   (`GET /projects/{id}/takes`); the editor picks them into the document.
 - The cut is `document.cut`: picture items (shots, whose picked takes play trimmed as the shot says, and title
   cards) in order, and audio clips on dialogue, music and SFX tracks; with no items, picked takes play in story

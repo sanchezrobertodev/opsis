@@ -43,8 +43,14 @@ export function mergedDirection(settings: CinemaSettings, shot: Shot): Record<st
 
 type TakeShot = {
   key: string; prompt: string; direction: Record<string, unknown>; duration: number | null;
-  start_asset_id?: string | null; continue_from?: string; continue_from_asset_id?: string;
+  start_asset_id?: string | null; continue_from?: string; continue_from_asset_id?: string; end_asset_id?: string;
 };
+
+/** Whether a model can animate from one picked frame to another (a mode taking a start and an end frame). */
+export function endsOnAFrame(model: { modes: { medias: { role: string }[] }[] } | undefined): boolean {
+  return Boolean(model?.modes.some((m) => m.medias.some((s) => s.role === "start_image")
+                                         && m.medias.some((s) => s.role === "end_image")));
+}
 
 /** A shot's lines as the takes run gets them: in its direction, each with its speaker's voice. */
 function withDialogue(direction: Record<string, unknown>, shot: Shot, voices: Record<string, string>) {
@@ -63,8 +69,12 @@ export function useCastVoices(): Record<string, string> {
   }));
 }
 
-/** The takes-run shots for these shot ids: hero frames, or chaining from the shot before. */
-export function takeShots(doc: CinemaDoc, ids: string[], voices: Record<string, string> = {}): TakeShot[] {
+/**
+ * The takes-run shots for these shot ids: hero frames, or chaining from the shot before; a picked closing frame
+ * goes along when the shot starts on a frame and the model can end on one (`endFrames`).
+ */
+export function takeShots(doc: CinemaDoc, ids: string[], voices: Record<string, string> = {},
+                          endFrames = false): TakeShot[] {
   const order = allShots(doc).map((x) => x.shot);
   const batch = new Set(ids);
   return order.flatMap((shot, i): TakeShot[] => {
@@ -72,12 +82,13 @@ export function takeShots(doc: CinemaDoc, ids: string[], voices: Record<string, 
     const prev = order[i - 1];
     const base = { key: shot.id, prompt: shot.action.trim(), duration: shot.duration,
                    direction: withDialogue(mergedDirection(doc.settings, shot), shot, voices) };
+    const end = endFrames && shot.end_asset_id ? { end_asset_id: shot.end_asset_id } : {};
     if (shot.continuity === "continue" && prev) {
-      if (batch.has(prev.id) && prev.action.trim()) return [{ ...base, continue_from: prev.id }];
-      if (prev.take_asset_id) return [{ ...base, continue_from_asset_id: prev.take_asset_id }];
+      if (batch.has(prev.id) && prev.action.trim()) return [{ ...base, ...end, continue_from: prev.id }];
+      if (prev.take_asset_id) return [{ ...base, ...end, continue_from_asset_id: prev.take_asset_id }];
       return [];
     }
-    return [{ ...base, start_asset_id: shot.hero_asset_id }];
+    return [{ ...base, start_asset_id: shot.hero_asset_id, ...(shot.hero_asset_id ? end : {}) }];
   });
 }
 
@@ -96,10 +107,10 @@ type ShotEstimate = { usd: number; live: boolean };
  * What filming each shot would cost: one estimate of filming every described shot, split by shot. With mock
  * providers on, that's the price on the paid routes.
  */
-function useShotEstimates(projectId: string, doc: CinemaDoc, voices: Record<string, string>) {
+function useShotEstimates(projectId: string, doc: CinemaDoc, voices: Record<string, string>, endFrames: boolean) {
   const ids = allShots(doc).filter((x) => x.shot.action.trim()).map((x) => x.shot.id);
   // the wording doesn't change the price, so typing doesn't ask again
-  const shots = takeShots(doc, ids, voices).map((s) => ({ ...s, prompt: "x" }));
+  const shots = takeShots(doc, ids, voices, endFrames).map((s) => ({ ...s, prompt: "x" }));
   const { data } = useEstimateRun(useDebounced(shots.length ? takesRun(projectId, doc, shots) : null, 600));
   return (id: string): ShotEstimate | undefined => {
     const now = data?.by_key[id];
@@ -122,7 +133,8 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
   const byShot = (key: string) => takes.filter((t) => t.shot_key === key);
 
   const spend = useProjectSpend(projectId, busy).data;
-  const estimate = useShotEstimates(projectId, doc, voices);
+  const endFrames = endsOnAFrame(filmModel);
+  const estimate = useShotEstimates(projectId, doc, voices, endFrames);
   const [dragging, setDragging] = useState<string | null>(null);
   const [overScene, setOverScene] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -166,11 +178,12 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
 
   const noFrames = shots.filter((x) => x.shot.action.trim() && !x.shot.hero_asset_id && x.shot.continuity === "cut");
   const unfilmed = shots.filter((x) => x.shot.action.trim() && !x.shot.take_asset_id);
-  const framesFor = (ids: string[]) => launch({ recipe: "cinema_frames", input: {
+  const framesFor = (ids: string[], which: "start" | "end" = "start") => launch({ recipe: "cinema_frames", input: {
     project_id: projectId, image_model_id: doc.settings.image_model_id, aspect_ratio: doc.settings.aspect_ratio,
-    count: doc.settings.hero_frames,
+    count: doc.settings.hero_frames, which,
     shots: shots.filter((x) => ids.includes(x.shot.id)).map((x) => ({
-      key: x.shot.id, prompt: x.shot.action.trim(), direction: mergedDirection(doc.settings, x.shot) })) } }, "Hero frames");
+      key: x.shot.id, prompt: x.shot.action.trim(), direction: mergedDirection(doc.settings, x.shot) })) } },
+    which === "end" ? "Closing frames" : "Hero frames");
   // a whole scene in one multi-shot call; each shot then gets its piece as a take
   const sceneShots = (scene: Scene) => scene.shots.filter((s) => s.action.trim());
   const filmScene = (scene: Scene) => launch({ recipe: "cinema_scene", input: {
@@ -180,7 +193,7 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
     shots: sceneShots(scene).map((s) => ({ key: s.id, prompt: s.action.trim(), duration: s.duration ?? 5,
                                           direction: withDialogue(mergedDirection(doc.settings, s), s, voices) })) } },
     "Filming the scene");
-  const filmFor = (ids: string[]) => launch(takesRun(projectId, doc, takeShots(doc, ids, voices)), "Filming");
+  const filmFor = (ids: string[]) => launch(takesRun(projectId, doc, takeShots(doc, ids, voices, endFrames)), "Filming");
 
   return (
     <div className="grid h-full grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -254,7 +267,8 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
           <ShotInspector key={current.shot.id} projectId={projectId} launch={launch} doc={doc} number={current.index}
                          scene={current.scene} shot={current.shot}
                          takes={byShot(current.shot.id)} patch={(p) => patchShot(current.shot.id, p)} update={update}
-                         onFrames={() => void framesFor([current.shot.id])} onFilm={() => void filmFor([current.shot.id])}
+                         onFrames={(which) => void framesFor([current.shot.id], which)}
+                         onFilm={() => void filmFor([current.shot.id])} endFrames={endFrames}
                          onRemoved={() => setSelected(null)} onAdded={setSelected}
                          take={current.shot.take_asset_id ? assets.get(current.shot.take_asset_id) : undefined} />
         ) : (
@@ -439,17 +453,20 @@ function SplitPanel({ shot, take, durations, onSplit, onCancel }: {
 }
 
 function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, patch, update, onFrames, onFilm, onRemoved,
-                        onAdded, take }: {
+                        onAdded, take, endFrames }: {
   projectId: string; launch: Launch; doc: CinemaDoc; number: number; scene: Scene; shot: Shot; takes: Take[];
-  patch: (p: Partial<Shot>) => void; update: Update; onFrames: () => void; onFilm: () => void; onRemoved: () => void;
-  onAdded: (id: string) => void; take?: Asset;
+  patch: (p: Partial<Shot>) => void; update: Update; onFrames: (which: "start" | "end") => void; onFilm: () => void;
+  onRemoved: () => void; onAdded: (id: string) => void; take?: Asset; endFrames: boolean;
 }) {
   const [splitting, setSplitting] = useState(false);
   const { data: model } = useModel(doc.settings.model_id);
   const order = allShots(doc).map((x) => x.shot);
   const prev = order[order.findIndex((s) => s.id === shot.id) - 1];
   const index = scene.shots.findIndex((s) => s.id === shot.id);
-  const frames = takes.filter((t) => t.output_type === "image");
+  const frames = takes.filter((t) => t.output_type === "image" && t.frame !== "end");
+  const closing = takes.filter((t) => t.output_type === "image" && t.frame === "end");
+  const startsOnAFrame = shot.continuity === "continue" ? Boolean(prev) : Boolean(shot.hero_asset_id);
+  const columns = doc.settings.hero_frames > 4 ? 3 : 2;  // a 3 x 3 grid or a 2 x 2 one
   const videos = takes.filter((t) => t.output_type === "video");
   const durationParam = model?.parameters.find((p) => p.name === "duration");
   const durations: number[] = durationParam?.type === "enum" ? durationParam.options.map(Number)
@@ -518,15 +535,36 @@ function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, pat
         <section className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-xs text-muted">Opening frame</h3>
-            <Button size="sm" onClick={onFrames} disabled={!shot.action.trim()}>
+            <Button size="sm" onClick={() => onFrames("start")} disabled={!shot.action.trim()}>
               <ImageIcon className="size-4" aria-hidden />
               Make {doc.settings.hero_frames}
             </Button>
           </div>
-          <TakeGrid takes={frames} picked={shot.hero_asset_id} onPick={(id) => patch({ hero_asset_id: id === shot.hero_asset_id ? null : id })}
+          <TakeGrid takes={frames} picked={shot.hero_asset_id} columns={columns} alt="Opening frame option"
+                    onPick={(id) => patch({ hero_asset_id: id === shot.hero_asset_id ? null : id })}
                     empty="Optional. A picked frame is where the shot starts." />
         </section>
       )}
+      <section className="flex flex-col gap-2" aria-label="Closing frame">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-xs text-muted">Closing frame</h3>
+          <Button size="sm" onClick={() => onFrames("end")} disabled={!shot.action.trim() || !endFrames}>
+            <ImageIcon className="size-4" aria-hidden />
+            Make {doc.settings.hero_frames}
+          </Button>
+        </div>
+        {!endFrames ? (
+          <p className="text-2xs text-faint">
+            The film&rsquo;s model can&rsquo;t end on a picked frame{shot.end_asset_id ? ", so the picked one is left out" : ""}.
+            Cinema Studio, Kling 3.0, Seedance 2.5 and Veo 3.1 can.
+          </p>
+        ) : (
+          <TakeGrid takes={closing} picked={shot.end_asset_id ?? null} columns={columns} alt="Closing frame option"
+                    onPick={(id) => patch({ end_asset_id: id === shot.end_asset_id ? null : id })}
+                    empty={startsOnAFrame ? "Optional. A picked frame is where the take ends."
+                      : "Optional. Pick an opening frame first: the take animates from it to this one."} />
+        )}
+      </section>
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-xs text-muted">Takes</h3>
@@ -540,6 +578,7 @@ function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, pat
             ? prev?.take_asset_id ? "Starts from the last frame of the previous shot's take."
               : "Pick a take for the previous shot first, or film them together from the storyboard."
             : shot.hero_asset_id ? "Starts from the picked opening frame." : "Starts from the description alone."}
+          {endFrames && shot.end_asset_id && startsOnAFrame && " Ends on the picked closing frame."}
         </p>
         <TakeGrid takes={videos} picked={shot.take_asset_id} onPick={(id) => patch({ take_asset_id: id === shot.take_asset_id ? null : id })}
                   empty="No takes yet." video />
@@ -606,13 +645,14 @@ function madeBy(t: Take, number: Map<string, number>): string {
   return parent && t.made_by !== "multi_shot" ? `, ${phrase[0]} ${parent}` : `, ${phrase[1]}`;
 }
 
-function TakeGrid({ takes, picked, onPick, empty, video }: {
+function TakeGrid({ takes, picked, onPick, empty, video, columns = 2, alt = "Opening frame option" }: {
   takes: Take[]; picked: string | null; onPick: (assetId: string) => void; empty: string; video?: boolean;
+  columns?: 2 | 3; alt?: string;
 }) {
   if (!takes.length) return <p className="text-2xs text-faint">{empty}</p>;
   const number = new Map(takes.flatMap((t, i) => (t.asset ? [[t.asset.id, takes.length - i]] : [])));
   return (
-    <ul className="grid grid-cols-2 gap-2">
+    <ul className={cn("grid gap-2", columns === 3 ? "grid-cols-3" : "grid-cols-2")}>
       {takes.map((t, i) => (
         <li key={`${t.generation_id ?? "derived"}-${t.asset?.id ?? i}`} className="flex flex-col gap-1">
           {t.asset ? (
@@ -624,7 +664,7 @@ function TakeGrid({ takes, picked, onPick, empty, video }: {
               <button type="button" onClick={() => onPick(t.asset!.id)} aria-pressed={picked === t.asset.id}
                       className={cn("overflow-hidden rounded-[var(--radius-frame)]", picked === t.asset.id && "ring-2 ring-tungsten")}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={mediaUrl(t.asset.thumb_url ?? t.asset.url)} alt="Opening frame option" className="aspect-video w-full object-cover" />
+                <img src={mediaUrl(t.asset.thumb_url ?? t.asset.url)} alt={alt} className="aspect-video w-full object-cover" />
               </button>
             )
           ) : (
@@ -698,8 +738,8 @@ function FilmSettings({ doc, update }: { doc: CinemaDoc; update: Update }) {
       <Field label="Takes per shot">
         <Slider value={s.takes_per_shot} min={1} max={4} step={1} onChange={(v) => set({ takes_per_shot: v })} />
       </Field>
-      <Field label="Opening frames per shot">
-        <Slider value={s.hero_frames} min={1} max={4} step={1} onChange={(v) => set({ hero_frames: v })} />
+      <Field label="Frames per grid" hint="4 makes a 2 x 2 grid, 9 a 3 x 3 one; opening and closing frames alike.">
+        <Slider value={s.hero_frames} min={1} max={9} step={1} onChange={(v) => set({ hero_frames: v })} />
       </Field>
       <div className="flex flex-col gap-2">
         <h3 className="text-xs text-muted">The film&rsquo;s look</h3>

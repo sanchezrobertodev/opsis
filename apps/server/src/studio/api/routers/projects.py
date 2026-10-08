@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -37,6 +37,7 @@ from studio.domain.enums import AssetKind, LedgerEntry
 from studio.jutsu3d.document import Jutsu3dDocument, starter_scene
 from studio.llm.client import LLMError, LLMUnavailable
 from studio.media.ffmpeg import probe
+from studio.pipelines.recipes.cinema import frame_kind
 from studio.registry.loader import get_registry
 from studio.storage.local import get_storage
 
@@ -110,6 +111,8 @@ class PlanOut(BaseModel):
 
 class TakeOut(BaseModel):
     generation_id: uuid.UUID | None = Field(description="None for a take cut or joined from others")
+    frame: Literal["start", "end"] | None = Field(None, description="For hero frames: made as an opening frame or a "
+                                                                    "closing one")
     shot_key: str
     made_by: str = Field("model", description="model; multi_shot (cut from a scene take); extend_after or "
                                               "extend_before (joined with a new part); edit; lipsync; region_edit")
@@ -145,12 +148,15 @@ async def _available(session: AsyncSession, user: User, ids: set[uuid.UUID]) -> 
         Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)))).scalars())
 
 
+PICKS = ("hero_asset_id", "end_asset_id", "take_asset_id")  # what a shot can pick: opening and closing frames, a take
+
+
 def _referenced(kind: str, doc: dict[str, Any]) -> set[str]:
     """The assets a document points at: a film's picked frames and takes, a 3D scene's models and cover."""
     if kind == "jutsu3d":
         return Jutsu3dDocument.model_validate(doc).asset_ids()
     picks = {v for scene in doc.get("scenes", []) for shot in scene.get("shots", [])
-             for v in (shot.get("hero_asset_id"), shot.get("take_asset_id")) if v}
+             for v in (shot.get(field) for field in PICKS) if v}
     return picks | {a["asset_id"] for a in (doc.get("cut") or {}).get("audio", []) if a.get("asset_id")}
 
 
@@ -176,7 +182,7 @@ async def _drop_gone_picks(session: AsyncSession, user: User, doc: dict[str, Any
     def clean(shot: dict[str, Any]) -> dict[str, Any]:
         nonlocal cleared
         shot = dict(shot)
-        for field in ("hero_asset_id", "take_asset_id"):
+        for field in PICKS:
             value = shot.get(field)
             if value and (str(value) in gone or not _is_uuid(value)):
                 shot[field] = None
@@ -377,8 +383,10 @@ def _generation_take(g: Generation, a: Asset | None) -> TakeOut:
     spec = get_registry().model(g.model_id)
     mode = spec.mode(g.mode) if spec else None
     made_by = ("lipsync" if mode and "lipsync" in mode.ops else "edit") if parent else "model"
+    prompt = g.request.get("prompt", "")
+    frame = frame_kind(prompt) if g.output_type == "image" else None
     return TakeOut(generation_id=g.id, shot_key=g.shot_key or "", output_type=g.output_type, status=g.status.value,
-                   progress=g.progress, error=g.error_message, prompt=g.request.get("prompt", ""),
+                   progress=g.progress, error=g.error_message, prompt=prompt, frame=frame,
                    created_at=g.created_at, made_by=made_by, parent_asset_id=parent,
                    asset=asset_out(a) if a else None)
 
@@ -397,7 +405,7 @@ def _picked(doc: dict[str, Any], shot_key: str | None) -> set[uuid.UUID]:
         for shot in scene.get("shots", []):
             if shot_key and shot.get("id") != shot_key:
                 continue
-            for v in (shot.get("hero_asset_id"), shot.get("take_asset_id")):
+            for v in (shot.get(field) for field in PICKS):
                 try:
                     out.add(uuid.UUID(str(v)))
                 except ValueError:

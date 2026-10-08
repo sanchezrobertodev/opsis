@@ -42,6 +42,8 @@ class Shot(_Doc):
     continuity: Literal["cut", "continue"] = Field(
         "cut", description="continue: start from the last frame of the previous shot's take")
     hero_asset_id: str | None = Field(None, description="The picked opening frame")
+    end_asset_id: str | None = Field(None, description="The picked closing frame: the take animates from its start to "
+                                                       "this (models with a start-and-end-frame mode)")
     take_asset_id: str | None = Field(None, description="The picked take")
     trim_in: float = Field(0.0, ge=0)
     trim_out: float | None = Field(None, gt=0, description="Where the cut leaves this take; its end when empty")
@@ -84,7 +86,7 @@ class Settings(_Doc):
     direction: ShotDirection = Field(default_factory=ShotDirection,
                                      description="Look applied to every shot unless the shot sets its own")
     takes_per_shot: int = Field(2, ge=1, le=4)
-    hero_frames: int = Field(4, ge=1, le=4)
+    hero_frames: int = Field(4, ge=1, le=9, description="Frames per grid: 4 is 2 x 2, 9 is 3 x 3")
 
 
 HEX = r"^#[0-9a-fA-F]{6}$"

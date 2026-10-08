@@ -37,7 +37,7 @@ from studio.pipelines.recipes.common import (
 )
 from studio.pipelines.recipes.keyframe import ref_mode
 from studio.pipelines.recipes.talking import lipsync_mode
-from studio.registry.loader import Registry
+from studio.registry.loader import Registry, get_registry
 from studio.registry.schema import Mode, ModelSpec
 from studio.registry.validate import RequestError
 from studio.registry.virtual import resolve as resolve_virtual
@@ -108,11 +108,24 @@ class CinemaFramesInput(BaseModel):
     shots: list[FrameShot] = Field(min_length=1, max_length=40)
     image_model_id: str = "nano-banana-2"
     aspect_ratio: str = "16:9"
-    count: int = Field(4, ge=1, le=4)
+    count: int = Field(4, ge=1, le=9, description="Frames per shot: 4 makes a 2 x 2 grid, 9 a 3 x 3 one")
+    which: Literal["start", "end"] = Field("start", description="Opening frames, or closing frames a take ends on")
 
 
-def frame_prompt(action: str) -> str:
-    return f"A film still, the opening frame of the shot: {action.strip().rstrip('.')}. Cinematic composition."
+FRAME_WORDS = {"start": "opening", "end": "closing"}
+
+
+def frame_prompt(action: str, which: str = "start") -> str:
+    return (f"A film still, the {FRAME_WORDS[which]} frame of the shot: {action.strip().rstrip('.')}. "
+            "Cinematic composition.")
+
+
+def frame_kind(prompt: str) -> Literal["start", "end"] | None:
+    """Whether a hero frame was made as an opening or a closing frame (its prompt says so: `frame_prompt`)."""
+    for which, word in FRAME_WORDS.items():
+        if prompt.startswith(f"A film still, the {word} frame of the shot:"):
+            return which  # type: ignore[return-value]
+    return None
 
 
 class CinemaFramesRecipe(Recipe):
@@ -138,12 +151,22 @@ class CinemaFramesRecipe(Recipe):
         assert m is not None
         return m
 
-    def _batched(self, spec: ModelSpec, mode: Mode) -> bool:
-        return any(p.name == "num_images" for p in spec.params_for(mode.id))
+    def _batches(self, inp: CinemaFramesInput, spec: ModelSpec, mode: Mode) -> list[int]:
+        """How many frames each call makes: as many as the model makes at once (`num_images`), else one each."""
+        most = next((getattr(p, "max", 1) for p in spec.params_for(mode.id) if p.name == "num_images"), 1)
+        full, rest = divmod(inp.count, max(1, int(most)))
+        return [int(most)] * full + ([rest] if rest else [])
 
-    def _params(self, inp: CinemaFramesInput, spec: ModelSpec, mode: Mode) -> dict[str, Any]:
+    def _params(self, inp: CinemaFramesInput, spec: ModelSpec, mode: Mode, n: int) -> dict[str, Any]:
         params = with_param(spec, mode.id, {}, "aspect_ratio", inp.aspect_ratio)
-        return with_param(spec, mode.id, params, "num_images", inp.count) if self._batched(spec, mode) else params
+        return with_param(spec, mode.id, params, "num_images", n) if n > 1 else params
+
+    def _keys(self, inp: CinemaFramesInput, shot: FrameShot, batches: list[int]) -> list[str]:
+        """Step keys: one call per shot keeps the single key earlier runs used; closing frames are their own steps."""
+        prefix = "frames" if inp.which == "start" else "ends"
+        if len(batches) == 1:
+            return [f"{prefix}[{shot.key}]"]
+        return [f"{prefix}[{shot.key}:{n}]" for n in range(1, len(batches) + 1)]
 
     def jobs(self, inp: CinemaFramesInput, reg: Registry) -> list[PlannedJob]:
         spec = reg.models[inp.image_model_id]
@@ -151,35 +174,35 @@ class CinemaFramesRecipe(Recipe):
         out = []
         for shot in inp.shots:
             mode = self._mode(spec, shot.prompt)
-            n = 1 if self._batched(spec, mode) else inp.count
             # the @mentioned characters' pictures fill the reference slot when the frame is made
             roles = (role,) if mode.slot(role) else ()
-            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode), roles, key=shot.key)] * n
+            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode, n), roles, key=shot.key)
+                    for n in self._batches(inp, spec, mode)]
         return out
 
     def plan(self, inp: CinemaFramesInput, settled: Settled, reg: Registry) -> list[StepSpec]:
         spec = reg.models[inp.image_model_id]
         specs = []
+        word = FRAME_WORDS[inp.which]
         for shot in inp.shots:
             mode = self._mode(spec, shot.prompt)
-            step = {"model_id": spec.id, "mode": mode.id, "prompt": frame_prompt(shot.prompt), "media": [],
-                    "params": self._params(inp, spec, mode), "direction": shot.direction,
-                    "project_id": str(inp.project_id), "shot_key": shot.key}
-            keys = [frames_key(shot.key)] if self._batched(spec, mode) else \
-                [frames_key(shot.key, n) for n in range(1, inp.count + 1)]
-            specs += [StepSpec(k, StepKind.generate, f"Hero frames: {shot.prompt[:60]}", step, optional=True)
-                      for k in keys]
+            batches = self._batches(inp, spec, mode)
+            for key, n in zip(self._keys(inp, shot, batches), batches, strict=True):
+                specs.append(StepSpec(key, StepKind.generate, f"{word.capitalize()} frames: {shot.prompt[:60]}", {
+                    "model_id": spec.id, "mode": mode.id, "prompt": frame_prompt(shot.prompt, inp.which),
+                    "media": [], "params": self._params(inp, spec, mode, n), "direction": shot.direction,
+                    "project_id": str(inp.project_id), "shot_key": shot.key}, optional=True))
         return specs
 
     def result(self, inp: CinemaFramesInput, settled: Settled) -> dict[str, Any] | None:
+        spec = get_registry().models[inp.image_model_id]
         out: dict[str, list[str]] = {}
         for shot in inp.shots:
-            keys = [k for k in settled if k == frames_key(shot.key) or k.startswith(f"frames[{shot.key}:")]
-            expected = 1 if frames_key(shot.key) in settled else inp.count
-            if len(keys) < expected:
+            keys = self._keys(inp, shot, self._batches(inp, spec, self._mode(spec, shot.prompt)))
+            if not all(k in settled for k in keys):
                 return None
             out[shot.key] = [a for k in keys for a in (settled[k].get("asset_ids") or [])]
-        return {"frames": out}
+        return {"frames": out, "which": inp.which}
 
 
 # ---------------------------------------------------------------- takes
@@ -202,6 +225,19 @@ class TakeShot(BaseModel):
     start_asset_id: uuid.UUID | None = Field(None, description="The picked hero frame")
     continue_from: str | None = Field(None, pattern=KEY, description="An earlier shot in this run to continue from")
     continue_from_asset_id: uuid.UUID | None = Field(None, description="A picked take to continue from")
+    end_asset_id: uuid.UUID | None = Field(None, description="The picked closing frame: the take ends on it")
+
+    def starts_on_a_frame(self) -> bool:
+        return bool(self.start_asset_id or self.continue_from or self.continue_from_asset_id)
+
+    def roles(self) -> set[str]:
+        """The frames the take is given: where it starts, and where it ends when a closing frame is picked."""
+        return ({"start_image"} if self.starts_on_a_frame() else set()) | ({"end_image"} if self.end_asset_id else set())
+
+
+def take_mode(spec: ModelSpec, shot: TakeShot) -> Mode | None:
+    """Start and end frames pick the model's mode that takes both; a start frame alone, image to video."""
+    return bridge_mode(spec) if shot.end_asset_id else mode_for(spec, shot.roles())
 
 
 class CinemaTakesInput(BaseModel):
@@ -236,12 +272,16 @@ class CinemaTakesRecipe(Recipe):
         spec = reg.model(inp.model_id)
         if spec is None or spec.output_type != "video":
             return [f"{inp.model_id!r} is not a video model"]
-        needs_frame = any(s.start_asset_id or s.continue_from or s.continue_from_asset_id for s in inp.shots)
+        needs_frame = any(s.starts_on_a_frame() for s in inp.shots)
         if needs_frame and start_frame_mode(spec) is None:
             return [f"{spec.name} can't start from an image, so hero frames and continuity can't be used"]
-        if not all(s.start_asset_id or s.continue_from or s.continue_from_asset_id for s in inp.shots) \
-                and text_mode(spec) is None:
+        if not all(s.starts_on_a_frame() for s in inp.shots) and text_mode(spec) is None:
             return [f"{spec.name} needs a hero frame for every shot"]
+        ending = [s for s in inp.shots if s.end_asset_id]
+        if any(not s.starts_on_a_frame() for s in ending):
+            return ["a shot with a closing frame needs an opening frame too (pick one, or continue the shot before)"]
+        if ending and bridge_mode(spec) is None:
+            return [f"{spec.name} can't end on a picked frame; pick a model with a start-and-end-frame mode"]
         if any(self._voiced_after(inp, spec, s, reg) for s in inp.shots):
             voice, lip = reg.model(inp.voice_model), reg.model(inp.lipsync_model_id)
             if voice is None or mode_with_op(voice, "tts") is None:
@@ -269,18 +309,16 @@ class CinemaTakesRecipe(Recipe):
         """Lines this model can't speak: voiced and lip-synced onto each take afterwards."""
         if not _lines(shot):
             return False
-        roles = {"start_image"} if shot.start_asset_id or shot.continue_from or shot.continue_from_asset_id else set()
-        mode = mode_for(spec, roles)
+        mode = take_mode(spec, shot)
         return mode is not None and not self._speaks(spec, mode, dict(inp.params), reg)
 
     def jobs(self, inp: CinemaTakesInput, reg: Registry) -> list[PlannedJob]:
         spec = reg.models[inp.model_id]
         out = []
         for shot in inp.shots:
-            roles = {"start_image"} if shot.start_asset_id or shot.continue_from or shot.continue_from_asset_id else set()
-            mode = mode_for(spec, roles)
+            mode = take_mode(spec, shot)
             assert mode is not None
-            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode, shot, reg), tuple(roles),
+            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode, shot, reg), tuple(sorted(shot.roles())),
                                key=shot.key)] * inp.takes
             if self._voiced_after(inp, spec, shot, reg):
                 lines = _lines(shot)
@@ -322,7 +360,9 @@ class CinemaTakesRecipe(Recipe):
                     continue
                 start, deps = frame["asset_id"], (chain_key(shot.key),)
             media = [{"role": "start_image", "asset_id": start}] if start else []
-            mode = mode_for(spec, {m["role"] for m in media})
+            if shot.end_asset_id:
+                media.append({"role": "end_image", "asset_id": str(shot.end_asset_id)})
+            mode = take_mode(spec, shot)
             assert mode is not None
             for n in range(1, inp.takes + 1):
                 specs.append(StepSpec(take_key(shot.key, n), StepKind.generate, f"{shot.key} take {n}", {
