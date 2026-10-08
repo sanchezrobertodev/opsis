@@ -579,7 +579,9 @@ export interface paths {
         };
         /**
          * Project Spend
-         * @description What the film's generations have cost so far (charged costs; jobs still running count once they finish).
+         * @description What the film's generations have cost so far: every charge in the spend ledger for their attempts, so
+         *     attempts a provider billed and then failed (or that failed over to another route) count too. Jobs still
+         *     running count once they settle.
          */
         get: operations["project_spend_projects__project_id__spend_get"];
         put?: never;
@@ -2004,6 +2006,10 @@ export interface components {
             max_duration_s?: number | null;
             /** Max Mb */
             max_mb?: number | null;
+            /** Min Side */
+            min_side?: number | null;
+            /** Min Fps */
+            min_fps?: number | null;
         };
         /** Mode */
         Mode: {

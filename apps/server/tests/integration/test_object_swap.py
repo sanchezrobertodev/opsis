@@ -18,7 +18,8 @@ from studio.media.ffmpeg import probe
 from studio.storage.local import get_storage
 
 ROOT = Path(__file__).resolve().parents[4]
-CLIP = ROOT / "fixtures" / "videos" / "clip_3s.mp4"
+CLIP = ROOT / "fixtures" / "videos" / "clip_3s_720p.mp4"  # Kling O3 Edit takes 720p and up
+CLICK = [[0.5, 0.5, 1]]  # the click that made the mask; the tracker needs it as well as the mask
 
 
 @pytest.fixture
@@ -57,7 +58,7 @@ async def test_segment_needs_a_click_and_makes_a_mask(client, in_memory_queue):
 async def test_swap_with_two_models_keeps_the_background_and_waits_for_a_pick(client, in_memory_queue):
     video, mask = await selected_object(client, in_memory_queue)
     run = await start(client, "object_swap", video_asset_id=video["id"], mask_asset_id=mask["id"], frame_index=24,
-                      prompt="Replace the mug with a small potted cactus",
+                      points=[[0.4, 0.6, 1]], prompt="Replace the mug with a small potted cactus",
                       models=[{"model_id": "kling-o3-edit"}, {"model_id": "runway-aleph-2"}])
     assert run["estimate_usd"] == 0
     await drain(in_memory_queue)
@@ -73,6 +74,7 @@ async def test_swap_with_two_models_keeps_the_background_and_waits_for_a_pick(cl
         edit = await s.get(Generation, uuid.UUID(steps["edit[1:kling-o3-edit]"]["generation_id"]))
         matte = await s.get(Asset, uuid.UUID(matte_id))
     assert track.request["params"]["frame_index"] == 24 and matte.kind.value == "mask_video"
+    assert track.request["params"]["points"] == [[0.4, 0.6, 1]]  # the tracker starts from the clicks too
     assert edit.request["prompt"].startswith("Replace the mug with a small potted cactus. Change only that object.")
     assert [m["role"] for m in edit.request["media"]] == ["input_video"]  # Kling O3 takes no mask
 
@@ -98,7 +100,7 @@ async def test_swap_with_two_models_keeps_the_background_and_waits_for_a_pick(cl
 
 async def test_remove_with_one_model_and_a_mask_review(client, in_memory_queue):
     video, mask = await selected_object(client, in_memory_queue)
-    run = await start(client, "object_swap", video_asset_id=video["id"], mask_asset_id=mask["id"], action="remove",
+    run = await start(client, "object_swap", video_asset_id=video["id"], mask_asset_id=mask["id"], action="remove", points=CLICK,
                       prompt="the mug", review_mask=True, keep_background=False,
                       models=[{"model_id": "seedance-2.5"}])
     await drain(in_memory_queue)
@@ -127,7 +129,7 @@ async def test_swap_validation(client):
 
 async def test_a_run_where_every_model_fails_is_a_failed_run(client, in_memory_queue):
     video, mask = await selected_object(client, in_memory_queue)
-    run = await start(client, "object_swap", video_asset_id=video["id"], mask_asset_id=mask["id"],
+    run = await start(client, "object_swap", video_asset_id=video["id"], mask_asset_id=mask["id"], points=CLICK,
                       prompt="Make it gold [[mock:fail=moderation]]",
                       models=[{"model_id": "kling-o3-edit"}, {"model_id": "runway-aleph-2"}])
     await drain(in_memory_queue)
@@ -145,7 +147,7 @@ async def test_too_long_a_clip_is_refused_before_anything_runs(client, in_memory
     video = (await client.post("/uploads", files={"file": ("long.mp4", clip.read_bytes(), "video/mp4")})).json()
     _, mask = await selected_object(client, in_memory_queue)
     r = await client.post("/pipelines/estimate", json={"recipe": "object_swap", "input": {
-        "video_asset_id": video["id"], "mask_asset_id": mask["id"], "prompt": "a cactus",
+        "video_asset_id": video["id"], "mask_asset_id": mask["id"], "prompt": "a cactus", "points": CLICK,
         "models": [{"model_id": "kling-o3-edit"}]}})
     assert r.status_code == 422 and "at most 15 s" in r.text
 
@@ -154,7 +156,7 @@ async def test_a_region_edit_of_a_cinema_take_becomes_a_take_of_its_shot(client,
     video, mask = await selected_object(client, in_memory_queue)
     project = (await client.post("/projects", json={"title": "Harbour", "document": {}})).json()
     run = await start(client, "object_swap", video_asset_id=video["id"], mask_asset_id=mask["id"], frame_index=24,
-                      prompt="Make the mug a brass lantern", models=[{"model_id": "kling-o3-edit"}],
+                      points=CLICK, prompt="Make the mug a brass lantern", models=[{"model_id": "kling-o3-edit"}],
                       project_id=project["id"], shot_key="sone")
     await drain(in_memory_queue)
     done = await get(client, run["id"])

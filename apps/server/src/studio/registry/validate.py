@@ -275,6 +275,13 @@ def normalize(
             if slot.max_duration_s and seconds > slot.max_duration_s + 0.05:
                 errors.append(f"{slot.label or slot.role} can be at most {slot.max_duration_s:g} s; "
                               f"this one is {seconds:.1f} s")
+            short = min(ref.width, ref.height) if ref.width and ref.height else None
+            if slot.min_side and short and short < slot.min_side:
+                errors.append(f"{slot.label or slot.role} must be at least {slot.min_side} px on each side; this one "
+                              f"is {ref.width}x{ref.height} (upscale it first)")
+            if slot.min_fps and ref.fps and ref.fps < slot.min_fps - 0.01:
+                errors.append(f"{slot.label or slot.role} must be at least {slot.min_fps:g} fps; this one is "
+                              f"{ref.fps:g} fps (raise its frame rate first)")
 
     for rule in spec.rules:  # input lengths some settings can't take (OmniHuman at 1080p: 30 s of audio)
         context = {**out, "mode": mode_id}

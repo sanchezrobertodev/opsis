@@ -130,3 +130,22 @@ def test_planned_narration_is_cut_from_the_approved_script():
     assert narration_from_script(script, [script, "Then she went home."]) is None
     assert narration_from_script(script, ["The keeper climbed the stairs."]) is None
     assert narration_from_script(script, [script, "..."]) is None
+
+
+def test_tracking_starts_from_the_clicks_on_the_clip_frame():
+    # fal's SAM 3 tracker refuses a mask on its own: it needs a prompt too, so the clicks that made it go along
+    from studio.providers.transforms.segment import sam_points
+    from studio.registry.mapping import build_payload
+    from studio.registry.validate import MediaRef, normalize
+
+    spec = REG.model("sam-3-video")
+    clip = MediaRef("input_video", "v", "video", width=855, height=481)
+    mask = MediaRef("mask", "m", "mask", width=855, height=481)
+    req = normalize(spec, "track", "", {"points": [[0.5, 0.5, 1]], "frame_index": 12}, [clip, mask])
+    route = spec.routes[0]
+    _, payload, _ = build_payload(spec, route, req, {"input_video": "https://x.test/v.mp4", "mask": "https://x.test/m.png"})
+    assert payload["point_prompts"] == [{"x": 427, "y": 240, "label": 1, "frame_index": 12}]
+    assert payload["frame_index"] == 12
+    assert payload["mask_url"] == "https://x.test/m.png" and payload["apply_mask"] is False
+    out = sam_points(spec=spec, route=route, req=req, payload={"point_prompts": [[0.0, 1.0, 0]]})
+    assert out["point_prompts"] == [{"x": 0, "y": 480, "label": 0, "frame_index": 0}]

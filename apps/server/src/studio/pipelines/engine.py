@@ -25,14 +25,16 @@ from studio.budget import guard
 from studio.db.models import (
     Asset,
     Generation,
+    GenerationAttempt,
     PipelineRun,
     PipelineStep,
     RunStatus,
+    SpendLedger,
     StepKind,
     StepStatus,
 )
 from studio.domain import fsm
-from studio.domain.enums import GenStatus
+from studio.domain.enums import ACTIVE_STATUSES, GenStatus, LedgerEntry
 from studio.domain.generations import (
     ConfirmationRequired,
     CreateRequest,
@@ -87,12 +89,20 @@ async def emit_run(session: AsyncSession, run: PipelineRun) -> None:
 
 
 async def run_spent(session: AsyncSession, run: PipelineRun) -> Decimal:
-    """What the run's generations are expected to cost so far (actual where known)."""
-    total = (await session.execute(
-        select(func.coalesce(func.sum(func.coalesce(Generation.actual_cost_usd, Generation.estimated_cost_usd)), 0))
-        .where(Generation.group_id == run.id, Generation.status != GenStatus.canceled)
+    """What the run's generations have cost so far: every charge the ledger holds for their attempts (a provider can
+    bill an attempt that then failed), plus the estimate of each one still going (`unknown` too, since it may yet be
+    billed). A finished generation nobody charged for costs nothing, so a rejected request doesn't use up the cap."""
+    charged = (await session.execute(
+        select(func.coalesce(func.sum(SpendLedger.amount_usd), 0))
+        .join(GenerationAttempt, SpendLedger.generation_attempt_id == GenerationAttempt.id)
+        .join(Generation, GenerationAttempt.generation_id == Generation.id)
+        .where(Generation.group_id == run.id, SpendLedger.entry_type == LedgerEntry.charge)
     )).scalar_one()
-    return Decimal(total)
+    pending = (await session.execute(
+        select(func.coalesce(func.sum(Generation.estimated_cost_usd), 0))
+        .where(Generation.group_id == run.id, Generation.status.in_(ACTIVE_STATUSES))
+    )).scalar_one()
+    return Decimal(charged) + Decimal(pending)
 
 
 async def _sync_generation(session: AsyncSession, step: PipelineStep) -> None:

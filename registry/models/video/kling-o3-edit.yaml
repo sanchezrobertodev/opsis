@@ -23,7 +23,8 @@ modes:
     label: Edit a video
     ops: [instruction_edit, restyle, relight, object_replace]
     medias:
-      - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 15, max_mb: 200}
+      - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 15, max_mb: 200,
+         min_side: 720, min_fps: 23}  # fal refuses clips under 720 px a side or 23 fps (seen live 2026-10-07)
       - {role: image_references, kinds: [image], label: Reference images (optional), max: 4}
 
 elements: {strategy: refs_native, ref_role: image_references, token: "@Image{n}"}
@@ -54,6 +55,6 @@ examples:
     mode: edit
     prompt: Make it a snowy winter night in @Video1, everything dusted white.
     params: {tier: standard}
-    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    media: {input_video: "fixture:videos/clip_3s_720p.mp4"}
     smoke: true
     expect: {cost_usd_range: [0.3, 0.6]}

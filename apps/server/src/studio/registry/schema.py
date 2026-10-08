@@ -156,6 +156,8 @@ class MediaSlot(_Strict):
     max: int = 1
     max_duration_s: float | None = None
     max_mb: float | None = None
+    min_side: int | None = None  # pixels, both sides of a picture or clip ("720p and up", portrait too)
+    min_fps: float | None = None  # for clips (Kling O3 Edit refuses under 23 fps, so 16 fps Wan clips too)
 
 
 class Mode(_Strict):

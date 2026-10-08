@@ -83,6 +83,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   Shared params are fitted (durations rounded, unknown values dropped with a warning); `virtual.director` params
   become shot direction. Generations store the base model and `request.via` names the studio.
 - Rules can limit input length while they apply: `max_input_seconds: {input_audio: 30}` (OmniHuman at 1080p).
+- Media slots can require `min_side` (px, both sides) and `min_fps` for pictures and clips (Kling O3 Edit: 720, 23 fps), so a
+  clip a provider would refuse is turned away before submit with a clear message.
 - Lipsync models carry the `lipsync` op and take `input_audio`; picture-driven ones also carry `avatar` and take
   `character_image`, clip-driven ones take `input_video`. Price them on `input_audio_seconds`. The mock makes a clip
   as long as the given `input_audio`, playing it.
