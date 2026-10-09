@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-08 from fal's per-endpoint OpenAPI (fal-ai/wan/v2.2-a14b/{text,image}-to-video/lora).
+id: wan-2.2-lora
+name: Wan 2.2 with characters
+family: wan
+vendor: alibaba
+description: >-
+  Wan 2.2 A14B text- and image-to-video on fal with LoRA support: @mention a character with a trained identity and
+  its LoRA loads, so the same face appears shot after shot without reference pictures. Up to 10 s at 720p.
+output_type: video
+status: active
+license_tier: open_permissive   # Apache 2.0 weights, run on fal
+tags: [characters, lora, open-weights]
+prompt: {max_chars: 2000, dialect: wan, supports_negative: true}
+aspect_ratios: ["16:9", "9:16", "1:1"]
+duration: {min: 2, max: 10, default: 5}
+
+parameters:
+  - {name: resolution, type: enum, options: ["480p", "580p", "720p"], default: "720p", ui: segmented}
+  - {name: duration, label: Duration (s), type: int, min: 2, max: 10, default: 5, ui: slider}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "1:1"], default: "16:9", ui: aspect}
+  - {name: lora_scale, label: Identity strength, type: float, min: 0, max: 2, step: 0.05, default: 1, group: advanced,
+     help: "How strongly a mentioned character's trained identity applies."}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: t2v
+    label: Text to video
+    ops: [t2v]
+    medias:
+      - {role: lora, kinds: [lora], max: 3, auto: true}
+      - {role: lora_high, kinds: [lora], max: 3, auto: true}
+  - id: i2v
+    label: Image to video
+    ops: [i2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+      - {role: lora, kinds: [lora], max: 3, auto: true}
+      - {role: lora_high, kinds: [lora], max: 3, auto: true}
+
+elements: {strategy: lora, lora_base: wan-2.2-a14b}
+
+routes:
+  - id: wan-2.2-lora@fal
+    provider: fal
+    modes:
+      t2v: {endpoint: fal-ai/wan/v2.2-a14b/text-to-video/lora}
+      i2v: {endpoint: fal-ai/wan/v2.2-a14b/image-to-video/lora}
+    transform: studio.providers.transforms.lora:lora_list
+    map:
+      params:
+        resolution: resolution
+        # Wan renders 16 frames a second (fal then interpolates to 32 for playback)
+        duration: {to: num_frames, transform: seconds_to_frames, args: {fps: 16, plus: 1}}
+        aspect_ratio: aspect_ratio
+        lora_scale: {to: null}  # read by the lora_list transform
+        seed: seed
+      media: {start_image: image_url, lora: "_lora[]", lora_high: "_lora_high[]"}
+    pricing:
+      basis: per_output_second
+      rates: [{usd: 0.10}]
+      verified: 2026-10-08
+      source: "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai/wan/v2.2-a14b/text-to-video/lora ($0.10 per second)"
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: t2v_smoke
+    mode: t2v
+    prompt: A lighthouse keeper in a yellow raincoat walks along a stormy pier, waves crashing.
+    params: {resolution: "480p", duration: 3}
+    smoke: true
+    expect: {cost_usd_range: [0.3, 0.3]}

@@ -53,7 +53,7 @@ export function QuickGenerate({ op, media: initialMedia = {}, promptPlaceholder,
   const send = Object.fromEntries(params.filter((p) => isVisible(p, all)).map((p) => [p.name, all[p.name]]));
   const body: CreateBody | null = model && mode ? {
     model_id: model.id, mode: mode.id, prompt: mode.prompt === "none" ? "" : prompt, params: send,
-    media: mode.medias.flatMap((s) => (media[s.role] ?? []).map((a) => ({ role: s.role, asset_id: a.id }))),
+    media: mode.medias.filter((s) => !s.auto).flatMap((s) => (media[s.role] ?? []).map((a) => ({ role: s.role, asset_id: a.id }))),
   } : null;
 
   const wanted = body ? { ...body, prompt: body.prompt ? "x" : "" } : null;
@@ -103,7 +103,7 @@ export function QuickGenerate({ op, media: initialMedia = {}, promptPlaceholder,
         <Segmented label="From" value={mode.id} options={modes.map((m) => m.id)}
                    render={(id) => modes.find((m) => m.id === id)?.label} onChange={setModeId} />
       )}
-      {mode.medias.map((slot) => (
+      {mode.medias.filter((slot) => !slot.auto).map((slot) => (
         <MediaSlotField key={slot.role} slot={slot} value={media[slot.role] ?? []}
                         onAdd={(a) => setMedia((m) => ({ ...m, [slot.role]: [...(m[slot.role] ?? []), a].slice(-(slot.max ?? 1)) }))}
                         onRemove={(id) => setMedia((m) => ({ ...m, [slot.role]: (m[slot.role] ?? []).filter((a) => a.id !== id) }))} />

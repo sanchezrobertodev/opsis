@@ -17,7 +17,7 @@ import { Button, Switch } from "@/components/ui/controls";
 
 type Shot = { id: number; prompt: string; duration: number | null };
 
-const START_SLOT: MediaSlot = { role: "start_image", kinds: ["image"], label: "Start frame for shot 1", max: 1, min: 0, required: false };
+const START_SLOT: MediaSlot = { role: "start_image", kinds: ["image"], label: "Start frame for shot 1", max: 1, min: 0, required: false, auto: false };
 const MAX_SHOTS = 12;
 let nextId = 3;
 

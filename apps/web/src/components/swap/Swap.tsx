@@ -14,9 +14,9 @@ import { MediaSlotField } from "@/components/create/MediaSlots";
 import { Button, Field, Segmented, Slider, Switch } from "@/components/ui/controls";
 import { MaskEditor, type Selection } from "./MaskEditor";
 
-const CLIP: MediaSlot = { role: "input_video", kinds: ["video"], label: "Clip", min: 1, max: 1, required: true };
+const CLIP: MediaSlot = { role: "input_video", kinds: ["video"], label: "Clip", min: 1, max: 1, required: true, auto: false };
 const REFS: MediaSlot = { role: "image_references", kinds: ["image"], label: "What it becomes (optional images)",
-                          min: 0, max: 4, required: false };
+                          min: 0, max: 4, required: false, auto: false };
 const MAX_MODELS = 3;
 
 /** Select one object in a clip, then replace or remove it while everything else stays as filmed. */

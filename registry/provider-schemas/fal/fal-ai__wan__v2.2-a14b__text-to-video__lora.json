@@ -1,0 +1,141 @@
+{
+ "endpoint": "fal-ai/wan/v2.2-a14b/text-to-video/lora",
+ "variant": null,
+ "input": {
+  "acceleration": {
+   "type": "string",
+   "enum": [
+    "none",
+    "regular"
+   ],
+   "default": "regular"
+  },
+  "adjust_fps_for_interpolation": {
+   "type": "boolean",
+   "default": true
+  },
+  "aspect_ratio": {
+   "type": "string",
+   "enum": [
+    "16:9",
+    "9:16",
+    "1:1"
+   ],
+   "default": "16:9"
+  },
+  "enable_output_safety_checker": {
+   "type": "boolean"
+  },
+  "enable_prompt_expansion": {
+   "type": "boolean"
+  },
+  "enable_safety_checker": {
+   "type": "boolean"
+  },
+  "frames_per_second": {
+   "type": "integer|null",
+   "default": 16,
+   "minimum": 4,
+   "maximum": 60
+  },
+  "guidance_scale": {
+   "type": "number",
+   "default": 3.5,
+   "minimum": 1,
+   "maximum": 10
+  },
+  "guidance_scale_2": {
+   "type": "number",
+   "default": 4,
+   "minimum": 1,
+   "maximum": 10
+  },
+  "interpolator_model": {
+   "type": "string",
+   "enum": [
+    "none",
+    "film",
+    "rife"
+   ],
+   "default": "film"
+  },
+  "loras": {
+   "type": "array<object<LoRAWeight>>",
+   "default": []
+  },
+  "negative_prompt": {
+   "type": "string",
+   "default": ""
+  },
+  "num_frames": {
+   "type": "integer",
+   "default": 81,
+   "minimum": 17,
+   "maximum": 161
+  },
+  "num_inference_steps": {
+   "type": "integer",
+   "default": 27,
+   "minimum": 2,
+   "maximum": 40
+  },
+  "num_interpolated_frames": {
+   "type": "integer",
+   "default": 1,
+   "minimum": 0,
+   "maximum": 4
+  },
+  "prompt": {
+   "type": "string"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "480p",
+    "580p",
+    "720p"
+   ],
+   "default": "720p"
+  },
+  "reverse_video": {
+   "type": "boolean"
+  },
+  "seed": {
+   "type": "integer|null"
+  },
+  "shift": {
+   "type": "number",
+   "default": 5,
+   "minimum": 1,
+   "maximum": 10
+  },
+  "video_quality": {
+   "type": "string",
+   "enum": [
+    "low",
+    "medium",
+    "high",
+    "maximum"
+   ],
+   "default": "high"
+  },
+  "video_write_mode": {
+   "type": "string",
+   "enum": [
+    "fast",
+    "balanced",
+    "small"
+   ],
+   "default": "balanced"
+  }
+ },
+ "required": [
+  "prompt"
+ ],
+ "output": [
+  "prompt",
+  "seed",
+  "video"
+ ],
+ "deprecated": false
+}

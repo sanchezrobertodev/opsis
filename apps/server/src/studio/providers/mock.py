@@ -152,6 +152,9 @@ class MockAdapter(ProviderAdapter):
         if output.kind == "model3d":
             await anyio.to_thread.run_sync(lambda: mock_media.make_glb(dest, seed=seed))
             return "model/gltf-binary"
+        if output.kind == "lora":  # stand-in weights: never loaded, only passed back to LoRA routes
+            await anyio.Path(dest).write_bytes(b"MOCK-LORA " + str(output.meta.get("expert", "")).encode())
+            return "application/octet-stream"
         if output.kind == "splat":
             await anyio.to_thread.run_sync(lambda: mock_media.make_splat_ply(dest, seed=seed))
             return "application/x-ply"

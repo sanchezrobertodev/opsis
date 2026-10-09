@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-08 from fal's per-endpoint OpenAPI (fal-ai/wan-22-image-trainer) and pricing API.
+id: wan-2.2-lora-trainer
+name: Wan 2.2 character LoRA trainer
+family: wan
+vendor: alibaba
+description: >-
+  Learns a character's look from 10-80 photos (fal's Wan 2.2 trainer, face-centred, captions written for you) and
+  returns a LoRA for Wan 2.2's two experts, which the Wan 2.2 stills and video models load when you @mention the
+  character. The lora_train recipe runs it from a character's pictures.
+output_type: lora
+status: active
+license_tier: commercial_api
+tags: [characters, identity, training]
+
+parameters:
+  - {name: trigger_phrase, label: Trigger word, type: text, max_chars: 40,
+     help: "A made-up word the LoRA learns as this character; the studio writes it into prompts that mention them."}
+  - {name: steps, label: Training steps, type: int, min: 200, max: 3000, step: 100, default: 1000, ui: slider,
+     help: "More steps learn the face more closely and cost more ($0.0045 a step)."}
+  - {name: face_crop, label: Crop to the face, type: bool, default: false, group: advanced,
+     help: "Train on the faces only. Off keeps the whole picture, centred on the face."}
+
+modes:
+  - id: character
+    label: Train a character
+    ops: [lora_train]
+    prompt: none
+    medias:
+      - {role: training_data, kinds: [archive], label: Photos (zip), required: true}
+
+routes:
+  - id: wan-2.2-lora-trainer@fal
+    provider: fal
+    modes:
+      character: {endpoint: fal-ai/wan-22-image-trainer, fixed: {include_synthetic_captions: true, is_style: false}}
+    map:
+      params:
+        trigger_phrase: trigger_phrase
+        steps: steps
+        face_crop: use_face_cropping
+      media: {training_data: training_data_url}
+    pricing:
+      basis: per_request
+      quantity: steps
+      rates: [{usd: 0.0045}]
+      verified: 2026-10-08
+      source: "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai/wan-22-image-trainer ($0.0045 per step)"
+    timeout_s: 7200
+    # the low-noise expert's LoRA is the main output; the high-noise expert's comes back next to it
+    output:
+      path: diffusers_lora_file.url
+      kind: lora
+      meta: {expert: low, base: wan-2.2-a14b}
+      extras:
+        - {path: high_noise_lora.url, kind: lora, meta: {expert: high, base: wan-2.2-a14b}}
+
+examples:
+  - name: character_smoke
+    mode: character
+    # the zip comes from the lora_train recipe's dataset step, so the smoke script skips this
+    params: {trigger_phrase: mayaxq, steps: 1000}
+    media: {training_data: "made-by:lora_train"}
+    smoke: true
+    expect: {cost_usd_range: [4.5, 4.5]}

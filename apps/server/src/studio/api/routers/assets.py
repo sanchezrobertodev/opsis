@@ -145,7 +145,7 @@ def _cursor(a: Asset) -> str:
 
 @router.get("/assets", response_model=AssetPage)
 async def list_assets(
-    kind: Literal["video", "image", "audio", "model3d", "splat"] | None = None,
+    kind: Literal["video", "image", "audio", "model3d", "splat", "lora", "archive"] | None = None,
     source: Literal["upload", "generation"] | None = None,
     favorite: bool | None = None,
     tag: str | None = Query(None, description="Only assets with this tag (e.g. `driving` for movement clips)"),
@@ -158,6 +158,8 @@ async def list_assets(
     stmt = select(Asset).where(Asset.user_id == user.id, Asset.deleted_at.is_(None))
     if kind:
         stmt = stmt.where(Asset.kind == AssetKind(kind))
+    else:  # trained LoRAs and training zips are the studio's working files, listed only when asked for
+        stmt = stmt.where(Asset.kind.not_in([AssetKind.lora, AssetKind.archive]))
     if source:
         stmt = stmt.where(Asset.source == AssetSource(source))
     if favorite is not None:

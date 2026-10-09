@@ -1623,6 +1623,13 @@ export interface components {
             voice?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Lora
+             * @description The trained identity: {base, trigger, low, high, steps, run_id, trained_at}; models with the lora strategy load it when the character is mentioned
+             */
+            lora?: {
+                [key: string]: unknown;
+            } | null;
             cover: components["schemas"]["AssetOut"] | null;
             /** Images */
             images: components["schemas"]["ElementImageOut"][];
@@ -1653,6 +1660,12 @@ export interface components {
              * @default false
              */
             clear_voice: boolean;
+            /**
+             * Clear Lora
+             * @description Forget the trained identity (the LoRA files stay in the library)
+             * @default false
+             */
+            clear_lora: boolean;
         };
         /**
          * EmotionItem
@@ -2156,9 +2169,9 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image" | "character_image" | "driving_video" | "input_image";
+            role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image" | "character_image" | "driving_video" | "input_image" | "training_data" | "lora" | "lora_high";
             /** Kinds */
-            kinds: ("image" | "video" | "audio" | "mask" | "mask_video" | "model3d" | "splat")[];
+            kinds: ("image" | "video" | "audio" | "mask" | "mask_video" | "model3d" | "splat" | "lora" | "archive")[];
             /** Label */
             label?: string | null;
             /**
@@ -2184,6 +2197,11 @@ export interface components {
             min_side?: number | null;
             /** Min Fps */
             min_fps?: number | null;
+            /**
+             * Auto
+             * @default false
+             */
+            auto: boolean;
         };
         /** Mode */
         Mode: {
@@ -2195,7 +2213,7 @@ export interface components {
              * Ops
              * @default []
              */
-            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "segment" | "track" | "to_3d" | "panorama" | "world" | "depth_to_video")[];
+            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "segment" | "track" | "to_3d" | "panorama" | "world" | "depth_to_video" | "lora_train")[];
             /**
              * Prompt
              * @default required

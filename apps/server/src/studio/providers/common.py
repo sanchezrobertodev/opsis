@@ -139,8 +139,10 @@ async def download_url(url: str, dest: Path, *, headers: dict[str, str] | None =
         raise ProviderError(ErrorClass.ingest_error, f"download failed: {exc!r}") from exc
 
 
-# 3D files: a specific type is kept; a vague one falls back so ingest names the file by its URL or its kind
-NOT_MEDIA_MIME = {"model3d": "model/gltf-binary", "splat": "application/octet-stream"}
+# 3D files, LoRA weights and zips: a specific type is kept; a vague one falls back so ingest names the file by its URL
+# or its kind
+NOT_MEDIA_MIME = {"model3d": "model/gltf-binary", "splat": "application/octet-stream",
+                  "lora": "application/octet-stream", "archive": "application/zip"}
 
 
 def best_mime(*candidates: str | None, kind: str) -> str:

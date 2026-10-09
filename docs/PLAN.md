@@ -290,7 +290,7 @@ live run (Marble needs WORLDLABS_API_KEY, and usage past prepaid credits is bill
 for rigged GLBs, a normals-guided video route, and multi-image or video Marble prompts.
 P8 started: nightly database backups (pg_dump in the container, 14 days kept, restores that never drop anything;
 media needs its own copy) and a weekly provider schema check against saved baselines, which the contract tests also
-use offline (AMS-56, AMS-59). Still to come: the local gpu-worker (when asked), LoRA identities, auth and R2.
+use offline (AMS-56, AMS-59). Character identities (AMS-55): a `lora_train` recipe trains a Wan 2.2 LoRA from a character's photos on fal and stores it on the Element; Wan 2.2 stills and video on fal load it when the character is mentioned. Still to come: the local gpu-worker (when asked), auth and R2.
 - **Step 0 — Handoff (this session, after approval):**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

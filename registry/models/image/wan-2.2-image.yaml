@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-10-08 from fal's per-endpoint OpenAPI (fal-ai/wan/v2.2-a14b/text-to-image/lora).
+id: wan-2.2-image
+name: Wan 2.2 stills
+family: wan
+vendor: alibaba
+description: >-
+  Wan 2.2 A14B as a still-image model on fal, and the one that wears your trained characters: @mention a character
+  with a trained identity and its LoRA loads, so the face holds from picture to picture. Good start frames for
+  Wan 2.2 video.
+output_type: image
+status: active
+license_tier: open_permissive   # Apache 2.0 weights, run on fal
+tags: [keyframes, characters, lora]
+prompt: {max_chars: 2000, dialect: wan, supports_negative: true}
+aspect_ratios: ["16:9", "9:16", "1:1", "4:3", "3:4"]
+
+parameters:
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "1:1", "4:3", "3:4"], default: "16:9", ui: aspect}
+  - {name: lora_scale, label: Identity strength, type: float, min: 0, max: 2, step: 0.05, default: 1, group: advanced,
+     help: "How strongly a mentioned character's trained identity applies."}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: t2i
+    label: Text to image
+    ops: [t2i]
+    medias:
+      - {role: lora, kinds: [lora], max: 3, auto: true}
+      - {role: lora_high, kinds: [lora], max: 3, auto: true}
+
+# @mentions of characters with a trained Wan 2.2 identity load its LoRA (and its trigger word goes in the prompt)
+elements: {strategy: lora, lora_base: wan-2.2-a14b}
+
+routes:
+  - id: wan-2.2-image@fal
+    provider: fal
+    modes:
+      t2i: {endpoint: fal-ai/wan/v2.2-a14b/text-to-image/lora}
+    transform: studio.providers.transforms.lora:lora_list
+    map:
+      params:
+        aspect_ratio:
+          to: image_size
+          transform: enum_map
+          args: {values: {"16:9": landscape_16_9, "9:16": portrait_16_9, "1:1": square_hd, "4:3": landscape_4_3,
+                          "3:4": portrait_4_3}}
+        lora_scale: {to: null}  # read by the lora_list transform
+        seed: seed
+      media: {lora: "_lora[]", lora_high: "_lora_high[]"}
+    pricing:
+      basis: per_image
+      rates: [{usd: 0.05}]
+      verified: 2026-10-08
+      source: "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai/wan/v2.2-a14b/text-to-image/lora ($0.05 per image)"
+    output: {path: image.url, kind: image}
+
+examples:
+  - name: t2i_smoke
+    mode: t2i
+    prompt: A lighthouse keeper in a yellow raincoat on a stormy pier, cinematic still.
+    params: {aspect_ratio: "16:9"}
+    smoke: true
+    expect: {cost_usd_range: [0.05, 0.05]}

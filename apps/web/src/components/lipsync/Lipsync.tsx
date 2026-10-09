@@ -16,9 +16,9 @@ import { Button, Field, Segmented } from "@/components/ui/controls";
 import { VOICE_MODEL, VoicePicker } from "@/components/voice/VoicePicker";
 
 const WHO: MediaSlot = { role: "character_image", kinds: ["image", "video"], label: "Who speaks: a picture or a clip",
-                         min: 1, max: 1, required: true };
+                         min: 1, max: 1, required: true, auto: false };
 const RECORDING: MediaSlot = { role: "input_audio", kinds: ["audio"], label: "Recorded speech", min: 1, max: 1,
-                               required: true };
+                               required: true, auto: false };
 const MAX_MODELS = 3;
 const DEFAULT_VOICE = "JBFqnCBsd6RMkjVDRZzb";
 
