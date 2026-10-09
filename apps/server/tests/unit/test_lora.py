@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from studio.config import get_settings
 from studio.pipelines.recipes.lora_train import default_trigger
+from studio.providers.common import best_mime
 from studio.registry.loader import load_registry
 from studio.registry.mapping import build_payload
 from studio.registry.validate import MediaRef, normalize
@@ -54,3 +55,8 @@ def test_trigger_words_are_made_up_words():
     word = default_trigger("maya-lighthouse", "01a11d4d-6ed8-7020-b3bf-bec0e6211c6d")
     assert word == "mayalighthouzq1c6d" and word.isalnum() and word.islower()
     assert default_trigger("Ö", "abcd").startswith("chrzq")
+
+
+def test_downloaded_lora_files_and_zips_get_a_type_without_a_media_mime():
+    assert best_mime(None, "binary/octet-stream", kind="lora") == "application/octet-stream"
+    assert best_mime(None, kind="archive") == "application/zip"

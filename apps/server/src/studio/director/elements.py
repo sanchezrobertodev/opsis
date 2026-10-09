@@ -99,6 +99,9 @@ async def resolve_mentions(
     lora_room = {r: max(0, (mode.slot(r).max if mode and mode.slot(r) else 0)
                         - sum(1 for m in existing_media if m.get("role") == r)) for r in ("lora", "lora_high")}
     trained = await _ready_loras(session, rows) if strategy == "lora" else set()
+    # lora_list pairs the two roles by position, so two-expert characters go first and single files after them
+    lora_pairs: list[tuple[str, str]] = []
+    lora_singles: list[str] = []
 
     replacements: dict[str, tuple[str, str]] = {}  # slug -> (first mention text, later mention text)
     for element in sorted((by_slug[s] for s in slugs if s in by_slug), key=lambda e: KIND_ORDER.get(e.kind.value, 9)):
@@ -125,13 +128,14 @@ async def resolve_mentions(
             base = (spec.elements or {}).get("lora_base")
             low, high = str(lora.get("low") or ""), str(lora.get("high") or "")
             if lora.get("base") == base and low in trained and lora_room["lora"] > 0:
-                res.media.append({"role": "lora", "asset_id": low})
-                attached.append(low)
                 lora_room["lora"] -= 1
                 if high in trained and lora_room["lora_high"] > 0:
-                    res.media.append({"role": "lora_high", "asset_id": high})
-                    attached.append(high)
                     lora_room["lora_high"] -= 1
+                    lora_pairs.append((low, high))
+                    attached += [low, high]
+                else:
+                    lora_singles.append(low)
+                    attached.append(low)
                 if lora.get("trigger"):
                     label = f"{element.name} ({lora['trigger']})"
             elif lora.get("base") == base and low in trained:
@@ -147,6 +151,10 @@ async def resolve_mentions(
         replacements[element.slug] = (first, label)
         res.names[element.slug] = label
         res.elements.append({"id": str(element.id), "slug": element.slug, "name": element.name, "attached": attached})
+
+    for low, high in lora_pairs:
+        res.media += [{"role": "lora", "asset_id": low}, {"role": "lora_high", "asset_id": high}]
+    res.media += [{"role": "lora", "asset_id": low} for low in lora_singles]
 
     seen: set[str] = set()
 

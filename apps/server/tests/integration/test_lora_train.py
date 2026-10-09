@@ -13,7 +13,7 @@ from PIL import Image
 from sqlalchemy import select
 
 from studio.api.main import app as api
-from studio.db.models import Asset, Generation
+from studio.db.models import Asset, Element, Generation
 from studio.db.session import session_scope
 from studio.pipelines.recipes.lora_train import default_trigger
 from studio.storage.local import get_storage
@@ -79,9 +79,36 @@ async def test_a_trained_identity_lands_on_the_character_and_loads_when_mentione
     assert f"({trigger})" in preview.compiled["prompt"] and "@" not in preview.compiled["prompt"]
     assert done["output"]["asset_id"] and done["output"]["trigger"] == trigger
 
+    # with a second character whose LoRA is one file, each character's two experts still stay together
+    other, _ = await _character(client, 0)
+    async with session_scope() as s:
+        row = await s.get(Element, uuid.UUID(other["id"]))
+        row.lora = {"base": "wan-2.2-a14b", "trigger": "solozqtest", "low": lora["high"], "high": None}
+    out = await client.post("/generations", json={"model_id": "wan-2.2-image", "mode": "t2i",
+                                                  "prompt": f"@{other['slug']} and @{el['slug']} on a pier"})
+    assert out.status_code == 201, out.text
+    media = out.json()["request"]["media"]
+    assert [m["asset_id"] for m in media if m["role"] == "lora"] == [lora["low"], lora["high"]]
+    assert [m["asset_id"] for m in media if m["role"] == "lora_high"] == [lora["high"]]
+
     # forgetting the identity puts the character back to words
     cleared = (await client.patch(f"/elements/{el['id']}", json={"clear_lora": True})).json()
     assert cleared["lora"] is None
+
+
+async def test_a_missing_character_stops_the_run_before_the_paid_trainer(client, in_memory_queue):
+    from tests.integration.test_pipelines import drain, get, start
+
+    el, photos = await _character(client, 10)
+    await client.delete(f"/elements/{el['id']}")
+    run = await start(client, "lora_train", element_id=el["id"], slug=el["slug"], photos=photos)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "failed" and "character is gone" in (done["error"] or "")
+    async with session_scope() as s:
+        trainers = (await s.execute(select(Generation).where(
+            Generation.group_id == uuid.UUID(run["id"])))).scalars().all()
+    assert trainers == []
 
 
 async def test_training_needs_enough_photos_and_a_usable_trigger(client):

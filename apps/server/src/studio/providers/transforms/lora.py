@@ -12,8 +12,9 @@ LOW, HIGH = "_lora", "_lora_high"  # where the route's media map parks the stage
 
 
 def lora_list(*, spec: ModelSpec, route: Route, req: NormalizedRequest, payload: dict[str, Any]) -> dict[str, Any]:
-    """Pair each high-noise LoRA with its low-noise partner (same order, one per character) on Wan 2.2's two experts;
-    a single-file LoRA (no `lora_high`) goes on both."""
+    """Pair each high-noise LoRA with its low-noise partner on Wan 2.2's two experts; a single-file LoRA (no
+    `lora_high`) goes on both. Pairing is by position: the elements resolver lists two-expert characters first, in the
+    same order in both roles, and single files after them."""
     low, high = _links(payload.pop(LOW, None)), _links(payload.pop(HIGH, None))
     scale = float(req.params.get("lora_scale", 1.0))
     loras: list[dict[str, Any]] = []

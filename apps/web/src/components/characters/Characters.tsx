@@ -28,7 +28,7 @@ import { Button, Dialog, Segmented } from "@/components/ui/controls";
 const FILTERS = ["all", "character", "location", "prop", "style"] as const;
 type Filter = (typeof FILTERS)[number];
 
-const REF_SLOT: MediaSlot = { role: "image_references", kinds: ["image"], label: "Reference images", max: 8, min: 0, required: false, auto: false };
+const REF_SLOT: MediaSlot = { role: "image_references", kinds: ["image"], label: "Reference images", max: 80, min: 0, required: false, auto: false };
 
 export function Characters() {
   const [filter, setFilter] = useState<Filter>("all");

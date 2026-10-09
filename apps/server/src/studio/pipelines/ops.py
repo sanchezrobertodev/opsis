@@ -306,6 +306,8 @@ async def timeline_cut(session: AsyncSession, run: PipelineRun, step: PipelineSt
 async def lora_dataset(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
     """Zip a character's photos for a LoRA trainer (image_001.jpg, ...), kept as an archive asset."""
     inp = step.input
+    if inp.get("element_id"):
+        await _character(session, run, inp["element_id"])  # before the paid trainer, not after it
     photos = await _assets(session, run, inp["photos"])
     if any(a.kind != AssetKind.image for a in photos):
         raise StepFailed("only pictures can train a character")
@@ -340,17 +342,26 @@ async def attach_lora(session: AsyncSession, run: PipelineRun, step: PipelineSte
     low = by_expert.get("low")
     if low is None:
         raise StepFailed("the trainer returned no LoRA file")
-    element = (await session.execute(select(Element).where(
-        Element.id == uuid.UUID(inp["element_id"]), Element.user_id == run.user_id, Element.deleted_at.is_(None)
-    ))).scalar_one_or_none()
-    if element is None:
-        raise StepFailed("the character is gone")
+    element = await _character(session, run, inp["element_id"])
     high = by_expert.get("high")
     lora = {"base": (low.metadata_ or {}).get("base"), "trigger": inp["trigger"], "low": str(low.id),
             "high": str(high.id) if high else None, "steps": inp.get("steps"), "run_id": str(run.id),
             "trained_at": datetime.now(UTC).isoformat()}
     element.lora = lora
     return lora
+
+
+async def _character(session: AsyncSession, run: PipelineRun, element_id: str) -> Element:
+    """The run owner's character that a trained identity is for; it must still exist."""
+    try:
+        eid = uuid.UUID(str(element_id))
+    except ValueError:
+        raise StepFailed("that isn't a character id") from None
+    element = (await session.execute(select(Element).where(
+        Element.id == eid, Element.user_id == run.user_id, Element.deleted_at.is_(None)))).scalar_one_or_none()
+    if element is None:
+        raise StepFailed("the character is gone")
+    return element
 
 
 LOCAL_OPS: dict[str, Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitable[dict[str, Any]]]] = {

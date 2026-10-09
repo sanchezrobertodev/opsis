@@ -75,7 +75,7 @@ class LoraTrainRecipe(Recipe):
 
     def plan(self, inp: LoraTrainInput, settled: Settled, reg: Registry) -> list[StepSpec]:
         specs = [StepSpec("dataset", StepKind.local, f"Pack {len(inp.photos)} photos", {
-            "op": "lora_dataset", "photos": inp.photos, "title": f"@{inp.slug} training photos",
+            "op": "lora_dataset", "element_id": inp.element_id, "photos": inp.photos, "title": f"@{inp.slug} training photos",
         })]
         dataset = ok(settled, "dataset")
         if dataset:
