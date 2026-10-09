@@ -45,15 +45,16 @@ routes:
         camera_strength: camera_strength
         seed: seed
       media: {start_image: start_image, video_references: video_references}
-    # Billed per GPU second on an RTX PRO 6000 ($3.49/h): Wan 2.2 Fast's run time plus ~20% for the ControlNet
-    # (unbenchmarked), the 60 s idle tail and ~150 s loading on a cold worker: a ceiling, corrected to the bill.
+    # Billed per GPU second on an RTX PRO 6000 ($3.49/h): Wan 2.2 Fast's run time plus some for the ControlNet, the
+    # 60 s idle tail and ~90 s loading on a cold worker (a 480p 4 s take ran 119 s cold on 0.2.0): a ceiling, corrected
+    # to the bill.
     pricing:
       basis: per_gpu_second
-      quantity: "((50 + 11 * duration) if quality == '480p' else (70 + 26 * duration)) + 60 + 150"
+      quantity: "((15 + 6 * duration) if quality == '480p' else (30 + 15 * duration)) + 60 + 90"
       rates: [{usd: 0.000969}]
       verified: 2026-10-08
       source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); run time estimated, not yet benchmarked
-    eta: "((50 + 11 * duration) if quality == '480p' else (70 + 26 * duration)) + 150"
+    eta: "((15 + 6 * duration) if quality == '480p' else (30 + 15 * duration)) + 90"
     timeout_s: 3600
     output: {path: output.outputs, kind: video}
     # Wan works at 16 fps: clips are re-timed to it, so its 81 frames cover up to 5 s of them
@@ -66,4 +67,4 @@ examples:
     params: {quality: "480p", duration: 3}
     media: {start_image: "fixture:images/keyframe.png", video_references: "fixture:videos/clip_3s.mp4"}
     smoke: true
-    expect: {cost_usd_range: [0.25, 0.32]}
+    expect: {cost_usd_range: [0.16, 0.19]}

@@ -5,8 +5,8 @@ family: wan
 vendor: alibaba
 description: >-
   Open-weights Wan 2.2 14B with the Lightning 4-step LoRAs, on your own RunPod endpoint. Text or image to video
-  at 480p or 720p for well under the closed models' price. About two to three minutes per 720p clip once a worker
-  is warm; the first clip after a pause also loads the model.
+  at 480p or 720p for well under the closed models' price. About 30 s per 5 s clip at 480p and 80 s at 720p once a
+  worker is warm; the first clip after a pause also loads the model (about a minute more).
 output_type: video
 status: active
 license_tier: open_permissive   # Apache 2.0 (Wan 2.2, lightx2v)
@@ -50,14 +50,14 @@ routes:
     # rate of the GPU it used, then corrected to RunPod's bill (studio/budget/reconcile.py).
     pricing:
       basis: per_gpu_second
-      # + 60 s the worker stays billed after its job (idle timeout) + ~150 s loading the model on a cold worker
-      # (measured 2026-10-08: warm runs 70-93 s, cold 218-239 s). A ceiling for caps: a warm run costs less, and the
+      # + 60 s the worker stays billed after its job (idle timeout) + ~90 s loading the model on a cold worker
+      # (wan-core 0.3.0, 2026-10-08: a 480p 3 s take ran 81 s cold, 10 s warm). A ceiling for caps: a warm run costs less, and the
       # hourly reconcile books what RunPod billed.
-      quantity: "((40 + 9 * duration) if quality == '480p' else (60 + 22 * duration)) + 60 + 150"
+      quantity: "((10 + 4 * duration) if quality == '480p' else (20 + 12 * duration)) + 60 + 90"
       rates: [{usd: 0.000969}]
       verified: 2026-10-06
       source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); run time per docs/research/03 (unbenchmarked)
-    eta: "(40 + 9 * duration) if quality == '480p' else (60 + 22 * duration)"
+    eta: "(10 + 4 * duration) if quality == '480p' else (20 + 12 * duration)"
     timeout_s: 3600
     output: {path: output.outputs, kind: video}
 
@@ -67,10 +67,10 @@ examples:
     prompt: A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.
     params: {quality: "480p", duration: 3}
     smoke: true
-    expect: {cost_usd_range: [0.25, 0.29]}
+    expect: {cost_usd_range: [0.15, 0.18]}
   - name: i2v_720p
     mode: i2v
     prompt: The camera slowly pushes in as wind moves through the grass.
     params: {quality: "720p", duration: 5}
     media: {start_image: "fixture:images/keyframe.png"}
-    expect: {cost_usd_range: [0.35, 0.39]}
+    expect: {cost_usd_range: [0.21, 0.24]}
