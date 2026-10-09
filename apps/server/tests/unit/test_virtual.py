@@ -32,7 +32,8 @@ def test_unset_params_take_the_studios_defaults_not_the_engines():
     assert veo.params == {"duration": 6, "resolution": "720p", "aspect_ratio": "16:9", "generate_audio": True}
     assert veo.warnings == []  # nobody asked for 5 s, so rounding it isn't news
     kling = resolve(REG, CINEMA, "i2v", {"engine": "kling"}, None)
-    assert kling.params == {"duration": 5, "resolution": "720p", "generate_audio": True}  # Kling's own is silent
+    # Kling's own is silent, and its route renders 1080p only, so the studio's 720p is dropped quietly
+    assert kling.params == {"duration": 5, "generate_audio": True} and kling.warnings == []
 
 
 def test_the_direction_wins_over_a_director_param():

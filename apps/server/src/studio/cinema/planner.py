@@ -63,6 +63,9 @@ class ShotPlan(BaseModel):
     scenes: list[PlannedScene]
 
 
+# without saved characters there are no handles to use; an invented one would reach the video model as "@name"
+NO_CAST = "No cast is saved: describe every person in words and never write an @handle."
+
 SYSTEM = """You are a film director breaking a script into a shot list for AI video generation.
 
 Each shot is one continuous camera setup of 3 to 10 seconds that a video model renders on its own. For every shot:
@@ -94,7 +97,7 @@ async def plan_shots(session: AsyncSession, user_id: uuid.UUID, *, script: str, 
     cast = cast or []
     prompt = "\n".join(line for line in [
         f"Logline: {logline}" if logline else "",
-        "Cast (use these handles): " + "; ".join(f"@{slug}: {desc}" for slug, desc in cast) if cast else "",
+        "Cast (use these handles): " + "; ".join(f"@{slug}: {desc}" for slug, desc in cast) if cast else NO_CAST,
         f"Shot budget: at most {max_shots} shots in total.",
         f"Director's notes: {notes}" if notes else "",
         _vocabulary(lib),
