@@ -2,29 +2,34 @@
 
 import { useGLTF } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
-import { forwardRef, Suspense, useLayoutEffect, useMemo, useRef } from "react";
+import { forwardRef, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { clone as cloneRigged } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { mediaUrl } from "@/lib/api";
-import type { SceneObject, Vec3 } from "@/lib/jutsu3d";
+import { type Animation, clipTime, type SceneObject, type Vec3 } from "@/lib/jutsu3d";
 import { useAsset } from "@/lib/queries";
 import { OPENCV_TO_Y_UP, Splat } from "@/components/three/Splat";
 
-type Props = { o: SceneObject; selected: boolean; onSelect: (e: ThreeEvent<MouseEvent>) => void; helpers: boolean };
+type Props = {
+  o: SceneObject; selected: boolean; onSelect: (e: ThreeEvent<MouseEvent>) => void; helpers: boolean;
+  /** The timeline time a model's clip is posed at (null: its first pose). */
+  time?: number | null;
+};
 
 const SEL = "#f0a93b";
 
 /** One object of the scene: a group at its transform holding what it looks like. */
-export const ObjectNode = forwardRef<THREE.Group, Props>(function ObjectNode({ o, selected, onSelect, helpers }, ref) {
+export const ObjectNode = forwardRef<THREE.Group, Props>(function ObjectNode({ o, selected, onSelect, helpers, time = null }, ref) {
   const { position, rotation, scale } = o.transform;
   return (
     <group ref={ref} name={o.id} position={position} rotation={rotation} scale={scale} visible={o.visible}
            onClick={(e) => { e.stopPropagation(); onSelect(e); }}>
-      <Body o={o} selected={selected} helpers={helpers} />
+      <Body o={o} selected={selected} helpers={helpers} time={time} />
     </group>
   );
 });
 
-function Body({ o, selected, helpers }: { o: SceneObject; selected: boolean; helpers: boolean }) {
+function Body({ o, selected, helpers, time }: { o: SceneObject; selected: boolean; helpers: boolean; time: number | null }) {
   const material = <meshStandardMaterial color={o.color} roughness={0.7} emissive={selected ? SEL : "#000000"}
                                          emissiveIntensity={selected ? 0.18 : 0} />;
   switch (o.kind) {
@@ -35,7 +40,9 @@ function Body({ o, selected, helpers }: { o: SceneObject; selected: boolean; hel
     case "plane":
       return <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[4, 4]} />{material}</mesh>;
     case "mannequin": return <Mannequin pose={o.pose} color={o.color} selected={selected} />;
-    case "model": return o.asset_id ? <Suspense fallback={<Placeholder />}><Model assetId={o.asset_id} /></Suspense> : null;
+    case "model": return o.asset_id ? (
+      <Suspense fallback={<Placeholder />}><Model assetId={o.asset_id} animation={o.animation ?? null} time={time} /></Suspense>
+    ) : null;
     case "world": return o.asset_id ? <World splatId={o.asset_id} colliderId={o.collider_asset_id ?? null} /> : null;
     case "sun": case "point_light": case "spot_light": return <LightNode o={o} helpers={helpers} selected={selected} />;
     case "camera": return helpers ? <CameraGlyph o={o} selected={selected} /> : null;
@@ -46,10 +53,65 @@ function Placeholder() {
   return <mesh><boxGeometry args={[0.4, 0.4, 0.4]} /><meshBasicMaterial color="#45464c" wireframe /></mesh>;
 }
 
-function Model({ assetId }: { assetId: string }) {
+function Model({ assetId, animation, time }: { assetId: string; animation: Animation | null; time: number | null }) {
   const { data: asset } = useAsset(assetId);
+  const { data: source } = useAsset(animation?.source_asset_id ?? undefined);
   const url = asset ? mediaUrl(asset.url) : undefined;
-  return url ? <Gltf url={url} /> : <Placeholder />;
+  if (!url) return <Placeholder />;
+  if (!animation) return <Gltf url={url} />;
+  const clipUrl = animation.source_asset_id ? (source ? mediaUrl(source.url) : undefined) : url;
+  return clipUrl ? <Animated url={url} clipUrl={clipUrl} animation={animation} time={time} /> : <Gltf url={url} />;
+}
+
+/**
+ * A rigged model posed at the timeline time by a clip, from its own file or another on the same skeleton (bones are
+ * matched by name). The copy carries `userData.seek`, so the render passes pose it for each frame they draw.
+ */
+function Animated({ url, clipUrl, animation, time }: { url: string; clipUrl: string; animation: Animation; time: number | null }) {
+  const copy = useCopy(url, true);
+  const { animations } = useGLTF(clipUrl);
+  const clip = animations.find((a) => a.name === animation.clip) ?? null;
+  const mixer = useMemo(() => new THREE.AnimationMixer(copy), [copy]);
+  const action = useMemo(() => {
+    if (!clip) return null;
+    return paused(mixer.clipAction(clip)); // the timeline sets its time
+  }, [mixer, clip]);
+  useEffect(() => () => { mixer.stopAllAction(); mixer.uncacheRoot(copy); }, [mixer, copy]);
+  // a clip that's switched away from stops before the new one poses the rig, so the two never blend
+  useLayoutEffect(() => () => { if (action) retire(mixer, action); }, [mixer, action]);
+  const seek = useCallback((t: number | null) => {
+    if (action && clip) pose(mixer, action, clipTime(animation, t ?? 0, clip.duration));
+  }, [action, clip, mixer, animation]);
+  useLayoutEffect(() => { seek(time); mark(copy, { at: time }); }, [seek, time, copy]);
+  useLayoutEffect(() => {
+    mark(copy, { seek });
+    return () => mark(copy, { seek: undefined });
+  }, [copy, seek]);
+  return <primitive object={copy} />;
+}
+
+// three.js objects are posed in place, outside React's state
+function pose(mixer: THREE.AnimationMixer, action: THREE.AnimationAction, seconds: number) {
+  action.time = seconds;
+  mixer.update(0);
+}
+
+function mark(node: THREE.Object3D, data: Record<string, unknown>) {
+  Object.assign(node.userData, data);
+}
+
+function paused(action: THREE.AnimationAction): THREE.AnimationAction {
+  // the timeline loops a clip itself (clipTime); left repeating, three.js would wrap its last frame to its first
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = true;
+  action.play();
+  action.paused = true;
+  return action;
+}
+
+function retire(mixer: THREE.AnimationMixer, action: THREE.AnimationAction) {
+  action.stop();
+  mixer.uncacheAction(action.getClip());
 }
 
 /**
@@ -74,14 +136,17 @@ function World({ splatId, colliderId }: { splatId: string; colliderId: string | 
 }
 
 function Gltf({ url, shadows = true }: { url: string; shadows?: boolean }) {
+  return <primitive object={useCopy(url, shadows)} />;
+}
+
+/** One loaded file can be in the scene several times: each use gets its own copy, a rig's bones rebound to it. */
+function useCopy(url: string, shadows: boolean): THREE.Object3D {
   const { scene } = useGLTF(url);
-  // one loaded file can be in the scene several times
-  const copy = useMemo(() => {
-    const c = scene.clone(true);
+  return useMemo(() => {
+    const c = cloneRigged(scene);
     c.traverse((n) => { if ((n as THREE.Mesh).isMesh) { n.castShadow = shadows; n.receiveShadow = shadows; } });
     return c;
   }, [scene, shadows]);
-  return <primitive object={copy} />;
 }
 
 // ---------------------------------------------------------------- the figure

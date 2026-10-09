@@ -297,6 +297,13 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   tracks, settings; a `world` object holds a splat and its collision mesh). Render passes are drawn on the editor's
   canvas (`RenderPanel.tsx:renderScene`), uploaded frame by frame (`api/routers/renders.py`) and joined by ffmpeg into
   a video per pass, or stills at the camera's keys. The `jutsu3d` recipe makes those renders real (angles or depth).
+- Rigged models play clips on the timeline: a model object's `animation` (`{clip, source_asset_id, start, offset,
+  speed, loop}`) names a clip in its own GLB or in another on the same skeleton (bones match by name), e.g. a rigging
+  job's walking or running GLB. `SceneObjects.tsx:Animated` clones the rig (SkeletonUtils), poses it with a paused
+  AnimationMixer at `clipTime(...)` for the playhead, and leaves `userData.seek` for the render passes, which pose each
+  frame. A model without clips can be rigged from its Animation panel: `meshy-rigging` (op `rig`, role
+  `input_model`; Meshy 7.1 can rig while it generates) returns the rigged GLB plus walking, running and an optional
+  library clip, each a `model3d` extra tagged `metadata.clip_source`; the rigged GLB replaces the object's model.
 - Splats render with Spark (`components/three/Splat.tsx`): one `SparkLayer` per canvas, worlds flipped from OpenCV
   axes, `spark.update()` before each captured frame; data passes hide splats and draw the collision mesh instead.
 - `worldlabs` (Marble, `WORLDLABS_API_KEY`): submit returns an operation, polled until `done`; it can't be canceled.

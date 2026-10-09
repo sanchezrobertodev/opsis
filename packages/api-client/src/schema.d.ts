@@ -2239,7 +2239,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image" | "character_image" | "driving_video" | "input_image" | "training_data" | "lora" | "lora_high";
+            role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image" | "character_image" | "driving_video" | "input_image" | "training_data" | "lora" | "lora_high" | "input_model";
             /** Kinds */
             kinds: ("image" | "video" | "audio" | "mask" | "mask_video" | "model3d" | "splat" | "lora" | "archive")[];
             /** Label */
@@ -2283,7 +2283,7 @@ export interface components {
              * Ops
              * @default []
              */
-            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "song" | "segment" | "track" | "to_3d" | "panorama" | "world" | "depth_to_video" | "lora_train")[];
+            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "song" | "segment" | "track" | "to_3d" | "panorama" | "world" | "depth_to_video" | "lora_train" | "rig")[];
             /**
              * Prompt
              * @default required

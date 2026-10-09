@@ -44,7 +44,7 @@ export function Viewport({ doc, selected, time, mode, look, helpers = true, onSe
         <shadowMaterial opacity={0.35} />
       </mesh>
       {shown.map((o) => (
-        <ObjectNode key={o.id} o={o} selected={helpers && o.id === selected}
+        <ObjectNode key={o.id} o={o} selected={helpers && o.id === selected} time={time}
                     helpers={helpers && !(throughCamera && o.id === shot?.id)} // not the camera you look through
                     onSelect={() => onSelect(o.id)}
                     ref={(g) => { if (g) nodes.current.set(o.id, g); else nodes.current.delete(o.id); }} />

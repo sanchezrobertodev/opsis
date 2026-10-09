@@ -13,7 +13,11 @@ export type Transform = { position: Vec3; rotation: Vec3; scale: Vec3 };
 export type SceneObject = {
   id: string; kind: ObjectKind; name: string; transform: Transform; color: string; visible: boolean;
   asset_id: string | null; collider_asset_id?: string | null; pose: Record<string, Vec3>; intensity: number;
-  target: Vec3; focal_length: number;
+  target: Vec3; focal_length: number; animation?: Animation | null;
+};
+/** A rigged model playing a clip (by name) from its own GLB or another on the same skeleton, on the timeline. */
+export type Animation = {
+  clip: string; source_asset_id?: string | null; start: number; offset: number; speed: number; loop: boolean;
 };
 export type Keyframe = { t: number; position?: Vec3 | null; rotation?: Vec3 | null; scale?: Vec3 | null;
                          target?: Vec3 | null; focal_length?: number | null };
@@ -218,3 +222,11 @@ export const POSES: Record<string, { label: string; pose: Record<string, Vec3> }
   wave: { label: "Wave", pose: { shoulder_r: [0, 0, -2.3], elbow_r: [0, 0, -0.9], head: [0, -0.2, 0.1] } },
   t_pose: { label: "T-pose", pose: { shoulder_l: [0, 0, 1.57], shoulder_r: [0, 0, -1.57] } },
 };
+
+/** Where a clip is at timeline time `t`: its first pose (from `offset`) until `start`, then playing at `speed`,
+ *  looping or holding its last pose. */
+export function clipTime(a: Animation, t: number, length: number): number {
+  if (length <= 0) return 0;
+  const local = a.offset + Math.max(0, t - a.start) * a.speed;
+  return a.loop ? local % length : Math.min(local, length);
+}

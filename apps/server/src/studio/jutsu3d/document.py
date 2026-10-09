@@ -39,6 +39,18 @@ class Transform(_Doc):
     scale: Vec3 = (1.0, 1.0, 1.0)
 
 
+class Animation(_Doc):
+    """A rigged model playing a clip: the clip by name, from the model's own GLB or another on the same skeleton
+    (a rigging job's walking or running GLB), placed on the timeline."""
+
+    clip: str = Field(min_length=1, max_length=200, description="The clip's name in the GLB")
+    source_asset_id: str | None = Field(None, description="The GLB holding the clip; the model's own when empty")
+    start: float = Field(0.0, ge=0, le=60, description="Seconds into the timeline when the clip starts")
+    offset: float = Field(0.0, ge=0, le=600, description="Seconds into the clip it starts from")
+    speed: float = Field(1.0, gt=0, le=4)
+    loop: bool = True
+
+
 class SceneObject(_Doc):
     id: str = Field(default_factory=new_id, pattern=ID)
     kind: ObjectKind
@@ -52,6 +64,7 @@ class SceneObject(_Doc):
     intensity: float = Field(1.0, ge=0, le=100, description="lights")
     target: Vec3 = Field((0.0, 1.0, 0.0), description="camera and spot light: the point they look at")
     focal_length: float = Field(35.0, ge=8, le=400, description="camera: millimetres on a full-frame sensor")
+    animation: Animation | None = Field(None, description="model: a clip it plays on the timeline")
 
     @model_validator(mode="after")
     def _fits_kind(self) -> SceneObject:
@@ -59,6 +72,8 @@ class SceneObject(_Doc):
             raise ValueError("a model object needs its GLB asset")
         if self.kind == "world" and not self.asset_id:
             raise ValueError("a world object needs its splat asset")
+        if self.animation and self.kind != "model":
+            raise ValueError("only a model object plays an animation clip")
         if unknown := set(self.pose) - set(JOINTS):
             raise ValueError(f"unknown mannequin joints {sorted(unknown)}")
         return self
@@ -118,16 +133,21 @@ class Jutsu3dDocument(_Doc):
         return self
 
     def asset_ids(self) -> set[str]:
-        own = {a for o in self.objects for a in (o.asset_id, o.collider_asset_id) if a}
+        own = {a for o in self.objects
+               for a in (o.asset_id, o.collider_asset_id, o.animation.source_asset_id if o.animation else None) if a}
         return own | ({self.cover_asset_id} if self.cover_asset_id else set())
 
     def without_assets(self, gone: set[str]) -> tuple[Jutsu3dDocument, int]:
-        """Objects whose model or world was deleted are left out, and a gone collider or cover is cleared.
+        """Objects whose model or world was deleted are left out, and a gone collider, clip source or cover is cleared.
         Returns how many went."""
         keep = [o for o in self.objects if not (o.asset_id and o.asset_id in gone)]
         dropped = len(self.objects) - len(keep)
         colliders = sum(1 for o in keep if o.collider_asset_id in gone)
         keep = [o.model_copy(update={"collider_asset_id": None}) if o.collider_asset_id in gone else o for o in keep]
+        # a clip whose GLB went: the model stands still again
+        clips = sum(1 for o in keep if o.animation and o.animation.source_asset_id in gone)
+        keep = [o.model_copy(update={"animation": None}) if o.animation and o.animation.source_asset_id in gone else o
+                for o in keep]
         ids = {o.id for o in keep}
         doc = self.model_copy(update={
             "objects": keep,
@@ -136,7 +156,7 @@ class Jutsu3dDocument(_Doc):
             "active_camera_id": self.active_camera_id if self.active_camera_id in ids else None,
             "cover_asset_id": None if self.cover_asset_id in gone else self.cover_asset_id,
         })
-        return doc, dropped + colliders + (1 if self.cover_asset_id in gone else 0)
+        return doc, dropped + colliders + clips + (1 if self.cover_asset_id in gone else 0)
 
 
 def starter_scene() -> dict[str, Any]:

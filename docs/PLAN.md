@@ -286,8 +286,9 @@ redrawn first frame). World Creation (/worlds): World Labs Marble worlds (Gaussi
 and collision mesh, through a new `worldlabs` adapter), HunyuanWorld panoramas on fal, Spark viewers for both,
 grabbed views as pictures, places saved as location Elements, and "film it in 3D blocking", which sets a scene in
 the world so cameras, keys and passes are shared (the depth pass draws the world's collision mesh). Not yet: any
-live run (Marble needs WORLDLABS_API_KEY, and usage past prepaid credits is billed at month end), animation clips
-for rigged GLBs, a normals-guided video route, and multi-image or video Marble prompts.
+live run (Marble needs WORLDLABS_API_KEY, and usage past prepaid credits is billed at month end), a normals-guided
+video route and multi-image or video Marble prompts (animation clips for rigged GLBs, with Meshy rigging,
+landed 2026-10-09).
 P8 started: nightly database backups (pg_dump in the container, 14 days kept, restores that never drop anything;
 media needs its own copy) and a weekly provider schema check against saved baselines, which the contract tests also
 use offline (AMS-56, AMS-59). Character identities (AMS-55): a `lora_train` recipe trains a Wan 2.2 LoRA from a character's photos on fal and stores it on the Element; Wan 2.2 stills and video on fal load it when the character is mentioned. Still to come: the local gpu-worker (when asked), auth and R2.

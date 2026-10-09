@@ -1,0 +1,36 @@
+{
+ "endpoint": "fal-ai/meshy/rigging",
+ "variant": null,
+ "input": {
+  "animation_action_id": {
+   "type": "integer",
+   "default": 92
+  },
+  "enable_animation": {
+   "type": "boolean"
+  },
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
+  "height_meters": {
+   "type": "number",
+   "default": 1.7
+  },
+  "model_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "model_url"
+ ],
+ "output": [
+  "animation_fbx",
+  "animation_glb",
+  "basic_animations",
+  "rig_task_id",
+  "rigged_character_fbx",
+  "rigged_character_glb"
+ ],
+ "deprecated": false
+}

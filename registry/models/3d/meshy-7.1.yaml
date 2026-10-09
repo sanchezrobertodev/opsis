@@ -19,6 +19,17 @@ parameters:
      help: "Adds a skeleton (humanoid characters). The rigged GLB is the one kept."}
   - {name: rigging_height_meters, label: Character height (m), type: float, min: 0.5, max: 3, step: 0.05, default: 1.7,
      visible_if: {enable_rigging: true}}
+  - {name: enable_animation, label: Add a clip, type: bool, default: false, visible_if: {enable_rigging: true},
+     help: "A rigged character comes with walking and running clips; this adds one more from Meshy's library."}
+  - name: animation_action_id
+    label: Clip
+    type: enum
+    options: [0, 2, 30, 16, 466, 28, 32, 344, 56, 22, 96, 366, 441]
+    default: 0
+    labels: {"0": Idle, "2": Look around, "30": Casual walk, "16": Run fast, "466": Jump, "28": Wave hello,
+             "32": Sit (idle), "344": Stand up, "56": Stand and chat, "22": Dance, "96": Kung fu punch,
+             "366": Fall down, "441": Climb stairs}
+    visible_if: {enable_animation: true}
   - {name: pose_mode, label: Pose, type: enum, options: [as_drawn, a-pose, t-pose], default: as_drawn,
      labels: {as_drawn: As drawn, a-pose: A-pose, t-pose: T-pose}, help: "An A- or T-pose rigs more cleanly."}
   - {name: topology, type: enum, options: [triangle, quad], default: triangle, group: advanced}
@@ -44,18 +55,28 @@ routes:
         enable_pbr: enable_pbr
         enable_rigging: enable_rigging
         rigging_height_meters: rigging_height_meters
+        enable_animation: enable_animation
+        animation_action_id: animation_action_id
         pose_mode: {to: pose_mode, transform: enum_map, args: {values: {as_drawn: "", a-pose: a-pose, t-pose: t-pose}}}
         topology: topology
         target_polycount: target_polycount
       media: {input_image: image_url}
     pricing:
       basis: formula
-      formula: "0.8 + (0.4 if should_texture else 0) + (0.2 if enable_rigging else 0)"
+      formula: "0.8 + (0.4 if should_texture else 0) + (0.2 if enable_rigging else 0) + (0.12 if enable_rigging and enable_animation else 0)"
       verified: 2026-10-07
       source: https://fal.ai/models/meshy/v7.1/image-to-3d
     timeout_s: 1800
-    output: {path: "rigged_character_glb.url | model_glb.url", kind: model3d}
-    notes: fal-ai/meshy/rigging ($0.20) can rig a GLB from any other model later.
+    output:
+      path: "rigged_character_glb.url | model_glb.url"
+      kind: model3d
+      # a rigged character also brings walking and running clips (and the library clip when asked), each a GLB
+      # on the same skeleton that 3D blocking can play on the character
+      extras:
+        - {path: basic_animations.walking_glb.url, kind: model3d, meta: {rig: meshy, clip_source: walking}}
+        - {path: basic_animations.running_glb.url, kind: model3d, meta: {rig: meshy, clip_source: running}}
+        - {path: animation_glb.url, kind: model3d, meta: {rig: meshy, clip_source: library}}
+    notes: meshy-rigging rigs a GLB from any other model later.
 
 examples:
   - name: image_to_3d_smoke

@@ -82,6 +82,8 @@ async function drawFrames(handleRef: ViewportHandle, doc: SceneDoc, times: numbe
         g.rotation.set(...now.transform.rotation);
         g.scale.set(...now.transform.scale);
       }
+      // rigged models playing a clip take their pose for this frame
+      scene.traverse((n) => { (n.userData.seek as ((t: number) => void) | undefined)?.(t); });
       const cam = evaluate(shot, trackOf(doc, shot.id), t);
       camera.position.set(...cam.transform.position);
       camera.lookAt(...cam.target);
@@ -127,6 +129,8 @@ async function drawFrames(handleRef: ViewportHandle, doc: SceneDoc, times: numbe
       g?.position.copy(p); g?.rotation.copy(r); g?.scale.copy(s);
     }
     hidden.forEach((n) => { n.visible = true; });
+    // and back to where the editor's playhead has them
+    scene.traverse((n) => { (n.userData.seek as ((t: number | null) => void) | undefined)?.(n.userData.at ?? null); });
     splats.forEach((n) => { n.visible = true; });
     stands.forEach((n) => { n.visible = false; });
     Object.assign(scene, { background: before.background, overrideMaterial: before.override });
