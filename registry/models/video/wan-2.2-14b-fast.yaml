@@ -5,8 +5,8 @@ family: wan
 vendor: alibaba
 description: >-
   Open-weights Wan 2.2 14B with the Lightning 4-step LoRAs, on your own RunPod endpoint. Text or image to video
-  at 480p or 720p for well under the closed models' price. About two to three minutes per 720p clip once a worker
-  is warm; the first clip after a pause also loads the model.
+  at 480p or 720p for well under the closed models' price. About 30 s per 5 s clip at 480p and 80 s at 720p once a
+  worker is warm; the first clip after a pause also loads the model (about a minute more).
 output_type: video
 status: active
 license_tier: open_permissive   # Apache 2.0 (Wan 2.2, lightx2v)
