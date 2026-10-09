@@ -107,7 +107,7 @@ async def test_compare_waits_for_a_pick_and_survives_a_failed_take(client, in_me
     assert (await client.get(f"/assets/{choice}")).json()["favorite"] is True
 
     # one model failing doesn't sink a comparison; with a single good take there is nothing to pick
-    run = await start(client, "compare", prompt="a kite [[mock:fail=moderation]]", entries=[
+    run = await start(client, "compare", prompt="a kite [[mock:fail=invalid_request]]", entries=[
         {"model_id": "kling-3.0"}, {"model_id": "seedance-2.5"}])
     await drain(in_memory_queue)
     failed_both = await get(client, run["id"])
@@ -117,7 +117,7 @@ async def test_compare_waits_for_a_pick_and_survives_a_failed_take(client, in_me
 
 async def test_a_failed_shot_fails_the_run_and_retry_redoes_only_it(client, in_memory_queue):
     run = await start(client, "sequence", model_id="kling-3.0", assemble=False, shots=[
-        {"prompt": "a fox in the snow"}, {"prompt": "the fox leaps [[mock:fail=moderation]]"}])
+        {"prompt": "a fox in the snow"}, {"prompt": "the fox leaps [[mock:fail=invalid_request]]"}])
     await drain(in_memory_queue)
     failed = await get(client, run["id"])
     assert failed["status"] == "failed" and failed["error"].startswith("Shot 2:")
@@ -127,7 +127,7 @@ async def test_a_failed_shot_fails_the_run_and_retry_redoes_only_it(client, in_m
     assert r.status_code == 200
     await drain(in_memory_queue)
     again = await get(client, run["id"])
-    assert again["status"] == "failed"  # the prompt still trips moderation
+    assert again["status"] == "failed"  # the prompt still fails
     assert again["steps"][0]["generation_id"] == first_gen  # shot 1 was kept, not paid for twice
 
 
