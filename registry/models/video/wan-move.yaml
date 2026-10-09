@@ -47,14 +47,14 @@ routes:
       media: {start_image: start_image}
     pricing:
       basis: per_gpu_second
-      # + 60 s the worker stays billed after its job (idle timeout) + ~150 s loading the model on a cold worker
-      # (measured 2026-10-08: warm runs 70-93 s, cold 218-239 s). A ceiling for caps: a warm run costs less, and the
+      # + 60 s the worker stays billed after its job (idle timeout) + ~90 s loading the model on a cold worker
+      # (wan-core 0.3.0, 2026-10-08: Wan 2.2 Fast ran 81 s cold, 10 s warm; Wan-Move 71-92 s cold on 0.1.0-0.2.0). A ceiling for caps: a warm run costs less, and the
       # hourly reconcile books what RunPod billed.
-      quantity: "40 + 10 * duration + 60 + 150"
+      quantity: "15 + 5 * duration + 60 + 90"
       rates: [{usd: 0.000969}]
       verified: 2026-10-06
       source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); 6-step 480p run time estimated (unbenchmarked)
-    eta: "40 + 10 * duration"
+    eta: "15 + 5 * duration"
     timeout_s: 3600
     output: {path: output.outputs, kind: video}
 
@@ -65,4 +65,4 @@ examples:
     params: {duration: 3, motion_paths: [{points: [[0.3, 0.6], [0.5, 0.58], [0.7, 0.6]]}]}
     media: {start_image: "fixture:images/keyframe.png"}
     smoke: true
-    expect: {cost_usd_range: [0.25, 0.29]}
+    expect: {cost_usd_range: [0.16, 0.19]}

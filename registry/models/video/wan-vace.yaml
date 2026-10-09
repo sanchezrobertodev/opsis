@@ -41,15 +41,16 @@ routes:
         mask_grow: mask_grow
         seed: seed
       media: {input_video: input_video, mask: mask, image_references: image_references}
-    # Billed per GPU second on an RTX PRO 6000 ($3.49/h). Run time unbenchmarked (6 CausVid steps on 81 frames), plus
-    # the 60 s idle tail and ~200 s to load the 35 GB model on a cold worker: a ceiling, corrected to RunPod's bill.
+    # Billed per GPU second on an RTX PRO 6000 ($3.49/h): run time (6 CausVid steps) plus the 60 s idle tail and
+    # ~150 s to load the 35 GB fp16 model on a cold worker (3-4 s clips ran 136-157 s cold on 0.2.0): a ceiling,
+    # corrected to RunPod's bill.
     pricing:
       basis: per_gpu_second
-      quantity: "(90 if quality == '480p' else 240) * min(input_video_seconds * 16 + 1, 81) / 81 + 60 + 200"
+      quantity: "(60 if quality == '480p' else 160) * min(input_video_seconds * 16 + 1, 81) / 81 + 60 + 150"
       rates: [{usd: 0.000969}]
       verified: 2026-10-08
       source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); run time estimated, not yet benchmarked
-    eta: "(90 if quality == '480p' else 240) * min(input_video_seconds * 16 + 1, 81) / 81 + 200"
+    eta: "(60 if quality == '480p' else 160) * min(input_video_seconds * 16 + 1, 81) / 81 + 150"
     timeout_s: 3600
     output: {path: output.outputs, kind: video}
     # Wan works at 16 fps: clips are re-timed to it, so its 81 frames cover up to 5 s of them
@@ -63,4 +64,4 @@ examples:
     params: {quality: "480p"}
     media: {input_video: "fixture:videos/clip_3s.mp4", mask: "made-by:sam-3-video"}
     smoke: true
-    expect: {cost_usd_range: [0.2, 0.45]}
+    expect: {cost_usd_range: [0.19, 0.26]}
