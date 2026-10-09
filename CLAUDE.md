@@ -257,6 +257,19 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   `cast_emotions` (a feeling per @mentioned cast member, phrased with the name the mention resolved to). Golden
   snapshots per dialect live in `tests/unit/golden/director/`; regenerate with `UPDATE_GOLDEN=1` and review the diff.
 
+## Trained characters (Soul ID)
+- The `lora_train` recipe learns a character's face: `dataset` (local op `lora_dataset`: 10-80 of its photos zipped
+  into an `archive` asset) -> `train` (`wan-2.2-lora-trainer`, fal's Wan 2.2 trainer, $0.0045/step, captions written by
+  fal) -> `attach` (local op `attach_lora`: `element.lora = {base, trigger, low, high, steps, run_id, trained_at}`) ->
+  an optional portrait preview. The trigger word defaults to a made-up word from the name; the character page's
+  "Trained identity" panel starts runs and can forget one (`PATCH /elements/{id}` `clear_lora`).
+- Models with `elements: {strategy: lora, lora_base: wan-2.2-a14b}` (`wan-2.2-image` stills, `wan-2.2-lora` video on
+  fal) load a mentioned character's LoRA: the resolver attaches the files in the mode's `auto` slots (`lora`,
+  `lora_high`; never shown in forms) and the mention reads "Name (trigger)". The `lora_list` transform turns the staged
+  links into fal's `loras` (high-noise file on the high expert, low on low; a single file on both).
+- Route map targets starting with `_` are parked for a payload hook and never sent; the schema check skips them.
+- LoRA files (`lora`) and zips (`archive`) are never probed and stay out of the default library listing.
+
 ## 3D blocking and Worlds
 - Media kinds `model3d` (GLB) and `splat` (.spz/.ply) are never probed: uploads are checked by magic bytes, and their
   library pictures are drawn in the browser and posted to `POST /assets/{id}/thumbnail` (`lib/thumbs.ts`).

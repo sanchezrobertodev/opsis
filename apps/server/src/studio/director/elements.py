@@ -3,6 +3,8 @@
 How a mention becomes something the model understands depends on the model's `elements` strategy:
 - refs_native: the element's images are attached as reference images (in the model's ref role, within the
   slot's limit) and the mention becomes its name plus the model's reference token, e.g. "Maya ([Image 1])".
+- lora: a character trained for the model's LoRA base (`element.lora`, from the lora_train recipe) attaches its
+  weights in the auto `lora` / `lora_high` slots and the mention carries its trigger word, e.g. "Maya (mayaxq)".
 - keyframe_first / text_only: the mention becomes the name plus its short description, with a hint on how
   to get a consistent look.
 The first mention of each element carries its description; later ones just the name.
@@ -94,6 +96,9 @@ async def resolve_mentions(
     used = sum(1 for m in existing_media if m.get("role") == ref_role)
     capacity = max(0, (slot.max if slot else 0) - used)
     next_index = used + 1
+    lora_room = {r: max(0, (mode.slot(r).max if mode and mode.slot(r) else 0)
+                        - sum(1 for m in existing_media if m.get("role") == r)) for r in ("lora", "lora_high")}
+    trained = await _ready_loras(session, rows) if strategy == "lora" else set()
 
     replacements: dict[str, tuple[str, str]] = {}  # slug -> (first mention text, later mention text)
     for element in sorted((by_slug[s] for s in slugs if s in by_slug), key=lambda e: KIND_ORDER.get(e.kind.value, 9)):
@@ -115,6 +120,25 @@ async def resolve_mentions(
                                 f"@{element.slug} is described in words. Use a mode with reference images for its look.")
         elif strategy == "refs_native" and capacity <= 0:
             res.warnings.append(f"no reference slots left for @{element.slug}; described in words")
+        elif strategy == "lora":
+            lora = element.lora or {}
+            base = (spec.elements or {}).get("lora_base")
+            low, high = str(lora.get("low") or ""), str(lora.get("high") or "")
+            if lora.get("base") == base and low in trained and lora_room["lora"] > 0:
+                res.media.append({"role": "lora", "asset_id": low})
+                attached.append(low)
+                lora_room["lora"] -= 1
+                if high in trained and lora_room["lora_high"] > 0:
+                    res.media.append({"role": "lora_high", "asset_id": high})
+                    attached.append(high)
+                    lora_room["lora_high"] -= 1
+                if lora.get("trigger"):
+                    label = f"{element.name} ({lora['trigger']})"
+            elif lora.get("base") == base and low in trained:
+                res.warnings.append(f"no room for another character's identity, so @{element.slug} is described in words")
+            elif element.kind.value == "character":
+                res.warnings.append(f"@{element.slug} has no trained identity for {spec.name}, so it's described in "
+                                    "words. Train one on the character's page for a face that holds.")
         elif strategy == "keyframe_first" and element.kind.value == "character":
             res.warnings.append(f"{spec.name} doesn't take reference images, so @{element.slug} is described in "
                                 f"words. For a consistent look, make a start frame from its pictures first.")
@@ -138,3 +162,13 @@ async def resolve_mentions(
 
     res.prompt = MENTION.sub(substitute, prompt).replace(",,", ",").replace(", .", ".")
     return res
+
+
+async def _ready_loras(session: AsyncSession, rows: Any) -> set[str]:
+    """The LoRA files the mentioned elements point at that still exist and are ready."""
+    ids = [uuid.UUID(str(v)) for e in rows for k, v in (e.lora or {}).items() if k in ("low", "high") and v]
+    if not ids:
+        return set()
+    found = (await session.execute(select(Asset.id).where(
+        Asset.id.in_(ids), Asset.status == AssetStatus.ready, Asset.deleted_at.is_(None), Asset.kind == "lora"))).scalars()
+    return {str(i) for i in found}

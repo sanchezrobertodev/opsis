@@ -74,6 +74,7 @@ class ElementPatch(BaseModel):
     cover_asset_id: uuid.UUID | None = None
     voice: VoiceIn | None = Field(None, description="Set the voice; `clear_voice` removes it")
     clear_voice: bool = False
+    clear_lora: bool = Field(False, description="Forget the trained identity (the LoRA files stay in the library)")
 
 
 class ElementImageOut(BaseModel):
@@ -91,6 +92,7 @@ class ElementOut(BaseModel):
     description: str
     attributes: dict[str, Any]
     voice: dict[str, Any] | None = Field(None, description="{model_id, params}: how this character speaks")
+    lora: dict[str, Any] | None = Field(None, description="The trained identity: {base, trigger, low, high, steps, run_id, trained_at}; models with the lora strategy load it when the character is mentioned")
     cover: AssetOut | None
     images: list[ElementImageOut]
     created_at: datetime
@@ -132,7 +134,7 @@ async def _out(session: AsyncSession, e: Element) -> ElementOut:
     images = [ElementImageOut(asset=asset_out(a), view=link.view, is_primary=link.is_primary) for link, a in links]
     cover = next((i.asset for i in images if str(i.asset.id) == str(e.cover_asset_id)), images[0].asset if images else None)
     return ElementOut(id=e.id, kind=e.kind.value, name=e.name, slug=e.slug, handle=f"@{e.slug}",
-                      description=e.description, attributes=e.attributes or {}, voice=e.voice or None,
+                      description=e.description, attributes=e.attributes or {}, voice=e.voice or None, lora=e.lora or None,
                       cover=cover, images=images, created_at=e.created_at)
 
 
@@ -200,6 +202,8 @@ async def patch_element(element_id: uuid.UUID, body: ElementPatch, session: Asyn
         e.voice = _check_voice(body.voice)
     elif body.clear_voice:
         e.voice = {}
+    if body.clear_lora:
+        e.lora = {}
     await session.commit()
     return await _out(session, e)
 

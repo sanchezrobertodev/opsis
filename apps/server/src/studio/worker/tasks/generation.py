@@ -63,7 +63,7 @@ EXT = {"video/mp4": ".mp4", "video/webm": ".webm", "video/quicktime": ".mov", "i
        "image/jpeg": ".jpg", "image/webp": ".webp", "audio/mpeg": ".mp3", "audio/wav": ".wav",
        "model/gltf-binary": ".glb", "application/x-ply": ".ply"}
 # outputs ffmpeg can't read: kept as files, with the extension their kind implies when the mime type is vague
-NOT_MEDIA = {"model3d": ".glb", "splat": ".spz"}
+NOT_MEDIA = {"model3d": ".glb", "splat": ".spz", "lora": ".safetensors", "archive": ".zip"}
 
 
 def _untitled(model_id: str, mode_id: str, gen_id: uuid.UUID) -> str:

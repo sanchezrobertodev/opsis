@@ -1,0 +1,92 @@
+{
+ "endpoint": "fal-ai/wan/v2.2-a14b/text-to-image/lora",
+ "variant": null,
+ "input": {
+  "acceleration": {
+   "type": "string",
+   "enum": [
+    "none",
+    "regular"
+   ],
+   "default": "regular"
+  },
+  "enable_output_safety_checker": {
+   "type": "boolean"
+  },
+  "enable_prompt_expansion": {
+   "type": "boolean"
+  },
+  "enable_safety_checker": {
+   "type": "boolean"
+  },
+  "guidance_scale": {
+   "type": "number",
+   "default": 3.5,
+   "minimum": 1,
+   "maximum": 10
+  },
+  "guidance_scale_2": {
+   "type": "number",
+   "default": 4,
+   "minimum": 1,
+   "maximum": 10
+  },
+  "image_format": {
+   "type": "string",
+   "enum": [
+    "png",
+    "jpeg"
+   ],
+   "default": "jpeg"
+  },
+  "image_size": {
+   "type": "object<ImageSize>|string",
+   "enum": [
+    "square_hd",
+    "square",
+    "portrait_4_3",
+    "portrait_16_9",
+    "landscape_4_3",
+    "landscape_16_9"
+   ],
+   "default": "square_hd"
+  },
+  "loras": {
+   "type": "array<object<LoRAWeight>>",
+   "default": []
+  },
+  "negative_prompt": {
+   "type": "string",
+   "default": ""
+  },
+  "num_inference_steps": {
+   "type": "integer",
+   "default": 27,
+   "minimum": 2,
+   "maximum": 40
+  },
+  "prompt": {
+   "type": "string"
+  },
+  "reverse_video": {
+   "type": "boolean"
+  },
+  "seed": {
+   "type": "integer|null"
+  },
+  "shift": {
+   "type": "number",
+   "default": 2,
+   "minimum": 1,
+   "maximum": 10
+  }
+ },
+ "required": [
+  "prompt"
+ ],
+ "output": [
+  "image",
+  "seed"
+ ],
+ "deprecated": false
+}

@@ -372,7 +372,8 @@ def check_route(spec: ModelSpec, route: Route, mode: Mode, summary: Summary, tar
     if summary.deprecated:
         note(f"{target.endpoint} is marked deprecated")
     fields = sent_fields(spec, route, mode)
-    for name in sorted(set(fields) - set(summary.input)):
+    # `_name` targets are parked for a payload hook, which consumes them before sending (transforms/lora.py)
+    for name in sorted(n for n in set(fields) - set(summary.input) if not n.startswith("_")):
         note(f"{mode.id}: sends `{name}`, which the endpoint doesn't take")
     for name in sorted(set(summary.required) - set(fields)):
         note(f"{mode.id}: never sends `{name}`, which the endpoint requires")

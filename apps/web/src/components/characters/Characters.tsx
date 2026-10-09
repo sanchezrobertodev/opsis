@@ -4,10 +4,12 @@ import { Copy, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { type MediaSlot, mediaUrl } from "@/lib/api";
-import { cn } from "@/lib/cn";
+import { ApiError, type MediaSlot, mediaUrl } from "@/lib/api";
+import { cn, usd } from "@/lib/cn";
 import type { SlotAsset } from "@/lib/draft";
 import { useDraft } from "@/lib/draft";
+import { useDebounced } from "@/lib/hooks";
+import { type RunCreate, useEstimateRun, useStartRun } from "@/lib/runs";
 import {
   type Element,
   type ElementKind,
@@ -26,7 +28,7 @@ import { Button, Dialog, Segmented } from "@/components/ui/controls";
 const FILTERS = ["all", "character", "location", "prop", "style"] as const;
 type Filter = (typeof FILTERS)[number];
 
-const REF_SLOT: MediaSlot = { role: "image_references", kinds: ["image"], label: "Reference images", max: 8, min: 0, required: false };
+const REF_SLOT: MediaSlot = { role: "image_references", kinds: ["image"], label: "Reference images", max: 8, min: 0, required: false, auto: false };
 
 export function Characters() {
   const [filter, setFilter] = useState<Filter>("all");
@@ -147,7 +149,8 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
     try {
       if (existing) {
         await patch.mutateAsync({ id: existing.id, name, kind, description,
-                                  voice: voice ? { model_id: VOICE_MODEL, params: { voice_id: voice } } : null, clear_voice: !voice });
+                                  voice: voice ? { model_id: VOICE_MODEL, params: { voice_id: voice } } : null, clear_voice: !voice,
+                                  clear_lora: false });
         if (pending.length) {
           await addImages.mutateAsync({ id: existing.id, images: pending.map((p) => ({ asset_id: p.id, view: "front" as const })) });
         }
@@ -242,6 +245,7 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
         <p className="text-2xs text-faint">
           Clear, well-lit images work best: a front view first, then other angles. The first image is the cover.
         </p>
+        {existing && existing.kind === "character" && <IdentityPanel element={existing} />}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-4 md:col-span-2">
@@ -267,6 +271,110 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
         </Button>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- trained identity (Soul ID)
+
+const MIN_PHOTOS = 10;
+const MAX_PHOTOS = 80;
+const DEPTHS = [600, 1000, 1500] as const;
+const DEPTH_LABEL: Record<(typeof DEPTHS)[number], string> = { 600: "Quick", 1000: "Standard", 1500: "Thorough" };
+
+type Identity = { trigger?: string; steps?: number; trained_at?: string; run_id?: string };
+
+function IdentityPanel({ element }: { element: Element }) {
+  const router = useRouter();
+  const identity = (element.lora ?? null) as Identity | null;
+  const patch = usePatchElement();
+  const start = useStartRun();
+  const [retrain, setRetrain] = useState(false);
+  const [steps, setSteps] = useState<(typeof DEPTHS)[number]>(1000);
+  const [confirm, setConfirm] = useState<number | null>(null);
+  const photos = element.images.map((i) => i.asset.id).slice(0, MAX_PHOTOS);
+  const training = !identity || retrain;
+  const body: RunCreate | null = training && photos.length >= MIN_PHOTOS
+    ? { recipe: "lora_train", input: { element_id: element.id, slug: element.slug, photos, steps } }
+    : null;
+  const estimate = useEstimateRun(useDebounced(body, 300));
+  const cost = estimate.data ? (estimate.data.estimate_usd || estimate.data.live_estimate_usd) : null;
+
+  async function train(confirmCost?: number) {
+    if (!body) return;
+    try {
+      const run = await start.mutateAsync({ ...body, confirm_cost_usd: confirmCost ?? null });
+      toast.success(`Training ${element.handle}. Their identity is ready when the run finishes.`);
+      router.push(`/runs/${run.id}`);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setConfirm((err.body as { estimate_usd: number }).estimate_usd);
+        return;
+      }
+      toast.error(err instanceof Error ? err.message : "Could not start training");
+    }
+  }
+
+  return (
+    <section aria-labelledby="identity-title" className="space-y-3 rounded-[var(--radius-control)] border border-line-soft p-4">
+      <h3 id="identity-title" className="flex items-center gap-2 text-sm text-chalk">
+        <Sparkles className="size-4 text-tungsten" aria-hidden />
+        Trained identity
+      </h3>
+      {identity && !retrain ? (
+        <>
+          <p className="text-xs leading-relaxed text-muted">
+            Trained{identity.trained_at ? ` on ${new Date(identity.trained_at).toLocaleDateString()}` : ""}
+            {identity.steps ? ` with ${identity.steps.toLocaleString()} steps` : ""}. Write {element.handle} on Wan 2.2
+            stills or Wan 2.2 with characters and this face comes along; the trigger word{" "}
+            <span className="text-chalk">{identity.trigger}</span> goes into the prompt for you.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" onClick={() => setRetrain(true)}>Train again</Button>
+            <Button type="button" size="sm" tone="ghost" disabled={patch.isPending}
+                    onClick={() => patch.mutate({ id: element.id, clear_voice: false, clear_lora: true },
+                                                { onSuccess: () => toast(`${element.name} is back to pictures and words`) })}>
+              Forget identity
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-xs leading-relaxed text-muted">
+            Teach the studio this face from {MIN_PHOTOS} to {MAX_PHOTOS} photos: different angles, expressions and light,
+            one person per photo. Afterwards, Wan 2.2 keeps it in every picture and clip that mentions {element.handle}.
+          </p>
+          {photos.length < MIN_PHOTOS ? (
+            <p className="text-xs text-faint">
+              {photos.length} of {MIN_PHOTOS} photos so far. Add {MIN_PHOTOS - photos.length} more on the right, then save.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1.5 text-xs text-muted">
+                How closely to learn it
+                <Segmented label="Training depth" value={steps} options={DEPTHS} render={(d) => DEPTH_LABEL[d]}
+                           onChange={(d) => { setSteps(d); setConfirm(null); }} />
+              </div>
+              <p className="text-2xs text-faint">
+                {photos.length} photos, {steps.toLocaleString()} steps.{" "}
+                {cost == null ? "Estimating…" : estimate.data?.estimate_usd ? `About ${usd(cost)}.` : `Free on mock routes; about ${usd(cost)} live.`}
+              </p>
+              <div className="flex gap-2">
+                {retrain && <Button type="button" size="sm" tone="ghost" onClick={() => setRetrain(false)}>Keep the current one</Button>}
+                {confirm != null ? (
+                  <Button type="button" size="sm" tone="primary" disabled={start.isPending} onClick={() => void train(confirm)}>
+                    Train for {usd(confirm)}
+                  </Button>
+                ) : (
+                  <Button type="button" size="sm" tone="primary" disabled={!body || start.isPending} onClick={() => void train()}>
+                    Train identity
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 

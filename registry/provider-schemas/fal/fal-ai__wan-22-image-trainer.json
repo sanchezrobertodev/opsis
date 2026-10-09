@@ -1,0 +1,51 @@
+{
+ "endpoint": "fal-ai/wan-22-image-trainer",
+ "variant": null,
+ "input": {
+  "include_synthetic_captions": {
+   "type": "boolean"
+  },
+  "is_style": {
+   "type": "boolean"
+  },
+  "learning_rate": {
+   "type": "number",
+   "default": 0.0007,
+   "minimum": 1e-06,
+   "maximum": 0.1
+  },
+  "steps": {
+   "type": "integer",
+   "default": 1000,
+   "minimum": 10,
+   "maximum": 6000
+  },
+  "training_data_url": {
+   "type": "string"
+  },
+  "trigger_phrase": {
+   "type": "string"
+  },
+  "use_face_cropping": {
+   "type": "boolean"
+  },
+  "use_face_detection": {
+   "type": "boolean",
+   "default": true
+  },
+  "use_masks": {
+   "type": "boolean",
+   "default": true
+  }
+ },
+ "required": [
+  "training_data_url",
+  "trigger_phrase"
+ ],
+ "output": [
+  "config_file",
+  "diffusers_lora_file",
+  "high_noise_lora"
+ ],
+ "deprecated": false
+}

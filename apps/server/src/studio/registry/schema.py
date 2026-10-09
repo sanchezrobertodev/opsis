@@ -27,16 +27,20 @@ MediaRole = Literal[
     "character_image",  # motion transfer: who performs
     "driving_video",  # motion transfer: whose movement is copied
     "input_image",  # an image a tool works on (segmentation)
+    "training_data",  # a zip of pictures a trainer learns from (LoRA training)
+    "lora",  # LoRA weights; on two-expert models (Wan 2.2) the low-noise expert's
+    "lora_high",  # the high-noise expert's LoRA weights (Wan 2.2)
 ]
 # mask / mask_video: black-and-white mattes (white = the selected object), kept apart from ordinary media
 # model3d: a GLB; splat: a Gaussian-splat world (SPZ or PLY)
-MediaKind = Literal["image", "video", "audio", "mask", "mask_video", "model3d", "splat"]
+# lora: LoRA weights (.safetensors); archive: a zip (a LoRA trainer's pictures). Neither is ever probed.
+MediaKind = Literal["image", "video", "audio", "mask", "mask_video", "model3d", "splat", "lora", "archive"]
 OpTag = Literal[
     "t2v", "i2v", "flf2v", "multi_ref", "multi_shot", "extend", "instruction_edit", "restyle", "reframe",
     "upscale", "interpolate", "bg_remove", "motion_transfer", "object_replace", "lipsync", "avatar",
     "t2i", "i2i", "relight", "add_sound", "trim", "retime", "reverse", "loop", "stabilize",
     "tts", "sfx", "music", "segment", "track",
-    "to_3d", "panorama", "world", "depth_to_video",
+    "to_3d", "panorama", "world", "depth_to_video", "lora_train",
 ]
 OutputType = Literal["video", "image", "audio", "3d", "lora", "mask", "text"]
 Scalar = str | int | float | bool
@@ -158,6 +162,7 @@ class MediaSlot(_Strict):
     max_mb: float | None = None
     min_side: int | None = None  # pixels, both sides of a picture or clip ("720p and up", portrait too)
     min_fps: float | None = None  # for clips (Kling O3 Edit refuses under 23 fps, so 16 fps Wan clips too)
+    auto: bool = False  # filled by the studio (a mentioned character's LoRA), never shown in the form
 
 
 class Mode(_Strict):

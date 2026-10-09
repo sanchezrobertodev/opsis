@@ -57,6 +57,7 @@ class AssetKind(StrEnum):
     lora = "lora"
     subtitle = "subtitle"
     document = "document"
+    archive = "archive"  # a zip, e.g. the pictures a LoRA trainer learns from
 
 
 class AssetStatus(StrEnum):

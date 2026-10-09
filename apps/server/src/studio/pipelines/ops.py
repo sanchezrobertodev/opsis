@@ -5,14 +5,17 @@ from __future__ import annotations
 import mimetypes
 import shutil
 import uuid
+import zipfile
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 
+import anyio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.base import uuid7
-from studio.db.models import Asset, PipelineRun, PipelineStep
+from studio.db.models import Asset, Element, PipelineRun, PipelineStep
 from studio.domain.derived import frame_of, save_derived
 from studio.domain.enums import AssetKind, AssetSource
 from studio.faceless.catalog import CaptionLook, get_catalog
@@ -300,6 +303,56 @@ async def timeline_cut(session: AsyncSession, run: PipelineRun, step: PipelineSt
             "derive": [str(film.id)]}
 
 
+async def lora_dataset(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    """Zip a character's photos for a LoRA trainer (image_001.jpg, ...), kept as an archive asset."""
+    inp = step.input
+    photos = await _assets(session, run, inp["photos"])
+    if any(a.kind != AssetKind.image for a in photos):
+        raise StepFailed("only pictures can train a character")
+    storage = get_storage()
+    work = storage.temp_dir() / f"dataset-{uuid7().hex}"
+    work.mkdir(parents=True)
+    try:
+        dest = work / "photos.zip"
+
+        def pack() -> None:
+            with zipfile.ZipFile(dest, "w", zipfile.ZIP_STORED) as z:
+                for i, a in enumerate(photos, 1):
+                    src = storage.path_for(a.storage_key)
+                    z.write(src, f"image_{i:03d}{src.suffix.lower() or '.jpg'}")
+
+        await anyio.to_thread.run_sync(pack)
+        out = await save_derived(
+            session, run.user_id, dest, kind=AssetKind.archive, source=AssetSource.pipeline,
+            title=inp.get("title") or run.title, pipeline_run_id=run.id,
+            parents=[(a.id, "photo") for a in photos], metadata={"recipe": run.recipe, "photos": len(photos)},
+        )
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return {"asset_id": str(out.id)}
+
+
+async def attach_lora(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    """Store a trained identity on the character: the LoRA files for each expert, the base and the trigger word."""
+    inp = step.input
+    files = await _assets(session, run, inp["assets"])
+    by_expert = {str((a.metadata_ or {}).get("expert") or "low"): a for a in files if a.kind == AssetKind.lora}
+    low = by_expert.get("low")
+    if low is None:
+        raise StepFailed("the trainer returned no LoRA file")
+    element = (await session.execute(select(Element).where(
+        Element.id == uuid.UUID(inp["element_id"]), Element.user_id == run.user_id, Element.deleted_at.is_(None)
+    ))).scalar_one_or_none()
+    if element is None:
+        raise StepFailed("the character is gone")
+    high = by_expert.get("high")
+    lora = {"base": (low.metadata_ or {}).get("base"), "trigger": inp["trigger"], "low": str(low.id),
+            "high": str(high.id) if high else None, "steps": inp.get("steps"), "run_id": str(run.id),
+            "trained_at": datetime.now(UTC).isoformat()}
+    element.lora = lora
+    return lora
+
+
 LOCAL_OPS: dict[str, Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitable[dict[str, Any]]]] = {
     "timeline_cut": timeline_cut,
     "last_frame": last_frame,
@@ -311,4 +364,6 @@ LOCAL_OPS: dict[str, Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitab
     "narrated_cut": narrated_cut,
     "captions": captions,
     "keep_background": keep_background,
+    "lora_dataset": lora_dataset,
+    "attach_lora": attach_lora,
 }

@@ -16,10 +16,15 @@ from studio.db.base import uuid7
 from studio.db.models import Asset, AssetLineage
 from studio.domain import fsm
 from studio.domain.enums import AssetKind, AssetSource, AssetStatus
-from studio.media.ffmpeg import probe
+from studio.media.ffmpeg import Probe, probe
 from studio.media.ops import extract_frame
 from studio.storage.base import asset_key
 from studio.storage.local import get_storage
+
+mimetypes.add_type("application/zip", ".zip")  # Windows' registry says application/x-zip-compressed
+
+# files that aren't pictures, clips or sound: stored as they are, never probed
+UNPROBED = {AssetKind.model3d, AssetKind.splat, AssetKind.lora, AssetKind.archive, AssetKind.document}
 
 
 def _sha256(path: Path) -> str:
@@ -44,7 +49,7 @@ async def save_derived(
 ) -> Asset:
     """Move `src` into storage and record it. Caller commits, then defers derivatives (thumbnails)."""
     mime = mimetypes.guess_type(src.name)[0] or "application/octet-stream"
-    info = await probe(src)
+    info = await probe(src) if kind not in UNPROBED else Probe(None, None, None, None, False, None, None, {})
     digest = await anyio.to_thread.run_sync(_sha256, src)
     asset_id = uuid7()
     key = asset_key(user_id, asset_id, f"original{src.suffix}")

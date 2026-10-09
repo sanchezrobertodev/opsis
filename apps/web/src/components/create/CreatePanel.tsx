@@ -70,7 +70,7 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
   );
   const media = useMemo(
     () =>
-      (mode?.medias ?? []).flatMap((slot) =>
+      (mode?.medias ?? []).filter((slot) => !slot.auto).flatMap((slot) =>
         (draft.media[slot.role] ?? []).map((a) => ({ role: slot.role, asset_id: a.id })),
       ),
     [mode, draft.media],
@@ -191,7 +191,7 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
           />
         )}
 
-        {mode.medias.map((slot) => (
+        {mode.medias.filter((slot) => !slot.auto).map((slot) => (
           <MediaSlotField
             key={slot.role}
             slot={slot}
