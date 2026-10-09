@@ -203,7 +203,20 @@ async def test_kids_song_is_sung_section_by_section_under_its_pictures(client, i
     assert info.has_audio and info.duration_ms / 1000 == pytest.approx(40 + 0.5, abs=0.4)  # back to back, no gaps
     assert steps["cut"]["output"]["starts"] == [0.0, 10.0, 20.0, 30.0]
     text = get_storage().path_for(srt.storage_key).read_text(encoding="utf-8")
-    assert "Have you heard of lighthouses?" in text and "00:00:02," in text  # sung after a bar's lead-in
+    cues = [c.split("\n", 2) for c in text.strip().split("\n\n")]
+    assert cues[0][1] == "00:00:02,000 --> 00:00:06,000" and cues[0][2] == "Have you heard of lighthouses?"
+    assert [c[2] for c in cues[2:4]] == ["Sing about lighthouses", "Clap your hands along"]  # a line each
+    assert cues[2][1].startswith("00:00:12,000")  # the chorus starts after its own bar in, never mid-cue
+
+
+def test_song_captions_give_each_line_its_share_of_its_section():
+    from studio.media.captions import line_cues
+
+    out = line_cues([(2.0, 10.0, ["Round and round, my light says, \"Hey!", "Sail this way!"]), (12.0, 20.0, [])],
+                    max_chars=30)
+    assert [(c.start, c.end) for c in out] == [(2.0, 6.0), (6.0, 10.0)]
+    assert out[0].text == "Round and round, my light\nsays, \"Hey!" and out[1].text == "Sail this way!"
+    assert out[1].words[0]["start"] == 6.0 and out[1].words[-1]["end"] == 10.0
 
 
 async def test_my_own_lyrics_make_the_sections():

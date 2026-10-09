@@ -85,6 +85,32 @@ def cues(words: list[Word], *, max_chars: int = 30, max_lines: int = 2, max_seco
     return out
 
 
+def line_cues(sections: list[tuple[float, float, list[str]]], *, max_chars: int = 30, max_lines: int = 2) -> list[Cue]:
+    """Song captions: one caption per sung line, the section's (start, end) shared evenly between its lines and
+    each line's words spread across its share (for the highlight). A line too long for `max_lines` keeps its
+    words on the last line rather than being cut."""
+    out: list[Cue] = []
+    for start, end, lines in sections:
+        lines = [x.strip() for x in lines if x.strip()]
+        if not lines or end <= start:
+            continue
+        share = (end - start) / len(lines)
+        for i, line in enumerate(lines):
+            t0 = start + i * share
+            texts = line.split()
+            step = share / len(texts)
+            words: list[Word] = [{"text": t, "start": round(t0 + k * step, 3), "end": round(t0 + (k + 1) * step, 3)}
+                                 for k, t in enumerate(texts)]
+            rows: list[list[Word]] = [[]]
+            for w in words:
+                if rows[-1] and len(" ".join(x["text"] for x in rows[-1])) + 1 + len(w["text"]) > max_chars \
+                        and len(rows) < max_lines:
+                    rows.append([])
+                rows[-1].append(w)
+            out.append(Cue(start=round(t0, 3), end=round(t0 + share, 3), lines=rows))
+    return out
+
+
 def _absorb_orphans(items: list[Cue], max_chars: int) -> list[Cue]:
     """A lone word that ends a sentence joins the caption before it when it fits and follows straight on."""
     out: list[Cue] = []
