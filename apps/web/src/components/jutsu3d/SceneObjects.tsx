@@ -77,6 +77,8 @@ function Animated({ url, clipUrl, animation, time }: { url: string; clipUrl: str
     return paused(mixer.clipAction(clip)); // the timeline sets its time
   }, [mixer, clip]);
   useEffect(() => () => { mixer.stopAllAction(); mixer.uncacheRoot(copy); }, [mixer, copy]);
+  // a clip that's switched away from stops before the new one poses the rig, so the two never blend
+  useLayoutEffect(() => () => { if (action) retire(mixer, action); }, [mixer, action]);
   const seek = useCallback((t: number | null) => {
     if (action && clip) pose(mixer, action, clipTime(animation, t ?? 0, clip.duration));
   }, [action, clip, mixer, animation]);
@@ -99,9 +101,17 @@ function mark(node: THREE.Object3D, data: Record<string, unknown>) {
 }
 
 function paused(action: THREE.AnimationAction): THREE.AnimationAction {
+  // the timeline loops a clip itself (clipTime); left repeating, three.js would wrap its last frame to its first
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = true;
   action.play();
   action.paused = true;
   return action;
+}
+
+function retire(mixer: THREE.AnimationMixer, action: THREE.AnimationAction) {
+  action.stop();
+  mixer.uncacheAction(action.getClip());
 }
 
 /**
