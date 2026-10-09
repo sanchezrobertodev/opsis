@@ -20,7 +20,7 @@ from studio.domain.derived import frame_of, save_derived
 from studio.domain.enums import AssetKind, AssetSource
 from studio.faceless.catalog import CaptionLook, get_catalog
 from studio.media.assemble import Block, assemble_episode, frame_size
-from studio.media.captions import burn_captions, cues, fit_words, place_words, to_ass, to_srt
+from studio.media.captions import burn_captions, cues, fit_words, line_cues, place_words, to_ass, to_srt
 from studio.media.ffmpeg import ffmpeg, probe
 from studio.media.ops import concat_clips
 from studio.media.speech import join_speech
@@ -207,12 +207,17 @@ async def captions(session: AsyncSession, run: PipelineRun, step: PipelineStep) 
     inp = step.input
     (video,) = await _assets(session, run, [inp["video"]])
     voices = await _assets(session, run, inp["voices"])
-    lead = float(inp.get("lead_in") or 0)  # a song section's bar of music before the singing
-    words = [(v.metadata_ or {}).get("alignment", {}).get("words") or _after(fit_words(text, _seconds(v) - lead), lead)
-             for v, text in zip(voices, inp["narrations"], strict=True)]
     style = get_catalog().style(inp.get("style", ""))
     look = style.caption if style else CaptionLook()
-    items = cues(place_words(words, inp["starts"]), max_chars=look.max_chars)
+    if inp.get("sung"):  # a song: its lines, each in its share of the section after the bar of lead-in
+        lead = float(inp.get("lead_in") or 0)
+        items = line_cues([(t + lead, t + _seconds(v), lines)
+                           for v, t, lines in zip(voices, inp["starts"], inp["sung"], strict=True)],
+                          max_chars=look.max_chars)
+    else:
+        words = [(v.metadata_ or {}).get("alignment", {}).get("words") or fit_words(text, _seconds(v))
+                 for v, text in zip(voices, inp["narrations"], strict=True)]
+        items = cues(place_words(words, inp["starts"]), max_chars=look.max_chars)
     if not items:
         raise StepFailed("the narration has no words to caption")
     storage = get_storage()
@@ -234,12 +239,6 @@ async def captions(session: AsyncSession, run: PipelineRun, step: PipelineStep) 
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return {"asset_id": str(out.id), "subtitle_asset_id": str(srt.id), "derive": [str(out.id)]}
-
-
-def _after(words: list[dict[str, Any]], seconds: float) -> list[dict[str, Any]]:
-    if seconds <= 0:
-        return words
-    return [{**w, "start": round(w["start"] + seconds, 3), "end": round(w["end"] + seconds, 3)} for w in words]
 
 
 async def split_audio(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:

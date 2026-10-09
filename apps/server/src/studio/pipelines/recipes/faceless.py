@@ -96,11 +96,6 @@ def visual_prompt(visual: str, roster: list[dict[str, Any]], world: str, style: 
     return ". ".join(p for p in parts if p) + "."
 
 
-def sung_lines(lines: list[str]) -> str:
-    """A section's lyrics as caption text: each line ends a sentence, so each gets its own caption."""
-    return " ".join(x if x[-1:] in ".!?" else f"{x}." for x in (line.strip() for line in lines) if x)
-
-
 def thumbnail_prompt(title: str, world: str, style: str) -> str:
     return (f'Eye-catching video thumbnail for "{title}". One bold focal subject, simple uncluttered composition, '
             f"strong contrast, the title in large clean lettering. {world.strip().rstrip('.')}. {style.strip()}")
@@ -369,7 +364,7 @@ class FacelessRecipe(Recipe):
         if inp.captions and cut:
             specs.append(StepSpec("captions", StepKind.local, "Burn in the lyrics", {
                 "op": "captions", "video": cut["asset_id"], "voices": parts, "lead_in": SECTION_PAD_S,
-                "narrations": [sung_lines(s.lines) for s in song.sections], "starts": cut["starts"],
+                "sung": [s.lines for s in song.sections], "starts": cut["starts"],
                 "style": style.id, "title": title}, ("cut",)))
         return specs
 
