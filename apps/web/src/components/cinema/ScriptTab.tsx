@@ -4,7 +4,8 @@ import { LoaderCircle, Sparkles, UserRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { cn, usd } from "@/lib/cn";
-import { type CinemaDoc, type ProposedCharacter, type Scene, unmention, usePlanShots, useSaveCast } from "@/lib/cinema";
+import { type CinemaDoc, type ProposedCharacter, type Scene, usePlanShots, useSaveCast } from "@/lib/cinema";
+import { unmention } from "@/lib/mentions";
 import { useElements } from "@/lib/elements";
 import { useEstimateRun } from "@/lib/runs";
 import { Button, Field, Slider } from "@/components/ui/controls";
@@ -45,9 +46,10 @@ export function ScriptTab({ projectId, doc, update, onPlanned, launch }: {
 
   async function apply(mode: "replace" | "append") {
     if (!proposal || tooMany) return;
-    // the ones not kept are written as plain names; the kept ones become saved characters with a portrait each
+    // the ones not kept are written in words (their look, then their name); the kept ones become saved characters with a portrait each
     let scenes = unmention(proposal.scenes, Object.fromEntries(
-      proposal.characters.filter((c) => dropped.includes(c.handle)).map((c) => [c.handle, c.name])));
+      proposal.characters.filter((c) => dropped.includes(c.handle))
+        .map((c) => [c.handle, { name: c.name, look: c.description }])));
     let slugs: string[] = [];
     let pictures: { element_id: string; slug: string }[] = [];
     if (kept.length) {
