@@ -41,14 +41,14 @@ routes:
         steps: num_inference_steps
         guidance: guidance
         seed: seed
-        # 1280*720 is the documented default; 720*1280 for vertical is assumed (unverified)
+        # 1280*720 is the documented default; 720*1280 for vertical gave a 720x1280 clip (2026-10-08, AMS-9)
         aspect_ratio: {to: size, transform: enum_map, args: {values: {"16:9": "1280*720", "9:16": "720*1280"}}}
       media: {start_image: image}
     pricing:
       basis: per_output_second
       rates: [{usd: 0.06}]
-      verified: 2026-10-06
-      source: https://docs.runpod.io/public-endpoints/models/wan-2-2-i2v
+      verified: 2026-10-08
+      source: https://docs.runpod.io/public-endpoints/models/wan-2-2-i2v; live 16:9 and 9:16 takes charged $0.30 each (5 s)
     timeout_s: 1800
     output: {path: output.video_url | output.result, kind: video}  # RunPod public endpoints answer with output.result (2026-10-07)
 

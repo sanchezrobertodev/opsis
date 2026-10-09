@@ -47,15 +47,15 @@ routes:
       media: {input_video: video_url}
     pricing:
       basis: per_output_second
-      # Edit: $0.03/s of output, which follows the clip. Extend: the page lists $0.41/s at 720p and $0.53 at
-      # 1080p but its billing field says half that; the higher figure is used until a key confirms it.
+      # Edit: $0.03/s of output, which follows the clip. Extend: the page's $0.41/s at 720p is right (a 5 s 720p
+      # extension was billed $2.05, 2026-10-08, AMS-9); its billing field's half price isn't. 1080p ($0.53) is the page's.
       quantity: "max(input_video_seconds, 1) if mode == 'edit' else duration"
       rates:
         - {when: {mode: edit}, usd: 0.03}
         - {when: {mode: extend, resolution: "720p"}, usd: 0.41}
         - {when: {mode: extend, resolution: "1080p"}, usd: 0.53}
-      verified: 2026-10-06
-      source: https://fal.ai/models/blackforestlabs/flux-3/edit-video
+      verified: 2026-10-08
+      source: https://fal.ai/models/blackforestlabs/flux-3/edit-video; fal billing events for an edit ($0.09) and a 5 s 720p extend ($2.05)
     output: {path: video.url, kind: video}
 
 examples:
