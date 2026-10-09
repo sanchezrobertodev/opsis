@@ -119,7 +119,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `object_swap` (track a SAM mask -> edit with 1-3 models -> composite through the matte -> pick), and
   `talking_shot` (a picture or clip + script -> TTS -> lipsync on 1-3 models -> pick; or recorded speech).
 - A generate step whose take the provider refuses on content grounds (`error_code` moderation) gets one more try:
-  the engine holds it, Claude (Sonnet) rewords the prompt in the step task keeping its meaning and @mentions
+  the engine holds it, Claude (Sonnet) rewords its prompt, or each shot's of a multi-shot take, in one call, each no
+  longer than the original and keeping its meaning and @mentions
   (`llm_ops.reword`; the mock drops its `[[mock:fail=...]]` tags), and the step starts again. The step keeps its input
   hash, so the plan keeps it; `_reworded` records the original. A second refusal, or a prompt Claude keeps as it was,
   fails the step as before (optional ones still fall back).

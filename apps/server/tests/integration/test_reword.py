@@ -44,12 +44,13 @@ async def test_a_refused_take_is_reworded_once_and_the_run_goes_on(client, in_me
     assert [g.status.value for g in gens] == ["failed", "succeeded"]
     assert gens[0].error_code.value == "moderation"
     assert gens[1].request["prompt"] == "a lighthouse keeper falls on the rocks Gently worded."
-    assert step.input["_reworded"]["from"].endswith(REFUSED) and "_reword" not in step.input
+    assert step.input["_reworded"]["from"] == [f"a lighthouse keeper falls on the rocks {REFUSED}"]
+    assert "_reword" not in step.input
 
 
 async def test_a_reworded_take_refused_again_fails_as_before(client, in_memory_queue, monkeypatch):
     async def still_refused(session, run, prompt, reason):
-        return Reworded(prompt=f"a softer fall {REFUSED}", changed="softer")
+        return Reworded(prompts=[f"a softer fall {REFUSED}"], changed="softer")
 
     monkeypatch.setattr("studio.pipelines.engine.reword", still_refused)
     done, gens, step = await _sequence(client, in_memory_queue, f"a fall {REFUSED}")
@@ -66,3 +67,30 @@ async def test_a_prompt_claude_wont_reword_fails_with_both_reasons(client, in_me
     assert done["status"] == "failed" and len(gens) == 1
     assert "a reworded try wasn't possible: Claude kept the prompt" in done["error"]
     assert step.input["_reworded"]["failed"].startswith("Claude kept")
+
+
+def test_a_multi_shot_takes_shot_prompts_are_what_gets_reworded():
+    from studio.db.models import PipelineStep, StepKind
+    from studio.pipelines.engine import _texts, _with_texts
+
+    step = PipelineStep(key="scene[c1:1]", kind=StepKind.generate, input={
+        "model_id": "kling-3.0", "mode": "multi_shot", "prompt": "",
+        "params": {"duration": 8, "shots": [{"prompt": "a fall", "duration": 4}, {"prompt": "", "duration": 4}]}})
+    texts = _texts(step)
+    assert texts == [("shots", 0, "a fall")]
+    out = _with_texts(step.input, texts, ["a stumble"])
+    assert out["params"]["shots"] == [{"prompt": "a stumble", "duration": 4}, {"prompt": "", "duration": 4}]
+    assert step.input["params"]["shots"][0]["prompt"] == "a fall"  # the stored input isn't touched in place
+
+
+async def test_rewordings_stay_within_their_originals_length(db):
+    from types import SimpleNamespace
+
+    from studio.pipelines.llm_ops import _within, reword
+
+    assert _within("a much gentler and longer wording", 20) == "a much gentler and"
+    run = SimpleNamespace(user_id=uuid.uuid4())
+    out = await reword(None, run, [f"a fall {REFUSED}", "@mara waits"], "refused")  # type: ignore[arg-type]
+    assert out.prompts == ["a fall Gently worded.", "@mara waits"]  # the mock's rewording, cut to fit
+    with pytest.raises(StepFailed, match="kept the prompt"):
+        await reword(None, run, ["@mara waits"], "refused")  # type: ignore[arg-type]

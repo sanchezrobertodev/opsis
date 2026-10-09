@@ -58,43 +58,59 @@ async def faceless_plan(session: AsyncSession, run: PipelineRun, step: PipelineS
 
 
 class Reworded(BaseModel):
-    prompt: str = Field(description="The prompt reworded, or exactly as given when it shouldn't be made at all")
+    prompts: list[str] = Field(description="Each prompt reworded, in the same order and number; one that shouldn't "
+                                           "be made at all stays exactly as given")
     changed: str = Field(description="One short sentence on what you changed and why")
 
 
-REWORD_SYSTEM = """A video or image model refused a prompt with a content-policy error. Most such refusals in this
+REWORD_SYSTEM = """A video or image model refused a request with a content-policy error. Most such refusals in this
 studio are false positives: ordinary film scenes whose wording reads as more graphic than they are.
 
-Reword the prompt so it shows the same scene, action, framing and mood with gentler wording: describe peril, injury,
+Reword each prompt so it shows the same scene, action, framing and mood with gentler wording: describe peril, injury,
 weapons or conflict without graphic detail, drop real people's and brands' names, and avoid wording that could read
 as sexual, as involving minors, or as drug or medical detail. Keep every @handle exactly as written, keep the
-language and roughly the length, and don't add anything the scene didn't have.
+language, stay within each prompt's character limit, and don't add anything the scene didn't have. Return as many
+prompts as you were given, in order.
 
-If the prompt asks for something that shouldn't be made at all, return it unchanged and say so."""
+If a prompt asks for something that shouldn't be made at all, return it unchanged and say so."""
 
 
-async def reword(session: AsyncSession, run: PipelineRun, prompt: str, reason: str) -> Reworded:
-    """A gentler wording of a prompt a provider refused, keeping its @mentions. Fails when Claude keeps it as is
-    or drops a mention, so the step fails the way it would have without the second try."""
+async def reword(session: AsyncSession, run: PipelineRun, prompts: list[str], reason: str) -> Reworded:
+    """Gentler wordings of the prompts of a take a provider refused (one, or a multi-shot take's shots), each kept
+    to its original's length (which the model already accepted) and @mentions. Fails when Claude changes nothing or
+    drops a mention, so the step fails the way it would have without the second try."""
+    listed = "\n\n".join(f"Prompt {i} (at most {len(p)} characters):\n{p}" for i, p in enumerate(prompts, 1))
     try:
         res = await structured(
             session, run.user_id, purpose="pipeline.reword", model=get_settings().llm_fast_model,
-            system=REWORD_SYSTEM, prompt=f"The refusal: {reason[:500]}\n\nThe prompt:\n{prompt}", output=Reworded,
+            system=REWORD_SYSTEM, prompt=f"The refusal: {reason[:500]}\n\n{listed}", output=Reworded,
             # the mock drops its failure tags, so a test sees the second try succeed
-            mock=lambda: Reworded(prompt=f"{strip_tags(prompt)} Gently worded.", changed="mock rewording"),
-            effort="low", max_tokens=2000)
+            mock=lambda: Reworded(prompts=[f"{strip_tags(p)} Gently worded." for p in prompts], changed="mock"),
+            effort="low", max_tokens=4000)
     except LLMError as exc:
         raise StepFailed(f"Claude couldn't reword it: {exc.message}") from exc
     except BudgetBlocked as exc:
         raise StepFailed(f"Claude wasn't called: {exc}") from exc
     out = res.output
-    new = out.prompt.strip()
-    if not new or new == prompt.strip():
+    if len(out.prompts) != len(prompts):
+        raise StepFailed(f"Claude returned {len(out.prompts)} prompts for {len(prompts)}")
+    new = [_within(n.strip() or old, len(old)) for n, old in zip(out.prompts, prompts, strict=True)]
+    if all(n == old.strip() for n, old in zip(new, prompts, strict=True)):
         raise StepFailed(f"Claude kept the prompt as it was: {out.changed}")
-    missing = [m for m in mentions(prompt) if m not in mentions(new)]
-    if missing:
-        raise StepFailed(f"the reworded prompt dropped {', '.join('@' + m for m in missing)}")
-    return Reworded(prompt=new[:len(prompt) + 500], changed=out.changed)
+    for n, old in zip(new, prompts, strict=True):
+        if missing := [m for m in mentions(old) if m not in mentions(n)]:
+            raise StepFailed(f"the reworded prompt dropped {', '.join('@' + m for m in missing)}")
+    return Reworded(prompts=new, changed=out.changed)
+
+
+def _within(text: str, limit: int) -> str:
+    """Cut a rewording that came back longer than its original at the last whole word that fits."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    if text[limit].isspace() or " " not in cut:  # the limit falls between words (or inside the only one)
+        return cut.rstrip(" ,;:")
+    return cut[:cut.rfind(" ")].rstrip(" ,;:")
 
 
 LLM_OPS: dict[str, LLMOp] = {
