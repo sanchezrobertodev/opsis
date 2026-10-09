@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names verified 2026-10-09 against fal's OpenAPI (fal-ai/meshy/rigging). Price: fal's pricing API reports
+# $0.80 a request while the model page says $0.20 (+$0.12 with a clip); the higher is kept until a bill settles it.
+# Clip ids are from Meshy's animation library (docs.meshy.ai/en/api/animation-library, 697 clips); a few useful ones
+# are offered by name.
+id: meshy-rigging
+name: Meshy Rigging
+family: meshy
+vendor: meshy
+description: >-
+  Gives a humanoid 3D model (GLB) a skeleton, plus walking and running clips and, if you like, one more clip from
+  Meshy's library, so the character can move on the 3D blocking timeline. Works on GLBs from any 3D model.
+output_type: 3d
+status: active
+license_tier: commercial_api
+tags: [3d, rigging, animation, characters]
+prompt: {max_chars: 1, dialect: default}
+
+parameters:
+  - {name: height_meters, label: Character height (m), type: float, min: 0.5, max: 3, step: 0.05, default: 1.7}
+  - {name: enable_animation, label: Add a clip, type: bool, default: false,
+     help: "Walking and running always come with the rig; this adds one more."}
+  - name: animation_action_id
+    label: Clip
+    type: enum
+    options: [0, 2, 30, 16, 466, 28, 32, 344, 56, 22, 96, 366, 441]
+    default: 0
+    labels: {"0": Idle, "2": Look around, "30": Casual walk, "16": Run fast, "466": Jump, "28": Wave hello,
+             "32": Sit (idle), "344": Stand up, "56": Stand and chat, "22": Dance, "96": Kung fu punch,
+             "366": Fall down, "441": Climb stairs}
+    visible_if: {enable_animation: true}
+
+modes:
+  - id: rig
+    label: Rig a character
+    ops: [rig]
+    prompt: none
+    medias:
+      - {role: input_model, kinds: [model3d], label: Character (GLB), required: true}
+
+routes:
+  - id: meshy-rigging@fal
+    provider: fal
+    modes:
+      rig: {endpoint: fal-ai/meshy/rigging}
+    map:
+      params:
+        height_meters: height_meters
+        enable_animation: enable_animation
+        animation_action_id: animation_action_id
+      media: {input_model: model_url}
+    pricing:
+      basis: per_request
+      rates: [{usd: 0.80}]
+      verified: 2026-10-09
+      source: "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai/meshy/rigging ($0.80 a generation)"
+    timeout_s: 1800
+    output:
+      path: rigged_character_glb.url
+      kind: model3d
+      meta: {rig: meshy}
+      extras:
+        - {path: basic_animations.walking_glb.url, kind: model3d, meta: {rig: meshy, clip_source: walking}}
+        - {path: basic_animations.running_glb.url, kind: model3d, meta: {rig: meshy, clip_source: running}}
+        - {path: animation_glb.url, kind: model3d, meta: {rig: meshy, clip_source: library}}
+
+examples:
+  - name: rig_smoke
+    mode: rig
+    params: {height_meters: 1.7}
+    media: {input_model: "a character GLB from image-to-3D"}
+    smoke: true
+    expect: {cost_usd_range: [0.8, 0.8]}
+  - name: rig_with_a_clip
+    mode: rig
+    params: {enable_animation: true, animation_action_id: 28}
+    media: {input_model: "a character GLB from image-to-3D"}
+    expect: {cost_usd_range: [0.8, 0.8]}

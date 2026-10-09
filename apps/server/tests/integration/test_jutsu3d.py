@@ -228,3 +228,32 @@ async def test_mock_image_to_3d_and_world_generations_keep_their_files(client, i
     assert by_kind["model3d"]["metadata"]["part"] == "collider"
     panos = (await client.get("/assets", params={"projection": "equirectangular"})).json()["items"]
     assert pano["id"] in [a["id"] for a in panos] and model["id"] not in [a["id"] for a in panos]
+
+
+async def test_rigging_keeps_the_rig_and_its_clips_and_a_scene_only_borrows_its_own_glbs(client, in_memory_queue, tmp_path):
+    from tests.integration.test_generation_flow import create, drive
+
+    glb = tmp_path / "figure.glb"
+    make_glb(glb, seed=5)
+    r = await client.post("/uploads", files={"file": ("figure.glb", glb.read_bytes(), "model/gltf-binary")})
+    assert r.status_code == 201, r.text
+    out = await create(client, model_id="meshy-rigging", mode="rig", params={"height_meters": 1.8},
+                       media=[{"role": "input_model", "asset_id": r.json()["id"]}])
+    assert out["routing"]["live_reference"]["estimate_usd"] == pytest.approx(0.80)
+    gen = await drive(uuid.UUID(out["id"]))
+    assert gen.status.value == "succeeded", gen.error_message
+    assets = (await client.get(f"/generations/{out['id']}")).json()["assets"]
+    assert [a["kind"] for a in assets] == ["model3d"] * 4
+    rig, walk = assets[0], assets[1]
+    assert rig["metadata"].get("rig") == "meshy" and "clip_source" not in rig["metadata"]
+    assert walk["metadata"]["clip_source"] == "walking"
+
+    p = await new_scene(client)
+    doc = p["document"]
+    doc["objects"].append({"id": "mwalker", "kind": "model", "asset_id": rig["id"],
+                           "animation": {"clip": "Walking", "source_asset_id": walk["id"]}})
+    ok = await client.put(f"/projects/{p['id']}", json={"document": doc, "version": p["version"]})
+    assert ok.status_code == 200, ok.text
+    doc["objects"][-1]["animation"]["source_asset_id"] = str(uuid.uuid4())  # not one of yours
+    bad = await client.put(f"/projects/{p['id']}", json={"document": doc, "version": ok.json()["version"]})
+    assert bad.status_code == 422 and "assets not found" in bad.text

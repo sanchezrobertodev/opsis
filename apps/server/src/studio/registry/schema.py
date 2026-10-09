@@ -30,6 +30,7 @@ MediaRole = Literal[
     "training_data",  # a zip of pictures a trainer learns from (LoRA training)
     "lora",  # LoRA weights; on two-expert models (Wan 2.2) the low-noise expert's
     "lora_high",  # the high-noise expert's LoRA weights (Wan 2.2)
+    "input_model",  # a 3D model (GLB) a tool works on (rigging)
 ]
 # mask / mask_video: black-and-white mattes (white = the selected object), kept apart from ordinary media
 # model3d: a GLB; splat: a Gaussian-splat world (SPZ or PLY)
@@ -40,7 +41,7 @@ OpTag = Literal[
     "upscale", "interpolate", "bg_remove", "motion_transfer", "object_replace", "lipsync", "avatar",
     "t2i", "i2i", "relight", "add_sound", "trim", "retime", "reverse", "loop", "stabilize",
     "tts", "sfx", "music", "song", "segment", "track",
-    "to_3d", "panorama", "world", "depth_to_video", "lora_train",
+    "to_3d", "panorama", "world", "depth_to_video", "lora_train", "rig",
 ]
 OutputType = Literal["video", "image", "audio", "3d", "lora", "mask", "text"]
 Scalar = str | int | float | bool

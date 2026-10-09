@@ -7,6 +7,7 @@ import {
   useScene, type Vec3,
 } from "@/lib/jutsu3d";
 import { Button, Field, Segmented, Slider } from "@/components/ui/controls";
+import { AnimationEditor } from "./AnimationEditor";
 import { MakeReal } from "./MakeReal";
 import { RenderPanel } from "./RenderPanel";
 import type { ViewportHandle } from "./Viewport";
@@ -103,6 +104,7 @@ export function Properties({ doc, object, onPose, handleRef, projectId }: {
         </>
       )}
       {o.kind === "mannequin" && <PoseEditor o={o} />}
+      {o.kind === "model" && <AnimationEditor o={o} />}
     </div>
   );
 }
