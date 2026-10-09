@@ -88,8 +88,10 @@ class WireEdit(BaseModel):
                                       "\"\" otherwise")
     after_id: str = Field(description="add_shot/move_shot: the shot it goes after (\"\": the scene's start). "
                                       "add_scene: the scene it goes after (\"\": the start)")
-    heading: str = Field(description="update_scene/add_scene: the heading (\"\" keeps it as it is)")
-    summary: str = Field(description="update_scene/add_scene: the summary (\"\" keeps it as it is)")
+    heading: str = Field(description="update_scene/add_scene: the heading as it should read now (\"\" for none); "
+                                     "\"\" for the other edits")
+    summary: str = Field(description="update_scene/add_scene: the summary as it should read now (\"\" for none); "
+                                     "\"\" for the other edits")
     shots: list[WireShot] = Field(description="update_shot: the whole shot as it should read now; add_shot: the new "
                                               "shot; add_scene: its shots; empty for the other edits")
 
@@ -107,9 +109,11 @@ def _from_wire(w: WireReply) -> DirectorReply:
     edits = []
     for e in w.edits:
         one = e.op in ("update_shot", "add_shot")
+        scene_text = e.op in ("update_scene", "add_scene")
         edits.append(DirectorEdit(
             op=e.op, shot_id=e.shot_id or None, scene_id=e.scene_id or None, after_id=e.after_id or None,
-            heading=e.heading or None, summary=e.summary or None,
+            # update_scene restates both, so "" there clears one; the other edits don't use them
+            heading=e.heading if scene_text else None, summary=e.summary if scene_text else None,
             shot=shot(e.shots[0]) if one and e.shots else None,
             shots=[shot(x) for x in e.shots] if e.op == "add_scene" else []))
     return DirectorReply(reply=w.reply, edits=edits)
@@ -124,8 +128,8 @@ SYSTEM = """You are the film's director, revising its storyboard with the user i
 
 The storyboard is listed with scene and shot ids. Answer each message with a short reply and the edits that carry
 it out, and change only what the user asked for (plus what a change forces, like continuity after a removed shot).
-- update_shot restates the whole shot as it should read (as the one item in `shots`); keep the parts you aren't
-  changing as they are.
+- update_shot restates the whole shot as it should read (as the one item in `shots`), and update_scene the
+  scene's heading and summary; keep the parts you aren't changing as they are.
 - Each shot is one continuous camera setup of 3 to 10 seconds. Describe only what the camera sees, name cast
   members by their @handle and don't describe their looks.
 - Pick shot sizes, angles, camera moves and emotions from the id lists; use "" or [] when nothing fits.
