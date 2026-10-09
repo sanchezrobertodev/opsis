@@ -547,6 +547,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/cast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Cast
+         * @description Save the plan's proposed characters as Elements and point the proposal's mentions at them. Nothing is saved
+         *     to the film; apply the scenes and add the slugs to its cast (then draw their pictures with `cast_refs`).
+         */
+        post: operations["save_cast_projects__project_id__cast_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/director": {
         parameters: {
             query?: never;
@@ -1289,6 +1310,50 @@ export interface components {
              * @description An emotions id
              */
             emotion: string;
+        };
+        /** CastIn */
+        CastIn: {
+            /** Characters */
+            characters: components["schemas"]["ProposedCharacter"][];
+            /**
+             * Scenes
+             * @description The proposed scenes, which mention them by handle
+             */
+            scenes: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** CastMember */
+        CastMember: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Handle
+             * @description What the plan called them
+             */
+            handle: string;
+            /**
+             * Slug
+             * @description Their @mention name now; differs from the handle when that was taken
+             */
+            slug: string;
+            /** Name */
+            name: string;
+        };
+        /** CastOut */
+        CastOut: {
+            /**
+             * Scenes
+             * @description The scenes with each handle replaced by the saved character's
+             */
+            scenes: {
+                [key: string]: unknown;
+            }[];
+            /** Cast */
+            cast: components["schemas"]["CastMember"][];
         };
         /** CatalogOut */
         CatalogOut: {
@@ -2419,6 +2484,11 @@ export interface components {
             scenes: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Characters
+             * @description People who recur but aren't in the cast, written into the scenes as @handle; save them with POST /projects/{id}/cast
+             */
+            characters: components["schemas"]["ProposedCharacter"][];
             /** Warnings */
             warnings: string[];
             /** Model */
@@ -2717,6 +2787,15 @@ export interface components {
              * @default false
              */
             dialogue: boolean;
+        };
+        /** ProposedCharacter */
+        ProposedCharacter: {
+            /** Handle */
+            handle: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
         };
         /** RecipeOut */
         RecipeOut: {
@@ -4892,6 +4971,41 @@ export interface operations {
             };
         };
     };
+    save_cast_projects__project_id__cast_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CastIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CastOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     director_projects__project_id__director_post: {
         parameters: {
             query?: never;
@@ -5391,7 +5505,7 @@ export interface operations {
     list_assets_assets_get: {
         parameters: {
             query?: {
-                kind?: ("video" | "image" | "audio" | "model3d" | "splat") | null;
+                kind?: ("video" | "image" | "audio" | "model3d" | "splat" | "lora" | "archive") | null;
                 source?: ("upload" | "generation") | null;
                 favorite?: boolean | null;
                 /** @description Only assets with this tag (e.g. `driving` for movement clips) */

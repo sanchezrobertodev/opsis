@@ -37,6 +37,21 @@ def slugify(name: str) -> str:
     return (text or "element")[:40].rstrip("-")
 
 
+async def unique_slug(session: AsyncSession, user_id: uuid.UUID, name: str, exclude: uuid.UUID | None = None) -> str:
+    """An @mention name from `name` that none of the user's other elements has."""
+    base = slugify(name)
+    taken = set((await session.execute(select(Element.slug).where(
+        Element.user_id == user_id, Element.slug.like(f"{base}%"),
+        *( [Element.id != exclude] if exclude else []),
+    ))).scalars())
+    if base not in taken:
+        return base
+    n = 2
+    while f"{base}-{n}"[:40] in taken:
+        n += 1
+    return f"{base}-{n}"[:40]
+
+
 def mentions(prompt: str) -> list[str]:
     seen: list[str] = []
     for m in MENTION.finditer(prompt or ""):

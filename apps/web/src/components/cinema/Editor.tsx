@@ -110,7 +110,7 @@ export function CinemaEditor({ id }: { id: string }) {
       </div>
       <div className="flex min-h-0 flex-1">
         <div className="min-h-0 min-w-0 flex-1">
-          {tab === "script" && <ScriptTab projectId={id} doc={doc} update={update} onPlanned={() => setTab("storyboard")} />}
+          {tab === "script" && <ScriptTab projectId={id} doc={doc} update={update} onPlanned={() => setTab("storyboard")} launch={launch} />}
           {tab === "storyboard" && (
             <Storyboard projectId={id} doc={doc} update={update} takes={takes.data ?? []} launch={launch} busy={active} />
           )}

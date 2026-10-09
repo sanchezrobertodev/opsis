@@ -1,5 +1,7 @@
 """Script to shot plan with Claude: scenes of shots, each one continuous camera setup, in the director's own
-vocabulary (shot sizes, angles and camera moves by id), with the cast as @mentions.
+vocabulary (shot sizes, angles and camera moves by id), with the cast as @mentions. People who recur but aren't
+in the cast come back as proposed characters (a handle, a name and a look), so the editor can save them and keep
+their faces the same from shot to shot.
 
 The plan is a proposal; the editor shows it and the user applies it to the project document. Unknown ids
 are dropped rather than trusted, durations are clamped, and nothing here writes to the project.
@@ -23,6 +25,7 @@ from studio.director.compiler import (
     MoveChoice,
     ShotDirection,
 )
+from studio.director.elements import MENTION
 from studio.director.library import DirectorLibrary, get_library
 from studio.llm.client import LLMResult, structured
 
@@ -59,12 +62,30 @@ class PlannedScene(BaseModel):
     shots: list[PlannedShot]
 
 
+class PlannedCharacter(BaseModel):
+    handle: str = Field(description="A short lowercase handle, letters only, used as @handle in the shots")
+    name: str = Field(description="What to call them, e.g. The Keeper or Mara")
+    look: str = Field(description="How they look, the same in every shot: age, build, face, hair and clothes; "
+                                  "concrete and visual, no personality")
+
+
 class ShotPlan(BaseModel):
     scenes: list[PlannedScene]
+    characters: list[PlannedCharacter] = Field(
+        default_factory=list, description="People who appear in more than one shot and aren't in the cast")
 
 
-# without saved characters there are no handles to use; an invented one would reach the video model as "@name"
+# the director chat can't add characters, so there an invented handle would reach the video model as "@name"
 NO_CAST = "No cast is saved: describe every person in words and never write an @handle."
+NEW_PEOPLE = ("Anyone who appears in more than one shot and isn't in the cast: list them under characters with a "
+              "new @handle, a name and a look, and write them into the shots by that @handle (not by their looks). "
+              "Describe everyone else in words.")
+
+
+class ProposedCharacter(BaseModel):
+    handle: str
+    name: str
+    description: str
 
 SYSTEM = """You are a film director breaking a script into a shot list for AI video generation.
 
@@ -90,14 +111,17 @@ def _vocabulary(lib: DirectorLibrary) -> str:
 
 async def plan_shots(session: AsyncSession, user_id: uuid.UUID, *, script: str, logline: str = "",
                      cast: list[tuple[str, str]] | None = None, notes: str = "",
-                     max_shots: int = 12) -> tuple[LLMResult[ShotPlan], list[Scene], list[str]]:
-    """Returns the raw result, the plan as document scenes, and warnings about anything dropped."""
+                     max_shots: int = 12,
+                     ) -> tuple[LLMResult[ShotPlan], list[Scene], list[ProposedCharacter], list[str]]:
+    """Returns the raw result, the plan as document scenes, the new characters it proposes, and warnings about
+    anything dropped."""
     lib = get_library()
     max_shots = max(1, min(max_shots, MAX_SHOTS))
     cast = cast or []
     prompt = "\n".join(line for line in [
         f"Logline: {logline}" if logline else "",
-        "Cast (use these handles): " + "; ".join(f"@{slug}: {desc}" for slug, desc in cast) if cast else NO_CAST,
+        "Cast (use these handles): " + "; ".join(f"@{slug}: {desc}" for slug, desc in cast) if cast else "",
+        NEW_PEOPLE,
         f"Shot budget: at most {max_shots} shots in total.",
         f"Director's notes: {notes}" if notes else "",
         _vocabulary(lib),
@@ -108,7 +132,38 @@ async def plan_shots(session: AsyncSession, user_id: uuid.UUID, *, script: str, 
         output=ShotPlan, mock=lambda: mock_plan(script or logline, [slug for slug, _ in cast], max_shots),
         effort="medium", max_tokens=16000)
     scenes, warnings = to_scenes(result.output, lib, max_shots)
-    return result, scenes, warnings
+    characters = new_characters(result.output.characters, scenes, {slug for slug, _ in cast})
+    scenes = [_unmention(s, {slug for slug, _ in cast} | {c.handle for c in characters}) for s in scenes]
+    return result, scenes, characters, warnings
+
+
+def new_characters(planned: list[PlannedCharacter], scenes: list[Scene], cast: set[str]) -> list[ProposedCharacter]:
+    """The proposed characters worth saving: a usable handle that isn't a cast member's, mentioned in a shot."""
+    used = {m.lower() for s in scenes for shot in s.shots for text in _texts(shot) for m in MENTION.findall(text)}
+    out: dict[str, ProposedCharacter] = {}
+    for c in planned:
+        handle = re.sub(r"[^a-z0-9-]", "", c.handle.strip().lstrip("@").lower())[:40]
+        if handle and handle not in cast and handle in used and handle not in out and c.name.strip():
+            out[handle] = ProposedCharacter(handle=handle, name=c.name.strip()[:80], description=c.look.strip()[:600])
+    return list(out.values())
+
+
+def _texts(shot: Shot) -> list[str]:
+    return [shot.action, *(x.who for x in shot.lines), *(e.who for e in shot.direction.cast_emotions)]
+
+
+def _unmention(scene: Scene, known: set[str]) -> Scene:
+    """An @handle nobody has (neither the cast nor a proposed character) becomes a plain word."""
+    def fix(text: str) -> str:
+        return MENTION.sub(lambda m: m.group(0) if m.group(1).lower() in known else m.group(1), text)
+
+    shots = []
+    for shot in scene.shots:
+        emotions = [e for e in shot.direction.cast_emotions if e.who.lstrip("@").lower() in known]
+        shots.append(shot.model_copy(update={
+            "action": fix(shot.action), "lines": [x.model_copy(update={"who": fix(x.who)}) for x in shot.lines],
+            "direction": shot.direction.model_copy(update={"cast_emotions": emotions})}))
+    return scene.model_copy(update={"shots": shots})
 
 
 def to_scenes(plan: ShotPlan, lib: DirectorLibrary, max_shots: int) -> tuple[list[Scene], list[str]]:
@@ -158,10 +213,12 @@ def mock_plan(text: str, cast: list[str], max_shots: int) -> ShotPlan:
         for j, sentence in enumerate(s for s in re.split(r"(?<=[.!?])\s+", para.strip()) if s):
             if n >= max_shots:
                 break
-            who = f"@{cast[0]} " if cast and j == 0 else ""
+            who = f"@{cast[0]} " if cast and j == 0 else "@lead " if not cast and j == 0 else ""
             shots.append(PlannedShot(action=f"{who}{sentence}".strip(), shot_size=sizes[j % 3],
                                      camera_moves=moves[j % 3], duration=5, continuity="continue" if j else "cut"))
             n += 1
         if shots:
             scenes.append(PlannedScene(heading=f"SCENE {i + 1}", summary=para.strip()[:120], shots=shots))
-    return ShotPlan(scenes=scenes)
+    lead = [] if cast else [PlannedCharacter(handle="lead", name="The lead", look="a woman in her thirties, short "
+                                             "dark hair, a green raincoat over a grey sweater")]
+    return ShotPlan(scenes=scenes, characters=lead)

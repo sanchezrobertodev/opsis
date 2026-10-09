@@ -580,3 +580,54 @@ async def test_a_closing_frame_runs_on_each_engines_own_mode(client, engine, bas
     v = resolve(reg, spec, mode.id, {"engine": engine}, None)
     assert f"{v.spec.id}/{v.mode}" == base
 
+
+
+async def test_a_plans_recurring_people_become_a_cast_with_pictures_that_frames_use(client, in_memory_queue):
+    p = await new_project(client, script="A woman walks to the pier. She looks out to sea.\n\nShe turns home.")
+    plan = (await client.post(f"/projects/{p['id']}/plan", json={"max_shots": 4})).json()
+    (lead,) = plan["characters"]
+    assert lead["handle"] == "lead" and lead["description"]
+    assert all(s["shots"][0]["action"].startswith("@lead ") for s in plan["scenes"])
+
+    r = await client.post(f"/projects/{p['id']}/cast", json={"characters": plan["characters"], "scenes": plan["scenes"]})
+    assert r.status_code == 201, r.text
+    cast = r.json()
+    (member,) = cast["cast"]
+    slug = member["slug"]  # "lead", or "lead-2" when an earlier test already saved one
+    assert all(s["shots"][0]["action"].startswith(f"@{slug} ") for s in cast["scenes"])
+    element = (await client.get(f"/elements/{member['id']}")).json()
+    assert element["kind"] == "character" and element["description"] == lead["description"] and element["images"] == []
+
+    run = await start(client, "cinema_cast", project_id=p["id"], characters=[{"element_id": member["id"], "slug": slug}])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    picture = done["output"]["pictures"][slug]
+    element = (await client.get(f"/elements/{member['id']}")).json()
+    assert [i["asset"]["id"] for i in element["images"]] == [picture] and element["cover"]["id"] == picture
+    portrait = (await client.get(f"/generations/{done['steps'][0]['generation_id']}")).json()
+    assert portrait["request"]["compiled_prompt"].startswith(f"Character reference portrait of {member['name']}, ")
+
+    # a hero frame of a shot that mentions them now carries their picture as the reference
+    shot = cast["scenes"][0]["shots"][0]
+    frames = await start(client, "cinema_frames", project_id=p["id"], count=1,
+                         shots=[{"key": shot["id"], "prompt": shot["action"], "direction": shot["direction"]}])
+    await drain(in_memory_queue)
+    frame = await get(client, frames["id"])
+    gen = (await client.get(f"/generations/{frame['steps'][0]['generation_id']}")).json()
+    assert gen["mode"] == "edit" and [m["asset_id"] for m in gen["request"]["media"]] == [picture]
+
+
+async def test_a_handle_nobody_has_reads_as_a_word(client):
+    from studio.cinema.document import Scene
+    from studio.cinema.planner import PlannedCharacter, _unmention, new_characters
+
+    scene = Scene.model_validate({"heading": "x", "shots": [
+        {"action": "@keeper climbs; @ghost waits.", "lines": [{"who": "@ghost", "text": "Boo."}],
+         "direction": {"cast_emotions": [{"who": "@ghost", "emotion": "fear"}]}}]})
+    found = new_characters([PlannedCharacter(handle="@Keeper", name="The Keeper", look="old, grey coat"),
+                            PlannedCharacter(handle="unused", name="Nobody", look="-")], [scene], set())
+    assert [c.handle for c in found] == ["keeper"]
+    shot = _unmention(scene, {"keeper"}).shots[0]
+    assert shot.action == "@keeper climbs; ghost waits." and shot.lines[0].who == "ghost"
+    assert shot.direction.cast_emotions == []

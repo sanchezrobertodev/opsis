@@ -15,7 +15,7 @@ from studio.api.deps import current_user, get_session
 from studio.api.schemas import AssetOut
 from studio.api.serializers import asset_out
 from studio.db.models import Asset, Element, ElementAsset, ElementKind, User
-from studio.director.elements import slugify
+from studio.director.elements import unique_slug
 from studio.registry.loader import get_registry
 
 router = APIRouter(prefix="/elements", tags=["elements"])
@@ -98,20 +98,6 @@ class ElementOut(BaseModel):
     created_at: datetime
 
 
-async def _unique_slug(session: AsyncSession, user_id: uuid.UUID, name: str, exclude: uuid.UUID | None = None) -> str:
-    base = slugify(name)
-    taken = set((await session.execute(select(Element.slug).where(
-        Element.user_id == user_id, Element.slug.like(f"{base}%"),
-        *( [Element.id != exclude] if exclude else []),
-    ))).scalars())
-    if base not in taken:
-        return base
-    n = 2
-    while f"{base}-{n}"[:40] in taken:
-        n += 1
-    return f"{base}-{n}"[:40]
-
-
 async def _owned_assets(session: AsyncSession, user: User, ids: list[uuid.UUID]) -> dict[uuid.UUID, Asset]:
     rows = (await session.execute(select(Asset).where(
         Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)))).scalars().all()
@@ -164,7 +150,7 @@ async def create_element(body: ElementCreate, session: AsyncSession = Depends(ge
                          user: User = Depends(current_user)) -> ElementOut:
     assets = await _owned_assets(session, user, [i.asset_id for i in body.images])
     e = Element(user_id=user.id, kind=ElementKind(body.kind), name=body.name.strip(),
-                slug=await _unique_slug(session, user.id, body.name), description=body.description.strip(),
+                slug=await unique_slug(session, user.id, body.name), description=body.description.strip(),
                 attributes=body.attributes, voice=_check_voice(body.voice) if body.voice else {})
     session.add(e)
     await session.flush()
@@ -189,7 +175,7 @@ async def patch_element(element_id: uuid.UUID, body: ElementPatch, session: Asyn
     e = await _get(session, user, element_id, lock=True)
     if body.name is not None and body.name.strip() != e.name:
         e.name = body.name.strip()
-        e.slug = await _unique_slug(session, user.id, e.name, exclude=e.id)
+        e.slug = await unique_slug(session, user.id, e.name, exclude=e.id)
     if body.kind is not None:
         e.kind = ElementKind(body.kind)
     if body.description is not None:

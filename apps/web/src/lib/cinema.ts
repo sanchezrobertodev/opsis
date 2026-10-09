@@ -211,6 +211,35 @@ export function usePlanShots(id: string) {
   });
 }
 
+export type ProposedCharacter = Schemas["ProposedCharacter"];
+export type CastMember = Schemas["CastMember"];
+
+/** Save a plan's proposed characters as Elements; returns the scenes with their mentions pointed at them. */
+export function useSaveCast(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { characters: ProposedCharacter[]; scenes: Scene[] }) =>
+      unwrap(api.POST("/projects/{project_id}/cast", {
+        params: { path: { project_id: id } },
+        body: body as unknown as Schemas["CastIn"],
+      })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["elements"] }),
+  });
+}
+
+const MENTION = /(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_-]{0,39})/g;
+
+/** Write proposed characters the user didn't keep as plain names instead of @handles. */
+export function unmention(scenes: Scene[], names: Record<string, string>): Scene[] {
+  if (!Object.keys(names).length) return scenes;
+  const fix = (text: string) => text.replace(MENTION, (m, h: string) => names[h.toLowerCase()] ?? m);
+  return scenes.map((s) => ({ ...s, shots: s.shots.map((shot) => ({
+    ...shot, action: fix(shot.action), lines: shot.lines.map((l) => ({ ...l, who: fix(l.who) })),
+    direction: { ...shot.direction,
+                 cast_emotions: (shot.direction.cast_emotions ?? []).filter((e) => !(e.who.replace(/^@/, "").toLowerCase() in names)) },
+  })) }));
+}
+
 export type DirectorTurn = { role: "user" | "director"; text: string };
 export type DirectorAnswer = Schemas["DirectorOut"];
 export type StoryboardChange = Schemas["StoryboardChange"];
