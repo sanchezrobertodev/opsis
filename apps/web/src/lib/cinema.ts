@@ -218,7 +218,7 @@ export type CastMember = Schemas["CastMember"];
 export function useSaveCast(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { characters: ProposedCharacter[]; scenes: Scene[] }) =>
+    mutationFn: (body: { characters: ProposedCharacter[]; scenes: Scene[]; cast: string[] }) =>
       unwrap(api.POST("/projects/{project_id}/cast", {
         params: { path: { project_id: id } },
         body: body as unknown as Schemas["CastIn"],

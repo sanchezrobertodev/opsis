@@ -21,7 +21,7 @@ from studio.api.schemas import AssetOut
 from studio.api.serializers import asset_out
 from studio.budget.guard import BudgetBlocked
 from studio.cinema.director_chat import DirectorTooLong, Turn, diff, revise
-from studio.cinema.document import CinemaDocument, Scene
+from studio.cinema.document import MAX_CAST, CinemaDocument, Scene
 from studio.cinema.planner import MAX_SHOTS, ProposedCharacter, plan_shots
 from studio.db.models import (
     Asset,
@@ -416,8 +416,10 @@ async def plan(project_id: uuid.UUID, body: PlanIn, session: AsyncSession = Depe
 
 class CastIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    characters: list[ProposedCharacter] = Field(min_length=1, max_length=12)
+    characters: list[ProposedCharacter] = Field(min_length=1, max_length=MAX_CAST)
     scenes: list[dict[str, Any]] = Field(description="The proposed scenes, which mention them by handle")
+    cast: list[str] = Field(default_factory=list, max_length=MAX_CAST,
+                            description="The film's cast on screen (autosave may not have stored it yet)")
 
 
 class CastMember(BaseModel):
@@ -436,8 +438,13 @@ class CastOut(BaseModel):
 async def save_cast(project_id: uuid.UUID, body: CastIn, session: AsyncSession = Depends(get_session),
                     user: User = Depends(current_user)) -> CastOut:
     """Save the plan's proposed characters as Elements and point the proposal's mentions at them. Nothing is saved
-    to the film; apply the scenes and add the slugs to its cast (then draw their pictures with `cast_refs`)."""
-    await _project(session, user, project_id)
+    to the film; apply the scenes and add the slugs to its cast (then draw their pictures with `cinema_cast`)."""
+    p = await _project(session, user, project_id)
+    cast = set(CinemaDocument.model_validate(p.document).cast) | set(body.cast)
+    new = {c.handle.strip().lstrip("@").lower() for c in body.characters}
+    if len(cast) + len(new) > MAX_CAST:
+        raise HTTPException(422, f"a film's cast holds {MAX_CAST}; it has {len(cast)}, so keep at most "
+                                 f"{max(0, MAX_CAST - len(cast))} of these")
     try:
         scenes = [Scene.model_validate(x) for x in body.scenes]
     except ValidationError as exc:

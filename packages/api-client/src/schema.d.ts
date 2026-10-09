@@ -559,7 +559,7 @@ export interface paths {
         /**
          * Save Cast
          * @description Save the plan's proposed characters as Elements and point the proposal's mentions at them. Nothing is saved
-         *     to the film; apply the scenes and add the slugs to its cast (then draw their pictures with `cast_refs`).
+         *     to the film; apply the scenes and add the slugs to its cast (then draw their pictures with `cinema_cast`).
          */
         post: operations["save_cast_projects__project_id__cast_post"];
         delete?: never;
@@ -1322,6 +1322,11 @@ export interface components {
             scenes: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Cast
+             * @description The film's cast on screen (autosave may not have stored it yet)
+             */
+            cast?: string[];
         };
         /** CastMember */
         CastMember: {

@@ -11,6 +11,7 @@ import { Button, Field, Slider } from "@/components/ui/controls";
 import type { Launch } from "./Editor";
 
 const NO_ID = "00000000-0000-0000-0000-000000000000"; // pricing only: the characters don't exist yet
+const MAX_CAST = 12; // CinemaDocument.cast
 
 /** Logline, script and cast, and Claude's proposed shot list to apply to the storyboard. */
 export function ScriptTab({ projectId, doc, update, onPlanned, launch }: {
@@ -28,6 +29,8 @@ export function ScriptTab({ projectId, doc, update, onPlanned, launch }: {
   const { data: estimate } = useEstimateRun(kept.length ? { recipe: "cinema_cast", input: {
     characters: kept.map((c) => ({ element_id: NO_ID, slug: c.handle })) } } : null);
   const portraitsUsd = estimate ? (estimate.estimate_usd || estimate.live_estimate_usd) : null;
+  const room = MAX_CAST - doc.cast.length;
+  const tooMany = kept.length > room; // the film couldn't save a cast that big
 
   async function ask() {
     try {
@@ -41,7 +44,7 @@ export function ScriptTab({ projectId, doc, update, onPlanned, launch }: {
   }
 
   async function apply(mode: "replace" | "append") {
-    if (!proposal) return;
+    if (!proposal || tooMany) return;
     // the ones not kept are written as plain names; the kept ones become saved characters with a portrait each
     let scenes = unmention(proposal.scenes, Object.fromEntries(
       proposal.characters.filter((c) => dropped.includes(c.handle)).map((c) => [c.handle, c.name])));
@@ -49,7 +52,7 @@ export function ScriptTab({ projectId, doc, update, onPlanned, launch }: {
     let pictures: { element_id: string; slug: string }[] = [];
     if (kept.length) {
       try {
-        const res = await saveCast.mutateAsync({ characters: kept, scenes });
+        const res = await saveCast.mutateAsync({ characters: kept, scenes, cast: doc.cast });
         scenes = res.scenes as unknown as Scene[];
         slugs = res.cast.map((m) => m.slug);
         pictures = res.cast.map((m) => ({ element_id: m.id, slug: m.slug }));
@@ -146,18 +149,20 @@ export function ScriptTab({ projectId, doc, update, onPlanned, launch }: {
                     </li>
                   ))}
                 </ul>
-                <p className="text-2xs text-faint">
-                  {kept.length
+                <p className={cn("text-2xs", tooMany ? "text-tungsten" : "text-faint")}>
+                  {tooMany
+                    ? `A film's cast holds ${MAX_CAST} and this one has ${doc.cast.length}: keep at most ${Math.max(0, room)}.`
+                    : kept.length
                     ? `Kept ones are saved as characters with a front portrait${portraitsUsd != null ? ` (${usd(portraitsUsd)})` : ""}, so their face stays the same in every shot.`
                     : "None kept: they're written into the shots by name."}
                 </p>
               </div>
             )}
             <div className="flex gap-2">
-              <Button size="sm" tone="primary" disabled={saveCast.isPending} onClick={() => void apply("replace")}>
+              <Button size="sm" tone="primary" disabled={saveCast.isPending || tooMany} onClick={() => void apply("replace")}>
                 {doc.scenes.length ? "Replace the storyboard" : "Use this plan"}
               </Button>
-              {doc.scenes.length > 0 && <Button size="sm" disabled={saveCast.isPending} onClick={() => void apply("append")}>Add after it</Button>}
+              {doc.scenes.length > 0 && <Button size="sm" disabled={saveCast.isPending || tooMany} onClick={() => void apply("append")}>Add after it</Button>}
               <Button size="sm" tone="ghost" onClick={() => setProposal(null)}>Discard</Button>
             </div>
           </section>

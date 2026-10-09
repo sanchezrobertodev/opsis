@@ -631,3 +631,12 @@ async def test_a_handle_nobody_has_reads_as_a_word(client):
     shot = _unmention(scene, {"keeper"}).shots[0]
     assert shot.action == "@keeper climbs; ghost waits." and shot.lines[0].who == "ghost"
     assert shot.direction.cast_emotions == []
+
+
+async def test_saving_a_cast_never_overfills_the_film(client):
+    p = await new_project(client, script="x")
+    people = [{"handle": f"p{i}", "name": f"P{i}", "description": "-"} for i in range(3)]
+    r = await client.post(f"/projects/{p['id']}/cast", json={
+        "characters": people, "scenes": [], "cast": [f"c{i}" for i in range(10)]})
+    assert r.status_code == 422 and "keep at most 2" in r.json()["detail"]
+    assert (await client.get("/elements", params={"q": "P0"})).json() == []  # nothing was created
