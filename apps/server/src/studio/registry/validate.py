@@ -20,6 +20,7 @@ from studio.registry.schema import (
     Param,
     PathsParam,
     PointsParam,
+    SectionsParam,
     SeedParam,
     ShotsParam,
     TextParam,
@@ -81,6 +82,8 @@ def _coerce(param: Param, value: Any) -> Any:
         return _coerce_points(param, value)
     if isinstance(param, ShotsParam):
         return _coerce_shots(param, value)
+    if isinstance(param, SectionsParam):
+        return _coerce_sections(param, value)
     if isinstance(param, EnumParam):
         # enum options may be ints (e.g. Veo durations 4/6/8); match by string form
         for opt in param.options:
@@ -153,6 +156,31 @@ def _coerce_shots(param: ShotsParam, value: Any) -> list[dict[str, Any]]:
     return shots
 
 
+def _coerce_sections(param: SectionsParam, value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ValueError("must be a list of song sections")
+    if len(value) > param.max_sections:
+        raise ValueError(f"at most {param.max_sections} sections")
+    sections = []
+    for i, sec in enumerate(value, 1):
+        if not isinstance(sec, dict):
+            raise ValueError(f"section {i} must be {{name, lines, duration}}")
+        name = str(sec.get("name") or f"Section {i}").strip()[:100]
+        lines = [str(x).strip() for x in sec.get("lines") or [] if str(x).strip()]
+        if len(lines) > param.max_lines:
+            raise ValueError(f"section {i} has {len(lines)} lines; at most {param.max_lines}")
+        if any(len(x) > param.max_line_chars for x in lines):
+            raise ValueError(f"section {i}: lines can be at most {param.max_line_chars} characters")
+        try:
+            seconds = float(sec.get("duration") or 0)
+        except (TypeError, ValueError):
+            raise ValueError(f"section {i}: duration must be a number of seconds") from None
+        if not param.min_section_s <= seconds <= param.max_section_s:
+            raise ValueError(f"section {i} must last {param.min_section_s:g} to {param.max_section_s:g} s")
+        sections.append({"name": name, "lines": lines, "duration": round(seconds, 2)})
+    return sections
+
+
 def _paths_needed(n: int) -> str:
     return "Draw at least one motion path on the start frame." if n == 1 else f"Draw at least {n} motion paths."
 
@@ -162,6 +190,8 @@ def _check(param: Param, value: Any) -> str | None:
         return _paths_needed(param.min_paths)
     if isinstance(param, ShotsParam) and len(value) < param.min_shots:
         return f"Add at least {param.min_shots} shots."
+    if isinstance(param, SectionsParam) and len(value) < param.min_sections:
+        return f"Add at least {param.min_sections} song section{'s' if param.min_sections > 1 else ''}."
     if isinstance(param, PointsParam) and sum(1 for p in value if p[2] == 1) < param.min_points:
         return "Click on the object you want to select."
     if isinstance(param, (IntParam, FloatParam)) and not (param.min <= value <= param.max):
@@ -219,6 +249,8 @@ def normalize(
                     errors.append("Click on the object you want to select.")
                 if isinstance(param, ShotsParam) and param.min_shots:
                     errors.append(f"Add at least {param.min_shots} shots.")
+                if isinstance(param, SectionsParam) and param.min_sections:
+                    errors.append("Write the song's sections.")
                 continue
             raw = param.default
         try:
@@ -231,14 +263,15 @@ def normalize(
             errors.append(problem)
         out[name] = value
 
-    # a multi-shot take is as long as its shots together
-    shots = next((out[p.name] for p in allowed.values() if isinstance(p, ShotsParam) and out.get(p.name)), None)
-    if shots and isinstance(allowed.get("duration"), (IntParam, FloatParam)):
-        total = sum(s["duration"] for s in shots)
+    # a multi-shot take is as long as its shots together, and a song as its sections
+    timed = next((p for p in allowed.values() if isinstance(p, ShotsParam | SectionsParam) and out.get(p.name)), None)
+    if timed and isinstance(allowed.get("duration"), (IntParam, FloatParam)):
+        total = sum(s["duration"] for s in out[timed.name])
         d = allowed["duration"]
         out["duration"] = round(total) if isinstance(d, IntParam) else round(total, 2)
         if not d.min <= out["duration"] <= d.max:
-            errors.append(f"the shots add up to {total:g} s; {spec.name} makes takes of {d.min:g} to {d.max:g} s")
+            what = "shots" if isinstance(timed, ShotsParam) else "sections"
+            errors.append(f"the {what} add up to {total:g} s; {spec.name} makes {d.min:g} to {d.max:g} s")
 
     if "aspect_ratio" in out and spec.aspect_ratios and out["aspect_ratio"] not in spec.aspect_ratios:
         errors.append(f"aspect_ratio must be one of {spec.aspect_ratios}")

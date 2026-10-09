@@ -2283,7 +2283,7 @@ export interface components {
              * Ops
              * @default []
              */
-            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "segment" | "track" | "to_3d" | "panorama" | "world" | "depth_to_video" | "lora_train")[];
+            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "song" | "segment" | "track" | "to_3d" | "panorama" | "world" | "depth_to_video" | "lora_train")[];
             /**
              * Prompt
              * @default required
@@ -2332,7 +2332,7 @@ export interface components {
             aspect_ratios: string[];
             duration: components["schemas"]["DurationSpec"] | null;
             /** Parameters */
-            parameters: (components["schemas"]["EnumParam"] | components["schemas"]["IntParam"] | components["schemas"]["FloatParam"] | components["schemas"]["BoolParam"] | components["schemas"]["SeedParam"] | components["schemas"]["TextParam"] | components["schemas"]["PathsParam"] | components["schemas"]["PointsParam"] | components["schemas"]["ShotsParam"])[];
+            parameters: (components["schemas"]["EnumParam"] | components["schemas"]["IntParam"] | components["schemas"]["FloatParam"] | components["schemas"]["BoolParam"] | components["schemas"]["SeedParam"] | components["schemas"]["TextParam"] | components["schemas"]["PathsParam"] | components["schemas"]["PointsParam"] | components["schemas"]["ShotsParam"] | components["schemas"]["SectionsParam"])[];
             /** Rules */
             rules: components["schemas"]["Rule"][];
             /** Modes */
@@ -3133,6 +3133,71 @@ export interface components {
              * @default 0
              */
             steps_total: number;
+        };
+        /**
+         * SectionsParam
+         * @description A song's sections in order: [{"name": str, "lines": [str], "duration": seconds}], each section's lyrics sung
+         *     over that many seconds. The song is as long as its sections together (it sets `duration`). Routes send them as
+         *     the provider's composition plan (`transforms/music.py:song_plan`).
+         */
+        SectionsParam: {
+            /** Name */
+            name: string;
+            /** Label */
+            label?: string | null;
+            /** Help */
+            help?: string | null;
+            /**
+             * Group
+             * @default basic
+             * @enum {string}
+             */
+            group: "basic" | "advanced";
+            /** Modes */
+            modes?: string[] | null;
+            /** Visible If */
+            visible_if?: {
+                [key: string]: string | number | boolean | (string | number | boolean)[];
+            } | null;
+            /** Ui */
+            ui?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sections";
+            /**
+             * Min Sections
+             * @default 1
+             */
+            min_sections: number;
+            /**
+             * Max Sections
+             * @default 12
+             */
+            max_sections: number;
+            /**
+             * Max Lines
+             * @default 30
+             */
+            max_lines: number;
+            /**
+             * Max Line Chars
+             * @default 200
+             */
+            max_line_chars: number;
+            /**
+             * Min Section S
+             * @default 3
+             */
+            min_section_s: number;
+            /**
+             * Max Section S
+             * @default 120
+             */
+            max_section_s: number;
+            /** Default */
+            default?: unknown[] | null;
         };
         /** SeedParam */
         SeedParam: {

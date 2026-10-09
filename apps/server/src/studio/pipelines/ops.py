@@ -21,7 +21,7 @@ from studio.domain.enums import AssetKind, AssetSource
 from studio.faceless.catalog import CaptionLook, get_catalog
 from studio.media.assemble import Block, assemble_episode, frame_size
 from studio.media.captions import burn_captions, cues, fit_words, place_words, to_ass, to_srt
-from studio.media.ffmpeg import probe
+from studio.media.ffmpeg import ffmpeg, probe
 from studio.media.ops import concat_clips
 from studio.media.speech import join_speech
 from studio.media.swap import masked_merge
@@ -186,7 +186,8 @@ async def narrated_cut(session: AsyncSession, run: PipelineRun, step: PipelineSt
     try:
         tl = await assemble_episode(
             blocks, dest, work, size=frame_size(inp["aspect_ratio"], inp.get("resolution", "1080p")),
-            music=storage.path_for(assets[music_id].storage_key) if music_id else None)
+            music=storage.path_for(assets[music_id].storage_key) if music_id else None,
+            **{k: float(inp[k]) for k in ("gap_s", "tail_s") if inp.get(k) is not None})
         parents = [(assets[b["visual"]].id, f"block_{i:02d}") for i, b in enumerate(blocks_in, 1)]
         parents += [(assets[b["voice"]].id, f"narration_{i:02d}") for i, b in enumerate(blocks_in, 1)]
         if music_id:
@@ -206,7 +207,8 @@ async def captions(session: AsyncSession, run: PipelineRun, step: PipelineStep) 
     inp = step.input
     (video,) = await _assets(session, run, [inp["video"]])
     voices = await _assets(session, run, inp["voices"])
-    words = [(v.metadata_ or {}).get("alignment", {}).get("words") or fit_words(text, _seconds(v))
+    lead = float(inp.get("lead_in") or 0)  # a song section's bar of music before the singing
+    words = [(v.metadata_ or {}).get("alignment", {}).get("words") or _after(fit_words(text, _seconds(v) - lead), lead)
              for v, text in zip(voices, inp["narrations"], strict=True)]
     style = get_catalog().style(inp.get("style", ""))
     look = style.caption if style else CaptionLook()
@@ -232,6 +234,44 @@ async def captions(session: AsyncSession, run: PipelineRun, step: PipelineStep) 
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return {"asset_id": str(out.id), "subtitle_asset_id": str(srt.id), "derive": [str(out.id)]}
+
+
+def _after(words: list[dict[str, Any]], seconds: float) -> list[dict[str, Any]]:
+    if seconds <= 0:
+        return words
+    return [{**w, "start": round(w["start"] + seconds, 3), "end": round(w["end"] + seconds, 3)} for w in words]
+
+
+async def split_audio(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    """Cut one audio file into consecutive pieces of the given lengths (a song into its sections); the last piece
+    runs to the end. Each piece is an audio asset."""
+    inp = step.input
+    (audio,) = await _assets(session, run, [inp["audio"]])
+    lengths = [float(s) for s in inp["seconds"]]
+    total = _seconds(audio)
+    if not lengths or total <= 0:
+        raise StepFailed("there's no audio to cut")
+    storage = get_storage()
+    work = storage.temp_dir() / f"split-{uuid7().hex}"
+    work.mkdir(parents=True)
+    pieces = []
+    try:
+        start = 0.0
+        for i, length in enumerate(lengths):
+            last = i == len(lengths) - 1
+            dest = work / f"piece_{i:02d}.wav"
+            span = ["-t", f"{length:.3f}"] if not last else []
+            await ffmpeg("-ss", f"{start:.3f}", "-i", str(storage.path_for(audio.storage_key)), *span,
+                         "-c:a", "pcm_s16le", str(dest))
+            start += length
+            piece = await save_derived(
+                session, run.user_id, dest, kind=AssetKind.audio, source=AssetSource.pipeline,
+                title=f"{inp.get('title') or audio.title}: part {i + 1}", parents=[(audio.id, "cut_from")],
+                pipeline_run_id=run.id, metadata={"recipe": run.recipe, "part": i + 1})
+            pieces.append(str(piece.id))
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return {"asset_ids": pieces, "asset_id": pieces[0]}
 
 
 async def keep_background(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
@@ -391,6 +431,7 @@ LOCAL_OPS: dict[str, Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitab
     "narrated_cut": narrated_cut,
     "captions": captions,
     "keep_background": keep_background,
+    "split_audio": split_audio,
     "lora_dataset": lora_dataset,
     "attach_lora": attach_lora,
     "add_element_image": add_element_image,

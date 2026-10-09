@@ -39,7 +39,7 @@ OpTag = Literal[
     "t2v", "i2v", "flf2v", "multi_ref", "multi_shot", "extend", "instruction_edit", "restyle", "reframe",
     "upscale", "interpolate", "bg_remove", "motion_transfer", "object_replace", "lipsync", "avatar",
     "t2i", "i2i", "relight", "add_sound", "trim", "retime", "reverse", "loop", "stabilize",
-    "tts", "sfx", "music", "segment", "track",
+    "tts", "sfx", "music", "song", "segment", "track",
     "to_3d", "panorama", "world", "depth_to_video", "lora_train",
 ]
 OutputType = Literal["video", "image", "audio", "3d", "lora", "mask", "text"]
@@ -142,8 +142,24 @@ class ShotsParam(_ParamBase):
     default: list[Any] | None = None
 
 
+class SectionsParam(_ParamBase):
+    """A song's sections in order: [{"name": str, "lines": [str], "duration": seconds}], each section's lyrics sung
+    over that many seconds. The song is as long as its sections together (it sets `duration`). Routes send them as
+    the provider's composition plan (`transforms/music.py:song_plan`)."""
+
+    type: Literal["sections"]
+    min_sections: int = 1
+    max_sections: int = 12
+    max_lines: int = 30
+    max_line_chars: int = 200
+    min_section_s: float = 3
+    max_section_s: float = 120
+    default: list[Any] | None = None
+
+
 Param = Annotated[
-    EnumParam | IntParam | FloatParam | BoolParam | SeedParam | TextParam | PathsParam | PointsParam | ShotsParam,
+    EnumParam | IntParam | FloatParam | BoolParam | SeedParam | TextParam | PathsParam | PointsParam | ShotsParam
+    | SectionsParam,
     Field(discriminator="type"),
 ]
 

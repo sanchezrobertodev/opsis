@@ -11,7 +11,7 @@ export type TopicIdea = Schemas["TopicOut"];
 
 /** The episode settings a channel can preset (the faceless recipe's input, minus topic, script and title). */
 export type EpisodeSettings = {
-  format: "stills" | "motion";
+  format: "stills" | "motion" | "song";
   minutes: number;
   aspect_ratio: "16:9" | "9:16";
   resolution: "720p" | "1080p";

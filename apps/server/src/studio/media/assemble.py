@@ -50,10 +50,10 @@ def frame_size(aspect: str, resolution: str = "1080p") -> tuple[int, int]:
     return (short, long) if aspect == "9:16" else (long, short)
 
 
-def timeline(seconds: list[float]) -> Timeline:
+def timeline(seconds: list[float], *, gap_s: float = GAP_S, tail_s: float = TAIL_S) -> Timeline:
     starts, durations, t = [], [], 0.0
     for i, s in enumerate(seconds):
-        d = round(max(0.5, s) + (TAIL_S if i == len(seconds) - 1 else GAP_S), 3)
+        d = round(max(0.5, s) + (tail_s if i == len(seconds) - 1 else gap_s), 3)
         starts.append(round(t, 3))
         durations.append(d)
         t += d
@@ -110,12 +110,14 @@ async def render_segment(block: Block, seconds: float, dest: Path, *, size: tupl
 
 
 async def assemble_episode(blocks: list[Block], dest: Path, workdir: Path, *, size: tuple[int, int],
-                           fps: int = 24, music: Path | None = None, music_db: float = -14.0) -> Timeline:
-    """Write the clean master (no captions) to `dest` and return where each block starts."""
+                           fps: int = 24, music: Path | None = None, music_db: float = -14.0,
+                           gap_s: float = GAP_S, tail_s: float = TAIL_S) -> Timeline:
+    """Write the clean master (no captions) to `dest` and return where each block starts. A song's pieces play
+    back to back (`gap_s=0`), so the joins don't stutter."""
     if not blocks:
         raise ValueError("nothing to assemble")
     workdir.mkdir(parents=True, exist_ok=True)
-    tl = timeline([b.seconds for b in blocks])
+    tl = timeline([b.seconds for b in blocks], gap_s=gap_s, tail_s=tail_s)
 
     segments = []
     for i, (block, seconds) in enumerate(zip(blocks, tl.durations, strict=True)):

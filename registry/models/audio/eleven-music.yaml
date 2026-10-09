@@ -4,7 +4,8 @@ id: eleven-music
 name: Eleven Music
 family: elevenlabs
 vendor: elevenlabs
-description: Background music and songs from a description, cleared for commercial use.
+description: Background music from a description, or a sung song from its lyrics in timed sections; cleared for
+  commercial use.
 output_type: audio
 status: active
 license_tier: commercial_api
@@ -12,24 +13,34 @@ tags: [music, score]
 prompt: {max_chars: 2000, dialect: music}
 
 parameters:
-  - {name: duration, type: int, min: 10, max: 300, step: 5, default: 60}
-  - {name: instrumental, type: bool, default: true, help: No vocals.}
+  - {name: duration, type: int, min: 10, max: 300, step: 5, default: 60,
+     help: "A song is as long as its sections together."}
+  - {name: instrumental, type: bool, default: true, help: No vocals., modes: [music]}
+  - {name: sections, label: Lyrics, type: sections, min_sections: 1, max_sections: 12, max_lines: 30,
+     max_line_chars: 200, min_section_s: 3, max_section_s: 120, modes: [song],
+     help: "Each section's lines are sung over its duration (verse, chorus...)."}
 
 modes:
   - id: music
     label: Music
     ops: [music]
+  - id: song
+    label: Song with lyrics
+    ops: [song]
 
 routes:
   - id: eleven-music@elevenlabs
     provider: elevenlabs
     modes:
       music: {endpoint: music, fixed: {model_id: music_v1}}
+      song: {endpoint: music, fixed: {model_id: music_v1}}
+    transform: studio.providers.transforms.music:song_plan
     map:
       prompt: prompt
       params:
-        duration: {to: music_length_ms, transform: scale, args: {factor: 1000}}
+        duration: {to: music_length_ms, transform: scale, args: {factor: 1000}}  # dropped for a song's plan
         instrumental: force_instrumental
+        sections: _song  # sent as the composition plan by song_plan
     pricing:
       basis: per_output_second
       rates: [{usd: 0.0025}]
@@ -45,3 +56,11 @@ examples:
     params: {duration: 10}
     smoke: true
     expect: {cost_usd_range: [0.01, 0.05]}
+  - name: song_smoke
+    mode: song
+    prompt: cheerful children's pop, ukulele, bright female vocals
+    params:
+      sections:
+        - {name: Verse, lines: ["Little boats go out to sea", "One for you and one for me"], duration: 8}
+        - {name: Chorus, lines: ["Row, row, row along", "Sing the happy harbour song"], duration: 8}
+    expect: {cost_usd_range: [0.03, 0.05]}

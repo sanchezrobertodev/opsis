@@ -171,3 +171,59 @@ async def test_channel_counts_only_its_owners_episodes(client, in_memory_queue):
         s.add(PipelineRun(user_id=other.id, recipe="faceless", title="not mine", input={"channel_id": ch["id"]}))
     listed = {c["id"]: c for c in (await client.get("/faceless/channels")).json()}
     assert listed[ch["id"]]["episodes"] == 0
+
+
+async def test_kids_song_is_sung_section_by_section_under_its_pictures(client, in_memory_queue):
+    run = await start(client, "faceless", topic="lighthouses", theme="kids", style="poster-vector", format="song",
+                      minutes=0.5, resolution="720p", thumbnail=False)
+    await drain(in_memory_queue)
+    waiting = await get(client, run["id"])
+    steps = steps_of(waiting)
+    assert steps["script"]["label"] == "Write the song" and steps["review"]["status"] == "waiting"
+    lyrics = steps["script"]["output"]["song"]
+    assert [s["name"] for s in lyrics["sections"]] == ["Verse 1", "Chorus", "Verse 2", "Chorus"]
+    assert steps["review"]["output"] == {} and "[Chorus]" in steps["script"]["output"]["script"]
+
+    await answer(client, run["id"], "review", "approve")
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    steps = steps_of(done)
+    assert done["status"] == "succeeded", [(k, s["status"], s["error"]) for k, s in steps.items()]
+    assert "voice[b01]" not in steps and "plan" not in steps  # no narration in a song
+    async with session_scope() as s:
+        from studio.db.models import Generation
+
+        sing = await s.get(Generation, uuid.UUID(steps["sing"]["generation_id"]))
+        final = await s.get(Asset, uuid.UUID(done["output"]["asset_id"]))
+        srt = await s.get(Asset, uuid.UUID(done["output"]["captions_asset_id"]))
+    assert sing.mode == "song" and [x["duration"] for x in sing.request["params"]["sections"]] == [10, 10, 10, 10]
+    assert sing.request["params"]["duration"] == 40
+    assert len(steps["parts"]["output"]["asset_ids"]) == 4
+    info = await probe(get_storage().path_for(final.storage_key))
+    assert info.has_audio and info.duration_ms / 1000 == pytest.approx(40 + 0.5, abs=0.4)  # back to back, no gaps
+    assert steps["cut"]["output"]["starts"] == [0.0, 10.0, 20.0, 30.0]
+    text = get_storage().path_for(srt.storage_key).read_text(encoding="utf-8")
+    assert "Have you heard of lighthouses?" in text and "00:00:02," in text  # sung after a bar's lead-in
+
+
+async def test_my_own_lyrics_make_the_sections():
+    from studio.faceless.writer import section_seconds, song_from_text, song_text
+
+    song = song_from_text("Twinkle little star\nHow I wonder what you are\n\n[Chorus]\nShine, shine\nAll night", "Star")
+    assert [(s.name, s.lines) for s in song.sections] == [
+        ("Verse 1", ["Twinkle little star", "How I wonder what you are"]), ("Chorus", ["Shine, shine", "All night"])]
+    assert section_seconds(song.sections[0].lines) == 10.0 and section_seconds([]) == 3.0
+    assert song_text(song).startswith("[Verse 1]\nTwinkle little star")
+
+
+async def test_the_longest_song_stays_within_the_music_models_limits(client):
+    from studio.faceless.writer import fit_song, song_lines
+
+    r = await client.post("/pipelines/estimate", json={"recipe": "faceless", "input": {
+        "topic": "the moon", "theme": "kids", "format": "song", "minutes": 5, "thumbnail": False}})
+    assert r.status_code == 200, r.text
+    assert r.json()["generations"] == 13  # 12 pictures (the most sections) and the song
+    assert song_lines(5) == 66 and song_lines(0.5) == 6
+    fitted = fit_song([60.0] * 6, 300)
+    assert sum(fitted) <= 300 and fitted == [50.0] * 6
+    assert fit_song([10.0, 20.0], 300) == [10.0, 20.0]

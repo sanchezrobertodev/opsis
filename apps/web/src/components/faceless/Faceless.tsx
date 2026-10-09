@@ -25,8 +25,14 @@ import { statusTone } from "@/components/runs/Runs";
 import { StyleCard } from "./StyleCard";
 
 const WORDS_PER_MINUTE = 150;
-const BLOCK_SECONDS = { stills: 6, motion: 8 } as const;
-const FORMAT_LABEL = { stills: "Narrated stills", motion: "Animated clips" } as const;
+const BLOCK_SECONDS = { stills: 6, motion: 8, song: 18 } as const; // a song section: a bar in, then 4 lines
+const FORMAT_LABEL = { stills: "Narrated stills", motion: "Animated clips", song: "Song" } as const;
+const FORMAT_HINT = {
+  stills: "One illustration per spoken beat, with a slow camera move.",
+  motion: "Each illustration animated into a clip as long as its narration.",
+  song: "A sing-along song: each verse and chorus gets its picture, and the lyrics run as captions.",
+} as const;
+const SONG_THEMES = ["kids"]; // the themes with a song mode
 
 /** Topic or script in, narrated captioned episode out. Episodes are `faceless` runs, followed on the run page. */
 export function Faceless() {
@@ -105,6 +111,7 @@ export function Faceless() {
   }
 
   if (!catalog || !s) return null;
+  const song = s.format === "song";
 
   const minutes = writeOwn ? script.trim().split(/\s+/).filter(Boolean).length / WORDS_PER_MINUTE : s.minutes;
   // same guess as the recipe's estimate: ~6 characters a word, read at 14.5 characters a second
@@ -131,7 +138,7 @@ export function Faceless() {
                   label="Script"
                   value={writeOwn ? "own" : "claude"}
                   options={["claude", "own"] as const}
-                  render={(v) => (v === "claude" ? "Claude writes it" : "I have a script")}
+                  render={(v) => (v === "claude" ? "Claude writes it" : song ? "I have lyrics" : "I have a script")}
                   onChange={(v) => setWriteOwn(v === "own")}
                 />
               </div>
@@ -149,12 +156,14 @@ export function Faceless() {
                   value={script}
                   onChange={(e) => setScript(e.target.value)}
                   rows={10}
-                  aria-label="Script"
-                  placeholder="Paste the narration exactly as it should be read. Plain paragraphs; no scene labels."
+                  aria-label={song ? "Lyrics" : "Script"}
+                  placeholder={song ? "One paragraph per verse or chorus, one sung line per line. Start a paragraph with [Chorus] to name it."
+                                    : "Paste the narration exactly as it should be read. Plain paragraphs; no scene labels."}
                   className="resize-y rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-faint focus:border-tungsten/60"
                 />
                 <p className="tabular text-2xs text-faint">
-                  {script.trim().split(/\s+/).filter(Boolean).length} words, about {minutes.toFixed(1)} min read aloud
+                  {song ? `${script.split("\n").filter((l) => l.trim() && !/^\[.*\]$/.test(l.trim())).length} sung lines`
+                        : `${script.trim().split(/\s+/).filter(Boolean).length} words, about ${minutes.toFixed(1)} min read aloud`}
                 </p>
               </>
             ) : (
@@ -169,7 +178,7 @@ export function Faceless() {
               value={theme}
               options={catalog.themes.map((t) => t.id)}
               render={(v) => catalog.themes.find((t) => t.id === v)?.label}
-              onChange={(v) => setTheme(v)}
+              onChange={(v) => { setTheme(v); if (!SONG_THEMES.includes(v) && s.format === "song") patch({ format: "stills" }); }}
             />
             <p className="text-xs text-muted">{themeInfo?.summary}</p>
           </section>
@@ -187,9 +196,9 @@ export function Faceless() {
       </div>
 
       <aside className="flex min-h-0 flex-col gap-5 overflow-y-auto border-t border-line-soft p-5 scrollbar-quiet lg:border-t-0 lg:border-l">
-        <Field label="Format" hint={s.format === "stills" ? "One illustration per spoken beat, with a slow camera move."
-                                                         : "Each illustration animated into a clip as long as its narration."}>
-          <Segmented label="Format" value={s.format} options={["stills", "motion"] as const}
+        <Field label="Format" hint={FORMAT_HINT[s.format]}>
+          <Segmented label="Format" value={s.format}
+                     options={SONG_THEMES.includes(theme) ? (["stills", "motion", "song"] as const) : (["stills", "motion"] as const)}
                      render={(v) => FORMAT_LABEL[v]} onChange={(v) => patch({ format: v })} />
         </Field>
         {!writeOwn && (
@@ -202,7 +211,7 @@ export function Faceless() {
           <AspectPicker value={s.aspect_ratio} options={["16:9", "9:16"]}
                         onChange={(v) => patch({ aspect_ratio: v as EpisodeSettings["aspect_ratio"] })} />
         </Field>
-        <Field label="Narrator" hint={voiceTouched ? undefined : "The theme's voice. Pick another to keep it."}>
+        {!song && <Field label="Narrator" hint={voiceTouched ? undefined : "The theme's voice. Pick another to keep it."}>
           <Select
             value={voiceId ?? ""}
             options={catalog.voices.map((v) => ({ value: v.id, label: v.label }))}
@@ -211,15 +220,16 @@ export function Faceless() {
           <Segmented label="Voice quality" value={tier} options={["standard", "turbo"] as const}
                      render={(v) => (v === "standard" ? "v4" : "v4 Turbo, half price")}
                      onChange={(v) => patch({ voice: { ...s.voice, tier: v } })} />
-        </Field>
+        </Field>}
         <div className="flex flex-col gap-3">
-          <Toggle label="Music" hint="A score ducked under the voice." checked={s.music} onChange={(v) => patch({ music: v })} />
-          <Toggle label="Captions" hint="Burned in, with the spoken word highlighted. An SRT is saved too."
+          {!song && <Toggle label="Music" hint="A score ducked under the voice." checked={s.music} onChange={(v) => patch({ music: v })} />}
+          <Toggle label="Captions" hint={song ? "The lyrics, burned in line by line. An SRT is saved too."
+                                              : "Burned in, with the spoken word highlighted. An SRT is saved too."}
                   checked={s.captions} onChange={(v) => patch({ captions: v })} />
           <Toggle label="Thumbnail" hint="Three options to pick from at the end." checked={s.thumbnail}
                   onChange={(v) => patch({ thumbnail: v })} />
           {!writeOwn && (
-            <Toggle label="Review the script first" hint="Read and edit it before any images are made."
+            <Toggle label={song ? "Review the lyrics first" : "Review the script first"} hint="Read and edit it before any images are made."
                     checked={s.review_script} onChange={(v) => patch({ review_script: v })} />
           )}
         </div>
@@ -255,7 +265,7 @@ export function Faceless() {
               writeOwn ? "Paste a script to see the cost." : "Give it a topic to see the cost."
             ) : estimate.data ? (
               <>
-                About {minutes.toFixed(1)} min in {blocks} blocks, {estimate.data.generations} takes
+                About {minutes.toFixed(1)} min in {blocks} {song ? "sections" : "blocks"}, {estimate.data.generations} takes
                 {estimate.data.estimate_usd === 0 ? ", free on mock routes." : `, about ${usd(estimate.data.estimate_usd)}.`}
                 {estimate.data.live_estimate_usd != null && estimate.data.estimate_usd === 0 &&
                   ` Live it would cost about ${usd(estimate.data.live_estimate_usd)}.`}
