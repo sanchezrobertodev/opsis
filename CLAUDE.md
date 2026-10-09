@@ -244,6 +244,11 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   `GET /projects/{id}/spend` (charged costs per `shot_key`).
 - `POST /projects/{id}/plan` asks Claude (Opus) for scenes and shots in the director's vocabulary; unknown ids are
   dropped and nothing is saved until the editor applies the proposal.
+- Keeping faces the same: the plan also proposes people who recur but aren't in the cast (`characters`: handle, name,
+  look), written into shots as `@handle`; an `@handle` nobody has becomes a plain word. `POST /projects/{id}/cast` saves
+  the kept ones as character Elements (slug from the handle) and returns the scenes pointed at their slugs; the Script
+  tab then adds them to the cast and starts `cinema_cast`, which draws a front portrait of each (`add_element_image`
+  keeps it as the reference and cover). Hero frames on a `refs_native` model attach it wherever they're mentioned.
 - The AI Director chat (`POST /projects/{id}/director`, `cinema/director_chat.py`, the editor's Director panel): Claude
   answers a request with edits by shot and scene id (update, add, move, remove), applied to the storyboard on screen
   and returned as proposed scenes plus a diff (`changes`, shots numbered as they'll read). An update keeps the shot's

@@ -21,11 +21,12 @@ from studio.api.schemas import AssetOut
 from studio.api.serializers import asset_out
 from studio.budget.guard import BudgetBlocked
 from studio.cinema.director_chat import DirectorTooLong, Turn, diff, revise
-from studio.cinema.document import CinemaDocument
-from studio.cinema.planner import MAX_SHOTS, plan_shots
+from studio.cinema.document import MAX_CAST, CinemaDocument, Scene
+from studio.cinema.planner import MAX_SHOTS, ProposedCharacter, plan_shots
 from studio.db.models import (
     Asset,
     Element,
+    ElementKind,
     Generation,
     GenerationAttempt,
     PipelineRun,
@@ -34,6 +35,7 @@ from studio.db.models import (
     SpendLedger,
     User,
 )
+from studio.director.elements import MENTION, unique_slug
 from studio.domain.enums import SPENT, AssetKind
 from studio.jutsu3d.document import Jutsu3dDocument, starter_scene
 from studio.llm.client import LLMError, LLMUnavailable
@@ -104,6 +106,9 @@ class PlanIn(BaseModel):
 
 class PlanOut(BaseModel):
     scenes: list[dict[str, Any]]
+    characters: list[ProposedCharacter] = Field(
+        description="People who recur but aren't in the cast, written into the scenes as @handle; save them with "
+                    "POST /projects/{id}/cast")
     warnings: list[str]
     model: str
     mock: bool
@@ -394,7 +399,8 @@ async def plan(project_id: uuid.UUID, body: PlanIn, session: AsyncSession = Depe
         if slugs else []
     cast = [(e.slug, f"{e.name}. {e.description}".strip()) for e in cast_rows]
     try:
-        result, scenes, warnings = await plan_shots(session, user.id, script=script, logline=logline, cast=cast,
+        result, scenes, characters, warnings = await plan_shots(session, user.id, script=script, logline=logline,
+                                                                cast=cast,
                                                     notes=body.notes, max_shots=body.max_shots)
     except BudgetBlocked as exc:
         raise HTTPException(402, f"Planning would go over your spending limit: {exc}") from exc
@@ -404,8 +410,71 @@ async def plan(project_id: uuid.UUID, body: PlanIn, session: AsyncSession = Depe
         await session.commit()  # a refusal was still billed
         raise HTTPException(502, exc.message) from exc
     await session.commit()
-    return PlanOut(scenes=[s.model_dump(mode="json") for s in scenes], warnings=warnings, model=result.model,
-                   mock=result.mock, cost_usd=float(result.cost_usd))
+    return PlanOut(scenes=[s.model_dump(mode="json") for s in scenes], characters=characters, warnings=warnings,
+                   model=result.model, mock=result.mock, cost_usd=float(result.cost_usd))
+
+
+class CastIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    characters: list[ProposedCharacter] = Field(min_length=1, max_length=MAX_CAST)
+    scenes: list[dict[str, Any]] = Field(description="The proposed scenes, which mention them by handle")
+    cast: list[str] = Field(default_factory=list, max_length=MAX_CAST,
+                            description="The film's cast on screen (autosave may not have stored it yet)")
+
+
+class CastMember(BaseModel):
+    id: uuid.UUID
+    handle: str = Field(description="What the plan called them")
+    slug: str = Field(description="Their @mention name now; differs from the handle when that was taken")
+    name: str
+
+
+class CastOut(BaseModel):
+    scenes: list[dict[str, Any]] = Field(description="The scenes with each handle replaced by the saved character's")
+    cast: list[CastMember]
+
+
+@router.post("/{project_id}/cast", response_model=CastOut, status_code=201)
+async def save_cast(project_id: uuid.UUID, body: CastIn, session: AsyncSession = Depends(get_session),
+                    user: User = Depends(current_user)) -> CastOut:
+    """Save the plan's proposed characters as Elements and point the proposal's mentions at them. Nothing is saved
+    to the film; apply the scenes and add the slugs to its cast (then draw their pictures with `cinema_cast`)."""
+    p = await _project(session, user, project_id)
+    cast = set(CinemaDocument.model_validate(p.document).cast) | set(body.cast)
+    new = {c.handle.strip().lstrip("@").lower() for c in body.characters}
+    if len(cast) + len(new) > MAX_CAST:
+        raise HTTPException(422, f"a film's cast holds {MAX_CAST}; it has {len(cast)}, so keep at most "
+                                 f"{max(0, MAX_CAST - len(cast))} of these")
+    try:
+        scenes = [Scene.model_validate(x) for x in body.scenes]
+    except ValidationError as exc:
+        raise HTTPException(422, f"those scenes don't read as a storyboard: {exc.errors()[0]['msg']}") from exc
+    members: list[CastMember] = []
+    for c in body.characters:
+        handle = c.handle.strip().lstrip("@").lower()
+        if any(m.handle == handle for m in members):
+            continue
+        e = Element(user_id=user.id, kind=ElementKind.character, name=c.name.strip()[:80],
+                    slug=await unique_slug(session, user.id, handle), description=c.description.strip()[:600])
+        session.add(e)
+        await session.flush()
+        members.append(CastMember(id=e.id, handle=handle, slug=e.slug, name=e.name))
+    await session.commit()
+    slugs = {m.handle: m.slug for m in members}
+
+    def fix(text: str) -> str:
+        return MENTION.sub(lambda m: f"@{slugs.get(m.group(1).lower(), m.group(1))}", text)
+
+    out = []
+    for scene in scenes:
+        for shot in scene.shots:
+            shot.action = fix(shot.action)
+            for line in shot.lines:
+                line.who = fix(line.who)
+            for feeling in shot.direction.cast_emotions:
+                feeling.who = fix(feeling.who)
+        out.append(scene.model_dump(mode="json"))
+    return CastOut(scenes=out, cast=members)
 
 
 @router.post("/{project_id}/director", response_model=DirectorOut,

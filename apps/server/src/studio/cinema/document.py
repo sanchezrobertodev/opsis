@@ -19,6 +19,9 @@ def new_id(prefix: str) -> str:
     return f"{prefix}{secrets.token_hex(3)}"
 
 
+MAX_CAST = 12
+
+
 class _Doc(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -144,7 +147,7 @@ class Cut(_Doc):
 class CinemaDocument(_Doc):
     logline: str = Field("", max_length=600)
     script: str = Field("", max_length=40000)
-    cast: list[str] = Field(default_factory=list, max_length=12, description="@mention slugs of saved Elements")
+    cast: list[str] = Field(default_factory=list, max_length=MAX_CAST, description="@mention slugs of saved Elements")
     settings: Settings = Field(default_factory=Settings)
     scenes: list[Scene] = Field(default_factory=list, max_length=40)
     cut: Cut = Field(default_factory=Cut)

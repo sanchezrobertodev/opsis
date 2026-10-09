@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.base import uuid7
-from studio.db.models import Asset, Element, PipelineRun, PipelineStep
+from studio.db.models import Asset, Element, ElementAsset, PipelineRun, PipelineStep
 from studio.domain.derived import frame_of, save_derived
 from studio.domain.enums import AssetKind, AssetSource
 from studio.faceless.catalog import CaptionLook, get_catalog
@@ -351,6 +351,22 @@ async def attach_lora(session: AsyncSession, run: PipelineRun, step: PipelineSte
     return lora
 
 
+async def add_element_image(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    """Keep a picture as one of a character's references (its first one becomes the cover and primary picture)."""
+    inp = step.input
+    element = await _character(session, run, inp["element_id"])
+    (picture,) = await _assets(session, run, [inp["asset_id"]])
+    if picture.kind != AssetKind.image:
+        raise StepFailed("only a picture can be a character's reference")
+    links = (await session.execute(select(ElementAsset).where(ElementAsset.element_id == element.id))).scalars().all()
+    if not any(x.asset_id == picture.id for x in links):  # a rerun of the step keeps one link
+        session.add(ElementAsset(element_id=element.id, asset_id=picture.id, view=inp.get("view") or "front",
+                                 is_primary=not links, sort=len(links)))
+    if element.cover_asset_id is None:
+        element.cover_asset_id = picture.id
+    return {"element_id": str(element.id), "asset_id": str(picture.id)}
+
+
 async def _character(session: AsyncSession, run: PipelineRun, element_id: str) -> Element:
     """The run owner's character that a trained identity is for; it must still exist."""
     try:
@@ -377,4 +393,5 @@ LOCAL_OPS: dict[str, Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitab
     "keep_background": keep_background,
     "lora_dataset": lora_dataset,
     "attach_lora": attach_lora,
+    "add_element_image": add_element_image,
 }

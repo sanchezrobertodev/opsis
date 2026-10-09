@@ -1,37 +1,71 @@
 "use client";
 
-import { LoaderCircle, Sparkles } from "lucide-react";
+import { LoaderCircle, Sparkles, UserRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@/lib/cn";
-import { type CinemaDoc, type Scene, usePlanShots } from "@/lib/cinema";
+import { cn, usd } from "@/lib/cn";
+import { type CinemaDoc, type ProposedCharacter, type Scene, unmention, usePlanShots, useSaveCast } from "@/lib/cinema";
 import { useElements } from "@/lib/elements";
+import { useEstimateRun } from "@/lib/runs";
 import { Button, Field, Slider } from "@/components/ui/controls";
+import type { Launch } from "./Editor";
+
+const NO_ID = "00000000-0000-0000-0000-000000000000"; // pricing only: the characters don't exist yet
+const MAX_CAST = 12; // CinemaDocument.cast
 
 /** Logline, script and cast, and Claude's proposed shot list to apply to the storyboard. */
-export function ScriptTab({ projectId, doc, update, onPlanned }: {
+export function ScriptTab({ projectId, doc, update, onPlanned, launch }: {
   projectId: string; doc: CinemaDoc; update: (fn: (d: CinemaDoc) => CinemaDoc) => void; onPlanned: () => void;
+  launch: Launch;
 }) {
   const { data: elements } = useElements();
   const plan = usePlanShots(projectId);
+  const saveCast = useSaveCast(projectId);
   const [maxShots, setMaxShots] = useState(12);
   const [notes, setNotes] = useState("");
-  const [proposal, setProposal] = useState<{ scenes: Scene[]; warnings: string[] } | null>(null);
+  const [proposal, setProposal] = useState<{ scenes: Scene[]; characters: ProposedCharacter[]; warnings: string[] } | null>(null);
+  const [dropped, setDropped] = useState<string[]>([]); // proposed characters the user won't keep
+  const kept = proposal?.characters.filter((c) => !dropped.includes(c.handle)) ?? [];
+  const { data: estimate } = useEstimateRun(kept.length ? { recipe: "cinema_cast", input: {
+    characters: kept.map((c) => ({ element_id: NO_ID, slug: c.handle })) } } : null);
+  const portraitsUsd = estimate ? (estimate.estimate_usd || estimate.live_estimate_usd) : null;
+  const room = MAX_CAST - doc.cast.length;
+  const tooMany = kept.length > room; // the film couldn't save a cast that big
 
   async function ask() {
     try {
       // send what's on screen, which autosave may not have stored yet
       const res = await plan.mutateAsync({ max_shots: maxShots, notes, script: doc.script, logline: doc.logline, cast: doc.cast });
-      setProposal({ scenes: res.scenes as unknown as Scene[], warnings: res.warnings });
+      setProposal({ scenes: res.scenes as unknown as Scene[], characters: res.characters, warnings: res.warnings });
+      setDropped([]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Claude couldn't plan the shots");
     }
   }
 
-  function apply(mode: "replace" | "append") {
-    if (!proposal) return;
-    update((d) => ({ ...d, scenes: mode === "replace" ? proposal.scenes : [...d.scenes, ...proposal.scenes] }));
+  async function apply(mode: "replace" | "append") {
+    if (!proposal || tooMany) return;
+    // the ones not kept are written as plain names; the kept ones become saved characters with a portrait each
+    let scenes = unmention(proposal.scenes, Object.fromEntries(
+      proposal.characters.filter((c) => dropped.includes(c.handle)).map((c) => [c.handle, c.name])));
+    let slugs: string[] = [];
+    let pictures: { element_id: string; slug: string }[] = [];
+    if (kept.length) {
+      try {
+        const res = await saveCast.mutateAsync({ characters: kept, scenes, cast: doc.cast });
+        scenes = res.scenes as unknown as Scene[];
+        slugs = res.cast.map((m) => m.slug);
+        pictures = res.cast.map((m) => ({ element_id: m.id, slug: m.slug }));
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Couldn't save the characters");
+        return;
+      }
+    }
+    update((d) => ({ ...d, cast: [...d.cast, ...slugs.filter((s) => !d.cast.includes(s))],
+                     scenes: mode === "replace" ? scenes : [...d.scenes, ...scenes] }));
     setProposal(null);
+    if (pictures.length) void launch({ recipe: "cinema_cast", input: { project_id: projectId, characters: pictures } },
+                                     "Character portraits");
     onPlanned();
   }
 
@@ -98,11 +132,37 @@ export function ScriptTab({ projectId, doc, update, onPlanned }: {
                 </li>
               ))}
             </ol>
+            {proposal.characters.length > 0 && (
+              <div className="flex flex-col gap-2 border-t border-line-soft pt-3">
+                <p className="text-xs text-chalk">Recurring characters</p>
+                <ul className="flex flex-col gap-2">
+                  {proposal.characters.map((c) => (
+                    <li key={c.handle}>
+                      <label className="flex items-start gap-2 text-xs">
+                        <input type="checkbox" className="mt-0.5 accent-tungsten" checked={!dropped.includes(c.handle)}
+                               onChange={(e) => setDropped((d) => e.target.checked ? d.filter((h) => h !== c.handle) : [...d, c.handle])} />
+                        <span>
+                          <span className="flex items-center gap-1 text-chalk"><UserRound className="size-3" aria-hidden />{c.name}</span>
+                          <span className="text-muted">{c.description}</span>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <p className={cn("text-2xs", tooMany ? "text-tungsten" : "text-faint")}>
+                  {tooMany
+                    ? `A film's cast holds ${MAX_CAST} and this one has ${doc.cast.length}: keep at most ${Math.max(0, room)}.`
+                    : kept.length
+                    ? `Kept ones are saved as characters with a front portrait${portraitsUsd != null ? ` (${usd(portraitsUsd)})` : ""}, so their face stays the same in every shot.`
+                    : "None kept: they're written into the shots by name."}
+                </p>
+              </div>
+            )}
             <div className="flex gap-2">
-              <Button size="sm" tone="primary" onClick={() => apply("replace")}>
+              <Button size="sm" tone="primary" disabled={saveCast.isPending || tooMany} onClick={() => void apply("replace")}>
                 {doc.scenes.length ? "Replace the storyboard" : "Use this plan"}
               </Button>
-              {doc.scenes.length > 0 && <Button size="sm" onClick={() => apply("append")}>Add after it</Button>}
+              {doc.scenes.length > 0 && <Button size="sm" disabled={saveCast.isPending || tooMany} onClick={() => void apply("append")}>Add after it</Button>}
               <Button size="sm" tone="ghost" onClick={() => setProposal(null)}>Discard</Button>
             </div>
           </section>
