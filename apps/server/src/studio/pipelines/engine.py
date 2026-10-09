@@ -8,6 +8,10 @@ calls it for runs that look stuck.
 Generate steps create ordinary Generations (same routing, spend guard and ledger as Create), capped by the
 run's budget. Local and Claude steps run in the `pipeline.step` task so long ffmpeg work never holds the run
 lock. Checkpoints wait for the user.
+
+A take the provider refused on content grounds (moderation) gets one more try: Claude rewords the prompt in the
+step task, keeping its meaning and @mentions, and the step starts again with it. If that try is refused too, or
+Claude keeps the prompt as it was, the step fails as it would have (an optional one falls back as before).
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ from studio.db.models import (
     StepStatus,
 )
 from studio.domain import fsm
-from studio.domain.enums import ACTIVE_STATUSES, SPENT, GenStatus
+from studio.domain.enums import ACTIVE_STATUSES, SPENT, ErrorClass, GenStatus
 from studio.domain.generations import (
     ConfirmationRequired,
     CreateRequest,
@@ -42,7 +46,7 @@ from studio.domain.generations import (
     cancel_generation,
     create_generation,
 )
-from studio.pipelines.llm_ops import LLM_OPS
+from studio.pipelines.llm_ops import LLM_OPS, reword
 from studio.pipelines.ops import LOCAL_OPS, StepFailed
 from studio.pipelines.recipe import Settled, StepSpec
 from studio.pipelines.recipes import get_recipe
@@ -105,8 +109,16 @@ async def run_spent(session: AsyncSession, run: PipelineRun) -> Decimal:
     return Decimal(charged) + Decimal(pending)
 
 
-async def _sync_generation(session: AsyncSession, step: PipelineStep) -> None:
-    """Fold a finished generation into its step."""
+def _rewordable(step: PipelineStep, gen: Generation) -> bool:
+    """A take a provider refused on content grounds gets one more try with a gentler prompt."""
+    return (gen.status == GenStatus.failed and gen.error_code == ErrorClass.moderation
+            and bool(str(step.input.get("prompt") or "").strip())
+            and "_reword" not in step.input and "_reworded" not in step.input)
+
+
+async def _sync_generation(session: AsyncSession, step: PipelineStep, *, may_reword: bool = False) -> bool:
+    """Fold a finished generation into its step. True when, instead, the step should reword its refused prompt
+    (it stays running; the caller runs it like a local step)."""
     gen = await session.get(Generation, step.generation_id)
     if gen is None:
         step.status, step.error = StepStatus.failed, "its generation is missing"
@@ -120,12 +132,17 @@ async def _sync_generation(session: AsyncSession, step: PipelineStep) -> None:
             # duration lets a recipe size what comes next (a clip as long as its narration)
             step.output = {"generation_id": str(gen.id), "asset_id": str(rows[0].id),
                            "asset_ids": [str(r.id) for r in rows], "duration_ms": rows[0].duration_ms}
+    elif may_reword and _rewordable(step, gen):
+        step.input = {**step.input, "_reword": {"prompt": step.input["prompt"],
+                                                "reason": gen.error_message or "the provider refused the prompt"}}
+        return True
     elif gen.status in (GenStatus.failed, GenStatus.canceled):
         step.status = StepStatus.failed
         step.error = gen.error_message or f"the take was {gen.status.value}"
     else:
-        return
+        return False
     step.finished_at = _now()
+    return False
 
 
 async def _start_generate(session: AsyncSession, run: PipelineRun, step: PipelineStep, fx: Effects) -> None:
@@ -198,7 +215,9 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
 
     for st in steps.values():
         if st.kind == StepKind.generate and st.status == StepStatus.running and st.generation_id:
-            await _sync_generation(session, st)
+            # a refused take waiting for its rewording is (re)queued: the step task locks it and runs it once
+            if "_reword" in st.input or await _sync_generation(session, st, may_reword=True):
+                fx.steps.append(st.id)
 
     specs = recipe.plan(inp, settled_outputs(steps), reg)
     wanted: set[str] = set()
@@ -270,7 +289,11 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
 
 
 async def execute_step(session: AsyncSession, step: PipelineStep, run: PipelineRun) -> list[uuid.UUID]:
-    """Run one local/llm step in place. Returns assets that need derivatives. Caller commits."""
+    """Run one local/llm step in place (or reword a refused take's prompt). Returns assets that need derivatives.
+    Caller commits."""
+    if step.kind == StepKind.generate:
+        await _reword(session, step, run)
+        return []
     ops = {StepKind.local: LOCAL_OPS, StepKind.llm: LLM_OPS}.get(step.kind, {})
     op = ops.get(step.input.get("op", ""))
     try:
@@ -289,6 +312,22 @@ async def execute_step(session: AsyncSession, step: PipelineStep, run: PipelineR
         return derive
     step.finished_at = _now()
     return []
+
+
+async def _reword(session: AsyncSession, step: PipelineStep, run: PipelineRun) -> None:
+    """Ask Claude for a gentler prompt and put the step back in line with it. Its input hash stays the recipe's, so
+    the plan keeps it; a real change to its input replaces the reworded prompt with the new one."""
+    ask = step.input.get("_reword") or {}
+    rest = {k: v for k, v in step.input.items() if k != "_reword"}
+    try:
+        new = await reword(session, run, ask.get("prompt", ""), ask.get("reason", ""))
+    except StepFailed as exc:
+        step.input = {**rest, "_reworded": {"from": ask.get("prompt"), "failed": str(exc)}}
+        step.status, step.finished_at = StepStatus.failed, _now()
+        step.error = f"{ask.get('reason') or 'refused'} (a reworded try wasn't possible: {exc})"[:2000]
+        return
+    step.input = {**rest, "prompt": new.prompt, "_reworded": {"from": ask.get("prompt"), "why": new.changed}}
+    step.status, step.generation_id, step.error = StepStatus.pending, None, None
 
 
 async def cancel_run(session: AsyncSession, run: PipelineRun, fx: Effects) -> None:

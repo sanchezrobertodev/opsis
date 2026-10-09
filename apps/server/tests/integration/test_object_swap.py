@@ -130,7 +130,7 @@ async def test_swap_validation(client):
 async def test_a_run_where_every_model_fails_is_a_failed_run(client, in_memory_queue):
     video, mask = await selected_object(client, in_memory_queue)
     run = await start(client, "object_swap", video_asset_id=video["id"], mask_asset_id=mask["id"], points=CLICK,
-                      prompt="Make it gold [[mock:fail=moderation]]",
+                      prompt="Make it gold [[mock:fail=invalid_request]]",
                       models=[{"model_id": "kling-o3-edit"}, {"model_id": "runway-aleph-2"}])
     await drain(in_memory_queue)
     done = await get(client, run["id"])

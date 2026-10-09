@@ -118,6 +118,11 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   (script -> approve -> block plan -> narration + stills or clips -> music -> assembly -> captions -> thumbnail),
   `object_swap` (track a SAM mask -> edit with 1-3 models -> composite through the matte -> pick), and
   `talking_shot` (a picture or clip + script -> TTS -> lipsync on 1-3 models -> pick; or recorded speech).
+- A generate step whose take the provider refuses on content grounds (`error_code` moderation) gets one more try:
+  the engine holds it, Claude (Sonnet) rewords the prompt in the step task keeping its meaning and @mentions
+  (`llm_ops.reword`; the mock drops its `[[mock:fail=...]]` tags), and the step starts again. The step keeps its input
+  hash, so the plan keeps it; `_reworded` records the original. A second refusal, or a prompt Claude keeps as it was,
+  fails the step as before (optional ones still fall back).
 - Claude steps are `llm` steps whose `op` is in `pipelines/llm_ops.py`; they run in `pipeline.step` like local ops.
   Generate-step outputs include `duration_ms`, so a recipe can size what follows (a clip as long as its narration).
 - A `PlannedJob` can name inputs that already exist (`media=((role, asset_id), ...)`), so the run estimate prices
