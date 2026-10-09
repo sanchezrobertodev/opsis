@@ -277,6 +277,9 @@ def _mock_plan(script: str, fmt: Format) -> BlockPlan:
 
 SECONDS_PER_LINE = 4.0  # one sung line at a sing-along tempo
 SECTION_PAD_S = 2.0  # a bar of music into each section
+MAX_SECTIONS = 12  # the `sections` param's limit on Eleven Music
+LINES_PER_SECTION = 4  # what a song's sections average
+MAX_SONG_S = 300  # Eleven Music's `duration` limit in the registry
 
 
 class SongSection(BaseModel):
@@ -295,7 +298,8 @@ class Song(BaseModel):
 
 SONG_SYSTEM = """You write short songs for a children's video channel: the lyrics are sung over illustrated pictures.
 
-Write a song with verses and a repeated chorus (repeat the chorus section in full each time it comes back). Lines
+Write a song with verses and a repeated chorus (repeat the chorus section in full each time it comes back), in at
+most 12 sections. Lines
 are short, rhythmic and singable, with simple rhymes and words a 5 to 9 year old knows. Warm, playful, nothing
 scary or sad, and one clear idea or fact the child takes away. Hit the target length closely: each line takes about
 four seconds to sing.
@@ -305,6 +309,20 @@ no text, letters or numbers in the picture. Keep recurring characters looking th
 comma-separated styles (genre, instruments, voice, tempo) and `world` one sentence pinning the pictures' look."""
 
 
+def song_lines(minutes: float) -> int:
+    """About how many sung lines fill `minutes`, counting each section's bar in, within the longest song."""
+    seconds = min(minutes * 60, MAX_SONG_S)
+    return max(6, int(seconds / (SECONDS_PER_LINE + SECTION_PAD_S / LINES_PER_SECTION)))
+
+
+def fit_song(seconds: list[float], limit: float) -> list[float]:
+    """Section lengths that fit within the model's longest song: sung a little faster, never under 3 s each."""
+    total = sum(seconds)
+    if total <= limit:
+        return seconds
+    return [max(3.0, int(s * limit / total * 10) / 10) for s in seconds]
+
+
 def section_seconds(lines: list[str]) -> float:
     """How long a section is sung for: a bar in, then about four seconds a line (3 to 60 s)."""
     return round(min(60.0, max(3.0, SECTION_PAD_S + SECONDS_PER_LINE * len(lines))), 1)
@@ -312,7 +330,7 @@ def section_seconds(lines: list[str]) -> float:
 
 async def write_song(session: AsyncSession, user_id: uuid.UUID, *, topic: str, theme: Theme, minutes: float,
                      language: str = "English", notes: str = "") -> LLMResult[Song]:
-    lines = max(6, round(minutes * 60 / SECONDS_PER_LINE))
+    lines = song_lines(minutes)
     prompt = "\n".join(line for line in [
         f"Topic: {topic}",
         f"Theme guidance: {theme.script_guidance}",
@@ -325,7 +343,7 @@ async def write_song(session: AsyncSession, user_id: uuid.UUID, *, topic: str, t
         session, user_id, purpose="faceless.song", model=get_settings().llm_smart_model, system=SONG_SYSTEM,
         prompt=prompt, output=Song, mock=lambda: _mock_song(topic), effort="medium", max_tokens=8000)
     song = result.output
-    song.sections = [s for s in song.sections if any(x.strip() for x in s.lines)][:12]
+    song.sections = [s for s in song.sections if any(x.strip() for x in s.lines)][:MAX_SECTIONS]
     if not song.sections:
         raise LLMError("Claude wrote a song without lyrics")
     return result
@@ -341,7 +359,7 @@ def song_from_text(text: str, title: str) -> Song:
             name, lines = m.group(1), lines[1:]
         if lines:
             sections.append(SongSection(name=name[:100], lines=lines[:30], picture=" ".join(lines)[:300]))
-    return Song(title=title, music="", world="", sections=sections[:12])
+    return Song(title=title, music="", world="", sections=sections[:MAX_SECTIONS])
 
 
 def song_text(song: Song) -> str:

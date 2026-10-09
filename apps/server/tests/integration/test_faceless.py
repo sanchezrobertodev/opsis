@@ -214,3 +214,16 @@ async def test_my_own_lyrics_make_the_sections():
         ("Verse 1", ["Twinkle little star", "How I wonder what you are"]), ("Chorus", ["Shine, shine", "All night"])]
     assert section_seconds(song.sections[0].lines) == 10.0 and section_seconds([]) == 3.0
     assert song_text(song).startswith("[Verse 1]\nTwinkle little star")
+
+
+async def test_the_longest_song_stays_within_the_music_models_limits(client):
+    from studio.faceless.writer import fit_song, song_lines
+
+    r = await client.post("/pipelines/estimate", json={"recipe": "faceless", "input": {
+        "topic": "the moon", "theme": "kids", "format": "song", "minutes": 5, "thumbnail": False}})
+    assert r.status_code == 200, r.text
+    assert r.json()["generations"] == 13  # 12 pictures (the most sections) and the song
+    assert song_lines(5) == 66 and song_lines(0.5) == 6
+    fitted = fit_song([60.0] * 6, 300)
+    assert sum(fitted) <= 300 and fitted == [50.0] * 6
+    assert fit_song([10.0, 20.0], 300) == [10.0, 20.0]

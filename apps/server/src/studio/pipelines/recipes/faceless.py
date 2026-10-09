@@ -25,13 +25,17 @@ from pydantic import BaseModel, Field
 from studio.db.models import StepKind
 from studio.faceless.catalog import get_catalog
 from studio.faceless.writer import (
-    SECONDS_PER_LINE,
+    LINES_PER_SECTION,
+    MAX_SECTIONS,
+    MAX_SONG_S,
     SECTION_PAD_S,
     WORDS_PER_MINUTE,
     Song,
     block_seconds,
+    fit_song,
     section_seconds,
     song_from_text,
+    song_lines,
 )
 from studio.media.assemble import GAP_S
 from studio.media.speech import CHARS_PER_SECOND
@@ -177,16 +181,23 @@ class FacelessRecipe(Recipe):
         if inp.script and inp.script.strip():
             sections = [list(sec.lines) for sec in song_from_text(inp.script, "").sections]
         else:
-            lines = max(6, round(inp.minutes * 60 / SECONDS_PER_LINE))
-            sections = [["la"] * 4 for _ in range(max(1, math.ceil(lines / 4)))]
+            lines = song_lines(inp.minutes)
+            n = min(MAX_SECTIONS, max(1, math.ceil(lines / LINES_PER_SECTION)))
+            sections = [["la"] * (lines // n + (i < lines % n)) for i in range(n)]
         image, music = reg.models[inp.image_model], reg.models[inp.music_model]
+        seconds = self._song_seconds(sections, reg, inp)
         out = [PlannedJob(image.id, text_mode(image).id, self._image_params(inp, reg)) for _ in sections]
         out.append(PlannedJob(music.id, mode_with_op(music, "song").id, {"sections": [
-            {"name": f"Part {i}", "lines": lines, "duration": section_seconds(lines)}
-            for i, lines in enumerate(sections, 1)]}))
+            {"name": f"Part {i}", "lines": lines, "duration": d}
+            for i, (lines, d) in enumerate(zip(sections, seconds, strict=True), 1)]}))
         if inp.thumbnail:
             out.append(PlannedJob(image.id, text_mode(image).id, self._thumb_params(inp, reg)))
         return out
+
+    def _song_seconds(self, sections: list[list[str]], reg: Registry, inp: FacelessInput) -> list[float]:
+        """Each section's length, fitted within the longest song the music model makes."""
+        limit = getattr(reg.models[inp.music_model].param("duration"), "max", None) or MAX_SONG_S
+        return fit_song([section_seconds(lines) for lines in sections], float(limit))
 
     # ---------------------------------------------------------------- params per model
 
@@ -327,7 +338,7 @@ class FacelessRecipe(Recipe):
         image_spec, music_spec = reg.models[inp.image_model], reg.models[inp.music_model]
         t2i, sing = text_mode(image_spec), mode_with_op(music_spec, "song")
         assert t2i is not None and sing is not None
-        seconds = [section_seconds(s.lines) for s in song.sections]
+        seconds = self._song_seconds([s.lines for s in song.sections], reg, inp)
         specs = [StepSpec(still_key(i), StepKind.generate, f"Picture {i}: {sec.name}", {
             "model_id": image_spec.id, "mode": t2i.id, "params": self._image_params(inp, reg), "media": [],
             "prompt": visual_prompt(sec.picture, [], song.world, style.prompt)}, after)
