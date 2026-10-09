@@ -1,6 +1,8 @@
 # yaml-language-server: $schema=../../schema/model.schema.json
 # Field names verified 2026-10-09 against fal's OpenAPI (fal-ai/meshy/rigging). Price: fal's pricing API reports
-# $0.80 a request while the model page says $0.20 (+$0.12 with a clip); the higher is kept until a bill settles it.
+# $0.80 a request, but fal billed a rig $0.20 on 2026-10-09 (billing events), as the model page says; the page's
+# +$0.12 for a library clip isn't billed yet. Rigging needs a recognisable humanoid: a plain clay figure is refused
+# at pose estimation (422, unbilled).
 # Clip ids are from Meshy's animation library (docs.meshy.ai/en/api/animation-library, 697 clips); a few useful ones
 # are offered by name.
 id: meshy-rigging
@@ -50,10 +52,10 @@ routes:
         animation_action_id: animation_action_id
       media: {input_model: model_url}
     pricing:
-      basis: per_request
-      rates: [{usd: 0.80}]
+      basis: formula
+      formula: "0.20 + (0.12 if enable_animation else 0)"
       verified: 2026-10-09
-      source: "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai/meshy/rigging ($0.80 a generation)"
+      source: "fal billing events 2026-10-09 ($0.20 a rig); https://fal.ai/models/fal-ai/meshy/rigging (+$0.12 a clip)"
     timeout_s: 1800
     output:
       path: rigged_character_glb.url
@@ -70,9 +72,9 @@ examples:
     params: {height_meters: 1.7}
     media: {input_model: "a character GLB from image-to-3D"}
     smoke: true
-    expect: {cost_usd_range: [0.8, 0.8]}
+    expect: {cost_usd_range: [0.2, 0.2]}
   - name: rig_with_a_clip
     mode: rig
     params: {enable_animation: true, animation_action_id: 28}
     media: {input_model: "a character GLB from image-to-3D"}
-    expect: {cost_usd_range: [0.8, 0.8]}
+    expect: {cost_usd_range: [0.32, 0.32]}

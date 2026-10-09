@@ -24,7 +24,7 @@ function useClipSources(model: Asset | undefined) {
       queryKey: ["glb-clips", mediaUrl(a.url)],
       queryFn: async (): Promise<GlbClip[]> => {
         const gltf = await new GLTFLoader().loadAsync(mediaUrl(a.url) ?? a.url);
-        return gltf.animations.map((c) => ({ name: c.name || "Clip", seconds: Math.round(c.duration * 100) / 100 }));
+        return gltf.animations.map((c) => ({ name: c.name, seconds: Math.round(c.duration * 100) / 100 }));
       },
       staleTime: Infinity,
     })),
@@ -32,9 +32,15 @@ function useClipSources(model: Asset | undefined) {
   const loading = clips.some((q) => q.isLoading);
   const options = sources.flatMap((a, i) => (clips[i]?.data ?? []).map((c) => {
     const from = a.id === model?.id ? "" : `${SOURCE_LABEL[String(a.metadata?.clip_source ?? "")] ?? a.title ?? "Clip"}: `;
-    return { value: JSON.stringify([a.id, c.name]), label: `${from}${c.name} (${c.seconds} s)` };
+    return { value: JSON.stringify([a.id, c.name]), label: `${from}${clipLabel(c.name)} (${c.seconds} s)` };
   }));
   return { options, loading };
+}
+
+/** Blender exports name clips "Armature|walking_man|baselayer": the action's own name is the middle part. */
+function clipLabel(name: string): string {
+  const parts = name.split("|");
+  return (parts.length === 3 ? parts[1] : name).replaceAll("_", " ") || "Clip";
 }
 
 /** A model's clip on the timeline, or a way to rig it when it has none. */
@@ -71,7 +77,13 @@ export function AnimationEditor({ o }: { o: SceneObject }) {
           <Field label="From" hint="Seconds into the clip it begins at.">
             <Slider value={a.offset} min={0} max={10} step={0.1} format={(v) => `${v.toFixed(1)} s`} onChange={(offset) => set({ offset })} />
           </Field>
-          <Switch label="Loop" checked={a.loop} onChange={(loop) => set({ loop })} />
+          <label className="flex items-center justify-between gap-4 text-sm">
+            <span>
+              Loop
+              <span className="block text-2xs text-faint">Off: it holds its last pose once it ends.</span>
+            </span>
+            <Switch label="Loop" checked={a.loop} onChange={(loop) => set({ loop })} />
+          </label>
         </>
       )}
     </div>

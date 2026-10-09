@@ -19,11 +19,24 @@ export const FRAME_SIZE: Record<SceneDoc["settings"]["aspect_ratio"], [number, n
 };
 const BATCH = 12;
 
-/** Linear depth in view space, white at the near plane and black at the far one (what depth-guided models expect). */
+/**
+ * Linear depth in view space, white at the near plane and black at the far one (what depth-guided models expect).
+ * three.js's skinning chunks pose rigged models as the picture shows them (they're empty for other meshes).
+ */
 function depthMaterial() {
   return new THREE.ShaderMaterial({
     uniforms: { uNear: { value: 0.1 }, uFar: { value: 50 } },
-    vertexShader: "varying float vDepth; void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vDepth = -mv.z; gl_Position = projectionMatrix * mv; }",
+    vertexShader: `#include <common>
+#include <skinning_pars_vertex>
+varying float vDepth;
+void main() {
+  #include <skinbase_vertex>
+  #include <begin_vertex>
+  #include <skinning_vertex>
+  vec4 mv = modelViewMatrix * vec4(transformed, 1.0);
+  vDepth = -mv.z;
+  gl_Position = projectionMatrix * mv;
+}`,
     fragmentShader: "uniform float uNear; uniform float uFar; varying float vDepth; void main() { float d = clamp((vDepth - uNear) / (uFar - uNear), 0.0, 1.0); gl_FragColor = vec4(vec3(1.0 - d), 1.0); }",
   });
 }

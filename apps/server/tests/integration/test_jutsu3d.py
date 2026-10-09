@@ -239,7 +239,7 @@ async def test_rigging_keeps_the_rig_and_its_clips_and_a_scene_only_borrows_its_
     assert r.status_code == 201, r.text
     out = await create(client, model_id="meshy-rigging", mode="rig", params={"height_meters": 1.8},
                        media=[{"role": "input_model", "asset_id": r.json()["id"]}])
-    assert out["routing"]["live_reference"]["estimate_usd"] == pytest.approx(0.80)
+    assert out["routing"]["live_reference"]["estimate_usd"] == pytest.approx(0.20)
     gen = await drive(uuid.UUID(out["id"]))
     assert gen.status.value == "succeeded", gen.error_message
     assets = (await client.get(f"/generations/{out['id']}")).json()["assets"]

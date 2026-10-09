@@ -2,7 +2,7 @@
 
 import { useGLTF } from "@react-three/drei";
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
-import { forwardRef, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { forwardRef, Suspense, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { clone as cloneRigged } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { mediaUrl } from "@/lib/api";
@@ -71,18 +71,25 @@ function Animated({ url, clipUrl, animation, time }: { url: string; clipUrl: str
   const copy = useCopy(url, true);
   const { animations } = useGLTF(clipUrl);
   const clip = animations.find((a) => a.name === animation.clip) ?? null;
-  const mixer = useMemo(() => new THREE.AnimationMixer(copy), [copy]);
-  const action = useMemo(() => {
-    if (!clip) return null;
-    return paused(mixer.clipAction(clip)); // the timeline sets its time
-  }, [mixer, clip]);
-  useEffect(() => () => { mixer.stopAllAction(); mixer.uncacheRoot(copy); }, [mixer, copy]);
-  // a clip that's switched away from stops before the new one poses the rig, so the two never blend
-  useLayoutEffect(() => () => { if (action) retire(mixer, action); }, [mixer, action]);
+  // One effect owns the mixer, from making it to throwing it away, so a remount (or a hot reload) makes a fresh one
+  // and a clip that's switched away from stops, the rig back at rest, before the new one poses it: the two never blend.
+  // It's declared before the effect that poses.
+  const rig = useRef<Rig | null>(null);
+  useLayoutEffect(() => {
+    if (!clip) return;
+    const mixer = new THREE.AnimationMixer(copy);
+    rig.current = { mixer, action: paused(mixer.clipAction(clip)), clip }; // the timeline sets its time
+    return () => {
+      mixer.stopAllAction();
+      mixer.uncacheRoot(copy);
+      rig.current = null;
+    };
+  }, [copy, clip]);
   const seek = useCallback((t: number | null) => {
-    if (action && clip) pose(mixer, action, clipTime(animation, t ?? 0, clip.duration));
-  }, [action, clip, mixer, animation]);
-  useLayoutEffect(() => { seek(time); mark(copy, { at: time }); }, [seek, time, copy]);
+    const r = rig.current;
+    if (r) pose(r.mixer, r.action, clipTime(animation, t ?? 0, r.clip.duration));
+  }, [animation]);
+  useLayoutEffect(() => { seek(time); mark(copy, { at: time }); }, [seek, time, copy, clip]);
   useLayoutEffect(() => {
     mark(copy, { seek });
     return () => mark(copy, { seek: undefined });
@@ -100,6 +107,8 @@ function mark(node: THREE.Object3D, data: Record<string, unknown>) {
   Object.assign(node.userData, data);
 }
 
+type Rig = { mixer: THREE.AnimationMixer; action: THREE.AnimationAction; clip: THREE.AnimationClip };
+
 function paused(action: THREE.AnimationAction): THREE.AnimationAction {
   // the timeline loops a clip itself (clipTime); left repeating, three.js would wrap its last frame to its first
   action.setLoop(THREE.LoopOnce, 1);
@@ -107,11 +116,6 @@ function paused(action: THREE.AnimationAction): THREE.AnimationAction {
   action.play();
   action.paused = true;
   return action;
-}
-
-function retire(mixer: THREE.AnimationMixer, action: THREE.AnimationAction) {
-  action.stop();
-  mixer.uncacheAction(action.getClip());
 }
 
 /**
