@@ -15,7 +15,17 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.cinema.document import CinemaDocument, Scene, Shot, ShotLine
-from studio.cinema.planner import MAX_SHOTS, PlannedScene, PlannedShot, ShotPlan, _vocabulary, to_scenes
+from studio.cinema.planner import (
+    MAX_SHOTS,
+    NO_CAST,
+    PlannedEmotion,
+    PlannedLine,
+    PlannedScene,
+    PlannedShot,
+    ShotPlan,
+    _vocabulary,
+    to_scenes,
+)
 from studio.config import get_settings
 from studio.director.compiler import MoveChoice
 from studio.director.library import DirectorLibrary, get_library
@@ -56,6 +66,59 @@ class DirectorReply(BaseModel):
                                                                         "you are only answering or asking")
 
 
+# What Claude fills in. The API compiles the output schema into a grammar, and nullable nested objects plus many
+# optional fields make it "too complex": so every field is required and nothing is nullable ("" and 0 stand for
+# "none"), and one `shots` list carries the single shot of update_shot/add_shot as well as add_scene's shots.
+class WireShot(BaseModel):
+    action: str = Field(description=PlannedShot.model_fields["action"].description)
+    shot_size: str = Field(description="A shot size id from the list, or \"\" when none fits")
+    angle: str = Field(description="An angle id from the list, or \"\" when none fits")
+    camera_moves: list[str] = Field(description="Up to two camera move ids from the list")
+    duration: int = Field(description="Seconds, 3 to 10; 0 leaves a shot's length as it is (a new shot gets the "
+                                      "model's default)")
+    continuity: Literal["cut", "continue"] = Field(description=PlannedShot.model_fields["continuity"].description)
+    lines: list[PlannedLine] = Field(description="Lines spoken in this shot, in order")
+    emotions: list[PlannedEmotion] = Field(description="How each cast member in the shot feels, when it matters")
+
+
+class WireEdit(BaseModel):
+    op: Literal["update_shot", "add_shot", "remove_shot", "move_shot", "update_scene", "add_scene", "remove_scene"]
+    shot_id: str = Field(description="The shot to update, remove or move; \"\" otherwise")
+    scene_id: str = Field(description="The scene to update or remove, or where add_shot/move_shot puts the shot; "
+                                      "\"\" otherwise")
+    after_id: str = Field(description="add_shot/move_shot: the shot it goes after (\"\": the scene's start). "
+                                      "add_scene: the scene it goes after (\"\": the start)")
+    heading: str = Field(description="update_scene/add_scene: the heading as it should read now (\"\" for none); "
+                                     "\"\" for the other edits")
+    summary: str = Field(description="update_scene/add_scene: the summary as it should read now (\"\" for none); "
+                                     "\"\" for the other edits")
+    shots: list[WireShot] = Field(description="update_shot: the whole shot as it should read now; add_shot: the new "
+                                              "shot; add_scene: its shots; empty for the other edits")
+
+
+class WireReply(BaseModel):
+    reply: str = Field(description=DirectorReply.model_fields["reply"].description)
+    edits: list[WireEdit] = Field(description=DirectorReply.model_fields["edits"].description)
+
+
+def _from_wire(w: WireReply) -> DirectorReply:
+    def shot(x: WireShot) -> DirectorShot:
+        return DirectorShot(**x.model_dump(exclude={"shot_size", "angle", "duration"}), shot_size=x.shot_size or None,
+                            angle=x.angle or None, duration=x.duration or None)
+
+    edits = []
+    for e in w.edits:
+        one = e.op in ("update_shot", "add_shot")
+        scene_text = e.op in ("update_scene", "add_scene")
+        edits.append(DirectorEdit(
+            op=e.op, shot_id=e.shot_id or None, scene_id=e.scene_id or None, after_id=e.after_id or None,
+            # update_scene restates both, so "" there clears one; the other edits don't use them
+            heading=e.heading if scene_text else None, summary=e.summary if scene_text else None,
+            shot=shot(e.shots[0]) if one and e.shots else None,
+            shots=[shot(x) for x in e.shots] if e.op == "add_scene" else []))
+    return DirectorReply(reply=w.reply, edits=edits)
+
+
 class Turn(BaseModel):
     role: Literal["user", "director"]
     text: str = Field(max_length=4000)
@@ -65,10 +128,11 @@ SYSTEM = """You are the film's director, revising its storyboard with the user i
 
 The storyboard is listed with scene and shot ids. Answer each message with a short reply and the edits that carry
 it out, and change only what the user asked for (plus what a change forces, like continuity after a removed shot).
-- update_shot restates the whole shot as it should read; keep the parts you aren't changing as they are.
+- update_shot restates the whole shot as it should read (as the one item in `shots`), and update_scene the
+  scene's heading and summary; keep the parts you aren't changing as they are.
 - Each shot is one continuous camera setup of 3 to 10 seconds. Describe only what the camera sees, name cast
   members by their @handle and don't describe their looks.
-- Pick shot sizes, angles, camera moves and emotions from the id lists; use null or [] when nothing fits.
+- Pick shot sizes, angles, camera moves and emotions from the id lists; use "" or [] when nothing fits.
 - continuity "continue" only when a shot starts exactly where the previous one ends; otherwise "cut".
 - Refer to shots by number in your reply ("shot 4"), never by id.
 If the request is unclear or asks for something a storyboard can't hold, ask instead and return no edits."""
@@ -102,7 +166,7 @@ async def revise(session: AsyncSession, user_id: uuid.UUID, *, doc: CinemaDocume
     talk = "\n".join(turns)
     prompt = "\n".join(part for part in [
         f"Logline: {doc.logline}" if doc.logline else "",
-        "Cast (use these handles): " + "; ".join(f"@{slug}: {desc}" for slug, desc in cast) if cast else "",
+        "Cast (use these handles): " + "; ".join(f"@{slug}: {desc}" for slug, desc in cast) if cast else NO_CAST,
         _vocabulary(lib),
         f"\nStoryboard:\n{_storyboard(doc)}",
         f"\nThe conversation so far:\n{talk}" if talk else "",
@@ -111,9 +175,11 @@ async def revise(session: AsyncSession, user_id: uuid.UUID, *, doc: CinemaDocume
     if len(prompt) > MAX_PROMPT_CHARS:
         raise DirectorTooLong("this storyboard is too long for the director to read in one go; shorten some shots' "
                               "actions or lines")
-    result = await structured(
+    wire = await structured(
         session, user_id, purpose="cinema.director", model=get_settings().llm_smart_model, system=SYSTEM,
-        prompt=prompt, output=DirectorReply, mock=lambda: mock_reply(doc, message), effort="medium", max_tokens=12000)
+        prompt=prompt, output=WireReply, mock=lambda: mock_reply(doc, message), effort="medium", max_tokens=12000)
+    output = wire.output if isinstance(wire.output, DirectorReply) else _from_wire(wire.output)
+    result = LLMResult(output=output, model=wire.model, mock=wire.mock, cost_usd=wire.cost_usd, usage=wire.usage)
     scenes, warnings = apply_edits(doc.scenes, result.output.edits, lib)
     return result, scenes, warnings
 

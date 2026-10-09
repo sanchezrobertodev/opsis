@@ -63,3 +63,19 @@ def test_examples_normalize_price_and_map(spec, example):
 def test_every_model_has_a_smoke_example():
     missing = [m.id for m in REG.models.values() if not any(e.smoke for e in m.examples)]
     assert not missing, f"models without a smoke example: {missing}"
+
+
+def test_every_choice_a_model_offers_has_a_route_that_takes_it():
+    """A choice no route accepts can only fail with "no route can run" (Kling 3.0 listed 720p; its route renders
+    1080p only), so the model must not offer it."""
+    unroutable = []
+    for spec in REG.models.values():
+        routes = [r for r in spec.routes if r.provider != MOCK_PROVIDER]
+        if not routes:
+            continue
+        for p in spec.parameters:
+            for option in getattr(p, "options", None) or []:
+                if not any("options" not in (rule := r.constraints.get(p.name, {}))
+                           or str(option) in map(str, rule["options"]) for r in routes):
+                    unroutable.append(f"{spec.id}.{p.name}={option}")
+    assert unroutable == []

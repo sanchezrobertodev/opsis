@@ -192,3 +192,32 @@ async def test_long_storyboards_and_histories_are_bounded(monkeypatch):
     monkeypatch.setattr(dc, "MAX_PROMPT_CHARS", 500)
     with pytest.raises(dc.DirectorTooLong):
         await dc.revise(None, None, doc=doc, message="hi", history=[], cast=[])
+
+
+def test_claudes_flat_reply_becomes_the_edits_the_storyboard_applies():
+    from studio.cinema.director_chat import WireEdit, WireReply, WireShot, _from_wire
+
+    shot = WireShot(action="Gulls.", shot_size="", angle="high", camera_moves=[], duration=0, continuity="cut",
+                    lines=[], emotions=[])
+    reply = _from_wire(WireReply(reply="ok", edits=[
+        WireEdit(op="update_shot", shot_id="sone", scene_id="", after_id="", heading="", summary="", shots=[shot]),
+        WireEdit(op="remove_shot", shot_id="stwo", scene_id="", after_id="", heading="", summary="", shots=[]),
+        WireEdit(op="add_scene", shot_id="", scene_id="", after_id="cdock", heading="EXT. PIER", summary="",
+                 shots=[shot, shot]),
+    ]))
+    update, remove, scene = reply.edits
+    assert update.shot.shot_size is None and update.shot.angle == "high" and update.shot.duration is None
+    assert update.scene_id is None and update.after_id is None and update.heading is None and update.shots == []
+    assert remove.shot is None and remove.shot_id == "stwo"
+    assert scene.shot is None and len(scene.shots) == 2 and scene.heading == "EXT. PIER" and scene.summary == ""
+
+
+def test_a_restated_scene_can_clear_its_heading():
+    from studio.cinema.director_chat import WireEdit, WireReply, _from_wire
+
+    reply = _from_wire(WireReply(reply="ok", edits=[WireEdit(op="update_scene", shot_id="", scene_id="cdock",
+                                                             after_id="", heading="", summary="Dawn at the dock.",
+                                                             shots=[])]))
+    scene = apply_edits(board(), reply.edits, LIB)[0][0]
+    assert board()[0].heading == "EXT. DOCK - DAWN"
+    assert scene.heading == "" and scene.summary == "Dawn at the dock."
