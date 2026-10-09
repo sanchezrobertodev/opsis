@@ -14,7 +14,7 @@ from studio.config import get_settings
 from studio.db.models import PipelineRun, PipelineStep
 from studio.director.elements import mentions
 from studio.faceless.catalog import get_catalog
-from studio.faceless.writer import plan_blocks, write_script
+from studio.faceless.writer import plan_blocks, song_text, write_script, write_song
 from studio.llm.client import LLMError, structured
 from studio.pipelines.ops import StepFailed
 from studio.providers.mock import strip_tags
@@ -55,6 +55,18 @@ async def faceless_plan(session: AsyncSession, run: PipelineRun, step: PipelineS
     plan = res.output
     return {"world": plan.world, "roster": [r.model_dump() for r in plan.roster],
             "blocks": [b.model_dump() for b in plan.blocks], "model": res.model, "cost_usd": float(res.cost_usd)}
+
+
+async def faceless_song(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    inp = step.input
+    theme = get_catalog().theme(inp["theme"])
+    if theme is None:
+        raise StepFailed(f"unknown theme {inp['theme']!r}")
+    res = await write_song(session, run.user_id, topic=inp["topic"], theme=theme, minutes=inp["minutes"],
+                           language=inp.get("language", "English"), notes=inp.get("notes", ""))
+    song = res.output
+    return {"title": song.title, "script": song_text(song), "song": song.model_dump(), "model": res.model,
+            "cost_usd": float(res.cost_usd)}
 
 
 class Reworded(BaseModel):
@@ -116,4 +128,5 @@ def _within(text: str, limit: int) -> str:
 LLM_OPS: dict[str, LLMOp] = {
     "faceless_script": _guarded(faceless_script),
     "faceless_plan": _guarded(faceless_plan),
+    "faceless_song": _guarded(faceless_song),
 }

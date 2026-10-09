@@ -252,8 +252,8 @@ P4 done (merged 2026-10-07, PR #2; mock-tested, nothing live yet): ElevenLabs TT
 SFX and music; Claude steps in the pipeline engine; the Faceless studio (4 themes, 12 styles with caption looks,
 channels, topic ideas, script approval and editing, narrated stills or animated clips, ducked music, burned-in
 captions plus SRT, thumbnail pick); and the Object swap studio (click to select on a frame with SAM 3, tracking, 1-3
-edit models compared, a composite that keeps every pixel outside the mask, removal). Not done: the Kids song mode
-(prompt rephrasing for refused takes landed 2026-10-09, for every recipe), and the VACE swap route (AMS-32, blocked on the VACE weights on
+edit models compared, a composite that keeps every pixel outside the mask, removal). The Kids song mode and prompt rephrasing for refused
+takes (every recipe) landed 2026-10-09. Not done: the VACE swap route (AMS-32, blocked on the VACE weights on
 wan-core, AMS-11). Remaining work is tracked in Jira project AMS.
 P5 merged (PR #3, mock-tested): versioned film projects with revisions, Claude shot
 plans, a storyboard with per-shot direction, hero-frame grids, batch takes with last-frame continuity (an edit redoes

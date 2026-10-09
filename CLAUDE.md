@@ -91,6 +91,10 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 - Lipsync models carry the `lipsync` op and take `input_audio`; picture-driven ones also carry `avatar` and take
   `character_image`, clip-driven ones take `input_video`. Price them on `input_audio_seconds`. The mock makes a clip
   as long as the given `input_audio`, playing it.
+- `type: sections` params are a song's lyrics (`[{name, lines, duration}]`, mode op `song`): each section's lines are
+  sung over its seconds and the song is as long as its sections together (it sets `duration`). Eleven Music's `song`
+  mode parks them as `_song`; `transforms/music.py:song_plan` sends them as the composition plan (music_v1 sections,
+  the prompt as global styles) and drops the prompt and length, which a plan can't take.
 - `prompt.dialogue: true` marks models that speak lines written in their prompt (Veo 3.1, Seedance 2.5, Kling 3.0);
   the director writes `direction.dialogue` into their prompt dialect and warns on other models.
 
@@ -217,6 +221,11 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 - Assembly is `media/assemble.py` (Ken Burns stills, clips fitted to their narration, ducked music, -14 LUFS) and
   captions `media/captions.py` (cues from word timings, SRT + ASS burned in with libass). ffmpeg 5's scheduler
   deadlocks on concat -> asplit -> sidechaincompress in one graph, so the voice track is rendered to a WAV first.
+- The Kids song mode is Faceless `format: song` (offered for the Kids theme): Claude writes lyrics in sections, each
+  with a picture (`writer.write_song`; or your own lyrics, a section per paragraph, `[Chorus]` names one), Eleven Music
+  sings them with fixed section lengths (about 4 s a line plus a bar in, `section_seconds`), `split_audio` cuts the
+  song at the sections, and `narrated_cut` plays each piece under its picture back to back (`gap_s: 0`). Captions
+  spread each section's lines after its bar of lead-in (`lead_in`), a line per caption; no narration, no score.
 - Object swap selects with SAM 3 on fal (`sam-3-image` clicks -> mask, `sam-3-video` tracks it); `media/swap.py`
   composites the edit over the original through the thresholded, grown and feathered matte.
 - The registry holder notices edited YAML in every process (stamps checked at most once a second), so the worker
