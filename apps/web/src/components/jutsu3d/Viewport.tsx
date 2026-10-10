@@ -99,6 +99,13 @@ function roomFor(gl: THREE.WebGLRenderer) {
  */
 function StudioRoom({ intensity }: { intensity: number }) {
   const gl = useThree((s) => s.gl);
+  const [, setRestored] = useState(0);
+  useEffect(() => {
+    // a lost context takes the room's pixels with it (a render target has none to upload again): draw it anew
+    const redraw = () => { rooms.delete(gl); setRestored((n) => n + 1); };
+    gl.domElement.addEventListener("webglcontextrestored", redraw);
+    return () => gl.domElement.removeEventListener("webglcontextrestored", redraw);
+  }, [gl]);
   return <Environment map={roomFor(gl)} environmentIntensity={intensity} />;
 }
 
