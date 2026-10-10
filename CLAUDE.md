@@ -309,6 +309,11 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   frame. A model without clips can be rigged from its Animation panel: `meshy-rigging` (op `rig`, role
   `input_model`; Meshy 7.1 can rig while it generates) returns the rigged GLB plus walking, running and an optional
   library clip, each a `model3d` extra tagged `metadata.clip_source`; the rigged GLB replaces the object's model.
+- Scenes are lit by a studio room generated in the browser (`lib/room.ts`, three.js `RoomEnvironment`; strength
+  `settings.environment`, "Room light", default 0.4), so the metal of GLBs from picture-to-3D services reflects it
+  instead of going black; it lights and never shows, and data passes don't see it. GLB library pictures use it too:
+  Library > 3D models > Redraw pictures draws them all again (a collision mesh keeps a picture it has). A posted
+  thumbnail gets a new file name each time, since `/media` is cached as immutable per key.
 - Splats render with Spark (`components/three/Splat.tsx`): one `SparkLayer` per canvas, worlds flipped from OpenCV
   axes, `spark.update()` before each captured frame; data passes hide splats and draw the collision mesh instead.
 - `worldlabs` (Marble, `WORLDLABS_API_KEY`): submit returns an operation, polled until `done`; it can't be canceled.

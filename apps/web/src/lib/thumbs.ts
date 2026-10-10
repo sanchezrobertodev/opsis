@@ -47,14 +47,15 @@ export async function modelThumbnail(url: string): Promise<Blob> {
 
 /**
  * Draws every GLB's library picture again (with today's lighting), and the missing ones. A world's collision mesh
- * keeps the picture its world gave it. A model that won't load is counted and skipped.
+ * keeps a picture its world gave it, but one with none (Marble's never come with one) gets drawn like any model. A
+ * model that won't load is counted and skipped.
  */
 export async function redrawModelThumbnails(onProgress: (done: number, total: number) => void) {
   const models: Asset[] = [];
   let cursor: string | undefined;
   do {
     const page = await unwrap(api.GET("/assets", { params: { query: { kind: "model3d", limit: 200, cursor } } }));
-    models.push(...page.items.filter((a) => a.metadata?.part !== "collider"));
+    models.push(...page.items.filter((a) => a.metadata?.part !== "collider" || !a.thumb_url));
     cursor = page.next_cursor ?? undefined;
   } while (cursor);
   let failed = 0;
