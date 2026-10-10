@@ -119,6 +119,11 @@ async def test_a_reference_mode_falls_back_to_text_while_the_mentioned_have_no_p
     # without a mention there's nothing to fall back for: the missing input is still an error
     r = await client.post("/generations", json={"model_id": "nano-banana-2", "mode": "edit", "prompt": "a beach"})
     assert r.status_code == 422
+    # nor on a model whose reference slot is the user's own input, not the mentions' (Marble's views)
+    await make_element(client, "Dune Camp", kind="location", images=0)
+    r = await client.post("/generations", json={"model_id": "marble", "mode": "multi_image_to_world",
+                                                "prompt": "@dune-camp at dusk"})
+    assert r.status_code == 422, r.text
 
 
 async def test_unknown_mentions_are_left_alone(client):

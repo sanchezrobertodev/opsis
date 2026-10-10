@@ -191,6 +191,10 @@ def _text_mode_without_refs(spec: ModelSpec, mode_id: str, given: list[dict[str,
     """The model's text mode, when the mode asked for needs reference images only so @mentions can fill them and none
     of the mentioned has a picture yet (a character whose portrait is still being drawn): the mention is described in
     words either way, and the text mode can still make it. None when the mode should stand as asked."""
+    # Only where mentions are meant to fill the slot: on other models a reference slot is the user's own input
+    # (Marble's views), and switching to a text mode would make a different thing.
+    if (spec.elements or {}).get("strategy") != "refs_native":
+        return None
     mode = spec.mode(mode_id)
     role = (spec.elements or {}).get("ref_role", "image_references")
     slot = mode.slot(role) if mode else None
