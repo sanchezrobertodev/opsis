@@ -71,10 +71,10 @@ echo "==> restarting the API, worker and web app"
 systemctl --user restart ams-api.service ams-worker.service ams-web.service
 systemctl --user enable --now ams-backup.timer ams-schema-check.timer >/dev/null
 
-# HTTPS on the tailnet (tailnet only), set once
-serving="$(tailscale serve status 2>/dev/null || true)"
-grep -q ":$WEB_HTTPS" <<<"$serving" || tailscale serve --bg --https="$WEB_HTTPS" "http://127.0.0.1:$WEB_PORT" >/dev/null
-grep -q ":$API_HTTPS" <<<"$serving" || tailscale serve --bg --https="$API_HTTPS" "http://127.0.0.1:$API_PORT" >/dev/null
+# HTTPS on the tailnet (tailnet only). Set on every deploy: it replaces the port's mapping, so a changed local port
+# is picked up too.
+tailscale serve --bg --https="$WEB_HTTPS" "http://127.0.0.1:$WEB_PORT" >/dev/null
+tailscale serve --bg --https="$API_HTTPS" "http://127.0.0.1:$API_PORT" >/dev/null
 
 health="http://127.0.0.1:$API_PORT/health"
 echo -n "==> waiting for $health"
