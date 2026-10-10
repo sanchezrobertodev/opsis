@@ -66,9 +66,13 @@ AGGREGATES = {"input_video_seconds", "input_audio_seconds"}
 
 def media_variables(media: list[Any] | None) -> dict[str, float]:
     """Totals over input media, for routes that bill by input (video edits bill by input length):
-    `input_video_seconds`, `input_video_frames`, `input_audio_seconds`, `input_images`, and per role
-    `<role>_seconds` (e.g. `driving_video_seconds`) so a route can price one input and ignore another."""
-    out = {"input_video_seconds": 0.0, "input_video_frames": 0.0, "input_audio_seconds": 0.0, "input_images": 0.0}
+    `input_video_seconds`, `input_video_frames`, `input_audio_seconds`, `input_images`, per role
+    `<role>_seconds` (e.g. `driving_video_seconds`) so a route can price one input and ignore another, and
+    `input_video_aspect` (long side over short side of the first clip, 16:9 when unknown) for outputs that keep the
+    clip's shape at a set short side."""
+    out = {"input_video_seconds": 0.0, "input_video_frames": 0.0, "input_audio_seconds": 0.0, "input_images": 0.0,
+           "input_video_aspect": 16 / 9}
+    shaped = False
     for m in media or []:
         def get(name: str, m: Any = m) -> Any:
             return m.get(name) if isinstance(m, dict) else getattr(m, name, None)
@@ -76,6 +80,9 @@ def media_variables(media: list[Any] | None) -> dict[str, float]:
         kind, role = get("kind"), get("role")
         seconds = (get("duration_ms") or 0) / 1000
         if kind == "video":
+            w, h = get("width"), get("height")
+            if not shaped and w and h:
+                out["input_video_aspect"], shaped = max(w, h) / min(w, h), True
             out["input_video_seconds"] += seconds
             out["input_video_frames"] += seconds * float(get("fps") or DEFAULT_FPS)
         elif kind == "audio":

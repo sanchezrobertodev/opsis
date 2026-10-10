@@ -230,3 +230,16 @@ export function clipTime(a: Animation, t: number, length: number): number {
   const local = a.offset + Math.max(0, t - a.start) * a.speed;
   return a.loop ? local % length : Math.min(local, length);
 }
+
+/** LTX-2.3 render to real takes about 6 s at 720p or 15 s at 480p (at 24 fps; the budget is frames x size). */
+const REAL_FRAMES = { "720p": 145, "480p": 361 } as const;
+
+/** What render-to-real is asked for to cover a render of `seconds` at `fps`: 720p while it fits, else 480p, and as
+ *  many frames as the render has, up to that size's budget (LTX makes 8k+1 frames). `cut` is true when the render is
+ *  longer than the model can make. */
+export function realParams(seconds: number, fps: number) {
+  const want = Math.round(seconds * fps) + 1;
+  const resolution: keyof typeof REAL_FRAMES = want <= REAL_FRAMES["720p"] ? "720p" : "480p";
+  const frames = Math.max(9, Math.floor((Math.min(want, REAL_FRAMES[resolution]) - 1) / 8) * 8 + 1);
+  return { params: { resolution, num_frames: frames, frames_per_second: fps }, cut: want > REAL_FRAMES[resolution] };
+}

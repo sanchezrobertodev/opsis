@@ -7,6 +7,8 @@ takes those renders as inputs and never touches the scene document.
   next on a start+end-frame model, then cut together.
 - depth: the depth pass drives a depth-to-video model (Wan VACE depth), so the motion and shapes follow the
   blocking exactly. An optional still is redrawn first and used as the opening frame.
+- real: the picture pass is re-rendered as live action by a render-to-real model (LTX-2.3), keeping its framing and
+  motion; the same optional redrawn opening frame sets the look of frame 0.
 """
 
 from __future__ import annotations
@@ -31,6 +33,8 @@ from studio.registry.schema import Mode, ModelSpec
 
 EDGE = 1 / 24  # the frame two clips share where one ends on the frame the next starts from
 MAX_STILLS = 8
+# paths where a rendered pass of the whole timeline drives the model: (op, the role the pass goes in)
+DRIVEN = {"depth": ("depth_to_video", "control_video"), "real": ("render_to_real", "input_video")}
 
 
 class Still(BaseModel):
@@ -41,13 +45,15 @@ class Still(BaseModel):
 class Jutsu3dInput(BaseModel):
     project_id: uuid.UUID
     scene_version: int | None = None
-    path: Literal["angles", "depth"] = "angles"
+    path: Literal["angles", "depth", "real"] = "angles"
     prompt: str = Field(min_length=1, max_length=2000, description="What it should look like, with @mentions")
     direction: dict[str, Any] | None = None
-    model_id: str = Field(description="Angles: a video model that animates frames. Depth: a depth-to-video model.")
+    model_id: str = Field(description="Angles: a video model that animates frames. Depth: a depth-to-video model. "
+                                      "Real: a render-to-real model.")
     params: dict[str, Any] = {}
     stills: list[Still] = Field(default_factory=list, max_length=MAX_STILLS)
     depth_asset_id: uuid.UUID | None = None
+    render_asset_id: uuid.UUID | None = Field(None, description="Real: the rendered picture pass (a video)")
     image_model_id: str = Field("nano-banana-2", description="Redraws the blocking stills as finished frames")
     reference_asset_ids: list[uuid.UUID] = Field(default_factory=list, max_length=4)
 
@@ -57,9 +63,16 @@ class Jutsu3dInput(BaseModel):
             raise ValueError("the angles path needs at least one rendered still")
         if self.path == "depth" and self.depth_asset_id is None:
             raise ValueError("the depth path needs the rendered depth video")
-        if self.path == "depth" and len(self.stills) > 1:
-            raise ValueError("the depth path takes at most one still (the opening frame)")
+        if self.path == "real" and self.render_asset_id is None:
+            raise ValueError("the real path needs the rendered picture pass")
+        if self.path in DRIVEN and len(self.stills) > 1:
+            raise ValueError(f"the {self.path} path takes at most one still (the opening frame)")
         return self
+
+    @property
+    def driver(self) -> uuid.UUID | None:
+        """The rendered pass a driven path sends: the depth pass or the picture pass."""
+        return self.depth_asset_id if self.path == "depth" else self.render_asset_id
 
 
 def look_prompt(prompt: str) -> str:
@@ -76,9 +89,10 @@ def clip_key(i: int) -> str:
     return f"clip[{i:02d}]"
 
 
-def depth_mode(spec: ModelSpec) -> Mode | None:
-    mode = mode_with_op(spec, "depth_to_video")
-    return mode if mode is not None and mode.slot("control_video") else None
+def driven_mode(spec: ModelSpec, path: str) -> Mode | None:
+    op, role = DRIVEN[path]
+    mode = mode_with_op(spec, op)
+    return mode if mode is not None and mode.slot(role) else None
 
 
 class Jutsu3dRecipe(Recipe):
@@ -99,8 +113,8 @@ class Jutsu3dRecipe(Recipe):
         return image, mode, (image.elements or {}).get("ref_role", "image_references")
 
     def _video_mode(self, inp: Jutsu3dInput, spec: ModelSpec) -> Mode | None:
-        if inp.path == "depth":
-            return depth_mode(spec)
+        if inp.path in DRIVEN:
+            return driven_mode(spec, inp.path)
         return start_frame_mode(spec) if len(inp.stills) == 1 else bridge_mode(spec)
 
     def validate(self, inp: Jutsu3dInput, reg: Registry) -> list[str]:
@@ -111,6 +125,7 @@ class Jutsu3dRecipe(Recipe):
         elif self._video_mode(inp, spec) is None:
             errors.append({
                 "depth": f"{spec.name} can't follow a depth video; pick a depth-to-video model",
+                "real": f"{spec.name} can't re-render a 3D render; pick a render-to-real model",
                 "angles": f"{spec.name} can't start from a frame" if len(inp.stills) == 1 else
                 f"{spec.name} can't end on a chosen frame, so it can't move between angles; "
                 "pick a model with start and end frames",
@@ -149,10 +164,10 @@ class Jutsu3dRecipe(Recipe):
             image, img_mode, role = self._image(inp, reg)
             out += [PlannedJob(image.id, img_mode.id, self._look_params(inp, image, img_mode), (role,))
                     for _ in inp.stills]
-        if inp.path == "depth":
-            roles = ("control_video", *(["start_image"] if inp.stills and mode.slot("start_image") else []))
-            out.append(PlannedJob(spec.id, mode.id, dict(inp.params), roles,
-                                  media=(("control_video", str(inp.depth_asset_id)),)))
+        if inp.path in DRIVEN:
+            role = DRIVEN[inp.path][1]
+            roles = (role, *(["start_image"] if inp.stills and mode.slot("start_image") else []))
+            out.append(PlannedJob(spec.id, mode.id, dict(inp.params), roles, media=((role, str(inp.driver)),)))
         elif len(inp.stills) == 1:
             out.append(PlannedJob(spec.id, mode.id, self._clip_params(inp, spec, mode, None), ("start_image",)))
         else:
@@ -183,16 +198,17 @@ class Jutsu3dRecipe(Recipe):
         common = {"model_id": spec.id, "mode": mode.id, "prompt": inp.prompt, "direction": inp.direction,
                   "project_id": pid}
 
-        if inp.path == "depth":
+        if inp.path in DRIVEN:
             if inp.stills and frames[0] is None:
                 return specs
-            media = [{"role": "control_video", "asset_id": str(inp.depth_asset_id)}]
+            media = [{"role": DRIVEN[inp.path][1], "asset_id": str(inp.driver)}]
             if frames and frames[0] and mode.slot("start_image"):
                 media.append({"role": "start_image", "asset_id": frames[0]})
             refs = mode.slot("image_references")
             if refs and inp.reference_asset_ids:
                 media += [{"role": "image_references", "asset_id": str(a)} for a in inp.reference_asset_ids[:refs.max]]
-            specs.append(StepSpec(clip_key(0), StepKind.generate, f"Follow the depth pass on {spec.name}", {
+            what = "Follow the depth pass" if inp.path == "depth" else "Make the picture pass real"
+            specs.append(StepSpec(clip_key(0), StepKind.generate, f"{what} on {spec.name}", {
                 **common, "media": media, "params": dict(inp.params)},
                 (look_key(0),) if inp.stills else ()))
             return specs

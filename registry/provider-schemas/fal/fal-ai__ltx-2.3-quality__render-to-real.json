@@ -1,0 +1,115 @@
+{
+ "endpoint": "fal-ai/ltx-2.3-quality/render-to-real",
+ "variant": null,
+ "input": {
+  "detail_refine_strength": {
+   "type": "number",
+   "default": 0.75,
+   "minimum": 0.3,
+   "maximum": 0.95
+  },
+  "enable_detail_refine": {
+   "type": "boolean"
+  },
+  "enable_prompt_expansion": {
+   "type": "boolean"
+  },
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
+  "frames_per_second": {
+   "type": "number",
+   "default": 24,
+   "minimum": 1,
+   "maximum": 60
+  },
+  "generate_audio": {
+   "type": "boolean",
+   "default": true
+  },
+  "guidance_scale": {
+   "type": "number",
+   "default": 1,
+   "minimum": 1,
+   "maximum": 20
+  },
+  "image_url": {
+   "type": "null|string"
+  },
+  "intensity": {
+   "type": "string",
+   "enum": [
+    "light",
+    "strong",
+    "strong-v2"
+   ],
+   "default": "light"
+  },
+  "negative_prompt": {
+   "type": "string",
+   "default": "color distortion, overexposure, static, blurry details, subtitles, style, artwork, painting, frame, still, dim overall tone, worst quality, low quality, JPEG compression artifacts, ugly, mutilated, extra fingers, poorly drawn hands, poorly drawn face, deformed, disfigured, malformed limbs, fused fingers, motionless frame, cluttered background, three legs, crowded background, walking backwards"
+  },
+  "num_frames": {
+   "type": "integer",
+   "default": 121,
+   "minimum": 9,
+   "maximum": 481
+  },
+  "num_inference_steps": {
+   "type": "integer",
+   "default": 15,
+   "minimum": 8,
+   "maximum": 30
+  },
+  "prompt": {
+   "type": "string",
+   "default": "3DREAL. "
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "480p",
+    "720p"
+   ],
+   "default": "720p"
+  },
+  "seed": {
+   "type": "integer|null"
+  },
+  "sync_mode": {
+   "type": "boolean"
+  },
+  "video_quality": {
+   "type": "string",
+   "enum": [
+    "low",
+    "medium",
+    "high",
+    "maximum"
+   ],
+   "default": "high"
+  },
+  "video_url": {
+   "type": "string"
+  },
+  "video_write_mode": {
+   "type": "string",
+   "enum": [
+    "fast",
+    "balanced",
+    "small"
+   ],
+   "default": "balanced"
+  }
+ },
+ "required": [
+  "video_url"
+ ],
+ "output": [
+  "prompt",
+  "seed",
+  "video"
+ ],
+ "deprecated": false
+}

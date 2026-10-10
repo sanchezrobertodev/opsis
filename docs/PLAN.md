@@ -286,8 +286,10 @@ redrawn first frame). World Creation (/worlds): World Labs Marble worlds (Gaussi
 and collision mesh, through a new `worldlabs` adapter), HunyuanWorld panoramas on fal, Spark viewers for both,
 grabbed views as pictures, places saved as location Elements, and "film it in 3D blocking", which sets a scene in
 the world so cameras, keys and passes are shared (the depth pass draws the world's collision mesh). Marble usage past
-prepaid credits is billed at month end. Not yet: a normals-guided video route (animation clips for rigged GLBs, with
-Meshy rigging, and Marble worlds from several pictures or a video landed 2026-10-09).
+prepaid credits is billed at month end. Animation clips for rigged GLBs (with Meshy rigging), Marble worlds from
+several pictures or a video, and a "real" path (the picture pass re-rendered as live action by LTX-2.3 render to real)
+landed 2026-10-09. A normals-guided route was dropped: no hosted video model takes normals as a control (VACE, LTX
+IC-LoRA and Cosmos Transfer take depth, edges, pose or segmentation), so the normals pass stays an export.
 P8 started: nightly database backups (pg_dump in the container, 14 days kept, restores that never drop anything;
 media needs its own copy) and a weekly provider schema check against saved baselines, which the contract tests also
 use offline (AMS-56, AMS-59). Character identities (AMS-55): a `lora_train` recipe trains a Wan 2.2 LoRA from a character's photos on fal and stores it on the Element; Wan 2.2 stills and video on fal load it when the character is mentioned. Still to come: the local gpu-worker (when asked), auth and R2.

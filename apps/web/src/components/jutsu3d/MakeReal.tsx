@@ -7,21 +7,25 @@ import { toast } from "sonner";
 import { ApiError, type Asset, mediaUrl } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { useDebounced } from "@/lib/hooks";
-import { type SceneDoc, useSceneProject } from "@/lib/jutsu3d";
+import { realParams, type SceneDoc, useSceneProject } from "@/lib/jutsu3d";
 import { useRegistry } from "@/lib/queries";
 import { type RunCreate, useEstimateRun, useProjectRuns, useStartRun } from "@/lib/runs";
 import { Button, Field, Segmented, Select } from "@/components/ui/controls";
 import { renderScene, renderTimes } from "./RenderPanel";
 import type { ViewportHandle } from "./Viewport";
 
-type Path = "angles" | "depth";
-type Inputs = { path: Path; stills: Asset[]; depth: Asset | null; version: number };
-const PREFERRED: Record<string, string> = { i2v: "kling-3.0", flf2v: "kling-3.0", depth_to_video: "wan-vace-depth" };
+type Path = "angles" | "depth" | "real";
+/** `film`: the pass of the whole timeline a driven path sends (depth, or the picture for real) */
+type Inputs = { path: Path; stills: Asset[]; film: Asset | null; version: number };
+const PREFERRED: Record<string, string> = {
+  i2v: "kling-3.0", flf2v: "kling-3.0", depth_to_video: "wan-vace-depth", render_to_real: "ltx-2.3-render-to-real",
+};
+const PATH_LABEL: Record<Path, string> = { angles: "Angles", depth: "Depth", real: "Real" };
 
 /**
  * Make the blocked scene real. Angles: stills at the camera's keys are redrawn as finished frames and animated
- * from one to the next. Depth: the depth pass drives a depth-to-video model. Renders the inputs first, so the
- * estimate is for what will actually be sent.
+ * from one to the next. Depth: the depth pass drives a depth-to-video model. Real: the picture pass is re-rendered as
+ * live action. Renders the inputs first, so the estimate is for what will actually be sent.
  */
 export function MakeReal({ doc, handleRef, projectId }: {
   doc: SceneDoc; handleRef: MutableRefObject<ViewportHandle | null>; projectId: string;
@@ -41,7 +45,8 @@ export function MakeReal({ doc, handleRef, projectId }: {
   const keys = renderTimes(doc, "stills");
   const ready = inputs?.path === path ? inputs : null;
   const stillCount = path === "angles" ? keys.length : opening ? 1 : 0;
-  const op = path === "depth" ? "depth_to_video" : stillCount > 1 ? "flf2v" : "i2v";
+  const op = path === "depth" ? "depth_to_video" : path === "real" ? "render_to_real" : stillCount > 1 ? "flf2v" : "i2v";
+  const real = realParams(doc.timeline.duration, doc.timeline.fps);
   const models = (registry?.models ?? []).filter((m) => m.output_type === "video" && m.kind !== "virtual"
     && m.status !== "shutdown" && m.modes.some((x) => x.ops.includes(op)));
   const modelId = models.some((m) => m.id === chosen) ? chosen! : (models.find((m) => m.id === PREFERRED[op]) ?? models[0])?.id;
@@ -50,9 +55,9 @@ export function MakeReal({ doc, handleRef, projectId }: {
     recipe: "jutsu3d",
     input: {
       project_id: projectId, scene_version: ready.version, path, model_id: modelId, prompt: prompt.trim(),
-      params: { aspect_ratio: doc.settings.aspect_ratio },
+      params: path === "real" ? real.params : { aspect_ratio: doc.settings.aspect_ratio },
       stills: ready.stills.map((a) => ({ asset_id: a.id, time: Number(a.metadata?.time ?? 0) })),
-      ...(ready.depth ? { depth_asset_id: ready.depth.id } : {}),
+      ...(ready.film ? { [path === "real" ? "render_asset_id" : "depth_asset_id"]: ready.film.id } : {}),
     },
   } : null;
   const estimate = useEstimateRun(useDebounced(body, 300));
@@ -66,12 +71,12 @@ export function MakeReal({ doc, handleRef, projectId }: {
       const v = project.version;
       if (path === "angles") {
         const made = await renderScene(handleRef.current, doc, projectId, v, ["beauty"], "stills", setRendering);
-        setInputs({ path, stills: made.map((m) => m.asset), depth: null, version: v });
+        setInputs({ path, stills: made.map((m) => m.asset), film: null, version: v });
       } else {
-        const film = await renderScene(handleRef.current, doc, projectId, v, ["depth"], "film",
+        const film = await renderScene(handleRef.current, doc, projectId, v, [path === "real" ? "beauty" : "depth"], "film",
                                        (f) => setRendering(opening ? f * 0.9 : f));
         const first = opening ? await renderScene(handleRef.current, doc, projectId, v, ["beauty"], "stills", undefined, [0]) : [];
-        setInputs({ path, stills: first.map((m) => m.asset), depth: film[0]?.asset ?? null, version: v });
+        setInputs({ path, stills: first.map((m) => m.asset), film: film[0]?.asset ?? null, version: v });
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "The render failed");
@@ -99,14 +104,16 @@ export function MakeReal({ doc, handleRef, projectId }: {
   return (
     <section className="flex flex-col gap-3 border-t border-line-soft pt-4" aria-label="Make it real">
       <h3 className="text-xs text-muted">Make it real</h3>
-      <Segmented label="How" value={path} options={["angles", "depth"] as const} onChange={(p) => { setPath(p); setConfirm(null); }}
-                 render={(p) => (p === "angles" ? "Angles" : "Depth")} />
+      <Segmented label="How" value={path} options={["angles", "depth", "real"] as const}
+                 onChange={(p) => { setPath(p); setConfirm(null); }} render={(p) => PATH_LABEL[p]} />
       <p className="text-2xs leading-relaxed text-faint">
         {path === "angles"
           ? `${keys.length} still${keys.length > 1 ? "s" : ""} at the shot camera's keys, each redrawn as a finished frame, then animated ${keys.length > 1 ? "from one to the next" : "from it"}. Key the camera at more moments for more angles.`
-          : "The depth pass of the whole timeline steers the model, so motion and shapes follow your blocking exactly."}
+          : path === "depth" ? "The depth pass of the whole timeline steers the model, so motion and shapes follow your blocking exactly."
+          : `The picture pass of the whole timeline is re-rendered as live action, keeping its framing and motion${
+              real.cut ? `; the model makes the first ${((real.params.num_frames - 1) / doc.timeline.fps).toFixed(0)} s` : ""}.`}
       </p>
-      {path === "depth" && (
+      {path !== "angles" && (
         <label className="flex items-center gap-2 text-xs text-muted">
           <input type="checkbox" checked={opening} onChange={(e) => setOpening(e.target.checked)} className="accent-[var(--color-tungsten)]" />
           Redraw the first frame and open on it
@@ -114,13 +121,15 @@ export function MakeReal({ doc, handleRef, projectId }: {
       )}
       <Button size="sm" onClick={() => void renderInputs()} disabled={rendering !== null || !doc.active_camera_id}>
         {rendering !== null ? <><LoaderCircle className="size-4 animate-spin" aria-hidden /> {Math.round(rendering * 100)}%</>
-          : ready ? "Render again" : path === "angles" ? "Render the angles" : "Render the depth pass"}
+          : ready ? "Render again" : path === "angles" ? "Render the angles" : path === "depth" ? "Render the depth pass"
+            : "Render the picture pass"}
       </Button>
       {ready && (
         <ul className="grid grid-cols-3 gap-1.5" aria-label="Inputs">
-          {ready.depth && (
+          {ready.film && (
             <li className="col-span-3">
-              <video src={mediaUrl(ready.depth.url)} muted loop autoPlay playsInline aria-label="Depth pass"
+              <video src={mediaUrl(ready.film.url)} muted loop autoPlay playsInline
+                     aria-label={path === "real" ? "Picture pass" : "Depth pass"}
                      className="aspect-video w-full rounded-[3px] bg-black object-contain" />
             </li>
           )}
