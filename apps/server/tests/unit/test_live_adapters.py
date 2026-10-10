@@ -580,6 +580,45 @@ def test_marble_payload_nests_the_world_prompt():
     assert payload["world_prompt"] == {"type": "image", "image_prompt": ref}
 
 
+def test_marble_takes_several_pictures_facing_round_the_place_or_a_video():
+    from studio.registry.mapping import build_payload
+    from studio.registry.pricing import estimate
+    from studio.registry.validate import MediaRef, RequestError, normalize
+
+    spec, rt = marble()
+    refs = [{"source": "uri", "uri": f"https://fal.media/v{i}.jpg"} for i in range(4)]
+    views = [MediaRef("image_references", f"v{i}", "image") for i in range(4)]
+    req = normalize(spec, "multi_image_to_world", "a harbour", {"views_facing": "around"}, views)
+    _, payload, _ = build_payload(spec, rt, req, {"image_references": refs})
+    assert payload["world_prompt"] == {
+        "type": "multi-image", "text_prompt": "a harbour", "reconstruct_images": False,
+        "multi_image_prompt": [{"content": r, "azimuth": a} for r, a in zip(refs, (0, 90, 180, 270), strict=True)]}
+    assert not [k for k in payload if k.startswith("_")] and "views_facing" not in payload
+
+    # Marble places pictures itself unless told, and auto layout takes up to 8
+    req = normalize(spec, "multi_image_to_world", "", {"reconstruct_images": True}, views * 2)
+    _, payload, _ = build_payload(spec, rt, req, {"image_references": refs * 2})
+    assert payload["world_prompt"]["reconstruct_images"] is True
+    assert payload["world_prompt"]["multi_image_prompt"][0] == {"content": refs[0]}
+    with pytest.raises(RequestError, match="up to 4 pictures"):
+        normalize(spec, "multi_image_to_world", "", {}, views + views[:1])
+    with pytest.raises(RequestError, match="at least 2"):
+        normalize(spec, "multi_image_to_world", "", {}, views[:1])
+
+    clip = {"source": "uri", "uri": "https://fal.media/walk.mp4"}
+    req = normalize(spec, "video_to_world", "", {"model": "marble-1.0-draft"},
+                    [MediaRef("input_video", "c", "video", duration_ms=12_000)])
+    _, payload, _ = build_payload(spec, rt, req, {"input_video": [clip]})
+    assert payload["world_prompt"] == {"type": "video", "video_prompt": clip}
+    with pytest.raises(RequestError, match="30 s"):
+        normalize(spec, "video_to_world", "", {}, [MediaRef("input_video", "c", "video", duration_ms=31_000)])
+
+    # their panorama step costs 100 credits, 20 more than a picture's
+    price = {m: float(estimate(rt.pricing, {"model": "marble-1.1"}, mode=m).usd)
+             for m in ("image_to_world", "multi_image_to_world", "video_to_world")}
+    assert price == {"image_to_world": 1.264, "multi_image_to_world": 1.28, "video_to_world": 1.28}
+
+
 @respx.mock
 async def test_marble_lifecycle_keeps_the_panorama_and_collider(wl_key):
     from studio.providers.worldlabs import WorldLabsAdapter

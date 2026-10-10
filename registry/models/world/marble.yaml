@@ -1,13 +1,17 @@
 # yaml-language-server: $schema=../../schema/model.schema.json
 # Fields, model ids and credit costs verified 2026-10-07 against https://docs.worldlabs.ai/api and
-# https://docs.worldlabs.ai/api/pricing ($1 = 1,250 credits).
+# https://docs.worldlabs.ai/api/pricing ($1 = 1,250 credits). Multi-image and video prompts verified 2026-10-09
+# (docs.worldlabs.ai/api/reference/worlds/generate, /marble/create/prompt-guides): up to 4 pictures facing given
+# directions, or 8 overlapping ones laid out by Marble ("Auto layout", reconstruct_images); a video of up to 30 s and
+# 100 MB. Both add a 100-credit panorama step (billed 250 credits each as drafts, 2026-10-09). Azimuths turn clockwise
+# (90 = right): checked live with four views cut from a panorama, which Marble put back in place.
 id: marble
 name: Marble world
 family: marble
 vendor: worldlabs
 description: >-
-  An explorable 3D world (Gaussian splats) from a description or a picture of a place, with its 360 panorama and a
-  collision mesh. Walk a camera through it in World Creation to make frames and camera-move references.
+  An explorable 3D world (Gaussian splats) from a description, a picture, several pictures or a short video of a
+  place, with its 360 panorama and a collision mesh. Walk a camera through it in World Creation to make frames and camera-move references.
 output_type: 3d
 status: active
 license_tier: commercial_api
@@ -19,6 +23,18 @@ parameters:
      default: marble-1.1, ui: segmented,
      labels: {marble-1.0-draft: Draft, marble-1.1: Standard, marble-1.1-plus: Plus},
      help: "Draft is a quick, rough preview. Plus sizes the world to the scene and can cost up to twice Standard."}
+  - {name: reconstruct_images, label: Auto layout, type: bool, default: false, modes: [multi_image_to_world],
+     help: "Up to 8 overlapping photos of one space, all the same shape and size: Marble works out where each was taken
+       and rebuilds the space. Off: up to 4 pictures, which it joins up creatively."}
+  - name: views_facing
+    label: The pictures face
+    type: enum
+    options: [unknown, around]
+    default: unknown
+    labels: {unknown: "Let Marble decide", around: "Front, right, back, left (in order)"}
+    modes: [multi_image_to_world]
+    visible_if: {reconstruct_images: false}
+    help: "In order means you turned right between pictures: the first faces front and each next one a step round."
   - {name: seed, type: seed, group: advanced}
 
 modes:
@@ -32,6 +48,25 @@ modes:
     prompt: optional  # guides what's out of frame
     medias:
       - {role: input_image, kinds: [image], label: Picture of the place (or a 360 panorama), required: true}
+  - id: multi_image_to_world
+    label: Pictures to world
+    ops: [world]
+    prompt: optional
+    medias:
+      - {role: image_references, kinds: [image], label: Pictures of the place, required: true, min: 2, max: 8,
+         max_mb: 20}
+  - id: video_to_world
+    label: Video to world
+    ops: [world]
+    prompt: optional
+    medias:
+      - {role: input_video, kinds: [video], label: "A steady video of the place, turning to look around", required: true,
+         max_duration_s: 30, max_mb: 100}
+
+rules:
+  - when: {mode: multi_image_to_world, reconstruct_images: false}
+    max_inputs: {image_references: 4}
+    message: Marble joins up to 4 pictures; turn on Auto layout for up to 8 overlapping photos of one space.
 
 routes:
   - id: marble@worldlabs
@@ -39,18 +74,28 @@ routes:
     modes:
       text_to_world: {endpoint: "marble/v1/worlds:generate", fixed: {world_prompt.type: text}}
       image_to_world: {endpoint: "marble/v1/worlds:generate", fixed: {world_prompt.type: image}}
+      multi_image_to_world: {endpoint: "marble/v1/worlds:generate", fixed: {world_prompt.type: multi-image}}
+      video_to_world: {endpoint: "marble/v1/worlds:generate", fixed: {world_prompt.type: video}}
+    transform: studio.providers.transforms.worlds:marble_views
     map:
       prompt: world_prompt.text_prompt
-      params: {model: model, seed: seed}
-      media: {input_image: world_prompt.image_prompt}
+      params:
+        model: model
+        seed: seed
+        reconstruct_images: world_prompt.reconstruct_images
+        views_facing: {to: null}  # read by the marble_views transform
+      media: {input_image: world_prompt.image_prompt, image_references: "_views[]", input_video: world_prompt.video_prompt}
     pricing:
       # per world: draft 230 credits, standard 1,580, plus up to 3,080 (priced at the top so caps hold).
-      # A 360 panorama input costs 80 credits less.
+      # A 360 panorama input costs 80 credits less; several pictures or a video 20 more (a 100-credit panorama step).
       basis: per_request
       rates:
         - {when: {model: marble-1.0-draft}, usd: 0.184}
         - {when: {model: marble-1.1}, usd: 1.264}
         - {when: {model: marble-1.1-plus}, usd: 2.464}
+        - {when: {model: marble-1.0-draft, mode: [multi_image_to_world, video_to_world]}, usd: 0.20}
+        - {when: {model: marble-1.1, mode: [multi_image_to_world, video_to_world]}, usd: 1.28}
+        - {when: {model: marble-1.1-plus, mode: [multi_image_to_world, video_to_world]}, usd: 2.48}
       verified: 2026-10-07
       source: https://docs.worldlabs.ai/api/pricing
     timeout_s: 1800
@@ -76,3 +121,13 @@ examples:
     mode: image_to_world
     media: {input_image: "fixture:images/keyframe.png"}
     expect: {cost_usd_range: [1.264, 1.264]}
+  - name: pictures_around_draft
+    mode: multi_image_to_world
+    params: {model: marble-1.0-draft, views_facing: around}
+    media: {image_references: ["fixture:images/keyframe.png", "fixture:images/keyframe.png"]}
+    expect: {cost_usd_range: [0.20, 0.20]}
+  - name: video_world_draft
+    mode: video_to_world
+    params: {model: marble-1.0-draft}
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    expect: {cost_usd_range: [0.20, 0.20]}

@@ -316,14 +316,16 @@ def normalize(
                 errors.append(f"{slot.label or slot.role} must be at least {slot.min_fps:g} fps; this one is "
                               f"{ref.fps:g} fps (raise its frame rate first)")
 
-    for rule in spec.rules:  # input lengths some settings can't take (OmniHuman at 1080p: 30 s of audio)
+    for rule in spec.rules:  # inputs some settings can't take (OmniHuman at 1080p: 30 s of audio; Marble: 4 pictures)
         context = {**out, "mode": mode_id}
-        if rule.max_input_seconds and all(
+        if (rule.max_input_seconds or rule.max_inputs) and all(
                 context.get(k) in (v if isinstance(v, list) else [v]) for k, v in rule.when.items()):
             for role, limit in rule.max_input_seconds.items():
                 seconds = sum((r.duration_ms or 0) for r in by_role.get(role, [])) / 1000
                 if seconds > limit + 0.05:
                     errors.append(rule.message)
+            if any(len(by_role.get(role, [])) > limit for role, limit in rule.max_inputs.items()):
+                errors.append(rule.message)
 
     if errors:
         raise RequestError(errors)

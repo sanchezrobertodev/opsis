@@ -195,11 +195,13 @@ class Mode(_Strict):
 
 class Rule(_Strict):
     """Cross-param constraint, e.g. Veo: 1080p/4k require an 8 s duration. `max_input_seconds` limits how long an
-    input may be while the rule applies (OmniHuman: 30 s of audio at 1080p)."""
+    input may be while the rule applies (OmniHuman: 30 s of audio at 1080p), `max_inputs` how many files a slot takes
+    (Marble: 4 pictures, 8 in reconstruction mode)."""
 
     when: dict[str, Scalar | list[Scalar]]
     require: dict[str, list[Scalar]] = {}
     max_input_seconds: dict[MediaRole, float] = {}
+    max_inputs: dict[MediaRole, int] = {}
     message: str
 
 

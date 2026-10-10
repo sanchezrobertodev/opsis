@@ -56,7 +56,7 @@ export function Worlds() {
                      render={(m) => (m === "world" ? "A world" : "A 360 panorama")} />
           <p className="text-2xs leading-relaxed text-faint">
             {make === "world"
-              ? "An explorable 3D world from a description, a picture or a panorama. Marble takes about five minutes; Draft about one."
+              ? "An explorable 3D world from a description, a picture or panorama, several pictures, or a short video of a place. Marble takes about five minutes; Draft about one."
               : "A full 360 view of a place, from a picture of it and a description of what's around."}
           </p>
           <QuickGenerate key={`${make}-${seed.key}`} op={make === "world" ? "world" : "panorama"} media={seed.media}

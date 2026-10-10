@@ -307,6 +307,10 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 - Splats render with Spark (`components/three/Splat.tsx`): one `SparkLayer` per canvas, worlds flipped from OpenCV
   axes, `spark.update()` before each captured frame; data passes hide splats and draw the collision mesh instead.
 - `worldlabs` (Marble, `WORLDLABS_API_KEY`): submit returns an operation, polled until `done`; it can't be canceled.
+  Besides text and a picture, Marble takes several pictures (`multi_image_to_world`, `image_references`: up to 4, each
+  facing a direction when `views_facing: around`, or up to 8 overlapping photos with Auto layout, `reconstruct_images`;
+  a rule's `max_inputs` holds the 4) or a video of up to 30 s (`video_to_world`); `transforms/worlds.py:marble_views`
+  wraps the pictures as World Labs' `{content, azimuth}`.
   The finished operation reports its credits (`cost.total_credits`, $1 = 1,250), which are charged; the world's
   files are read from the stored world, since the operation's copy can lack the panorama. Usage past the prepaid
   balance is billed to the card at month end: keep caps on.
