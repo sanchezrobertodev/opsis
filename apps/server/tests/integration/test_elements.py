@@ -97,6 +97,35 @@ async def test_modes_without_reference_slots_describe_in_words(client):
     assert any("make a start frame" in w for w in k["warnings"])
 
 
+async def test_a_reference_mode_falls_back_to_text_while_the_mentioned_have_no_pictures(client):
+    # a character whose portrait is still being drawn (Cinema adds the cast, then draws them)
+    await make_element(client, "Lark", description="a boy in a yellow raincoat", images=0)
+    out = await client.post("/generations", json={
+        "model_id": "nano-banana-2", "mode": "edit", "prompt": "@lark flies a kite on the beach"})
+    assert out.status_code == 201, out.text
+    gen = out.json()
+    assert gen["mode"] == "t2i" and not gen["request"]["media"]
+    assert gen["request"]["compiled_prompt"].startswith("Lark, a boy in a yellow raincoat, flies a kite")
+    assert any("uses Text to image instead" in w for w in gen["request"]["warnings"])
+
+    # once there's a picture the mode stands; and a mode given its own references never switches
+    await make_element(client, "Tern", images=1)
+    e = await estimate(client, model_id="nano-banana-2", mode="edit", prompt="@tern on the beach")
+    assert e["mode"] == "edit"
+    own = await upload(client)
+    e = await estimate(client, model_id="nano-banana-2", mode="edit", prompt="@lark on the beach",
+                       media=[{"role": "image_references", "asset_id": own}])
+    assert e["mode"] == "edit"
+    # without a mention there's nothing to fall back for: the missing input is still an error
+    r = await client.post("/generations", json={"model_id": "nano-banana-2", "mode": "edit", "prompt": "a beach"})
+    assert r.status_code == 422
+    # nor on a model whose reference slot is the user's own input, not the mentions' (Marble's views)
+    await make_element(client, "Dune Camp", kind="location", images=0)
+    r = await client.post("/generations", json={"model_id": "marble", "mode": "multi_image_to_world",
+                                                "prompt": "@dune-camp at dusk"})
+    assert r.status_code == 422, r.text
+
+
 async def test_unknown_mentions_are_left_alone(client):
     e = await estimate(client, model_id="veo-3.1", mode="t2v", prompt="@nobody walks in", params={"duration": 8})
     assert "@nobody" in e["compiled_prompt"]

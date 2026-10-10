@@ -24,7 +24,7 @@ from studio.providers.factory import adapter_implemented
 from studio.providers.local_status import local_reachability
 from studio.registry.loader import Registry, get_registry
 from studio.registry.routing import Candidate, RoutingEnv, candidates, cheapest_live_estimate
-from studio.registry.schema import ModelSpec, ShotsParam
+from studio.registry.schema import Mode, ModelSpec, ShotsParam
 from studio.registry.validate import MediaRef, NormalizedRequest, RequestError, normalize
 from studio.registry.virtual import resolve as resolve_virtual
 
@@ -186,6 +186,25 @@ def compile_shots(spec: ModelSpec, param: ShotsParam, shots: list[Any], text: st
                          dialect=spec.prompt.dialect)
 
 
+def _text_mode_without_refs(spec: ModelSpec, mode_id: str, given: list[dict[str, Any]], attached: list[dict[str, Any]],
+                            mentioned: list[dict[str, Any]]) -> Mode | None:
+    """The model's text mode, when the mode asked for needs reference images only so @mentions can fill them and none
+    of the mentioned has a picture yet (a character whose portrait is still being drawn): the mention is described in
+    words either way, and the text mode can still make it. None when the mode should stand as asked."""
+    # Only where mentions are meant to fill the slot: on other models a reference slot is the user's own input
+    # (Marble's views), and switching to a text mode would make a different thing.
+    if (spec.elements or {}).get("strategy") != "refs_native":
+        return None
+    mode = spec.mode(mode_id)
+    role = (spec.elements or {}).get("ref_role", "image_references")
+    slot = mode.slot(role) if mode else None
+    if (mode is None or slot is None or not (slot.required or slot.min) or not mentioned
+            or any(m.get("role") == role for m in [*given, *attached])
+            or any(s.required for s in mode.medias if s.role != role)):
+        return None
+    return next((m for m in spec.modes if m.prompt != "none" and not any(s.required for s in m.medias)), None)
+
+
 async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, reg: Registry | None = None) -> Plan:
     reg = reg or get_registry()
     spec = reg.model(body.model_id)
@@ -206,6 +225,10 @@ async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, r
     # @mentions of saved characters/locations/props may attach reference images, so resolve them before
     # validation: the attached images count against the model's slot limits like any other input.
     mention = await resolve_mentions(session, user_id, spec, body.mode, text, body.media)
+    if (instead := _text_mode_without_refs(spec, body.mode, body.media, mention.media, mention.elements)) is not None:
+        mention.warnings.append(f"{spec.mode(body.mode).label} needs reference images and none of the mentioned "
+                                f"have pictures yet, so this uses {instead.label} instead")
+        body = replace(body, mode=instead.id)
     refs = await resolve_media_kinds(session, user_id, [*body.media, *mention.media])
     mode = spec.mode(body.mode)
     promptless = mode is not None and mode.prompt == "none"

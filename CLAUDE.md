@@ -281,6 +281,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   the kept ones as character Elements (slug from the handle) and returns the scenes pointed at their slugs; the Script
   tab then adds them to the cast and starts `cinema_cast`, which draws a front portrait of each (`add_element_image`
   keeps it as the reference and cover). Hero frames on a `refs_native` model attach it wherever they're mentioned.
+  Until a mentioned character has a picture (the portrait is still drawing), a mode that needs reference images only
+  for the mentions runs as the model's text mode instead, with a warning (`domain/generations.py:_text_mode_without_refs`).
 - The AI Director chat (`POST /projects/{id}/director`, `cinema/director_chat.py`, the editor's Director panel): Claude
   answers a request with edits by shot and scene id (update, add, move, remove), applied to the storyboard on screen
   and returned as proposed scenes plus a diff (`changes`, shots numbered as they'll read). An update keeps the shot's
