@@ -3,7 +3,7 @@
 import { Copy, Trash2 } from "lucide-react";
 import { type MutableRefObject, useState } from "react";
 import {
-  duplicateObject, JOINTS, KIND_LABEL, LIGHTS, patchObject, POSES, removeObject, type SceneDoc, type SceneObject,
+  duplicateObject, ENVIRONMENT_DEFAULT, JOINTS, KIND_LABEL, LIGHTS, patchObject, POSES, removeObject, type SceneDoc, type SceneObject,
   useScene, type Vec3,
 } from "@/lib/jutsu3d";
 import { Button, Field, Segmented, Slider } from "@/components/ui/controls";
@@ -157,6 +157,10 @@ function SceneSettings({ doc, handleRef, projectId }: { doc: SceneDoc; handleRef
       </Field>
       <Field label="Fill light">
         <Slider value={s.ambient} min={0} max={3} step={0.05} onChange={(ambient) => change((d) => ({ ...d, settings: { ...d.settings, ambient } }))} />
+      </Field>
+      <Field label="Room light" hint="A soft studio all around that shiny and metal surfaces reflect">
+        <Slider value={s.environment ?? ENVIRONMENT_DEFAULT} min={0} max={3} step={0.05}
+                onChange={(environment) => change((d) => ({ ...d, settings: { ...d.settings, environment } }))} />
       </Field>
       <Field label="Length">
         <Slider value={doc.timeline.duration} min={1} max={60} step={1} format={(v) => `${v} s`}

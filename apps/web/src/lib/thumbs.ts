@@ -2,9 +2,11 @@
 
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { API_URL, type Asset } from "./api";
+import { api, API_URL, type Asset, mediaUrl, unwrap } from "./api";
+import { studioRoom } from "./room";
 
 const SIZE = 384;
+const ROOM_LIGHT = 0.4;
 
 function blobOf(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) =>
@@ -15,11 +17,15 @@ function blobOf(canvas: HTMLCanvasElement): Promise<Blob> {
 export async function modelThumbnail(url: string): Promise<Blob> {
   const gltf = await new GLTFLoader().loadAsync(url);
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  const room = studioRoom(renderer);
   try {
     renderer.setSize(SIZE, SIZE, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#1c1d20");
+    // metal from picture-to-3D services reflects the room instead of going black
+    scene.environment = room;
+    scene.environmentIntensity = ROOM_LIGHT;
     scene.add(new THREE.HemisphereLight("#ffffff", "#2a2a2e", 2.2));
     const sun = new THREE.DirectionalLight("#fff4e0", 2.5);
     sun.position.set(3, 5, 4);
@@ -33,9 +39,35 @@ export async function modelThumbnail(url: string): Promise<Blob> {
     renderer.render(scene, camera);
     return await blobOf(renderer.domElement);
   } finally {
+    room.dispose();
     renderer.dispose();
     renderer.forceContextLoss();
   }
+}
+
+/**
+ * Draws every GLB's library picture again (with today's lighting), and the missing ones. A world's collision mesh
+ * keeps the picture its world gave it. A model that won't load is counted and skipped.
+ */
+export async function redrawModelThumbnails(onProgress: (done: number, total: number) => void) {
+  const models: Asset[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await unwrap(api.GET("/assets", { params: { query: { kind: "model3d", limit: 200, cursor } } }));
+    models.push(...page.items.filter((a) => a.metadata?.part !== "collider"));
+    cursor = page.next_cursor ?? undefined;
+  } while (cursor);
+  let failed = 0;
+  onProgress(0, models.length);
+  for (const [i, a] of models.entries()) {
+    try {
+      await saveThumbnail(a.id, await modelThumbnail(mediaUrl(a.url) ?? a.url));
+    } catch {
+      failed += 1;
+    }
+    onProgress(i + 1, models.length);
+  }
+  return { redrawn: models.length - failed, failed };
 }
 
 /** Store a picture of a canvas or model as an asset's thumbnail. */

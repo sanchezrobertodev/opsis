@@ -152,7 +152,9 @@ async def set_thumbnail(asset_id: uuid.UUID, file: UploadFile, session: AsyncSes
     storage = get_storage()
     tmp = storage.temp_dir() / f"thumb-{uuid7().hex}"
     tmp.write_bytes(data)
-    key = asset_key(user.id, asset.id, "thumb.webp")
+    # media is cached as immutable per key, so a redrawn picture gets a new name instead of replacing the old one
+    old = (asset.derivatives or {}).get("thumb")
+    key = asset_key(user.id, asset.id, f"thumb-{uuid7().hex[-12:]}.webp")
     try:
         await anyio.to_thread.run_sync(image_thumb, tmp, storage.path_for(key))
     finally:
@@ -161,6 +163,8 @@ async def set_thumbnail(asset_id: uuid.UUID, file: UploadFile, session: AsyncSes
     await fsm.emit(session, user_id=user.id, topic="asset", type="asset.updated", subject_id=asset.id,
                    payload={"asset_id": str(asset.id), "derivatives": ["thumb"]})
     await session.commit()
+    if isinstance(old, str) and old != key:
+        storage.delete_prefix(old)
     return asset_out(asset)
 
 

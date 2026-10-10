@@ -26,12 +26,18 @@ export type SceneDoc = {
   objects: SceneObject[];
   active_camera_id: string | null;
   timeline: { duration: number; fps: number; tracks: Track[] };
-  settings: { background: string; aspect_ratio: "16:9" | "9:16" | "1:1" | "21:9" | "4:3"; ambient: number };
+  settings: {
+    background: string; aspect_ratio: "16:9" | "9:16" | "1:1" | "21:9" | "4:3"; ambient: number;
+    /** The studio room's strength; scenes saved before it existed lack it until their next save. */
+    environment?: number;
+  };
   cover_asset_id: string | null;
 };
 
 export const JOINTS = ["spine", "neck", "head", "shoulder_l", "elbow_l", "shoulder_r", "elbow_r", "hip_l", "knee_l",
                        "hip_r", "knee_r"] as const;
+/** What `settings.environment` defaults to (as on the server). */
+export const ENVIRONMENT_DEFAULT = 0.4;
 export const LIGHTS: ObjectKind[] = ["sun", "point_light", "spot_light"];
 export const KIND_LABEL: Record<ObjectKind, string> = {
   box: "Box", sphere: "Sphere", cylinder: "Cylinder", cone: "Cone", plane: "Plane", mannequin: "Figure",
