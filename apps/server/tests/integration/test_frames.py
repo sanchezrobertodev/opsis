@@ -23,6 +23,31 @@ async def client(db, in_memory_queue):
         yield c
 
 
+async def test_a_generic_upload_type_is_read_from_the_file_name(client):
+    """Scripts and some tools send every file as application/octet-stream: the extension says what it is."""
+    files = {"clip.mp4": (CLIP, "video", "video/mp4"),
+             "keyframe.png": (ROOT / "fixtures" / "images" / "keyframe.png", "image", "image/png"),
+             "line.mp3": (ROOT / "fixtures" / "audio" / "line.mp3", "audio", "audio/mpeg")}
+    for name, (path, kind, mime) in files.items():
+        r = await client.post("/uploads", files={"file": (name, path.read_bytes(), "application/octet-stream")})
+        assert r.status_code == 201, (name, r.text)
+        assert (r.json()["kind"], r.json()["mime"]) == (kind, mime)
+        assert r.json()["url"].endswith(Path(name).suffix)
+    # the file keeps its own extension when it agrees with the type, not the type's usual one
+    person = (ROOT / "fixtures" / "images" / "person.jpg").read_bytes()
+    r = await client.post("/uploads", files={"file": ("person.jpeg", person, "application/octet-stream")})
+    assert r.status_code == 201 and r.json()["url"].endswith("original.jpeg") and r.json()["mime"] == "image/jpeg"
+    from studio.api.routers.assets import _extension, _sent_or_guessed
+    names = ["movie.mkv", "a.m4v", "a.ogg", "a.opus", "a.mpg", "b.jpeg"]
+    assert [_extension(_sent_or_guessed(None, n), n) for n in names] == [".mkv", ".m4v", ".ogg", ".opus", ".mpg", ".jpeg"]
+    assert _extension("video/mp4", "clip.bin") == ".mp4" and _extension("image/jpeg", "") == ".jpg"
+    # a real type still wins, and a file with neither is refused
+    r = await client.post("/uploads", files={"file": ("clip.bin", CLIP.read_bytes(), "video/mp4")})
+    assert r.status_code == 201 and r.json()["kind"] == "video"
+    r = await client.post("/uploads", files={"file": ("notes", b"hello", "application/octet-stream")})
+    assert r.status_code == 415
+
+
 async def test_last_frame_becomes_an_image_asset_once(client):
     up = await client.post("/uploads", files={"file": ("clip.mp4", CLIP.read_bytes(), "video/mp4")})
     video = up.json()
