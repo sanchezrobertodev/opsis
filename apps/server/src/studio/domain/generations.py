@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from studio.budget import guard
+from studio.budget import guard, modes
 from studio.config import get_settings
 from studio.db.base import uuid7
 from studio.db.models import Asset, Generation, GenerationAttempt, Project
@@ -92,8 +92,9 @@ class Plan:
         }
 
 
-async def routing_env(session: AsyncSession, reg: Registry) -> RoutingEnv:
+async def routing_env(session: AsyncSession, reg: Registry, user_id: uuid.UUID | None = None) -> RoutingEnv:
     settings = get_settings()
+    mode = (await modes.current(session, user_id)).provider  # the Settings switch, capped by PROVIDER_MODE
 
     def has_key(provider_id: str) -> bool:
         provider = reg.providers.get(provider_id)
@@ -101,7 +102,7 @@ async def routing_env(session: AsyncSession, reg: Registry) -> RoutingEnv:
 
     reach = await local_reachability(reg)
     return RoutingEnv(
-        provider_mode=settings.provider_mode,
+        provider_mode=mode,
         live_allowlist=settings.live_routes,
         has_key=has_key,
         has_adapter=adapter_implemented,
@@ -253,7 +254,7 @@ async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, r
         raise GenerationRequestError(
             [f"direction: {e['msg']} at {'.'.join(map(str, e['loc']))}" for e in exc.errors()]) from None
     req.warnings.extend(virtual.warnings + mention.warnings + native_warnings)
-    env = await routing_env(session, reg)
+    env = await routing_env(session, reg, user_id)
     cands = candidates(reg, spec, req, env, body.route_policy)
     chosen = next((c for c in cands if c.eligible), None)
     return Plan(request=req, candidates=cands, chosen=chosen, live_reference=cheapest_live_estimate(cands),

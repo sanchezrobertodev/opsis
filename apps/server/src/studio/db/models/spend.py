@@ -22,6 +22,10 @@ class BudgetPolicy(Base):
     monthly_cap_usd: Mapped[Decimal] = mapped_column(Money, default=Decimal("200"))
     confirm_over_usd: Mapped[Decimal] = mapped_column(Money, default=Decimal("2"))
     default_run_cap_usd: Mapped[Decimal] = mapped_column(Money, default=Decimal("10"))
+    # The Settings switch: mock / mixed / live and mock / live, capped by PROVIDER_MODE / LLM_MODE in .env
+    # (budget/modes.py). NULL means whatever .env says.
+    provider_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    llm_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"), onupdate=text("now()"))
 
 

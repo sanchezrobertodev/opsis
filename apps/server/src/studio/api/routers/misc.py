@@ -31,7 +31,7 @@ from studio.api.schemas import (
     SpendHistoryOut,
 )
 from studio.api.sse import hub
-from studio.budget import guard
+from studio.budget import guard, modes
 from studio.budget.balances import balances as read_balances
 from studio.budget.features import LABELS, claude_name, feature_of
 from studio.budget.reconcile import reconcile as reconcile_bills
@@ -111,17 +111,21 @@ async def events(
     return EventSourceResponse(stream(), ping=15)
 
 
-def _budget_out(s: guard.SpendSummary) -> BudgetOut:
+def _budget_out(s: guard.SpendSummary, m: modes.Modes) -> BudgetOut:
+    settings = get_settings()
     return BudgetOut(
         today_usd=float(s.today_usd), month_usd=float(s.month_usd), reserved_usd=float(s.reserved_usd),
         daily_cap_usd=float(s.daily_cap_usd), monthly_cap_usd=float(s.monthly_cap_usd),
         confirm_over_usd=float(s.confirm_over_usd), live_enabled=s.live_enabled,
+        provider_mode=m.provider, provider_modes=modes.allowed(modes.PROVIDER_MODES, m.provider_ceiling),
+        llm_mode=m.llm, llm_modes=modes.allowed(modes.LLM_MODES, m.llm_ceiling),
+        live_route_allowlist=sorted(settings.live_routes),
     )
 
 
 @router.get("/budget", response_model=BudgetOut, tags=["budget"])
 async def get_budget(session: AsyncSession = Depends(get_session), user: User = Depends(current_user)) -> BudgetOut:
-    out = _budget_out(await guard.summary(session, user.id))
+    out = _budget_out(await guard.summary(session, user.id), await modes.current(session, user.id))
     await session.commit()
     return out
 
@@ -136,8 +140,19 @@ async def patch_budget(body: BudgetUpdate, session: AsyncSession = Depends(get_s
             setattr(policy, field, Decimal(str(value)))
     if body.live_enabled is not None:
         policy.live_enabled = body.live_enabled
+    # The mode switch: never past .env's, so a mock-only studio can't be switched live from the app
+    settings = get_settings()
+    for field, order, ceiling in (("provider_mode", modes.PROVIDER_MODES, settings.provider_mode),
+                                  ("llm_mode", modes.LLM_MODES, settings.llm_mode)):
+        value = getattr(body, field)
+        if value is None:
+            continue
+        if value not in modes.allowed(order, ceiling):
+            env = field.upper()
+            raise HTTPException(422, f"{env} in .env is {ceiling}, so {value} can't be chosen here; change .env first")
+        setattr(policy, field, value)
     await session.flush()
-    out = _budget_out(await guard.summary(session, user.id))
+    out = _budget_out(await guard.summary(session, user.id), await modes.current(session, user.id))
     await session.commit()
     return out
 
@@ -280,8 +295,11 @@ async def spend_breakdown(period: str = Query("month", pattern="^(today|month|al
 @router.get("/health", response_model=HealthOut, tags=["health"])
 async def health(session: AsyncSession = Depends(get_session)) -> HealthOut:
     db_ok = True
+    env = get_settings()
+    m = modes.Modes(env.provider_mode, env.provider_mode, env.llm_mode, env.llm_mode)  # .env's, without a database
     try:
         await session.execute(text("SELECT 1"))
+        m = await modes.current(session)
     except Exception:
         db_ok = False
     holder = get_registry_holder()
@@ -299,8 +317,8 @@ async def health(session: AsyncSession = Depends(get_session)) -> HealthOut:
     )
     return HealthOut(
         status="ok" if db_ok and ff and not holder.last_error else "degraded",
-        database=db_ok, provider_mode=get_settings().provider_mode, registry_hash=holder.current.hash,
+        database=db_ok, provider_mode=m.provider, registry_hash=holder.current.hash,
         registry_errors=holder.last_error, ffmpeg=ff, media_root=str(get_storage().root), local_engine=local,
-        llm_mode=get_settings().llm_mode, llm_key_set=bool(get_settings().anthropic_api_key),
+        llm_mode=m.llm, llm_key_set=bool(get_settings().anthropic_api_key),
         reloads_on_change=os.environ.get("STUDIO_API_RELOAD") == "1",
     )

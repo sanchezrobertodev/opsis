@@ -25,7 +25,12 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 
 ## Non-negotiable rules
 - **Mock first.** `PROVIDER_MODE=mock` is the default. Never call a paid route in tests. Live calls only via
-  `PROVIDER_MODE=mixed` + `LIVE_ROUTE_ALLOWLIST`, or `scripts/smoke_live.py` with a `--cap`.
+  `PROVIDER_MODE=mixed` + `LIVE_ROUTE_ALLOWLIST`, or `scripts/smoke_live.py` with a `--cap`. (The home server's
+  `.env` is `live`, for real use.)
+- **Mode switch:** `PROVIDER_MODE` and `LLM_MODE` in `.env` are a ceiling. The Settings switch (Generation:
+  Mock / Mixed / Live, Claude: Mock / Live; `budget_policies.provider_mode` / `llm_mode`, `budget/modes.py`) picks that
+  or safer and applies at once, with no restart. Read the mode in effect through `modes.current()` /
+  `routing_env(session, reg, user_id)`, never `settings.provider_mode` directly.
 - **Never auto-resubmit an ambiguous paid submit.** It goes to `unknown`.
 - **Ingest every provider output to disk immediately.** Veo deletes after 2 days, Replicate after 1 hour.
 - **Status changes go through `domain/fsm.transition()` only.** It writes the status, a `job_events` row and

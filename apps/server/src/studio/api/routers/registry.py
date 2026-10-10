@@ -13,7 +13,7 @@ from studio.api.schemas import (
     RegistryOut,
     RouteSummary,
 )
-from studio.config import get_settings
+from studio.budget import modes
 from studio.db.models import User
 from studio.domain.generations import CreateRequest, plan, routing_env
 from studio.registry.loader import MOCK_PROVIDER, Registry, get_registry
@@ -67,7 +67,8 @@ async def get_registry_summary(
     request: Request, response: Response, session: AsyncSession = Depends(get_session)
 ) -> RegistryOut | Response:
     reg = get_registry()
-    etag = f'"{reg.hash}-{get_settings().provider_mode}"'
+    mode = (await modes.current(session)).provider  # the Settings switch changes what's runnable
+    etag = f'"{reg.hash}-{mode}"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304)
     response.headers["ETag"] = etag
@@ -80,7 +81,7 @@ async def get_registry_summary(
             modes=[ModeSummary(id=m.id, label=m.label, ops=list(m.ops)) for m in spec.modes],
             from_price_usd=_from_price(reg, spec), runnable=await _runnable(session, reg, spec),
         ))
-    return RegistryOut(hash=reg.hash, provider_mode=get_settings().provider_mode, models=models,
+    return RegistryOut(hash=reg.hash, provider_mode=mode, models=models,
                        warnings=reg.warnings)
 
 

@@ -10,10 +10,15 @@ import { useBudget, useHealth, useRegistry, useUpdateBudget } from "@/lib/querie
 import { Button, Field, Segmented, Switch } from "@/components/ui/controls";
 
 const MODE_TEXT: Record<string, string> = {
-  mock: "Every generation runs on the local mock provider. Nothing is sent to a provider and nothing is billed.",
-  mixed: "Routes listed in LIVE_ROUTE_ALLOWLIST run for real; everything else stays on the mock provider.",
-  live: "Generations call real providers and are billed to your accounts.",
+  mock: "Every generation runs on the mock provider. Nothing is sent to a provider and nothing is billed.",
+  mixed: "Only the routes below run for real; everything else stays on the mock provider.",
+  live: "Generations call real providers and are billed to your accounts, within the limits on the left.",
 };
+const CLAUDE_TEXT: Record<string, string> = {
+  mock: "Scripts, shot plans and prompt help come from a canned writer. Nothing is billed.",
+  live: "Claude writes scripts and shot plans and helps with prompts, billed to your budget.",
+};
+const MODE_NAME: Record<string, string> = { mock: "Mock", mixed: "Mixed", live: "Live" };
 
 export function Settings() {
   const { data: budget } = useBudget();
@@ -61,13 +66,43 @@ export function Settings() {
 
         <section className="space-y-5">
           <h2 className="type-title text-xl">Providers</h2>
-          {registry && (
-            <div className="rounded-[var(--radius-panel)] bg-panel p-4">
-              <p className="text-sm">
-                Provider mode: <span className="text-tungsten">{registry.provider_mode}</span>
+          {budget && (
+            <div className="space-y-5 rounded-[var(--radius-panel)] bg-panel p-4">
+              <div className="space-y-2">
+                <p className="text-sm">Generation</p>
+                <Segmented
+                  label="Generation mode"
+                  value={budget.provider_mode}
+                  options={budget.provider_modes as ("mock" | "mixed" | "live")[]}
+                  render={(m) => MODE_NAME[m]}
+                  onChange={(m) => update.mutate({ provider_mode: m })}
+                />
+                <p className="text-xs leading-relaxed text-muted">{MODE_TEXT[budget.provider_mode]}</p>
+                {budget.provider_mode === "mixed" && (
+                  <p className="text-xs text-muted">
+                    {budget.live_route_allowlist.length
+                      ? budget.live_route_allowlist.join(", ")
+                      : "No routes are listed in LIVE_ROUTE_ALLOWLIST, so everything stays mocked."}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm">Claude</p>
+                <Segmented
+                  label="Claude mode"
+                  value={budget.llm_mode}
+                  options={budget.llm_modes as ("mock" | "live")[]}
+                  render={(m) => MODE_NAME[m]}
+                  onChange={(m) => update.mutate({ llm_mode: m })}
+                />
+                <p className="text-xs leading-relaxed text-muted">{CLAUDE_TEXT[budget.llm_mode]}</p>
+              </div>
+              <p className="text-2xs text-faint">
+                Changes apply to the next generation, no restart needed.
+                {budget.provider_modes.length < 3 || budget.llm_modes.length < 2
+                  ? " This studio's .env (PROVIDER_MODE, LLM_MODE) keeps it from going further; change it there for more."
+                  : ""}
               </p>
-              <p className="mt-1 text-xs leading-relaxed text-muted">{MODE_TEXT[registry.provider_mode]}</p>
-              <p className="mt-3 text-2xs text-faint">Change it with PROVIDER_MODE in .env, then restart the API and worker.</p>
             </div>
           )}
           {health && (
@@ -93,7 +128,7 @@ export function Settings() {
               <dt className="text-muted">Claude</dt>
               <dd>
                 {health.llm_mode === "mock"
-                  ? "Mock writer (set LLM_MODE=live and ANTHROPIC_API_KEY in .env for Claude)"
+                  ? "Mock writer"
                   : health.llm_key_set
                     ? "Live. Enhancements are billed to your budget."
                     : "Live mode, but ANTHROPIC_API_KEY is missing from .env"}

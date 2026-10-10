@@ -1222,6 +1222,30 @@ export interface components {
             confirm_over_usd: number;
             /** Live Enabled */
             live_enabled: boolean;
+            /**
+             * Provider Mode
+             * @description In effect: the Settings switch within .env's
+             * @enum {string}
+             */
+            provider_mode: "mock" | "mixed" | "live";
+            /**
+             * Provider Modes
+             * @description What the switch may choose: PROVIDER_MODE in .env and safer
+             */
+            provider_modes: string[];
+            /**
+             * Llm Mode
+             * @description Claude's mode in effect, the same way
+             * @enum {string}
+             */
+            llm_mode: "mock" | "live";
+            /** Llm Modes */
+            llm_modes: string[];
+            /**
+             * Live Route Allowlist
+             * @description Routes that run for real in mixed mode (LIVE_ROUTE_ALLOWLIST)
+             */
+            live_route_allowlist: string[];
         };
         /** BudgetUpdate */
         BudgetUpdate: {
@@ -1233,6 +1257,16 @@ export interface components {
             confirm_over_usd?: number | null;
             /** Live Enabled */
             live_enabled?: boolean | null;
+            /**
+             * Provider Mode
+             * @description Within PROVIDER_MODE in .env
+             */
+            provider_mode?: ("mock" | "mixed" | "live") | null;
+            /**
+             * Llm Mode
+             * @description Within LLM_MODE in .env
+             */
+            llm_mode?: ("mock" | "live") | null;
         };
         /** CameraMove */
         CameraMove: {
