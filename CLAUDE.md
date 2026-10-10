@@ -51,7 +51,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 ## Registry expressions and mapping (generic features; use these before writing code)
 - Price `quantity`/`formula` and route `eta` see the params, `mode`, `duration`, `input_video_seconds`,
   `input_video_frames`, `input_audio_seconds`, `input_images`, and `<role>_seconds` per input (e.g.
-  `driving_video_seconds`; missing inputs count as 0). Functions: `max`, `min`, `round`, `ceil`. Rates can
+  `driving_video_seconds`; missing inputs count as 0), and `input_video_aspect` (long over short side of the first
+  clip, 16:9 if unknown; for outputs that keep the clip's shape). Functions: `max`, `min`, `round`, `ceil`. Rates can
   match on `mode` too (`when: {mode: video_edit, resolution: "720p"}`; the most specific match wins).
 - Endpoints can template params: `fal-ai/kling-video/v3/{tier}/motion-control` (map the param `to: null`).
 - A media field ending in `[]` is always sent as a list (`media: {input_video: "video_urls[]"}`).
@@ -296,7 +297,9 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 - A scene is a `projects` row (`kind: jutsu3d`) whose document is `studio/jutsu3d/document.py` (objects, keyframe
   tracks, settings; a `world` object holds a splat and its collision mesh). Render passes are drawn on the editor's
   canvas (`RenderPanel.tsx:renderScene`), uploaded frame by frame (`api/routers/renders.py`) and joined by ffmpeg into
-  a video per pass, or stills at the camera's keys. The `jutsu3d` recipe makes those renders real (angles or depth).
+  a video per pass, or stills at the camera's keys. The `jutsu3d` recipe makes those renders real: angles,
+  depth (the depth pass drives Wan VACE depth) or real (the picture pass re-rendered as live action by LTX-2.3 render to
+  real, op `render_to_real`; `lib/jutsu3d.ts:realParams` sizes it to the render, 720p up to about 6 s, else 480p).
 - Rigged models play clips on the timeline: a model object's `animation` (`{clip, source_asset_id, start, offset,
   speed, loop}`) names a clip in its own GLB or in another on the same skeleton (bones match by name), e.g. a rigging
   job's walking or running GLB. `SceneObjects.tsx:Animated` clones the rig (SkeletonUtils), poses it with a paused

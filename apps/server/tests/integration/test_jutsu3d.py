@@ -178,6 +178,47 @@ async def test_the_depth_pass_drives_a_depth_model_from_a_redrawn_opening_frame(
     assert clip.model_id == "wan-vace-depth" and done["output"]["asset_id"] == steps["clip[00]"]["output"]["asset_id"]
 
 
+async def test_the_picture_pass_is_made_real_opening_on_a_redrawn_frame(client, in_memory_queue):
+    from tests.integration.test_pipelines import drain, get, start
+
+    p = await new_scene(client)
+    film = (await render(client, p, frames=12))["assets"]
+    opening = (await render(client, p, frames=1, times=[0]))["stills"]["beauty"][0]
+    base = {"project_id": p["id"], "path": "real", "prompt": "x"}
+    missing = await client.post("/pipelines", json={"recipe": "jutsu3d", "input": {**base, "model_id": "ltx-2.3-render-to-real"}})
+    assert missing.status_code == 422 and "picture pass" in missing.text
+    wrong = await client.post("/pipelines", json={"recipe": "jutsu3d", "input": {
+        **base, "model_id": "wan-vace-depth", "render_asset_id": film["beauty"]["id"]}})
+    assert wrong.status_code == 422 and "render-to-real" in wrong.text
+
+    # billed per output megapixel: frames x 480 x 480 x the render's shape (128:72)
+    est = await client.post("/pipelines/estimate", json={"recipe": "jutsu3d", "input": {
+        **base, "model_id": "ltx-2.3-render-to-real", "render_asset_id": film["beauty"]["id"],
+        "params": {"resolution": "480p", "num_frames": 25}}})
+    assert est.status_code == 200, est.text
+    assert est.json()["live_estimate_usd"] == pytest.approx(25 * 480 * 480 * 128 / 72 / 1e6 * 0.0024075, abs=0.001)
+
+    run = await start(client, "jutsu3d", project_id=p["id"], path="real", model_id="ltx-2.3-render-to-real",
+                      prompt="A misty forest path at dawn", render_asset_id=film["beauty"]["id"],
+                      params={"resolution": "480p", "num_frames": 25, "frames_per_second": 12, "aspect_ratio": "1:1"},
+                      stills=[{"asset_id": opening["id"], "time": 0}])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    steps = {s["key"]: s for s in done["steps"]}
+    assert steps["clip[00]"]["label"].startswith("Make the picture pass real")
+    async with session_scope() as s:
+        clip = await s.get(Generation, uuid.UUID(steps["clip[00]"]["generation_id"]))
+    media = {m["role"]: m["asset_id"] for m in clip.request["media"]}
+    assert media == {"input_video": film["beauty"]["id"], "start_image": done["output"]["looks"][0]}
+    assert clip.request["params"]["num_frames"] == 25
+    # the scene's shape reaches the opening redraw, and the clip only gets what its model takes
+    assert "aspect_ratio" not in clip.request["params"] and not clip.request.get("warnings")
+    async with session_scope() as s:
+        look = await s.get(Generation, uuid.UUID(steps["look[00]"]["generation_id"]))
+    assert look.request["params"]["aspect_ratio"] == "1:1"
+
+
 # ---------------------------------------------------------------- models and worlds
 
 

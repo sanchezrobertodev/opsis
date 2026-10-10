@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names verified 2026-10-09 against fal's OpenAPI (fal-ai/ltx-2.3-quality/render-to-real); price from fal's
+# pricing API ($0.0024075 per output megapixel, frames x width x height).
+# Checked live 2026-10-09: a 3 s 1280x720 picture pass at 720p came back 1152x704 (fal snaps the size down) and was
+# billed $0.144 against a $0.162 estimate, so the estimate errs about 12% high.
+id: ltx-2.3-render-to-real
+name: LTX-2.3 render to real
+family: ltx
+vendor: lightricks
+description: >-
+  Re-renders a 3D or CG render (a 3D blocking picture pass) as photoreal live-action footage, keeping its framing and
+  motion. An optional picture sets the look of the first frame. Hosted LTX-2.3 with Lightricks' render-to-real
+  IC-LoRA.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [render-to-real, control, ltx, 3d-blocking]
+prompt: {max_chars: 2000, dialect: default}
+
+parameters:
+  - {name: resolution, label: Size, type: enum, options: ["480p", "720p"], default: "720p", ui: segmented,
+     help: "720p takes up to about 6 seconds, 480p up to about 15."}
+  - name: intensity
+    label: How far from the render
+    type: enum
+    options: [light, strong, strong-v2]
+    default: strong-v2
+    labels: {light: Light, strong: Strong, strong-v2: Strong (newest)}
+    help: "Light keeps more of the render's look; Strong goes further toward live action."
+  - {name: num_frames, label: Frames, type: int, min: 9, max: 481, default: 121, group: advanced,
+     help: "Frames to make; 3D blocking sets this from the render's length."}
+  - {name: frames_per_second, label: Frame rate, type: int, min: 8, max: 60, default: 24, group: advanced}
+  - {name: enable_detail_refine, label: Sharper (4x the price), type: bool, default: false, group: advanced,
+     help: "A second pass at twice the width and height."}
+  - {name: generate_audio, label: Sound, type: bool, default: false}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: render_to_real
+    label: Render to real
+    ops: [render_to_real]
+    prompt: optional
+    medias:
+      - {role: input_video, kinds: [video], label: 3D render, required: true, max_duration_s: 20}
+      - {role: start_image, kinds: [image], label: First frame (optional)}
+
+routes:
+  - id: ltx-2.3-render-to-real@fal
+    provider: fal
+    modes:
+      render_to_real: {endpoint: fal-ai/ltx-2.3-quality/render-to-real}
+    map:
+      params:
+        resolution: resolution
+        intensity: intensity
+        num_frames: num_frames
+        frames_per_second: frames_per_second
+        enable_detail_refine: enable_detail_refine
+        generate_audio: generate_audio
+        seed: seed
+      media: {input_video: video_url, start_image: image_url}
+    pricing:
+      # output megapixels: frames x the short side squared x the clip's shape (it keeps the render's), 4x with the
+      # detail pass (twice the width and height)
+      basis: formula
+      formula: >-
+        num_frames * (720 if resolution == '720p' else 480) ** 2 * input_video_aspect / 1000000 * 0.0024075
+        * (4 if enable_detail_refine else 1)
+      verified: 2026-10-09
+      source: "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai/ltx-2.3-quality/render-to-real ($0.0024075/MP)"
+    timeout_s: 1800
+    output: {path: video.url, kind: video}
+    notes: >-
+      Over the IC-LoRA budget (about 6 s at 720p, 15 s at 480p) fal answers 422; 3D blocking picks 480p and caps the
+      frames for long renders.
+
+examples:
+  - name: render_smoke
+    mode: render_to_real
+    prompt: A rain-soaked rooftop at night, a courier in a yellow jacket, neon signs below.
+    params: {resolution: "480p", num_frames: 73}
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0.03, 0.08]}
