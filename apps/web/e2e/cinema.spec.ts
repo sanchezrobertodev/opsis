@@ -66,6 +66,9 @@ test("Cinema: light and feeling on a shot, a scene in one take, then continue a 
   await expect(page.getByText("the subject feels joy")).toBeVisible();
   await page.getByRole("button", { name: "Add a line" }).click();
   await page.getByLabel("Line 1", { exact: true }).fill("Up it goes!");
+  // the plan put its character in the cast, so a new line starts as theirs; the narrator is one pick away
+  await expect(page.getByLabel("Who says line 1")).toHaveValue(/^@lead(-\d+)?$/);
+  await page.getByLabel("Who says line 1").selectOption("Narrator");
   await expect(page.getByLabel("Who says line 1")).toHaveValue("Narrator");
 
   // both shots in one multi-shot call, cut back into a take per shot
