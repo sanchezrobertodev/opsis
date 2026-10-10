@@ -37,6 +37,19 @@ CHUNK = 1 << 20
 NOT_MEDIA = {AssetKind.model3d: (b"glTF",), AssetKind.splat: (b"ply\n", b"ply\r", b"\x1f\x8b")}
 
 
+# types that say nothing about the file (scripts, curl and some tools send these): the file name decides instead
+GENERIC_TYPES = {"", "application/octet-stream", "binary/octet-stream", "application/binary"}
+# extensions Windows' type table can lack
+EXTRA_TYPES = {".webp": "image/webp", ".m4a": "audio/mp4", ".mkv": "video/x-matroska"}
+
+
+def _sent_or_guessed(content_type: str | None, filename: str) -> str:
+    """The type the client sent, unless it's a generic one; then the one the file name implies."""
+    sent = (content_type or "").split(";")[0].strip().lower()
+    guessed = mimetypes.guess_type(filename)[0] or EXTRA_TYPES.get(Path(filename).suffix.lower())
+    return (guessed if sent in GENERIC_TYPES else sent) or guessed or "application/octet-stream"
+
+
 def _kind_for(mime: str, filename: str = "") -> AssetKind:
     name = filename.lower()
     if mime == "model/gltf-binary" or name.endswith(".glb"):
@@ -56,7 +69,7 @@ def _kind_for(mime: str, filename: str = "") -> AssetKind:
 async def upload(
     file: UploadFile, session: AsyncSession = Depends(get_session), user: User = Depends(current_user)
 ) -> AssetOut:
-    mime = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
+    mime = _sent_or_guessed(file.content_type, file.filename or "")
     kind = _kind_for(mime, file.filename or "")
     if kind in NOT_MEDIA:
         mime = mimetypes.guess_type(file.filename or "")[0] or ("model/gltf-binary" if kind == AssetKind.model3d

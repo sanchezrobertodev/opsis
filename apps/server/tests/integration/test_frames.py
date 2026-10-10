@@ -23,6 +23,23 @@ async def client(db, in_memory_queue):
         yield c
 
 
+async def test_a_generic_upload_type_is_read_from_the_file_name(client):
+    """Scripts and some tools send every file as application/octet-stream: the extension says what it is."""
+    files = {"clip.mp4": (CLIP, "video", "video/mp4"),
+             "keyframe.png": (ROOT / "fixtures" / "images" / "keyframe.png", "image", "image/png"),
+             "line.mp3": (ROOT / "fixtures" / "audio" / "line.mp3", "audio", "audio/mpeg")}
+    for name, (path, kind, mime) in files.items():
+        r = await client.post("/uploads", files={"file": (name, path.read_bytes(), "application/octet-stream")})
+        assert r.status_code == 201, (name, r.text)
+        assert (r.json()["kind"], r.json()["mime"]) == (kind, mime)
+        assert r.json()["url"].endswith(Path(name).suffix)
+    # a real type still wins, and a file with neither is refused
+    r = await client.post("/uploads", files={"file": ("clip.bin", CLIP.read_bytes(), "video/mp4")})
+    assert r.status_code == 201 and r.json()["kind"] == "video"
+    r = await client.post("/uploads", files={"file": ("notes", b"hello", "application/octet-stream")})
+    assert r.status_code == 415
+
+
 async def test_last_frame_becomes_an_image_asset_once(client):
     up = await client.post("/uploads", files={"file": ("clip.mp4", CLIP.read_bytes(), "video/mp4")})
     video = up.json()
