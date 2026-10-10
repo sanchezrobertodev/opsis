@@ -41,3 +41,16 @@ def test_a_model_plays_a_clip_from_its_own_or_another_glb_and_loses_it_with_that
         SceneObject(kind="box", animation={"clip": "Walking"})
     with pytest.raises(ValidationError):
         SceneObject(kind="model", asset_id="rig-1", animation={"clip": "Walking", "speed": 0})
+
+
+def test_the_studio_room_has_a_default_and_bounds():
+    settings = Jutsu3dDocument.model_validate(starter_scene()).settings
+    assert settings.environment == 0.4 and settings.ambient == 0.4
+    # scenes saved before the setting existed read with the default
+    old = starter_scene()
+    old["settings"].pop("environment", None)
+    assert Jutsu3dDocument.model_validate(old).settings.environment == 0.4
+    with pytest.raises(ValidationError):
+        Jutsu3dDocument.model_validate({**old, "settings": {**old["settings"], "environment": -0.1}})
+    with pytest.raises(ValidationError):
+        Jutsu3dDocument.model_validate({**old, "settings": {**old["settings"], "environment": 3.5}})

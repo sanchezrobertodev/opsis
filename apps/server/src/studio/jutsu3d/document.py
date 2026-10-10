@@ -110,6 +110,7 @@ class SceneSettings(_Doc):
     background: str = Field("#1c1d20", pattern=HEX)
     aspect_ratio: Literal["16:9", "9:16", "1:1", "21:9", "4:3"] = "16:9"
     ambient: float = Field(0.4, ge=0, le=5)
+    environment: float = Field(0.4, ge=0, le=3, description="Strength of the soft studio room PBR materials reflect")
 
 
 class Jutsu3dDocument(_Doc):

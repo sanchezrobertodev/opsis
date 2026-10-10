@@ -1,10 +1,11 @@
 "use client";
 
-import { Grid, OrbitControls, PerspectiveCamera, TransformControls } from "@react-three/drei";
+import { Environment, Grid, OrbitControls, PerspectiveCamera, TransformControls } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { type MutableRefObject, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { evaluate, fovFor, type SceneDoc, type SceneObject, trackOf, type Transform, type Vec3 } from "@/lib/jutsu3d";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { ENVIRONMENT_DEFAULT, evaluate, fovFor, type SceneDoc, type SceneObject, trackOf, type Transform, type Vec3 } from "@/lib/jutsu3d";
 import { SparkLayer } from "@/components/three/Splat";
 import { ObjectNode } from "./SceneObjects";
 
@@ -38,6 +39,7 @@ export function Viewport({ doc, selected, time, mode, look, helpers = true, onSe
       <color attach="background" args={[doc.settings.background]} />
       {doc.objects.some((o) => o.kind === "world") && <SparkLayer />}
       <ambientLight intensity={doc.settings.ambient} />
+      <StudioRoom intensity={doc.settings.environment ?? ENVIRONMENT_DEFAULT} />
       {helpers && <Grid userData={{ helper: true }} infiniteGrid cellSize={0.5} sectionSize={2.5} cellColor="#36373c" sectionColor="#45464c" fadeDistance={45} />}
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[200, 200]} />
@@ -73,6 +75,31 @@ function toTransform(g: THREE.Object3D): Transform {
     rotation: [r(g.rotation.x), r(g.rotation.y), r(g.rotation.z)],
     scale: g.scale.toArray().map(r) as Vec3,
   };
+}
+
+/** One studio room per renderer, generated here (nothing is fetched); it goes when the renderer's context does. */
+const rooms = new WeakMap<THREE.WebGLRenderer, THREE.Texture>();
+function roomFor(gl: THREE.WebGLRenderer) {
+  let map = rooms.get(gl);
+  if (!map) {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const room = new RoomEnvironment();
+    map = pmrem.fromScene(room, 0.04).texture;
+    room.dispose();
+    pmrem.dispose();
+    rooms.set(gl, map);
+  }
+  return map;
+}
+
+/**
+ * A soft studio room as the scene's image light, so metallic PBR models from picture-to-3D services reflect it
+ * instead of going black. It lights, never shows: the background setting stays. Data passes override materials,
+ * so it never reaches depth or normals.
+ */
+function StudioRoom({ intensity }: { intensity: number }) {
+  const gl = useThree((s) => s.gl);
+  return <Environment map={roomFor(gl)} environmentIntensity={intensity} />;
 }
 
 /** Looks through the scene's active camera: its position, target and focal length. */
