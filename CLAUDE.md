@@ -203,6 +203,9 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   off, the route says it isn't running.
 - **Backups:** `DB_EXEC` says how backups reach the Postgres tools. Unset is `docker compose exec` (the PC); empty
   runs them in place (the worker container has the Postgres 18 client). systemd timers replace the Windows tasks.
+- **Off-site copy:** the hourly `ams-offsite.timer` (`infra/server/offsite.sh`) sends new media, as tar bundles, and
+  new dumps to the PC with Taildrop. The PC's "AI Media Studio backup collect" task files them on
+  `E:\Backups\ai-media-studio`: a media mirror plus 60 days of dumps.
 - The server's caption fonts are open stand-ins (`infra/server/fonts.conf`).
 
 ## Providers without a model
