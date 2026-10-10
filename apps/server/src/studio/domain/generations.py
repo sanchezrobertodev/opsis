@@ -76,6 +76,7 @@ class Plan:
     spec: ModelSpec | None = None  # the model that runs (a virtual model's engine)
     direction: dict[str, Any] | None = None  # with a virtual model's director params folded in
     via: dict[str, Any] | None = None  # the virtual model asked for, if any
+    provider_mode: str | None = None  # the mode it was routed in (the Settings switch within .env's)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -92,9 +93,14 @@ class Plan:
         }
 
 
-async def routing_env(session: AsyncSession, reg: Registry, user_id: uuid.UUID | None = None) -> RoutingEnv:
+async def routing_env(session: AsyncSession, reg: Registry, user_id: uuid.UUID | None = None,
+                      at_most: str | None = None) -> RoutingEnv:
+    """`at_most`: the mode a queued generation was approved in. Switching to a safer mode still applies to it (Mock
+    stops a paid job that hasn't started), but a generation made as a free mock run never turns paid."""
     settings = get_settings()
     mode = (await modes.current(session, user_id)).provider  # the Settings switch, capped by PROVIDER_MODE
+    if at_most in modes.PROVIDER_MODES:
+        mode = modes.capped(mode, at_most, modes.PROVIDER_MODES)
 
     def has_key(provider_id: str) -> bool:
         provider = reg.providers.get(provider_id)
@@ -258,7 +264,8 @@ async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, r
     cands = candidates(reg, spec, req, env, body.route_policy)
     chosen = next((c for c in cands if c.eligible), None)
     return Plan(request=req, candidates=cands, chosen=chosen, live_reference=cheapest_live_estimate(cands),
-                compiled=compiled, mentions=mention.elements, spec=spec, direction=body.direction, via=virtual.via)
+                compiled=compiled, mentions=mention.elements, spec=spec, direction=body.direction, via=virtual.via,
+                provider_mode=env.provider_mode)
 
 
 async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest) -> tuple[Generation, bool]:
@@ -316,6 +323,8 @@ async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: Cre
         routing={
             "policy": body.route_policy,
             "planned": p.chosen.route.id,
+            # the mode it was estimated (and confirmed) in; the worker never routes it in a more paid one
+            "provider_mode": p.provider_mode,
             "candidates": [c.as_dict() for c in p.candidates],
             "live_reference": p.live_reference.as_dict() if p.live_reference else None,
             "tried": [],
