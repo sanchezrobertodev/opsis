@@ -191,6 +191,20 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   prompt kinds exist, not the fields inside them. The contract tests check every route against those baselines offline. After a reviewed change, fix the
   YAML and run with `--update` (`--provider` limits it).
 
+## Running on the home server
+- The studio you use runs on the Fedora home server (`infra/server/`, README there; plan in `docs/home-server-move.md`):
+  - **Containers:** rootless Podman with Quadlet runs the pod `ams` with Postgres 18, the API, the worker and the web app.
+  - **Addresses:** web `https://fedora.tail36d2f8.ts.net:19443/`, API `:19444`, tailnet only.
+  - **Files:** the checkout is `~/Development/repos/ai-media-studio`, with its `.env` and `data/`.
+- The PC is for development: mock mode against its own database, tests and Playwright.
+- **Deploying:** merge, then press Deploy on the Hub (`infra/server/deploy.sh`). It pulls, builds both images (the API
+  address is compiled into the web image), migrates and restarts.
+- The local models stay on the PC: the server's `COMFYUI_URL` points at the PC's ComfyUI over Tailscale. When the PC is
+  off, the route says it isn't running.
+- **Backups:** `DB_EXEC` says how backups reach the Postgres tools. Unset is `docker compose exec` (the PC); empty
+  runs them in place (the worker container has the Postgres 18 client). systemd timers replace the Windows tasks.
+- The server's caption fonts are open stand-ins (`infra/server/fonts.conf`).
+
 ## Providers without a model
 - `local_tools`: the `video-tools` model's modes (reframe, trim, retime, reverse, loop, interpolate, upscale,
   stabilize) run on this machine's ffmpeg (`studio/media/tools.py`). Free; local routes check

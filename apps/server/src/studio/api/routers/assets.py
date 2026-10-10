@@ -39,8 +39,8 @@ NOT_MEDIA = {AssetKind.model3d: (b"glTF",), AssetKind.splat: (b"ply\n", b"ply\r"
 
 # types that say nothing about the file (scripts, curl and some tools send these): the file name decides instead
 GENERIC_TYPES = {"", "application/octet-stream", "binary/octet-stream", "application/binary"}
-# extensions Windows' type table can lack
-EXTRA_TYPES = {".webp": "image/webp", ".m4a": "audio/mp4", ".mkv": "video/x-matroska"}
+# extensions Windows' type table can lack, or Python's own (used where the system has none, like the server's image)
+EXTRA_TYPES = {".webp": "image/webp", ".m4a": "audio/mp4", ".mkv": "video/x-matroska", ".m4v": "video/x-m4v"}
 
 
 def _type_of_name(filename: str) -> str | None:

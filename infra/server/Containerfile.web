@@ -1,0 +1,28 @@
+# The studio's web app for the home server: a standalone Next.js server (see infra/server/README.md).
+# Build from the repo root:
+#   podman build -f infra/server/Containerfile.web --ignorefile infra/server/.containerignore \
+#     --build-arg NEXT_PUBLIC_API_URL=https://<host>:19444 .
+# The API address is compiled into the browser code, so a new address needs a rebuild.
+FROM docker.io/library/node:24-trixie-slim AS build
+ENV NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS=--max-old-space-size=2048
+RUN corepack enable
+WORKDIR /repo
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/package.json
+COPY packages/api-client/package.json packages/api-client/package.json
+RUN pnpm install --frozen-lockfile --filter "@studio/web..."
+COPY packages/api-client packages/api-client
+COPY apps/web apps/web
+ARG NEXT_PUBLIC_API_URL
+RUN test -n "$NEXT_PUBLIC_API_URL" || { echo "pass --build-arg NEXT_PUBLIC_API_URL"; exit 1; }
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL NEXT_OUTPUT=standalone
+RUN pnpm --filter @studio/web build
+
+FROM docker.io/library/node:24-trixie-slim
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=3000
+WORKDIR /app
+COPY --from=build --chown=node:node /repo/apps/web/.next/standalone ./
+COPY --from=build --chown=node:node /repo/apps/web/.next/static ./apps/web/.next/static
+USER node
+EXPOSE 3000
+CMD ["node", "apps/web/server.js"]

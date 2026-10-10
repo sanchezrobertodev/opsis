@@ -1,0 +1,28 @@
+[Unit]
+Description=AI Media Studio database (Postgres 18)
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+ContainerName=ams-postgres
+Image=docker.io/library/postgres:18
+Pod=ams.pod
+Volume=ams-pgdata.volume:/var/lib/postgresql
+# Reachable only inside the pod, so the dev credentials stay
+Environment=POSTGRES_USER=studio POSTGRES_PASSWORD=studio POSTGRES_DB=studio
+PodmanArgs=--memory=512m
+HealthCmd=pg_isready -q -U studio -d studio -h 127.0.0.1
+HealthInterval=60s
+HealthStartupCmd=pg_isready -q -U studio -d studio -h 127.0.0.1
+HealthStartupInterval=2s
+HealthStartupSuccess=1
+HealthStartupRetries=150
+Notify=healthy
+
+[Service]
+Restart=always
+RestartSec=10
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

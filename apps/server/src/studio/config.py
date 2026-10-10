@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     llm_fast_model: str = "claude-sonnet-5-5"  # interactive: enhance, vision review
     llm_smart_model: str = "claude-opus-5-5"  # scripts, shot plans
 
+    # How backups reach the Postgres tools (ops/backups.py). Unset: `docker compose exec` into the dev container.
+    # Empty: run pg_dump/psql here, with PGHOST/PGPASSWORD set (the home server's pod). Else a command prefix.
+    db_exec: str | None = None
+
     # Local ComfyUI (C:/Dev/AI/VideoStudio). Empty disables the local route.
     comfyui_url: str = ""
     comfyui_workflows_dir: Path = REPO_ROOT / "workflows" / "comfy"

@@ -235,8 +235,11 @@ async def render_card(card: Card, dest: Path, size: tuple[int, int], frames: int
 def join_graph(lengths: list[float], transitions: list[str], fade: float) -> tuple[str, float]:
     """Filter graph joining inputs 0..n-1 (video+audio) into [v][a]; returns it and the total length (seconds)."""
     p = plan(lengths, transitions, fade)
-    # one time base for every input: xfade refuses inputs whose time bases differ (a concat's output and a part)
-    chains = [f"[{i}:v]settb=AVTB,setpts=PTS-STARTPTS[p{i}v];[{i}:a]asetpts=PTS-STARTPTS[p{i}a]"
+    # Every xfade input ends on fps: one time base (1/FPS) and a stated frame rate. xfade refuses inputs whose time
+    # bases differ (a concat's output and a part), and from ffmpeg 7 on also any whose rate is unknown, which both
+    # setpts and concat leave behind.
+    rate = f"fps={FPS}"
+    chains = [f"[{i}:v]setpts=PTS-STARTPTS,{rate}[p{i}v];[{i}:a]asetpts=PTS-STARTPTS[p{i}a]"
               for i in range(len(lengths))]
     v, a = "p0v", "p0a"
     for i, seg in enumerate(p.segments[1:], 1):
@@ -246,7 +249,7 @@ def join_graph(lengths: list[float], transitions: list[str], fade: float) -> tup
             chains.append(f"[{v}][p{i}v]xfade=transition=fade:duration={d:.3f}:offset={seg.start / FPS:.3f}[{nv}]")
             chains.append(f"[{a}][p{i}a]acrossfade=d={d:.3f}[{na}]")
         else:
-            chains.append(f"[{v}][{a}][p{i}v][p{i}a]concat=n=2:v=1:a=1[{nv}][{na}]")
+            chains.append(f"[{v}][{a}][p{i}v][p{i}a]concat=n=2:v=1:a=1[c{i}v][{na}];[c{i}v]{rate}[{nv}]")
         v, a = nv, na
     chains.append(f"[{v}]null[v];[{a}]anull[a]")
     return ";".join(chains), round(p.seconds, 3)

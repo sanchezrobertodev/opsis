@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import secrets
+import shlex
 import subprocess
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -49,9 +50,18 @@ class Database:
         return cls(user=url.username or "postgres", name=url.path.lstrip("/") or "postgres")
 
 
+def _prefix() -> list[str]:
+    """What runs the Postgres tools: `docker compose exec` into the dev container by default, nothing when they're
+    installed alongside (DB_EXEC empty, as in the home server's pod), or any command prefix DB_EXEC gives."""
+    raw = get_settings().db_exec
+    if raw is None:
+        return ["docker", "compose", "-f", str(COMPOSE), "exec", "-T", "postgres"]
+    return shlex.split(raw)
+
+
 def _exec(args: Sequence[str], *, stdin: Path | None = None, stdout: Path | None = None) -> str:
-    """Run a command inside the Postgres container (docker compose exec), returning its text output."""
-    cmd = ["docker", "compose", "-f", str(COMPOSE), "exec", "-T", "postgres", *args]
+    """Run a Postgres tool (through the container unless DB_EXEC says otherwise), returning its text output."""
+    cmd = [*_prefix(), *args]
     try:
         if stdout is not None:
             with stdout.open("wb") as out:
@@ -67,7 +77,9 @@ def _exec(args: Sequence[str], *, stdin: Path | None = None, stdout: Path | None
                     src.close()
             text = proc.stdout.decode("utf-8", "replace")
     except FileNotFoundError:
-        raise BackupError("docker isn't on PATH; start Docker Desktop and `pnpm db:up`") from None
+        if cmd[0] == "docker":
+            raise BackupError("docker isn't on PATH; start Docker Desktop and `pnpm db:up`") from None
+        raise BackupError(f"{cmd[0]} isn't on PATH (DB_EXEC)") from None
     if proc.returncode != 0:
         err = proc.stderr.decode("utf-8", "replace").strip()
         raise BackupError(f"{args[0]} failed: {err[-800:] or f'exit {proc.returncode}'}")

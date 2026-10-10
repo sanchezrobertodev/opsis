@@ -1,0 +1,31 @@
+[Unit]
+Description=AI Media Studio worker (generations, recipe runs, ffmpeg)
+Requires=ams-postgres.service
+After=ams-postgres.service
+
+[Container]
+ContainerName=ams-worker
+Image=localhost/ams-server:latest
+Pod=ams.pod
+# The server's clock, so backup names and logs read in local time
+Timezone=local
+# A real init as PID 1, so SIGTERM stops Python promptly on restart
+RunInit=true
+Exec=python -m studio.worker
+EnvironmentFile=@APP_DIR@/.env
+Environment=DATABASE_URL=postgresql+asyncpg://studio:studio@127.0.0.1:5432/studio
+Environment=QUEUE_DATABASE_URL=postgresql://studio:studio@127.0.0.1:5432/studio
+Environment=WEB_ORIGIN=@WEB_ORIGIN@
+Environment=PGHOST=127.0.0.1 PGPASSWORD=studio DB_EXEC=
+Volume=@APP_DIR@/data:/app/data:z
+# ffmpeg assembly is the peak; the cap keeps a runaway render from taking the laptop down
+PodmanArgs=--memory=1536m
+StopTimeout=30
+
+[Service]
+Restart=always
+RestartSec=15
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

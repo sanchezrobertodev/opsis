@@ -1,0 +1,18 @@
+# Keeps the build context small and secrets out of images
+.git
+.env
+.env.*
+data
+docs
+fixtures
+smoke_reports
+**/node_modules
+**/.next
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+apps/web/test-results
+apps/web/playwright-report
+apps/server/tests
+infra/runpod
