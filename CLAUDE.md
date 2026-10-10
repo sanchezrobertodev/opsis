@@ -184,10 +184,12 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   `robocopy data\media E:\studio-media /MIR` to an external drive; a restored database pointing at missing files
   shows broken assets.
 - The schema check (`studio/registry/drift.py`) reads each route's published schema (fal per endpoint, Runway,
-  ElevenLabs; Replicate and World Labs with their keys) and reports gone or deprecated endpoints, fields a route
-  sends that the endpoint doesn't take, required fields it never sends, choices the endpoint rejects (after the
-  model's own rules), and changes since the baselines in `registry/provider-schemas/`. The contract tests check
-  every route against those baselines offline. After a reviewed change, fix the YAML and run with `--update`.
+  ElevenLabs, World Labs from the OpenAPI block in its public docs pages; Replicate with its key) and reports gone or
+  deprecated endpoints, fields a route sends that the endpoint doesn't take, required fields it never sends, choices
+  the endpoint rejects (after the model's own rules), and changes since the baselines in `registry/provider-schemas/`.
+  It compares top-level fields only: of a nested one (Marble's `world_prompt`) it sees just the type, i.e. which
+  prompt kinds exist, not the fields inside them. The contract tests check every route against those baselines offline. After a reviewed change, fix the
+  YAML and run with `--update` (`--provider` limits it).
 
 ## Providers without a model
 - `local_tools`: the `video-tools` model's modes (reframe, trim, retime, reverse, loop, interpolate, upscale,

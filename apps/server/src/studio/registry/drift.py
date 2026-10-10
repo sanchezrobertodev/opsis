@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from studio.registry.loader import Registry
 from studio.registry.mapping import TRANSFORMS, build_payload, endpoint_for
 from studio.registry.schema import EnumParam, FloatParam, IntParam, Mode, ModelSpec, ParamMapEntry, Route
@@ -131,7 +133,8 @@ def summarize(schema: Any, doc: dict[str, Any], output: Any = None, deprecated: 
 
 # ---------------------------------------------------------------- where each provider publishes its schemas
 
-Fetch = Callable[[str, dict[str, str]], Awaitable[tuple[int, Any]]]  # url, headers -> (status, parsed JSON or None)
+# url, headers -> (status, parsed JSON; else a text page's text; else None)
+Fetch = Callable[[str, dict[str, str]], Awaitable[tuple[int, Any]]]
 
 
 @dataclass
@@ -176,7 +179,7 @@ class FalSource(Source):
     async def summary(self, target: Target, fetch: Fetch, settings: Any) -> Summary:
         url = f"https://fal.ai/api/openapi/queue/openapi.json?endpoint_id={target.endpoint}"
         status, doc = await fetch(url, {})
-        if status == 404 or (status == 200 and not doc):
+        if status == 404 or (status == 200 and not (doc and isinstance(doc, dict))):  # an empty or non-JSON answer
             raise Gone(f"fal no longer serves {target.endpoint}")
         if status != 200 or not isinstance(doc, dict):
             raise Unavailable(f"fal schema returned {status}")
@@ -254,17 +257,41 @@ class ReplicateSource(Source):
 
 
 class WorldLabsSource(Source):
-    """World Labs' OpenAPI sits behind the API key (reading it is free)."""
+    """World Labs publishes each endpoint's OpenAPI inside its public docs page (a fenced YAML block in the page's
+    Markdown; the API itself serves none, checked 2026-10-09). `marble/v1/worlds:generate` is documented at
+    `api/reference/worlds/generate.md`."""
 
-    keys = ("worldlabs_api_key",)
+    DOCS = "https://docs.worldlabs.ai/api/reference"
+
+    def page(self, endpoint: str) -> str:
+        path = endpoint.strip("/").removeprefix("marble/v1/").replace(":", "/")
+        return f"{self.DOCS}/{path}.md"
 
     async def summary(self, target: Target, fetch: Fetch, settings: Any) -> Summary:
-        status, doc = await fetch("https://api.worldlabs.ai/marble/v1/openapi.json",
-                                  {"WLT-Api-Key": settings.worldlabs_api_key})
-        if status != 200 or not isinstance(doc, dict):
-            raise Unavailable(f"World Labs OpenAPI returned {status}")
+        url = self.page(target.endpoint)
+        status, page = await fetch(url, {})
+        if status != 200 or not isinstance(page, str):
+            raise Unavailable(f"World Labs docs page {url} returned {status}")
+        doc = openapi_in_markdown(page)
+        if doc is None:
+            raise Unavailable(f"no OpenAPI block in {url}")
         schema, deprecated = _body(doc, f"/{target.endpoint.lstrip('/')}")
         return summarize(schema, doc, deprecated=deprecated)
+
+
+_FENCED_YAML = re.compile(r"^(`{3,})yaml[^\n]*\n(.*?)^\1[ \t]*$", re.MULTILINE | re.DOTALL)
+
+
+def openapi_in_markdown(page: str) -> dict[str, Any] | None:
+    """The first fenced YAML block in a docs page that is an OpenAPI document."""
+    for m in _FENCED_YAML.finditer(page):
+        try:
+            doc = yaml.safe_load(m.group(2))
+        except yaml.YAMLError:
+            continue
+        if isinstance(doc, dict) and "openapi" in doc and "paths" in doc:
+            return doc
+    return None
 
 
 SOURCES: dict[str, Source] = {"fal": FalSource(), "runway": RunwaySource(), "elevenlabs": ElevenLabsSource(),

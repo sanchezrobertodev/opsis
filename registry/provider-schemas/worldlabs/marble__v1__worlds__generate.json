@@ -1,0 +1,48 @@
+{
+ "endpoint": "marble/v1/worlds:generate",
+ "variant": null,
+ "input": {
+  "display_name": {
+   "type": "null|string"
+  },
+  "model": {
+   "type": "string",
+   "enum": [
+    "marble-1.0-draft",
+    "marble-1.0",
+    "marble-1.1",
+    "marble-1.1-plus",
+    "Marble 0.1-mini",
+    "Marble 0.1-plus",
+    "Marble 1.1-plus"
+   ],
+   "default": "marble-1.1"
+  },
+  "permission": {
+   "type": "object<Permission>",
+   "default": {
+    "allow_id_access": false,
+    "allowed_readers": [],
+    "allowed_writers": [],
+    "public": false
+   }
+  },
+  "seed": {
+   "type": "integer|null",
+   "minimum": 0,
+   "maximum": 4294967295
+  },
+  "tags": {
+   "type": "array<string>|null",
+   "maxItems": 10
+  },
+  "world_prompt": {
+   "type": "object<ImagePrompt>|object<MultiImagePrompt>|object<VideoPrompt>|object<WorldTextPrompt>"
+  }
+ },
+ "required": [
+  "world_prompt"
+ ],
+ "output": [],
+ "deprecated": false
+}

@@ -144,3 +144,79 @@ async def test_runway_picks_the_model_variant_and_reports_a_dropped_model():
         assert "no longer offers gen3" in str(exc)
     else:
         raise AssertionError("a model missing from the list is gone")
+
+
+# trimmed from https://docs.worldlabs.ai/api/reference/worlds/generate.md (2026-10-09): the OpenAPI sits in a fenced
+# YAML block, after a usage example in another fenced block
+WL_PAGE = """# Generate World
+
+```bash
+curl -X POST 'https://api.worldlabs.ai/marble/v1/worlds:generate'
+```
+
+## OpenAPI
+
+````yaml POST /marble/v1/worlds:generate
+openapi: 3.1.0
+info: {title: Marble Public API v1, version: 1.0.0}
+paths:
+  /marble/v1/worlds:generate:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/WorldsGenerateRequest'}
+components:
+  schemas:
+    WorldsGenerateRequest:
+      type: object
+      required: [world_prompt]
+      properties:
+        model: {type: string, enum: [marble-1.0-draft, marble-1.1], default: marble-1.1}
+        seed: {anyOf: [{type: integer}, {type: 'null'}]}
+        world_prompt: {type: object}
+````
+"""
+
+
+async def test_world_labs_is_read_from_the_openapi_block_in_its_docs_page():
+    seen: list[str] = []
+
+    async def fetch(url, headers):
+        seen.append(url)
+        return 200, WL_PAGE
+
+    source = drift.WorldLabsSource()
+    s = await source.summary(drift.Target("worldlabs", "marble/v1/worlds:generate"), fetch, None)
+    assert seen == ["https://docs.worldlabs.ai/api/reference/worlds/generate.md"]
+    assert s.input["model"]["enum"] == ["marble-1.0-draft", "marble-1.1"] and s.required == ["world_prompt"]
+    assert not source.keys  # the docs are public
+
+    # a page without the endpoint means it's gone; one without an OpenAPI block, or not there, can't be read
+    try:
+        await source.summary(drift.Target("worldlabs", "marble/v1/worlds:export"), fetch, None)
+    except drift.Gone:
+        pass
+    else:
+        raise AssertionError("an endpoint missing from its page is gone")
+    for answer in ((200, "# Moved\n\nSee the new docs."), (404, None)):
+        async def other(url, headers, answer=answer):
+            return answer
+        try:
+            await source.summary(drift.Target("worldlabs", "marble/v1/worlds:generate"), other, None)
+        except drift.Unavailable:
+            pass
+        else:
+            raise AssertionError(f"{answer} can't be read")
+
+
+async def test_fal_treats_a_text_answer_as_gone():
+    async def fetch(url, headers):
+        return 200, "<html>Not found</html>"
+
+    try:
+        await drift.FalSource().summary(drift.Target("fal", "toy/t2v"), fetch, None)
+    except drift.Gone:
+        pass
+    else:
+        raise AssertionError("a page instead of a schema means fal no longer serves it")
