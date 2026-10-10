@@ -1,0 +1,9 @@
+[Unit]
+Description=AI Media Studio off-site copy of media and database dumps (Taildrop to the PC)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=@APP_DIR@/infra/server/offsite.sh
+StandardOutput=append:@APP_DIR@/data/logs/offsite.log
+StandardError=append:@APP_DIR@/data/logs/offsite.log
