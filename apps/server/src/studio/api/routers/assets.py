@@ -43,11 +43,25 @@ GENERIC_TYPES = {"", "application/octet-stream", "binary/octet-stream", "applica
 EXTRA_TYPES = {".webp": "image/webp", ".m4a": "audio/mp4", ".mkv": "video/x-matroska"}
 
 
+def _type_of_name(filename: str) -> str | None:
+    return mimetypes.guess_type(filename)[0] or EXTRA_TYPES.get(Path(filename).suffix.lower())
+
+
 def _sent_or_guessed(content_type: str | None, filename: str) -> str:
     """The type the client sent, unless it's a generic one; then the one the file name implies."""
     sent = (content_type or "").split(";")[0].strip().lower()
-    guessed = mimetypes.guess_type(filename)[0] or EXTRA_TYPES.get(Path(filename).suffix.lower())
+    guessed = _type_of_name(filename)
     return (guessed if sent in GENERIC_TYPES else sent) or guessed or "application/octet-stream"
+
+
+def _extension(mime: str, filename: str) -> str:
+    """The file name's own extension when it agrees with the type (a .mkv stays .mkv, a .jpeg .jpeg), else the
+    type's usual one."""
+    suffix = Path(filename).suffix.lower()
+    if suffix and _type_of_name(filename) == mime:
+        return suffix
+    ext = mimetypes.guess_extension(mime) or suffix
+    return ".jpg" if ext == ".jpe" else ext
 
 
 def _kind_for(mime: str, filename: str = "") -> AssetKind:
@@ -76,11 +90,9 @@ async def upload(
                                                                 else "application/octet-stream")
     storage = get_storage()
     asset_id = uuid7()
-    ext = mimetypes.guess_extension(mime) or Path(file.filename or "").suffix.lower() or ""
+    ext = _extension(mime, file.filename or "")
     if kind == AssetKind.splat:
         ext = Path(file.filename or "").suffix.lower() or ".spz"
-    if ext == ".jpe":
-        ext = ".jpg"
     tmp = storage.temp_dir() / f"upload-{asset_id.hex}{ext}"
     digest = hashlib.sha256()
     size = 0
