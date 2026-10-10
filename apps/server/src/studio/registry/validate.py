@@ -36,6 +36,7 @@ class MediaRef:
     fps: float | None = None  # for video inputs; some routes bill per input frame
     width: int | None = None  # pixel size, for routes that send coordinates (SAM points)
     height: int | None = None
+    size_bytes: int | None = None  # the file's size, checked against a slot's max_mb
 
 
 @dataclass
@@ -308,6 +309,9 @@ def normalize(
             if slot.max_duration_s and seconds > slot.max_duration_s + 0.05:
                 errors.append(f"{slot.label or slot.role} can be at most {slot.max_duration_s:g} s; "
                               f"this one is {seconds:.1f} s")
+            if slot.max_mb and ref.size_bytes and ref.size_bytes > slot.max_mb * 1024 * 1024:
+                errors.append(f"{slot.label or slot.role} can be at most {slot.max_mb:g} MB; this one is "
+                              f"{ref.size_bytes / (1024 * 1024):.0f} MB")
             short = min(ref.width, ref.height) if ref.width and ref.height else None
             if slot.min_side and short and short < slot.min_side:
                 errors.append(f"{slot.label or slot.role} must be at least {slot.min_side} px on each side; this one "
@@ -316,14 +320,16 @@ def normalize(
                 errors.append(f"{slot.label or slot.role} must be at least {slot.min_fps:g} fps; this one is "
                               f"{ref.fps:g} fps (raise its frame rate first)")
 
-    for rule in spec.rules:  # input lengths some settings can't take (OmniHuman at 1080p: 30 s of audio)
+    for rule in spec.rules:  # inputs some settings can't take (OmniHuman at 1080p: 30 s of audio; Marble: 4 pictures)
         context = {**out, "mode": mode_id}
-        if rule.max_input_seconds and all(
+        if (rule.max_input_seconds or rule.max_inputs) and all(
                 context.get(k) in (v if isinstance(v, list) else [v]) for k, v in rule.when.items()):
             for role, limit in rule.max_input_seconds.items():
                 seconds = sum((r.duration_ms or 0) for r in by_role.get(role, [])) / 1000
                 if seconds > limit + 0.05:
                     errors.append(rule.message)
+            if any(len(by_role.get(role, [])) > limit for role, limit in rule.max_inputs.items()):
+                errors.append(rule.message)
 
     if errors:
         raise RequestError(errors)

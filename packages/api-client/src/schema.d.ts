@@ -2953,7 +2953,8 @@ export interface components {
         /**
          * Rule
          * @description Cross-param constraint, e.g. Veo: 1080p/4k require an 8 s duration. `max_input_seconds` limits how long an
-         *     input may be while the rule applies (OmniHuman: 30 s of audio at 1080p).
+         *     input may be while the rule applies (OmniHuman: 30 s of audio at 1080p), `max_inputs` how many files a slot takes
+         *     (Marble: 4 pictures, 8 in reconstruction mode).
          */
         Rule: {
             /** When */
@@ -2972,6 +2973,13 @@ export interface components {
              * @default {}
              */
             max_input_seconds: {
+                [key: string]: number;
+            };
+            /**
+             * Max Inputs
+             * @default {}
+             */
+            max_inputs: {
                 [key: string]: number;
             };
             /** Message */
