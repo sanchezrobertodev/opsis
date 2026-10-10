@@ -140,6 +140,12 @@ class Jutsu3dRecipe(Recipe):
                 errors.append("the stills must be in time order")
         return errors
 
+    def _driven_params(self, inp: Jutsu3dInput, spec: ModelSpec, mode: Mode) -> dict[str, Any]:
+        """A driven clip gets the params its model takes; the rest (the scene's aspect, for the opening redraw) aren't
+        sent to it."""
+        own = {p.name for p in spec.params_for(mode.id)}
+        return {k: v for k, v in inp.params.items() if k in own}
+
     def _clip_params(self, inp: Jutsu3dInput, spec: ModelSpec, mode: Mode, seconds: float | None) -> dict[str, Any]:
         params = dict(inp.params)
         if seconds is not None and "duration" not in params:
@@ -167,7 +173,8 @@ class Jutsu3dRecipe(Recipe):
         if inp.path in DRIVEN:
             role = DRIVEN[inp.path][1]
             roles = (role, *(["start_image"] if inp.stills and mode.slot("start_image") else []))
-            out.append(PlannedJob(spec.id, mode.id, dict(inp.params), roles, media=((role, str(inp.driver)),)))
+            out.append(PlannedJob(spec.id, mode.id, self._driven_params(inp, spec, mode), roles,
+                                  media=((role, str(inp.driver)),)))
         elif len(inp.stills) == 1:
             out.append(PlannedJob(spec.id, mode.id, self._clip_params(inp, spec, mode, None), ("start_image",)))
         else:
@@ -209,7 +216,7 @@ class Jutsu3dRecipe(Recipe):
                 media += [{"role": "image_references", "asset_id": str(a)} for a in inp.reference_asset_ids[:refs.max]]
             what = "Follow the depth pass" if inp.path == "depth" else "Make the picture pass real"
             specs.append(StepSpec(clip_key(0), StepKind.generate, f"{what} on {spec.name}", {
-                **common, "media": media, "params": dict(inp.params)},
+                **common, "media": media, "params": self._driven_params(inp, spec, mode)},
                 (look_key(0),) if inp.stills else ()))
             return specs
 

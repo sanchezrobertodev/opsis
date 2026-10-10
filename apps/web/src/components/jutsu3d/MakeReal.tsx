@@ -55,7 +55,8 @@ export function MakeReal({ doc, handleRef, projectId }: {
     recipe: "jutsu3d",
     input: {
       project_id: projectId, scene_version: ready.version, path, model_id: modelId, prompt: prompt.trim(),
-      params: path === "real" ? real.params : { aspect_ratio: doc.settings.aspect_ratio },
+      // the scene's shape also sizes the redrawn opening frame; the recipe sends each model only what it takes
+      params: { ...(path === "real" ? real.params : {}), aspect_ratio: doc.settings.aspect_ratio },
       stills: ready.stills.map((a) => ({ asset_id: a.id, time: Number(a.metadata?.time ?? 0) })),
       ...(ready.film ? { [path === "real" ? "render_asset_id" : "depth_asset_id"]: ready.film.id } : {}),
     },
@@ -73,7 +74,9 @@ export function MakeReal({ doc, handleRef, projectId }: {
         const made = await renderScene(handleRef.current, doc, projectId, v, ["beauty"], "stills", setRendering);
         setInputs({ path, stills: made.map((m) => m.asset), film: null, version: v });
       } else {
-        const film = await renderScene(handleRef.current, doc, projectId, v, [path === "real" ? "beauty" : "depth"], "film",
+        // a long timeline is rendered only as far as render-to-real will go (its clip slot takes 20 s)
+        const filmDoc = path === "real" && real.cut ? { ...doc, timeline: { ...doc.timeline, duration: real.seconds } } : doc;
+        const film = await renderScene(handleRef.current, filmDoc, projectId, v, [path === "real" ? "beauty" : "depth"], "film",
                                        (f) => setRendering(opening ? f * 0.9 : f));
         const first = opening ? await renderScene(handleRef.current, doc, projectId, v, ["beauty"], "stills", undefined, [0]) : [];
         setInputs({ path, stills: first.map((m) => m.asset), film: film[0]?.asset ?? null, version: v });
@@ -111,7 +114,7 @@ export function MakeReal({ doc, handleRef, projectId }: {
           ? `${keys.length} still${keys.length > 1 ? "s" : ""} at the shot camera's keys, each redrawn as a finished frame, then animated ${keys.length > 1 ? "from one to the next" : "from it"}. Key the camera at more moments for more angles.`
           : path === "depth" ? "The depth pass of the whole timeline steers the model, so motion and shapes follow your blocking exactly."
           : `The picture pass of the whole timeline is re-rendered as live action, keeping its framing and motion${
-              real.cut ? `; the model makes the first ${((real.params.num_frames - 1) / doc.timeline.fps).toFixed(0)} s` : ""}.`}
+              real.cut ? `; the model makes the first ${real.seconds.toFixed(0)} s` : ""}.`}
       </p>
       {path !== "angles" && (
         <label className="flex items-center gap-2 text-xs text-muted">

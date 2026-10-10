@@ -200,7 +200,7 @@ async def test_the_picture_pass_is_made_real_opening_on_a_redrawn_frame(client, 
 
     run = await start(client, "jutsu3d", project_id=p["id"], path="real", model_id="ltx-2.3-render-to-real",
                       prompt="A misty forest path at dawn", render_asset_id=film["beauty"]["id"],
-                      params={"resolution": "480p", "num_frames": 25, "frames_per_second": 12},
+                      params={"resolution": "480p", "num_frames": 25, "frames_per_second": 12, "aspect_ratio": "1:1"},
                       stills=[{"asset_id": opening["id"], "time": 0}])
     await drain(in_memory_queue)
     done = await get(client, run["id"])
@@ -212,6 +212,11 @@ async def test_the_picture_pass_is_made_real_opening_on_a_redrawn_frame(client, 
     media = {m["role"]: m["asset_id"] for m in clip.request["media"]}
     assert media == {"input_video": film["beauty"]["id"], "start_image": done["output"]["looks"][0]}
     assert clip.request["params"]["num_frames"] == 25
+    # the scene's shape reaches the opening redraw, and the clip only gets what its model takes
+    assert "aspect_ratio" not in clip.request["params"] and not clip.request.get("warnings")
+    async with session_scope() as s:
+        look = await s.get(Generation, uuid.UUID(steps["look[00]"]["generation_id"]))
+    assert look.request["params"]["aspect_ratio"] == "1:1"
 
 
 # ---------------------------------------------------------------- models and worlds
