@@ -4,8 +4,8 @@ import { Environment, Grid, OrbitControls, PerspectiveCamera, TransformControls 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { type MutableRefObject, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { ENVIRONMENT_DEFAULT, evaluate, fovFor, type SceneDoc, type SceneObject, trackOf, type Transform, type Vec3 } from "@/lib/jutsu3d";
+import { studioRoom } from "@/lib/room";
 import { SparkLayer } from "@/components/three/Splat";
 import { ObjectNode } from "./SceneObjects";
 
@@ -77,25 +77,20 @@ function toTransform(g: THREE.Object3D): Transform {
   };
 }
 
-/** One studio room per renderer, generated here (nothing is fetched); it goes when the renderer's context does. */
+/** One studio room per renderer; it goes when the renderer's context does. */
 const rooms = new WeakMap<THREE.WebGLRenderer, THREE.Texture>();
 function roomFor(gl: THREE.WebGLRenderer) {
   let map = rooms.get(gl);
   if (!map) {
-    const pmrem = new THREE.PMREMGenerator(gl);
-    const room = new RoomEnvironment();
-    map = pmrem.fromScene(room, 0.04).texture;
-    room.dispose();
-    pmrem.dispose();
+    map = studioRoom(gl);
     rooms.set(gl, map);
   }
   return map;
 }
 
 /**
- * A soft studio room as the scene's image light, so metallic PBR models from picture-to-3D services reflect it
- * instead of going black. It lights, never shows: the background setting stays. Data passes override materials,
- * so it never reaches depth or normals.
+ * The studio room as the scene's image light. It lights, never shows: the background setting stays. Data passes
+ * override materials, so it never reaches depth or normals.
  */
 function StudioRoom({ intensity }: { intensity: number }) {
   const gl = useThree((s) => s.gl);

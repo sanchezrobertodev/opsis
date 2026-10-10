@@ -3,8 +3,10 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { API_URL, type Asset } from "./api";
+import { studioRoom } from "./room";
 
 const SIZE = 384;
+const ROOM_LIGHT = 0.4;
 
 function blobOf(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) =>
@@ -15,11 +17,15 @@ function blobOf(canvas: HTMLCanvasElement): Promise<Blob> {
 export async function modelThumbnail(url: string): Promise<Blob> {
   const gltf = await new GLTFLoader().loadAsync(url);
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  const room = studioRoom(renderer);
   try {
     renderer.setSize(SIZE, SIZE, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#1c1d20");
+    // metal from picture-to-3D services reflects the room instead of going black
+    scene.environment = room;
+    scene.environmentIntensity = ROOM_LIGHT;
     scene.add(new THREE.HemisphereLight("#ffffff", "#2a2a2e", 2.2));
     const sun = new THREE.DirectionalLight("#fff4e0", 2.5);
     sun.position.set(3, 5, 4);
@@ -33,6 +39,7 @@ export async function modelThumbnail(url: string): Promise<Blob> {
     renderer.render(scene, camera);
     return await blobOf(renderer.domElement);
   } finally {
+    room.dispose();
     renderer.dispose();
     renderer.forceContextLoss();
   }
