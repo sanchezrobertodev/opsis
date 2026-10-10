@@ -36,6 +36,7 @@ class MediaRef:
     fps: float | None = None  # for video inputs; some routes bill per input frame
     width: int | None = None  # pixel size, for routes that send coordinates (SAM points)
     height: int | None = None
+    size_bytes: int | None = None  # the file's size, checked against a slot's max_mb
 
 
 @dataclass
@@ -308,6 +309,9 @@ def normalize(
             if slot.max_duration_s and seconds > slot.max_duration_s + 0.05:
                 errors.append(f"{slot.label or slot.role} can be at most {slot.max_duration_s:g} s; "
                               f"this one is {seconds:.1f} s")
+            if slot.max_mb and ref.size_bytes and ref.size_bytes > slot.max_mb * 1024 * 1024:
+                errors.append(f"{slot.label or slot.role} can be at most {slot.max_mb:g} MB; this one is "
+                              f"{ref.size_bytes / (1024 * 1024):.0f} MB")
             short = min(ref.width, ref.height) if ref.width and ref.height else None
             if slot.min_side and short and short < slot.min_side:
                 errors.append(f"{slot.label or slot.role} must be at least {slot.min_side} px on each side; this one "

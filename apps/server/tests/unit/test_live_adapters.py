@@ -613,6 +613,15 @@ def test_marble_takes_several_pictures_facing_round_the_place_or_a_video():
     with pytest.raises(RequestError, match="30 s"):
         normalize(spec, "video_to_world", "", {}, [MediaRef("input_video", "c", "video", duration_ms=31_000)])
 
+    # files over a slot's size limit are turned away before anything is staged
+    mb = 1024 * 1024
+    with pytest.raises(RequestError, match="at most 100 MB; this one is 120 MB"):
+        normalize(spec, "video_to_world", "", {}, [MediaRef("input_video", "c", "video", size_bytes=120 * mb)])
+    with pytest.raises(RequestError, match="at most 20 MB"):
+        normalize(spec, "multi_image_to_world", "", {}, [*views[:2], MediaRef("image_references", "big", "image",
+                                                                               size_bytes=21 * mb)])
+    normalize(spec, "video_to_world", "", {}, [MediaRef("input_video", "c", "video", size_bytes=99 * mb)])
+
     # their panorama step costs 100 credits, 20 more than a picture's
     price = {m: float(estimate(rt.pricing, {"model": "marble-1.1"}, mode=m).usd)
              for m in ("image_to_world", "multi_image_to_world", "video_to_world")}

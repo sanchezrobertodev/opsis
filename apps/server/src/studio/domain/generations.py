@@ -134,7 +134,8 @@ async def resolve_media_kinds(session: AsyncSession, user_id: uuid.UUID, media: 
             errors.append(f"asset {asset_id} is not ready ({asset.status})")
             continue
         refs.append(MediaRef(role=m.get("role", ""), asset_id=str(asset_id), kind=asset.kind.value,
-                             duration_ms=asset.duration_ms, fps=asset.fps, width=asset.width, height=asset.height))
+                             duration_ms=asset.duration_ms, fps=asset.fps, width=asset.width, height=asset.height,
+                             size_bytes=asset.size_bytes))
     if errors:
         raise GenerationRequestError(errors)
     return refs
