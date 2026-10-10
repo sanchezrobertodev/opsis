@@ -1,5 +1,7 @@
 from datetime import datetime
 
+import pytest
+
 from studio.ops import backups
 
 
@@ -20,3 +22,16 @@ def test_prune_keeps_two_weeks_and_always_the_newest(tmp_path):
 def test_the_database_comes_from_the_settings():
     db = backups.Database.from_settings()
     assert db.user and db.name and "+" not in db.name
+
+
+def test_db_exec_says_how_the_postgres_tools_run(monkeypatch):
+    settings = backups.get_settings()
+    monkeypatch.setattr(settings, "db_exec", None)  # the PC: into the compose service
+    assert backups._prefix()[:2] == ["docker", "compose"] and backups._prefix()[-1] == "postgres"
+    monkeypatch.setattr(settings, "db_exec", "")  # the home server's pod: the tools sit next to the app
+    assert backups._prefix() == []
+    monkeypatch.setattr(settings, "db_exec", "podman exec -i 'ams postgres'")
+    assert backups._prefix() == ["podman", "exec", "-i", "ams postgres"]
+    monkeypatch.setattr(settings, "db_exec", "no-such-tool-here")
+    with pytest.raises(backups.BackupError, match="no-such-tool-here isn't on PATH"):
+        backups._psql(backups.Database("u", "d"), "select 1")

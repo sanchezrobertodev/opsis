@@ -1,0 +1,33 @@
+[Unit]
+Description=AI Media Studio API
+Requires=ams-postgres.service
+After=ams-postgres.service
+
+[Container]
+ContainerName=ams-api
+Image=localhost/ams-server:latest
+Pod=ams.pod
+# The server's clock, so backup names and logs read in local time
+Timezone=local
+# A real init as PID 1, so SIGTERM stops Python promptly on restart
+RunInit=true
+Exec=python -m studio.api --host 0.0.0.0 --port 8400
+# Keys and modes from the studio's .env; the addresses below win over anything it says
+EnvironmentFile=@APP_DIR@/.env
+Environment=DATABASE_URL=postgresql+asyncpg://studio:studio@127.0.0.1:5432/studio
+Environment=QUEUE_DATABASE_URL=postgresql://studio:studio@127.0.0.1:5432/studio
+Environment=WEB_ORIGIN=@WEB_ORIGIN@
+Environment=PGHOST=127.0.0.1 PGPASSWORD=studio DB_EXEC=
+Volume=@APP_DIR@/data:/app/data:z
+PodmanArgs=--memory=768m
+HealthCmd=curl -fsS http://127.0.0.1:8400/health
+HealthInterval=60s
+HealthStartPeriod=60s
+
+[Service]
+Restart=always
+RestartSec=15
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

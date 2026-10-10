@@ -1,0 +1,17 @@
+[Unit]
+Description=AI Media Studio web app
+Wants=ams-api.service
+After=ams-api.service
+
+[Container]
+ContainerName=ams-web
+Image=localhost/ams-web:latest
+Pod=ams.pod
+PodmanArgs=--memory=512m
+
+[Service]
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

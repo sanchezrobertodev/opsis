@@ -15,9 +15,11 @@ from pathlib import Path
 
 # Must be set before any studio import reads settings.
 _MEDIA = Path(tempfile.mkdtemp(prefix="studio-test-media-"))
+# The compose Postgres on the PC; STUDIO_TEST_PG points elsewhere (the home server's pod: 127.0.0.1:5432)
+PG_HOST, PG_PORT = os.environ.get("STUDIO_TEST_PG", "localhost:5433").rsplit(":", 1)
 os.environ.update({
-    "DATABASE_URL": "postgresql+asyncpg://studio:studio@localhost:5433/studio_test",
-    "QUEUE_DATABASE_URL": "postgresql://studio:studio@localhost:5433/studio_test",
+    "DATABASE_URL": f"postgresql+asyncpg://studio:studio@{PG_HOST}:{PG_PORT}/studio_test",
+    "QUEUE_DATABASE_URL": f"postgresql://studio:studio@{PG_HOST}:{PG_PORT}/studio_test",
     "PROVIDER_MODE": "mock",
     "LIVE_ROUTE_ALLOWLIST": "",
     "MEDIA_ROOT": str(_MEDIA / "media"),
@@ -44,7 +46,7 @@ def _db_available() -> bool:
 
     with socket.socket() as s:
         s.settimeout(0.5)
-        return s.connect_ex(("127.0.0.1", 5433)) == 0
+        return s.connect_ex((PG_HOST, int(PG_PORT))) == 0
 
 
 _migrated = False
@@ -56,7 +58,7 @@ async def _prepare_test_db() -> None:
         return
     import asyncpg
 
-    admin = await asyncpg.connect("postgresql://studio:studio@localhost:5433/studio")
+    admin = await asyncpg.connect(f"postgresql://studio:studio@{PG_HOST}:{PG_PORT}/studio")
     try:
         exists = await admin.fetchval("SELECT 1 FROM pg_database WHERE datname = 'studio_test'")
         if exists:
@@ -78,7 +80,7 @@ async def _prepare_test_db() -> None:
 @pytest.fixture
 async def db():
     if not _db_available():
-        pytest.skip("Postgres on :5433 not running (docker compose -f infra/docker-compose.yml up -d)")
+        pytest.skip(f"Postgres on {PG_HOST}:{PG_PORT} not running (docker compose -f infra/docker-compose.yml up -d)")
     await _prepare_test_db()
     from studio.db.session import get_engine
 

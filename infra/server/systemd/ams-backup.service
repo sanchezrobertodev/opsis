@@ -1,0 +1,11 @@
+[Unit]
+Description=AI Media Studio database backup (pg_dump, 14 days kept)
+Requires=ams-worker.service
+After=ams-worker.service
+
+[Service]
+Type=oneshot
+# Runs in the worker container, which has the Postgres 18 client and data/ mounted
+ExecStart=/usr/bin/podman exec ams-worker python scripts/backup_db.py
+StandardOutput=append:@APP_DIR@/data/logs/backup.log
+StandardError=append:@APP_DIR@/data/logs/backup.log
