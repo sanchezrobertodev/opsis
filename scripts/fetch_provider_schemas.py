@@ -1,7 +1,7 @@
 """Weekly provider-schema drift check: compares what each route sends with what its provider publishes now.
 
-Reads only schema documents (fal per-endpoint OpenAPI, Runway's and ElevenLabs' OpenAPI; Replicate and World Labs
-when their keys are set). Never submits a job, so it costs nothing.
+Reads only schema documents (fal per-endpoint OpenAPI, Runway's and ElevenLabs' OpenAPI, World Labs' docs pages;
+Replicate when its key is set). Never submits a job, so it costs nothing.
 
     uv run python scripts/fetch_provider_schemas.py                  # check, write the report
     uv run python scripts/fetch_provider_schemas.py --provider fal   # one provider
@@ -45,8 +45,9 @@ def fetcher(client: httpx.AsyncClient, limit: asyncio.Semaphore) -> drift.Fetch:
                 return 0, {"error": repr(exc)}
         try:
             return r.status_code, r.json()
-        except ValueError:
-            return r.status_code, None
+        except ValueError:  # a docs page (World Labs publishes its OpenAPI inside one) comes back as text
+            text = r.headers.get("content-type", "").startswith(("text/plain", "text/markdown"))
+            return r.status_code, r.text if text else None
 
     async def fetch(url: str, headers: dict[str, str]) -> tuple[int, Any]:
         # several routes share one document (Runway, ElevenLabs): read it once
