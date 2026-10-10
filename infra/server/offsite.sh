@@ -24,14 +24,14 @@ err="$(mktemp)"
 trap 'rm -f "$list" "$err"' EXIT
 
 # Media written since the last bundle. The next mark is set before looking, so a file written while this runs
-# goes out next time; the first run takes everything.
+# goes out next time; the first run takes everything. media/tmp is scratch space (uploads and renders in progress).
 mark="$STATE/media.mark"
 next="$STATE/media.mark.next"
 touch "$next"
 if [ -f "$mark" ]; then
-  (cd "$DATA" && find media -type f -newer "$mark" ! -newer "$next" -print0) > "$list"
+  (cd "$DATA" && find media -path media/tmp -prune -o -type f -newer "$mark" ! -newer "$next" -print0) > "$list"
 else
-  (cd "$DATA" && find media -type f ! -newer "$next" -print0) > "$list"
+  (cd "$DATA" && find media -path media/tmp -prune -o -type f ! -newer "$next" -print0) > "$list"
 fi
 if [ -s "$list" ]; then
   bundle="$OUTBOX/ams-media-$(date +%Y%m%d-%H%M%S).tar"
@@ -41,12 +41,13 @@ if [ -s "$list" ]; then
 fi
 mv "$next" "$mark"
 
-# Database dumps not sent yet (the nightly backup writes them; hard links, so nothing is copied)
+# Database dumps not sent yet (the nightly backup writes them). Copied, not linked: the copy's time is when it
+# joined the outbox, which is what the 48-hour check below measures.
 sent="$STATE/sent"
 touch "$sent"
 for f in "$DATA"/backups/*.dump; do
   name="ams-$(basename "$f")"
-  grep -qxF "$name" "$sent" || [ -e "$OUTBOX/$name" ] || ln "$f" "$OUTBOX/$name" 2>/dev/null || cp "$f" "$OUTBOX/$name"
+  grep -qxF "$name" "$sent" || [ -e "$OUTBOX/$name" ] || cp "$f" "$OUTBOX/$name"
 done
 
 for f in "$OUTBOX"/ams-*; do
