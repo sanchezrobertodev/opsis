@@ -38,7 +38,31 @@ Tailscale (`COMFYUI_URL`). The plan and the reasons behind it are in `docs/home-
   `data/backups/` (14 days kept) and the log to `data/logs/backup.log`.
 - `ams-schema-check.timer`: Mondays at 09:00, `scripts/fetch_provider_schemas.py`. The report goes to `data/reports/`.
 
-Run either one by hand: `systemctl --user start ams-backup.service`.
+- `ams-offsite.timer`: hourly, `offsite.sh`. It sends what's new to the PC with Taildrop (`AMS_OFFSITE_TARGET` in
+  `.env`, e.g. `desktop-765qmh4`; empty turns it off).
+  - **What it sends:** media written since the last run, as one `ams-media-<time>.tar`; and each new dump, as
+    `ams-studio-<time>.dump`.
+  - **A failed send** waits in `data/offsite/outbox/` and is tried again next hour. Once anything has waited 48 h, the
+    unit fails, so the Hub shows it. The log is `data/logs/offsite.log`.
+
+Run any of them by hand: `systemctl --user start ams-backup.service`.
+
+## Off-site copy on the PC
+- **Setup, once:** run `powershell -ExecutionPolicy Bypass -File infra\server\windows\install-backup-task.ps1` on the
+  PC. It registers the hourly task "AI Media Studio backup collect", which runs while you're signed in.
+- **What the task does:** it runs `windows\collect-backups.ps1`, which takes what Taildrop left in Downloads.
+  - **Media bundles:** each is checked to read to the end, then extracted into `E:\Backups\ai-media-studio\media`, a
+    mirror of `data/media` that never deletes anything.
+  - **Dumps:** they go to `E:\Backups\ai-media-studio\db`, and the last 60 days are kept.
+  - **Log:** `E:\Backups\ai-media-studio\collect.log`.
+- **To restore:** copy the mirror back over the server's `data/media` and put a dump in `data/backups`. Then, in the
+  checkout, with the API and worker stopped (`systemctl --user stop ams-web ams-worker ams-api`), run:
+  ```
+  podman run --rm --pod ams -e DATABASE_URL=postgresql+asyncpg://studio:studio@127.0.0.1:5432/studio \
+    -e PGHOST=127.0.0.1 -e PGPASSWORD=studio -e DB_EXEC= -v "$PWD/data:/app/data:z" localhost/ams-server:latest \
+    python scripts/restore_db.py --replace --file data/backups/<dump> --yes
+  ```
+  Then start the API, worker and web app again.
 
 ## Day to day
 ```

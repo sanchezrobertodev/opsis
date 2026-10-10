@@ -69,7 +69,7 @@ podman run --rm --pod ams --env-file .env \
 
 echo "==> restarting the API, worker and web app"
 systemctl --user restart ams-api.service ams-worker.service ams-web.service
-systemctl --user enable --now ams-backup.timer ams-schema-check.timer >/dev/null
+systemctl --user enable --now ams-backup.timer ams-schema-check.timer ams-offsite.timer >/dev/null
 
 # HTTPS on the tailnet (tailnet only). Set on every deploy: it replaces the port's mapping, so a changed local port
 # is picked up too.
