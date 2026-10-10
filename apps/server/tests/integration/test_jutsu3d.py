@@ -13,6 +13,7 @@ from studio.api.main import app as api
 from studio.db.models import Generation
 from studio.db.session import session_scope
 from studio.media.mock_media import make_glb
+from studio.storage.local import get_storage
 
 
 @pytest.fixture
@@ -193,7 +194,14 @@ async def test_a_glb_imports_with_a_browser_thumbnail_and_bad_files_are_refused(
 
     thumb = await client.post(f"/assets/{chair['id']}/thumbnail", files={"file": ("t.png", jpeg(120), "image/jpeg")})
     assert thumb.status_code == 200, thumb.text
-    assert thumb.json()["thumb_url"]
+    first = thumb.json()["thumb_url"]
+    assert first
+    # a redrawn picture gets its own name (media is cached as immutable per key) and the old file goes
+    again = (await client.post(f"/assets/{chair['id']}/thumbnail",
+                               files={"file": ("t.png", jpeg(120), "image/jpeg")})).json()["thumb_url"]
+    storage = get_storage()
+    assert again != first and storage.exists(again.removeprefix("/media/"))
+    assert not storage.exists(first.removeprefix("/media/"))
     bad = await client.post(f"/assets/{chair['id']}/thumbnail", files={"file": ("t.gif", b"GIF89a", "image/gif")})
     assert bad.status_code == 415
     models = (await client.get("/assets", params={"kind": "model3d"})).json()["items"]

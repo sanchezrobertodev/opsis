@@ -2,7 +2,7 @@
 
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { API_URL, type Asset } from "./api";
+import { api, API_URL, type Asset, mediaUrl, unwrap } from "./api";
 import { studioRoom } from "./room";
 
 const SIZE = 384;
@@ -43,6 +43,31 @@ export async function modelThumbnail(url: string): Promise<Blob> {
     renderer.dispose();
     renderer.forceContextLoss();
   }
+}
+
+/**
+ * Draws every GLB's library picture again (with today's lighting), and the missing ones. A world's collision mesh
+ * keeps the picture its world gave it. A model that won't load is counted and skipped.
+ */
+export async function redrawModelThumbnails(onProgress: (done: number, total: number) => void) {
+  const models: Asset[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await unwrap(api.GET("/assets", { params: { query: { kind: "model3d", limit: 200, cursor } } }));
+    models.push(...page.items.filter((a) => a.metadata?.part !== "collider"));
+    cursor = page.next_cursor ?? undefined;
+  } while (cursor);
+  let failed = 0;
+  onProgress(0, models.length);
+  for (const [i, a] of models.entries()) {
+    try {
+      await saveThumbnail(a.id, await modelThumbnail(mediaUrl(a.url) ?? a.url));
+    } catch {
+      failed += 1;
+    }
+    onProgress(i + 1, models.length);
+  }
+  return { redrawn: models.length - failed, failed };
 }
 
 /** Store a picture of a canvas or model as an asset's thumbnail. */
