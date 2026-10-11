@@ -1,7 +1,7 @@
-# wan-core: your own RunPod endpoint for open Wan models
+# wan-core: your own RunPod endpoint for open models
 
-A RunPod serverless endpoint running ComfyUI with Wan 2.2 14B (text and image to video, Lightning 4-step),
-Wan 2.2 Fun Camera (preset camera moves), Wan-Move (drawn motion paths), Wan 2.1 VACE (masked edits with a
+A RunPod serverless endpoint running ComfyUI with LTX-2.5 (the open default for text, image and first-and-last-frame
+to video, with sound; from 0.4.0), Wan 2.2 14B (image to video, Lightning 4-step), Wan 2.2 Fun Camera (preset camera moves), Wan-Move (drawn motion paths), Wan 2.1 VACE (masked edits with a
 reference picture, the Object swap route), Wan Animate-2 (motion transfer) and Uni3C (camera copied from a
 reference clip, on the Wan 2.2 experts). The studio reaches it through the
 `runpod_wan_core` provider (`apps/server/src/studio/providers/runpod_comfy.py`); the workflows are the
@@ -13,8 +13,8 @@ reference clip, on the Wan 2.2 experts). The studio reaches it through the
 |---|---|
 | `Dockerfile` | `runpod/worker-comfyui:5.10.0-base` (ComfyUI 0.34.0) with torch 2.11 reinstalled for CUDA 13 (cu130, from 0.3.0), plus the files below. No custom nodes: every node the workflows use is built into ComfyUI 0.34. |
 | `handler.py` | Replaces worker-comfyui's handler. Takes `{"workflow", "inputs": [{name, url or data}], "uploads": [{url, file_url}]}`, returns `{"outputs": [{node, filename, kind, mime, data or url}], "gpu", "seconds"}`. Also `{"action": "check"}` and `{"action": "fetch_models"}`. |
-| `fetch_models.py`, `models.yaml` | The 19 model files (172 GB, exact sizes) and an idempotent downloader for the network volume. |
-| `extra_model_paths.yaml` | Points ComfyUI at `/runpod-volume/models/<folder>` (upstream's file lacks `diffusion_models` and `text_encoders`). |
+| `fetch_models.py`, `models.yaml` | The 20 model files (180.4 GB, exact sizes) and an idempotent downloader for the network volume. Gated repos (LTX-2.5) need `HF_TOKEN`. |
+| `extra_model_paths.yaml` | Points ComfyUI at `/runpod-volume/models/<folder>` (upstream's file lacks `diffusion_models` and `text_encoders`; 0.4.0 adds `latent_upscale_models` for LTX-2.5's upscaler). |
 
 ## Layout on RunPod
 
@@ -101,6 +101,34 @@ echo "$MANIFEST_B64" | base64 -d > /tmp/new.yaml
 WAN_CORE_MANIFEST=/tmp/new.yaml python -u /fetch_models.py --dest /runpod-volume/models
 ```
 
+### LTX-2.5 (2026-10-10): the open default for text and image to video
+
+LTX-2.5 replaces Wan 2.2 14B Fast for text, image and first-and-last-frame to video (registry `ltx-2.5`, route
+`ltx-2.5@wan_core`, graphs `runpod_ltx25_{t2v,i2v,flf2v}`). It makes sound and speech in the same pass. The Wan 2.2
+text-to-video group (31.0 GB) left `models.yaml`; Wan's image-to-video experts stay, since Uni3C runs on them. The
+graphs come from ComfyUI's own LTX-2.5 templates (two stages: 8 steps at half size, the x2 latent upscaler, 3 steps at
+full size; first-and-last-frame is one 8-step pass at full size), without the templates' Gemma E2B prompt enhancer.
+ComfyUI 0.34 already has every node and the Gemma 4 text encoder, and `/prompt` on the local 0.34 accepted the graphs
+apart from the absent weights. Weights: the `ltx` group, 39.7 GB (22B distilled int8, Gemma 4 12B int8, video and audio
+VAEs, x2 spatial upscaler). An nvfp4 transformer (18.7 GB, Blackwell only) exists too; the int8 one is what the
+templates use. Run times in the registry are estimates until the first live takes.
+
+Still to do on RunPod, in this order (nothing here has been run yet):
+
+1. Accept the license at https://huggingface.co/Lightricks/LTX-2.5 with the account whose token the fetcher gets
+   (the repo is gated). Free.
+2. Grow the volume `w5wwmiagkn` from 180 to 200 GB: 171 GB is used, and the volume ends at 180.4 GB of models.
+   +$1.40/month ($14.00/month in all). A volume can grow but not shrink.
+3. Build and push `wan-core:0.4.0` (the `latent_upscale_models` path and the new `models.yaml`); only the small top
+   layer uploads. Make template `wan-core-0.4.0` from it and point the endpoint `ovktgiubxwld1j` at it. Free.
+4. On a CPU pod in US-NE-1 with the volume mounted (cents: the last 53.6 GB took 55 min for $0.15), delete the four
+   Wan t2v files (`wan2.2_t2v_*` in `diffusion_models/` and `loras/`), then fetch the new group:
+   `HF_TOKEN=... python -u /fetch_models.py --dest /runpod-volume/models --group ltx`. Delete first: 200 GB can't hold
+   both. Until the studio is deployed, Wan 2.2 14B Fast text to video then fails on the server.
+5. Deploy the studio (merge, then Deploy on the Hub).
+6. One live take, with your OK: `uv run python scripts/smoke_live.py --routes ltx-2.5@wan_core --cap 0.50
+   --confirm-spend` (720p, 2 s, about $0.16 from a cold worker at $3.49/h on an RTX PRO 6000).
+
 ## Big results (0.2.0)
 
 RunPod refuses very large job results, so the handler returns each output inline as base64 only while it is small.
@@ -153,5 +181,5 @@ Check with `{"input": {"action": "check"}}`: it returns the GPU, ComfyUI version
 ## Wire it into the studio
 
 Put the endpoint id in `.env` as `RUNPOD_WAN_CORE_ENDPOINT=...` next to `RUNPOD_API_KEY`, then restart the API
-and worker. Wan 2.2 14B Fast, Wan 2.2 Fun Camera and Wan-Move route there; add their `@wan_core` routes to
-`LIVE_ROUTE_ALLOWLIST` (mixed mode) or run `scripts/smoke_live.py --routes wan-2.2-14b-fast@wan_core --cap 0.50`.
+and worker. LTX-2.5 and the Wan models route there; add their `@wan_core` routes to
+`LIVE_ROUTE_ALLOWLIST` (mixed mode) or run `scripts/smoke_live.py --routes ltx-2.5@wan_core --cap 0.50`.

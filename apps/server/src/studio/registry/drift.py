@@ -320,9 +320,10 @@ def _accepted(spec: ModelSpec, mode: Mode, params: dict[str, Any]) -> bool:
     return True
 
 
-def _values(spec: ModelSpec, mode: Mode, name: str, entry: str | ParamMapEntry) -> list[Any] | None:
+def _values(spec: ModelSpec, route: Route, mode: Mode, name: str, entry: str | ParamMapEntry) -> list[Any] | None:
     """The values a param can take on the wire in this mode, when it's a choice (None: any value). Choices the
-    model's rules refuse in this mode are left out (Gen-4.5 text to video is only 16:9 or 9:16)."""
+    model's rules refuse in this mode are left out (Gen-4.5 text to video is only 16:9 or 9:16), and so are those the
+    route's `constraints` keep off it (routing never sends LTX-2.5's square clips to fal)."""
     p = spec.param(name)
     if isinstance(p, EnumParam):
         choices: list[Any] = list(p.options)
@@ -332,7 +333,10 @@ def _values(spec: ModelSpec, mode: Mode, name: str, entry: str | ParamMapEntry) 
         choices = [p.min, p.max]  # a wide range: its ends are what a provider's bounds can reject
     else:
         return None
-    options = [o for o in choices if _accepted(spec, mode, {name: o})]
+    rule = route.constraints.get(name, {})
+    options = [o for o in choices if _accepted(spec, mode, {name: o})
+               and ("options" not in rule or str(o) in map(str, rule["options"]))
+               and ("min" not in rule or o >= rule["min"]) and ("max" not in rule or o <= rule["max"])]
     if isinstance(entry, ParamMapEntry) and entry.transform:
         fn = TRANSFORMS.get(entry.transform)
         try:
@@ -356,11 +360,11 @@ def sent_fields(spec: ModelSpec, route: Route, mode: Mode) -> dict[str, list[Any
         entry = m.params.get(p.name)
         if entry is None:
             if m.passthrough:
-                fields[p.name] = _values(spec, mode, p.name, p.name)
+                fields[p.name] = _values(spec, route, mode, p.name, p.name)
             continue
         target = entry if isinstance(entry, str) else entry.to
         if target and "." not in target:
-            fields[target] = _values(spec, mode, p.name, entry)
+            fields[target] = _values(spec, route, mode, p.name, entry)
         elif target:
             fields.setdefault(_top(target), None)
     for slot in mode.medias:

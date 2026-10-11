@@ -1,0 +1,469 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "LTX-2.5 22B distilled (int8)"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+      "type": "ltxv",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "Gemma 4 12B text encoder (int8)"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "ltx-2.5-video-vae-bf16.safetensors"
+    },
+    "_meta": {
+      "title": "Video VAE"
+    }
+  },
+  "4": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "ltx-2.5-audio-vae-bf16.safetensors"
+    },
+    "_meta": {
+      "title": "Audio VAE"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "2",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Prompt"
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "pc game, console game, video game, cartoon, childish, ugly",
+      "clip": [
+        "2",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Negative prompt"
+    }
+  },
+  "8": {
+    "class_type": "LTXVConditioning",
+    "inputs": {
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "frame_rate": 24.0
+    },
+    "_meta": {
+      "title": "Frame rate"
+    }
+  },
+  "9": {
+    "class_type": "EmptyLTXVLatentVideo",
+    "inputs": {
+      "width": 1280,
+      "height": 704,
+      "length": 121,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "Latent"
+    }
+  },
+  "10": {
+    "class_type": "LTXVEmptyLatentAudio",
+    "inputs": {
+      "frames_number": 121,
+      "frame_rate": 24,
+      "batch_size": 1,
+      "audio_vae": [
+        "4",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Audio latent"
+    }
+  },
+  "11": {
+    "class_type": "LTXVConcatAVLatent",
+    "inputs": {
+      "video_latent": [
+        "39",
+        2
+      ],
+      "audio_latent": [
+        "10",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Audio+video"
+    }
+  },
+  "12": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 0
+    },
+    "_meta": {
+      "title": "Seed"
+    }
+  },
+  "13": {
+    "class_type": "SamplerEulerAncestral",
+    "inputs": {
+      "eta": 0.0,
+      "s_noise": 1.0
+    },
+    "_meta": {
+      "title": "Sampler"
+    }
+  },
+  "14": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+    },
+    "_meta": {
+      "title": "8 steps"
+    }
+  },
+  "15": {
+    "class_type": "LTXVDualCFGGuider",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "39",
+        0
+      ],
+      "negative": [
+        "39",
+        1
+      ],
+      "video_cfg": 1.0,
+      "audio_cfg": 1.0
+    },
+    "_meta": {
+      "title": "Guider"
+    }
+  },
+  "16": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "12",
+        0
+      ],
+      "guider": [
+        "15",
+        0
+      ],
+      "sampler": [
+        "13",
+        0
+      ],
+      "sigmas": [
+        "14",
+        0
+      ],
+      "latent_image": [
+        "11",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Sample"
+    }
+  },
+  "17": {
+    "class_type": "LTXVSeparateAVLatent",
+    "inputs": {
+      "av_latent": [
+        "16",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Split"
+    }
+  },
+  "24": {
+    "class_type": "LTXVConcatAVLatent",
+    "inputs": {
+      "video_latent": [
+        "40",
+        2
+      ],
+      "audio_latent": [
+        "17",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "Final audio+video"
+    }
+  },
+  "25": {
+    "class_type": "LTXVSeparateAVLatent",
+    "inputs": {
+      "av_latent": [
+        "24",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Split video and audio"
+    }
+  },
+  "26": {
+    "class_type": "VAEDecodeTiled",
+    "inputs": {
+      "samples": [
+        "25",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 64,
+      "temporal_overlap": 16
+    },
+    "_meta": {
+      "title": "Decode video"
+    }
+  },
+  "27": {
+    "class_type": "LTXVAudioVAEDecode",
+    "inputs": {
+      "samples": [
+        "25",
+        1
+      ],
+      "audio_vae": [
+        "4",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Decode audio"
+    }
+  },
+  "28": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "26",
+        0
+      ],
+      "audio": [
+        "27",
+        0
+      ],
+      "fps": 24.0
+    },
+    "_meta": {
+      "title": "Frames to video"
+    }
+  },
+  "29": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "28",
+        0
+      ],
+      "filename_prefix": "ai-media-studio/wan-core",
+      "format": "mp4",
+      "codec": "h264"
+    },
+    "_meta": {
+      "title": "Your video"
+    }
+  },
+  "30": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "start.png"
+    },
+    "_meta": {
+      "title": "First frame"
+    }
+  },
+  "31": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "30",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 1280,
+      "height": 704,
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "Fit first frame"
+    }
+  },
+  "32": {
+    "class_type": "LTXVPreprocess",
+    "inputs": {
+      "image": [
+        "31",
+        0
+      ],
+      "img_compression": 18
+    },
+    "_meta": {
+      "title": "First frame compression"
+    }
+  },
+  "35": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "end.png"
+    },
+    "_meta": {
+      "title": "Last frame"
+    }
+  },
+  "36": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "35",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 1280,
+      "height": 704,
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "Fit last frame"
+    }
+  },
+  "37": {
+    "class_type": "LTXVPreprocess",
+    "inputs": {
+      "image": [
+        "36",
+        0
+      ],
+      "img_compression": 18
+    },
+    "_meta": {
+      "title": "Last frame compression"
+    }
+  },
+  "38": {
+    "class_type": "LTXVAddGuide",
+    "inputs": {
+      "positive": [
+        "8",
+        0
+      ],
+      "negative": [
+        "8",
+        1
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "latent": [
+        "9",
+        0
+      ],
+      "image": [
+        "32",
+        0
+      ],
+      "frame_idx": 0,
+      "strength": 0.7
+    },
+    "_meta": {
+      "title": "Guide: first frame"
+    }
+  },
+  "39": {
+    "class_type": "LTXVAddGuide",
+    "inputs": {
+      "positive": [
+        "38",
+        0
+      ],
+      "negative": [
+        "38",
+        1
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "latent": [
+        "38",
+        2
+      ],
+      "image": [
+        "37",
+        0
+      ],
+      "frame_idx": -1,
+      "strength": 0.7
+    },
+    "_meta": {
+      "title": "Guide: last frame"
+    }
+  },
+  "40": {
+    "class_type": "LTXVCropGuides",
+    "inputs": {
+      "positive": [
+        "39",
+        0
+      ],
+      "negative": [
+        "39",
+        1
+      ],
+      "latent": [
+        "17",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Drop the guide frames"
+    }
+  }
+}

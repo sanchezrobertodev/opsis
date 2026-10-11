@@ -3,10 +3,12 @@ id: wan-2.2-14b-fast
 name: Wan 2.2 14B Fast
 family: wan
 vendor: alibaba
+# Superseded by LTX-2.5 as the open default (2026-10-10). Its text-to-video weights left the wan-core volume, so only
+# image to video remains, on the i2v experts that Uni3C also uses.
 description: >-
-  Open-weights Wan 2.2 14B with the Lightning 4-step LoRAs, on your own RunPod endpoint. Text or image to video
-  at 480p or 720p for well under the closed models' price. About 30 s per 5 s clip at 480p and 80 s at 720p once a
-  worker is warm; the first clip after a pause also loads the model (about a minute more).
+  Open-weights Wan 2.2 14B with the Lightning 4-step LoRAs, on your own RunPod endpoint: image to video at 480p or
+  720p. Superseded by LTX-2.5 for text and image to video; kept for Wan's look. About 30 s per 5 s clip at 480p and
+  80 s at 720p once a worker is warm; the first clip after a pause also loads the model (about a minute more).
 output_type: video
 status: active
 license_tier: open_permissive   # Apache 2.0 (Wan 2.2, lightx2v)
@@ -24,9 +26,6 @@ parameters:
   - {name: seed, type: seed, group: advanced}
 
 modes:
-  - id: t2v
-    label: Text to video
-    ops: [t2v]
   - id: i2v
     label: Image to video
     ops: [i2v]
@@ -37,7 +36,6 @@ routes:
   - id: wan-2.2-14b-fast@wan_core
     provider: runpod_wan_core
     modes:
-      t2v: {endpoint: runpod_wan22_t2v}
       i2v: {endpoint: runpod_wan22_i2v}
     transform: studio.providers.transforms.comfy:wan14b_size
     map:
@@ -62,10 +60,11 @@ routes:
     output: {path: output.outputs, kind: video}
 
 examples:
-  - name: t2v_480p_smoke
-    mode: t2v
+  - name: i2v_480p_smoke
+    mode: i2v
     prompt: A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.
     params: {quality: "480p", duration: 3}
+    media: {start_image: "fixture:images/keyframe.png"}
     smoke: true
     expect: {cost_usd_range: [0.15, 0.18]}
   - name: i2v_720p

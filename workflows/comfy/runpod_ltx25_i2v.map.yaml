@@ -1,0 +1,23 @@
+# LTX-2.5 22B distilled image-to-video (int8), with sound
+# Runs on the wan-core RunPod endpoint (infra/runpod/wan-core); its models.yaml lists the model files (group ltx).
+# Source: ComfyUI's official template video_ltx2_5_i2v (comfyui_workflow_templates 0.11.48), flattened, without its Gemma E2B
+# prompt enhancer (the studio has its own). 8 steps at half size, the x2 latent upscaler, then 3 steps at full size.
+# 24 fps; length = 24 x seconds + 1. Checked against ComfyUI 0.34 /prompt (2026-10-10; only the absent weights failed).
+# `audio` carries the audio VAE's file name: left out (sound off), the audio decode is dropped and the clip is silent.
+description: LTX-2.5 22B distilled image-to-video (int8)
+inputs:
+  prompt: [{node: "6", input: text}]
+  negative_prompt: [{node: "7", input: text, mode: append}]
+  seed: [{node: "12", input: noise_seed}]
+  width: [{node: "31", input: width}]
+  height: [{node: "31", input: height}]
+  half_width: [{node: "9", input: width}]
+  half_height: [{node: "9", input: height}]
+  length: [{node: "9", input: length}, {node: "10", input: frames_number}]
+  audio: [{node: "4", input: vae_name}]
+  start_image: [{node: "30", input: image}]
+  filename_prefix: [{node: "29", input: filename_prefix}]
+optional:
+  audio: {node: "27", unlink: [{node: "28", input: audio}]}
+outputs:
+  - {node: "29", kind: video}

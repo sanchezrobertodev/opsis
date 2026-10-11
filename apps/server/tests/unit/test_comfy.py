@@ -385,3 +385,51 @@ async def test_wan_core_re_times_clips_the_route_names(monkeypatch, tmp_path):
     assert staged["video_references"] == ["https://fal.media/retimed.mp4#name=a1-16fps.mp4"]
     assert staged["start_image"][0].startswith("https://fal.media/original.png")
     assert uploaded == [("a1-16fps.mp4", 16, 2000)]
+
+
+def test_ltx_payloads_fill_their_wan_core_templates():
+    """LTX-2.5's three graphs get exactly the sizes they use: half size for the two-stage ones (plus the full size the
+    start frame is fitted to), full size for first-and-last-frame; 24 fps lengths; sound off drops the audio decode."""
+    spec = REG.models["ltx-2.5"]
+    route = spec.route("ltx-2.5@wan_core")
+    start, end = MediaRef(role="start_image", asset_id="a"), MediaRef(role="end_image", asset_id="b")
+    cases = {"t2v": [], "i2v": [start], "flf2v": [start, end]}
+    for mode, media in cases.items():
+        req = normalize(spec, mode, "harbor", {"duration": 5, "aspect_ratio": "9:16"}, media)
+        staged = {m.role: f"ai-media-studio/{m.asset_id}.png" for m in media}
+        endpoint, payload, _ = build_payload(spec, route, req, staged)
+        graph, warnings = load_template(WORKFLOWS, endpoint).render(payload)
+        assert warnings == [], (mode, warnings)
+        assert graph["9"]["inputs"]["length"] == graph["10"]["inputs"]["frames_number"] == 121  # 5 s at 24 fps + 1
+        assert graph["6"]["inputs"]["text"] == "harbor"
+        assert "27" in graph and graph["28"]["inputs"]["audio"] == ["27", 0]  # sound on by default
+        size = (graph["9"]["inputs"]["width"], graph["9"]["inputs"]["height"])
+        assert size == ((704, 1280) if mode == "flf2v" else (352, 640))
+        if media:
+            assert graph["30"]["inputs"]["image"] == "ai-media-studio/a.png"
+            assert (graph["31"]["inputs"]["width"], graph["31"]["inputs"]["height"]) == (704, 1280)
+        if mode == "flf2v":
+            assert graph["35"]["inputs"]["image"] == "ai-media-studio/b.png"
+
+    req = normalize(spec, "t2v", "harbor", {"generate_audio": False, "resolution": "1080p"}, [])
+    endpoint, payload, _ = build_payload(spec, route, req, {})
+    graph, warnings = load_template(WORKFLOWS, endpoint).render(payload)
+    assert "27" not in graph and "audio" not in graph["28"]["inputs"] and warnings == []
+    assert (graph["9"]["inputs"]["width"], graph["9"]["inputs"]["height"]) == (960, 544)  # 1920 x 1088 after x2
+
+
+def test_ltx_fal_fallback_rounds_up_to_its_lengths_and_skips_square():
+    spec = REG.models["ltx-2.5"]
+    route = spec.route("ltx-2.5@fal")
+    media = [MediaRef(role="start_image", asset_id="a"), MediaRef(role="end_image", asset_id="b")]
+    req = normalize(spec, "flf2v", "dusk", {"duration": 5, "seed": 3}, media)
+    endpoint, payload, _ = build_payload(spec, route, req, {"start_image": "https://x/a.png", "end_image": "https://x/b.png"})
+    assert endpoint == "lightricks/ltx-2.5/image-to-video/fast"
+    assert payload["duration"] == 6 and "seed" not in payload and "negative_prompt" not in payload
+    assert payload["end_image_url"] == "https://x/b.png"
+    env = RoutingEnv(provider_mode="live", live_allowlist=set(), has_key=lambda _p: True, has_adapter=lambda _a: True)
+    by_id = {c.route.id: c for c in candidates(REG, spec, req, env)}
+    assert float(by_id["ltx-2.5@fal"].estimate.usd) == pytest.approx(6 * 0.09)  # billed for the 6 s it renders
+    square = normalize(spec, "t2v", "dusk", {"aspect_ratio": "1:1"}, [])
+    fal = next(c for c in candidates(REG, spec, square, env) if c.route.id == "ltx-2.5@fal")
+    assert not fal.eligible and "aspect_ratio" in (fal.reason or "")

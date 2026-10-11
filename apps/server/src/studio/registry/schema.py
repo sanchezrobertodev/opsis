@@ -259,7 +259,7 @@ class Pricing(_Strict):
 
 class ParamMapEntry(_Strict):
     to: str | None = None  # None = drop the param for this route
-    transform: str | None = None  # str | int | float | enum_map | seconds_to_frames | bool_to_str
+    transform: str | None = None  # str | int | float | enum_map | seconds_to_frames | bool_to_str | snap_up | ...
     args: dict[str, Any] = {}
 
 

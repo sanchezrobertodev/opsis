@@ -1,11 +1,16 @@
 # Model files for the wan-core workflows (workflows/comfy/runpod_*.json), fetched onto the network volume
 # at /runpod-volume/models/<folder>/<name> by fetch_models.py. Sizes are exact (Hugging Face, 2026-10-06), so a
 # truncated download is caught. URLs come from the official ComfyUI templates (comfyui_workflow_templates 0.11.48).
-# Groups: core = Wan 2.2 14B image-to-video + shared encoders; t2v = text-to-video; camera = Fun Camera moves;
+# Groups: core = Wan 2.2 14B image-to-video + shared encoders; camera = Fun Camera moves;
 # move = Wan-Move point trajectories (Wan 2.1 14B, 480p); vace = masked edits (Wan 2.1 VACE 14B, CausVid LoRA);
 # animate2 = Wan Animate-2 motion transfer (distilled, int8; reuses the text encoder, clip vision and VAE above);
 # uni3c = camera copied from a reference clip (Uni3C ControlNet on the core Wan 2.2 experts). Sizes for the last three
 # groups checked 2026-10-08. Licenses: Wan 2.1/2.2, Fun, Wan-Move, VACE, Animate, Uni3C, lightx2v, CausVid are Apache 2.0.
+# ltx = LTX-2.5 22B distilled (int8) with its Gemma 4 12B text encoder, video and audio VAEs and x2 latent upscaler,
+# the open default for text and image to video since 2026-10-10 (sizes from the Hugging Face tree API that day). The
+# repo is gated: accept the license at huggingface.co/Lightricks/LTX-2.5 and pass HF_TOKEN to the fetcher. License:
+# LTX-2.x Community License (free, commercial use under $10M yearly revenue). The Wan 2.2 text-to-video group (31 GB)
+# was dropped the same day; LTX-2.5 replaced it.
 files:
   - {group: core, folder: diffusion_models, name: wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors, bytes: 14294742832,
      url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"}
@@ -19,14 +24,6 @@ files:
      url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"}
   - {group: core, folder: vae, name: wan_2.1_vae.safetensors, bytes: 253815318,
      url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"}
-  - {group: t2v, folder: diffusion_models, name: wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors, bytes: 14293923632,
-     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors"}
-  - {group: t2v, folder: diffusion_models, name: wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors, bytes: 14293923632,
-     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors"}
-  - {group: t2v, folder: loras, name: wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors, bytes: 1226977424,
-     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors"}
-  - {group: t2v, folder: loras, name: wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors, bytes: 1226977424,
-     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors"}
   - {group: camera, folder: diffusion_models, name: wan2.2_fun_camera_high_noise_14B_fp8_scaled.safetensors, bytes: 15301408048,
      url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_fun_camera_high_noise_14B_fp8_scaled.safetensors"}
   - {group: camera, folder: diffusion_models, name: wan2.2_fun_camera_low_noise_14B_fp8_scaled.safetensors, bytes: 15301408048,
@@ -45,3 +42,13 @@ files:
      url: "https://huggingface.co/Comfy-Org/Wan-Animate-2/resolve/main/diffusion_models/wan_animate_2_distill_int8_convrot.safetensors"}
   - {group: uni3c, folder: model_patches, name: Wan21_Uni3C_controlnet_fp16.safetensors, bytes: 1997314376,
      url: "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors"}
+  - {group: ltx, folder: diffusion_models, name: ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors, bytes: 21504034224,
+     url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"}
+  - {group: ltx, folder: text_encoders, name: gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors, bytes: 15372969374,
+     url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors"}
+  - {group: ltx, folder: vae, name: ltx-2.5-video-vae-bf16.safetensors, bytes: 1472223346,
+     url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-video-vae-bf16.safetensors"}
+  - {group: ltx, folder: vae, name: ltx-2.5-audio-vae-bf16.safetensors, bytes: 364866540,
+     url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-audio-vae-bf16.safetensors"}
+  - {group: ltx, folder: latent_upscale_models, name: ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors, bytes: 995778752,
+     url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"}
