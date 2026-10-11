@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, ImageUp, RotateCcw, Star, StepForward, UserRoundPlus, X } from "lucide-react";
+import { Clock3, Coins, Download, ImageUp, RotateCcw, Star, StepForward, UserRoundPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { type Asset, type Generation, isActive, mediaUrl, viaOf } from "@/lib/api";
@@ -24,6 +24,21 @@ const STATUS_TEXT: Record<string, string> = {
   unknown: "Outcome unknown",
 };
 
+const MODEL_CHIP_TONES = [
+  "border-sky-300/25 bg-sky-300/10 text-sky-200",
+  "border-violet-300/25 bg-violet-300/10 text-violet-200",
+  "border-teal-300/25 bg-teal-300/10 text-teal-200",
+  "border-indigo-300/25 bg-indigo-300/10 text-indigo-200",
+  "border-lime-300/25 bg-lime-300/10 text-lime-200",
+];
+
+/** Stable family colors, including models added to the registry later. */
+function modelChipTone(family?: string) {
+  if (!family) return "border-line bg-panel text-chalk";
+  const hash = Array.from(family).reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 0);
+  return MODEL_CHIP_TONES[hash % MODEL_CHIP_TONES.length];
+}
+
 function aspectOf(gen: Generation, asset?: Asset): string {
   if (asset?.width && asset.height) return `${asset.width} / ${asset.height}`;
   const ar = (gen.request.params as Record<string, unknown> | undefined)?.aspect_ratio;
@@ -46,11 +61,13 @@ export function TakeCard({
   gen,
   takeNumber,
   modelName,
+  modelFamily,
   onOpen,
 }: {
   gen: Generation;
   takeNumber: number;
   modelName: string;
+  modelFamily?: string;
   onOpen?: (asset: Asset) => void;
 }) {
   const active = isActive(gen.status);
@@ -74,7 +91,7 @@ export function TakeCard({
       ) : (
         <Fault gen={gen} aspect={aspectOf(gen)} />
       )}
-      <TakeFooter gen={gen} takeNumber={takeNumber} modelName={modelName} prompt={prompt} assets={assets} />
+      <TakeFooter gen={gen} takeNumber={takeNumber} modelName={modelName} modelFamily={modelFamily} prompt={prompt} assets={assets} />
     </article>
   );
 }
@@ -226,12 +243,14 @@ function TakeFooter({
   gen,
   takeNumber,
   modelName,
+  modelFamily,
   prompt,
   assets,
 }: {
   gen: Generation;
   takeNumber: number;
   modelName: string;
+  modelFamily?: string;
   prompt: string;
   assets: Asset[];
 }) {
@@ -265,79 +284,108 @@ function TakeFooter({
   }
 
   return (
-    <div className="flex items-start gap-3 px-0.5">
-      <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 text-xs leading-relaxed text-chalk" title={prompt}>
-          {prompt || <span className="text-faint">No prompt</span>}
-        </p>
-        <p className="tabular mt-1 text-2xs text-faint">
-          Take {takeNumber}, {modelName}
-          {duration && `, ${duration}`}
-          {cost != null && gen.status !== "canceled" && `, ${usd(cost, { free: "free" })}`}
-        </p>
-      </div>
-      <div className="flex shrink-0 gap-0.5">
-        {gen.status === "succeeded" && first && (
-          <>
-            <IconButton
-              label={first.favorite ? "Remove from favorites" : "Add to favorites"}
-              onClick={() => patch.mutate({ id: first.id, favorite: !first.favorite })}
-            >
-              <Star className={cn("size-4", first.favorite && "fill-tungsten text-tungsten")} aria-hidden />
+    <div className="flex flex-col gap-2 px-0.5">
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-xs leading-relaxed text-chalk" title={prompt}>
+            {prompt || <span className="text-faint">No prompt</span>}
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-0.5">
+          {gen.status === "succeeded" && first && (
+            <>
+              <IconButton
+                label={first.favorite ? "Remove from favorites" : "Add to favorites"}
+                onClick={() => patch.mutate({ id: first.id, favorite: !first.favorite })}
+              >
+                <Star className={cn("size-4", first.favorite && "fill-tungsten text-tungsten")} aria-hidden />
+              </IconButton>
+              {first.kind === "image" && (
+                <IconButton
+                  label="Use as start frame for a video"
+                  onClick={() => {
+                    addMedia("video", "start_image", { id: first.id, kind: "image", thumb: first.thumb_url, url: first.url, title: first.title }, 1);
+                    setDraft("video", { mode: "i2v" });
+                    toast("Added as the start frame in Create video");
+                  }}
+                >
+                  <ImageUp className="size-4" aria-hidden />
+                </IconButton>
+              )}
+              {first.kind === "video" && (
+                <IconButton
+                  label="Continue from the last frame"
+                  onClick={() =>
+                    void continueShot
+                      .run(first.id)
+                      .then(() => toast("Last frame set as the start frame. Describe what happens next."))
+                      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "Could not grab the frame"))
+                  }
+                >
+                  <StepForward className="size-4" aria-hidden />
+                </IconButton>
+              )}
+              {first.kind === "image" && (
+                <IconButton label="Save as character" onClick={() => setSaving(true)}>
+                  <UserRoundPlus className="size-4" aria-hidden />
+                </IconButton>
+              )}
+              <a
+                href={mediaUrl(first.url)}
+                download
+                aria-label="Download"
+                title="Download"
+                className="grid size-8 place-items-center rounded-full text-muted hover:bg-raised hover:text-chalk"
+              >
+                <Download className="size-4" aria-hidden />
+              </a>
+            </>
+          )}
+          {!isActive(gen.status) && (
+            <IconButton label="Generate another take with the same settings" onClick={retry}>
+              <RotateCcw className="size-4" aria-hidden />
             </IconButton>
-            {first.kind === "image" && (
-              <IconButton
-                label="Use as start frame for a video"
-                onClick={() => {
-                  addMedia("video", "start_image", { id: first.id, kind: "image", thumb: first.thumb_url, url: first.url, title: first.title }, 1);
-                  setDraft("video", { mode: "i2v" });
-                  toast("Added as the start frame in Create video");
-                }}
-              >
-                <ImageUp className="size-4" aria-hidden />
-              </IconButton>
-            )}
-            {first.kind === "video" && (
-              <IconButton
-                label="Continue from the last frame"
-                onClick={() =>
-                  void continueShot
-                    .run(first.id)
-                    .then(() => toast("Last frame set as the start frame. Describe what happens next."))
-                    .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "Could not grab the frame"))
-                }
-              >
-                <StepForward className="size-4" aria-hidden />
-              </IconButton>
-            )}
-            {first.kind === "image" && (
-              <IconButton label="Save as character" onClick={() => setSaving(true)}>
-                <UserRoundPlus className="size-4" aria-hidden />
-              </IconButton>
-            )}
-            <a
-              href={mediaUrl(first.url)}
-              download
-              aria-label="Download"
-              title="Download"
-              className="grid size-8 place-items-center rounded-full text-muted hover:bg-raised hover:text-chalk"
-            >
-              <Download className="size-4" aria-hidden />
-            </a>
-          </>
-        )}
-        {!isActive(gen.status) && (
-          <IconButton label="Generate another take with the same settings" onClick={retry}>
-            <RotateCcw className="size-4" aria-hidden />
+          )}
+          <IconButton
+            label="Reuse this prompt"
+            onClick={() => setDraft(studio, { prompt, modelId: viaOf(gen)?.model_id ?? gen.model_id, mode: viaOf(gen)?.mode ?? gen.mode })}
+          >
+            <span className="text-2xs">Aa</span>
           </IconButton>
-        )}
-        <IconButton
-          label="Reuse this prompt"
-          onClick={() => setDraft(studio, { prompt, modelId: viaOf(gen)?.model_id ?? gen.model_id, mode: viaOf(gen)?.mode ?? gen.mode })}
-        >
-          <span className="text-2xs">Aa</span>
-        </IconButton>
+        </div>
       </div>
+      <dl className="flex flex-wrap items-center gap-1.5 text-2xs">
+        <div className="mr-0.5 text-muted">
+          <dt className="sr-only">Take</dt>
+          <dd className="tabular">Take {String(takeNumber).padStart(2, "0")}</dd>
+        </div>
+        <div className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border px-2 py-1 font-medium", modelChipTone(modelFamily))}>
+          <dt className="sr-only">Model</dt>
+          <dd className="flex min-w-0 items-center gap-1.5" title={modelName}>
+            <span className="size-1.5 shrink-0 rounded-full bg-current" aria-hidden />
+            <span className="truncate">{modelName}</span>
+          </dd>
+        </div>
+        {duration && (
+          <div className="inline-flex items-center gap-1 rounded-full border border-line bg-panel px-2 py-1 text-chalk">
+            <dt className="sr-only">Duration</dt>
+            <dd className="tabular flex items-center gap-1">
+              <Clock3 className="size-3 shrink-0 text-muted" aria-hidden />
+              {duration}
+            </dd>
+          </div>
+        )}
+        {cost != null && gen.status !== "canceled" && (
+          <div className="inline-flex items-center gap-1 rounded-full border border-done/25 bg-done/10 px-2 py-1 text-done">
+            <dt className="sr-only">{gen.actual_cost_usd != null ? "Cost" : "Estimated cost"}</dt>
+            <dd className="tabular flex items-center gap-1">
+              <Coins className="size-3 shrink-0" aria-hidden />
+              {gen.actual_cost_usd == null && <span>Est.</span>}
+              {usd(cost, { free: "free" })}
+            </dd>
+          </div>
+        )}
+      </dl>
       {first?.kind === "image" && (
         <SaveAsElement asset={first} prompt={prompt} open={saving} onClose={() => setSaving(false)} />
       )}
