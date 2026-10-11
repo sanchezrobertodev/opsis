@@ -1,4 +1,4 @@
-# wan-core: RunPod serverless worker for ai-media-studio's open Wan models.
+# wan-core: RunPod serverless worker for ai-media-studio's open models (Wan, and LTX-2.5 from 0.4.0).
 # Base: worker-comfyui 5.10.0 = ComfyUI 0.34.0 (the same version as the local VideoStudio install the workflows
 # were checked against), torch 2.11. Every node the workflows use is built into ComfyUI 0.34, so no custom nodes.
 # Models live on the network volume; the image adds the CUDA 13 torch below and a few KB of files.

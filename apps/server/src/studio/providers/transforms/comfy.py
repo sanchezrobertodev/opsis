@@ -57,6 +57,32 @@ def wan14b_size(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -> 
     return payload
 
 
+# LTX-2.5 on the wan-core endpoint. Its latents are 1/32 of the picture, and the two-stage graphs sample at half size
+# before the x2 upscaler, so every size is a multiple of 64 (the half a multiple of 32), near the template's 0.9 MP.
+LTX_SIZES = {
+    ("720p", "16:9"): (1280, 704),
+    ("720p", "9:16"): (704, 1280),
+    ("720p", "1:1"): (960, 960),
+    ("1080p", "16:9"): (1920, 1088),
+    ("1080p", "9:16"): (1088, 1920),
+    ("1080p", "1:1"): (1408, 1408),
+}
+
+
+def ltx_size(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    """Full and half sizes for the LTX-2.5 graphs: the two-stage ones (text, start frame) start at half size; the
+    first-and-last-frame one runs in one pass at full size. Frames are scaled and center-cropped to the full size."""
+    resolution = str(req.params.get("resolution", "720p"))
+    aspect = str(req.params.get("aspect_ratio", "16:9"))
+    width, height = LTX_SIZES.get((resolution, aspect), LTX_SIZES[("720p", "16:9")])
+    two_stage = "end_image" not in payload
+    if two_stage:
+        payload["half_width"], payload["half_height"] = width // 2, height // 2
+    if "start_image" in payload or not two_stage:
+        payload["width"], payload["height"] = width, height
+    return payload
+
+
 # Wan-Move runs at 480p. The workflow scales and center-crops the start frame to this size, which is the frame the
 # motion-path editor draws on (cropped to the same aspect), so 0-1 path coordinates map straight to pixels.
 WAN_MOVE_SIZES = {"16:9": (832, 480), "9:16": (480, 832), "1:1": (624, 624)}

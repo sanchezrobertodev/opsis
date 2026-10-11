@@ -48,6 +48,13 @@ def _t_scale(v: Any, args: dict) -> Any:
     return round(float(v) * float(args.get("factor", 1)))
 
 
+def _t_snap_up(v: Any, args: dict) -> Any:
+    """The smallest of `args.options` at or above the value, else the largest: a route that takes only some lengths
+    (fal's LTX-2.5: 6, 8, ... 20 s) renders the next one up. Price it the same way in the route's `quantity`."""
+    options = sorted(args.get("options", []))
+    return next((o for o in options if o >= v), options[-1]) if options else v
+
+
 def _t_shot_list(v: Any, args: dict) -> Any:
     """Multi-shot as the provider's own list: [{prompt, duration}], durations as `args.duration` (str or int)."""
     as_type = {"str": lambda d: str(round(d)), "int": lambda d: round(d)}.get(args.get("duration", ""), lambda d: d)
@@ -75,6 +82,7 @@ TRANSFORMS: dict[str, Callable[[Any, dict], Any]] = {
     "bool_to_str": _t_bool_to_str,
     "suffix": _t_suffix,
     "scale": _t_scale,
+    "snap_up": _t_snap_up,
 }
 
 

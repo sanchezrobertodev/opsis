@@ -14,3 +14,4 @@ wan_core:
   checkpoints: checkpoints/
   upscale_models: upscale_models/
   audio_encoders: audio_encoders/
+  latent_upscale_models: latent_upscale_models/   # LTX-2.5's x2 spatial upscaler (0.4.0)

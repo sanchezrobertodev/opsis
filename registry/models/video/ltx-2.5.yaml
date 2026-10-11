@@ -1,0 +1,141 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# The open default for text and image to video (replaces Wan 2.2 14B Fast there, 2026-10-10). Weights: the gated
+# Lightricks/LTX-2.5 repo on Hugging Face (accept its license once; the volume fetcher reads HF_TOKEN). The fal route is
+# Lightricks' own hosted LTX-2.5 Fast, as a fallback: field names verified 2026-10-10 against fal's OpenAPI
+# (lightricks/ltx-2.5/{text,image}-to-video/fast; 720p and up, 16:9 or 9:16, 6-20 s in even steps, no seed).
+id: ltx-2.5
+name: LTX-2.5
+family: ltx
+vendor: lightricks
+description: >-
+  Lightricks' open 22B audio-video model on your own RunPod endpoint: text, a start frame, or a first and last frame
+  to video at 720p or 1080p, with sound and spoken lines made in the same pass. Distilled, so a warm 5 s 720p clip
+  takes well under a minute; the first clip after a pause also loads the model (about a minute and a half more).
+output_type: video
+status: active
+license_tier: open_restricted   # LTX-2.x Community License: free, commercial use included, under $10M yearly revenue
+tags: [open-weights, budget, self-hosted, audio, first-last-frame]
+# Dialogue: write it in quotes ("She says: ...") and LTX speaks it with lip sync.
+prompt: {max_chars: 4000, dialect: default, supports_negative: true, dialogue: true}
+aspect_ratios: ["16:9", "9:16", "1:1"]
+duration: {min: 2, max: 20, default: 5}
+
+parameters:
+  - {name: resolution, type: enum, options: ["720p", "1080p"], default: "720p", ui: segmented,
+     help: "1080p takes about two and a half times as long."}
+  - {name: duration, label: Duration (s), type: int, min: 2, max: 20, default: 5, ui: slider,
+     help: "Up to 10 s at 1080p. The hosted fallback makes 6-20 s in even steps and rounds up."}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "1:1"], default: "16:9", ui: aspect,
+     help: "A start or end frame is scaled and center-cropped to it. Square only on your own endpoint."}
+  - {name: generate_audio, label: Sound, type: bool, default: true,
+     help: "Sound and speech made with the picture, at no extra cost."}
+  - {name: seed, type: seed, group: advanced}
+
+rules:
+  - when: {resolution: "1080p"}
+    require: {duration: [2, 3, 4, 5, 6, 7, 8, 9, 10]}
+    message: LTX-2.5 makes 1080p clips of up to 10 seconds.
+
+modes:
+  - id: t2v
+    label: Text to video
+    ops: [t2v]
+  - id: i2v
+    label: Image to video
+    ops: [i2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+  - id: flf2v
+    label: First and last frame
+    ops: [flf2v]
+    medias:
+      - {role: start_image, kinds: [image], label: First frame, required: true}
+      - {role: end_image, kinds: [image], label: Last frame, required: true}
+
+routes:
+  - id: ltx-2.5@wan_core
+    provider: runpod_wan_core
+    modes:
+      t2v: {endpoint: runpod_ltx25_t2v}
+      i2v: {endpoint: runpod_ltx25_i2v}
+      flf2v: {endpoint: runpod_ltx25_flf2v}
+    transform: studio.providers.transforms.comfy:ltx_size
+    map:
+      params:
+        duration: {to: length, transform: seconds_to_frames, args: {fps: 24, plus: 1}}
+        # the audio VAE's file name; left empty (sound off), the graph drops its audio decode
+        generate_audio: {to: audio, transform: enum_map,
+                         args: {values: {"True": ltx-2.5-audio-vae-bf16.safetensors, "False": ""}}}
+        resolution: {to: null}
+        aspect_ratio: {to: null}
+      media: {start_image: start_image, end_image: end_image}
+    # Billed per GPU second on an RTX PRO 6000 ($3.49/h), then corrected to RunPod's bill (studio/budget/reconcile.py).
+    pricing:
+      basis: per_gpu_second
+      # the run time (eta) + 60 s idle tail + ~90 s loading ~39 GB of weights on a cold worker (like Wan 14B's 37 GB).
+      # A ceiling for caps: a warm take costs less, and the hourly reconcile books what RunPod billed.
+      # Live 2026-10-11 (wan-core 0.4.0): t2v 720p 2 s ran 72 s from a cold worker, $0.128 vs $0.163 here.
+      quantity: >-
+        ((10 + (6 if mode == 'flf2v' else 4) * duration) if resolution == '720p'
+        else (20 + (15 if mode == 'flf2v' else 10) * duration)) + 60 + 90
+      rates: [{usd: 0.000969}]
+      verified: 2026-10-10
+      source: >-
+        RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); run time estimated for the distilled 8+3-step graph
+        (unbenchmarked)
+    # two-stage graphs: 8 steps at half size + 3 at full; first-and-last-frame runs 8 steps at full size
+    eta: >-
+      (10 + (6 if mode == 'flf2v' else 4) * duration) if resolution == '720p'
+      else (20 + (15 if mode == 'flf2v' else 10) * duration)
+    timeout_s: 3600
+    output: {path: output.outputs, kind: video}
+
+  - id: ltx-2.5@fal
+    provider: fal
+    modes:
+      t2v: {endpoint: lightricks/ltx-2.5/text-to-video/fast}
+      i2v: {endpoint: lightricks/ltx-2.5/image-to-video/fast}
+      flf2v: {endpoint: lightricks/ltx-2.5/image-to-video/fast}
+    map:
+      negative_prompt: null
+      params:
+        duration: {to: duration, transform: snap_up, args: {options: [6, 8, 10, 12, 14, 16, 18, 20]}}
+        resolution: resolution
+        aspect_ratio: aspect_ratio
+        generate_audio: generate_audio
+        seed: {to: null}
+      media: {start_image: image_url, end_image: end_image_url}
+    constraints:
+      aspect_ratio: {options: ["16:9", "9:16"]}
+    pricing:
+      basis: per_output_second
+      quantity: "max(6, ceil(duration / 2) * 2)"   # the length it renders (snap_up above)
+      rates:
+        - {usd: 0.09}
+        - {when: {resolution: "1080p"}, usd: 0.13}
+      verified: 2026-10-10
+      source: >-
+        fal.ai/models/lightricks/ltx-2.5/text-to-video/fast ($0.09/s 720p, $0.13/s 1080p, audio included; the pricing
+        API reports $0.01 units)
+    timeout_s: 1800
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: t2v_720p_smoke
+    mode: t2v
+    prompt: A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest, birdsong.
+    params: {resolution: "720p", duration: 2}
+    smoke: true
+    expect: {cost_usd_range: [0.15, 0.55]}
+  - name: i2v_720p
+    mode: i2v
+    prompt: The camera slowly pushes in as wind moves through the grass.
+    params: {resolution: "720p", duration: 5}
+    media: {start_image: "fixture:images/keyframe.png"}
+    expect: {cost_usd_range: [0.17, 0.55]}
+  - name: flf2v_720p
+    mode: flf2v
+    prompt: The day turns to dusk as the camera drifts sideways.
+    params: {resolution: "720p", duration: 4}
+    media: {start_image: "fixture:images/keyframe.png", end_image: "fixture:images/keyframe.png"}
+    expect: {cost_usd_range: [0.17, 0.55]}

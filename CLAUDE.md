@@ -226,7 +226,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   `RUNPOD_API_KEY` + `RUNPOD_WAN_CORE_ENDPOINT` (a provider's `key_setting` may list several settings). Cost is the
   worker's `executionTime` at the provider's `gpu_usd_per_hour`, kept flagged as an estimate. Check new graphs
   against the local ComfyUI 0.34 (same version) before pushing: `/prompt` validates them without the models.
-  Workflows: Wan 2.2 14B Fast (t2v/i2v), Fun Camera, Wan-Move, VACE masked edit (`wan-vace`, `object_replace`, so Object
+  Workflows: LTX-2.5 (`ltx-2.5`, t2v/i2v/flf2v with sound, the open default since 2026-10-10; two stages via
+  its x2 latent upscaler), Wan 2.2 14B Fast (i2v only), Fun Camera, Wan-Move, VACE masked edit (`wan-vace`, `object_replace`, so Object
   swap uses it with the tracked matte), Animate-2 (`wan-animate-2`, motion transfer) and Uni3C camera copy
   (`wan-uni3c`, high-noise expert only). Clip inputs are re-timed to 16 fps before upload (route `media_fps`, hosted
   afresh, not from the per-asset upload cache), so 81 frames cover 5 s of any clip; clip-driven ones size the output
