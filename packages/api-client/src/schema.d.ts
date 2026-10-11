@@ -1316,6 +1316,11 @@ export interface components {
             provider_name?: string | null;
             /** Provider Kind */
             provider_kind?: string | null;
+            /**
+             * Account
+             * @description The billing account whose balance applies (RunPod for our endpoint)
+             */
+            account?: string | null;
             /** Eta Seconds */
             eta_seconds?: number | null;
             /** Eligible */

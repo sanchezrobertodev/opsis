@@ -5,6 +5,7 @@ adapter: runpod_comfy
 # Both must be set: the RunPod key and the endpoint id printed when the endpoint was created.
 key_setting: [runpod_api_key, runpod_wan_core_endpoint]
 endpoint_setting: runpod_wan_core_endpoint
+billing_account: runpod     # bills the RunPod account: the cost panel shows its balance
 concurrency: 2             # matches the endpoint's max workers
 poll_min_seconds: 4
 docs: infra/runpod/wan-core/README.md

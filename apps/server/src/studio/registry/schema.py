@@ -417,6 +417,9 @@ class ProviderSpec(_Strict):
     # named by `hosting_setting` (FAL_KEY), so routes that need them are offered only when it's set.
     hosted_kinds: list[MediaKind] = []
     hosting_setting: str | None = None
+    # The account it bills, when another provider's (our RunPod endpoint bills the RunPod account): where the cost
+    # panel reads its balance. Unset: its own id.
+    billing_account: str | None = None
 
     def configured(self, settings: Any) -> bool:
         """True when every setting in `key_setting` has a value (providers without one are always configured)."""

@@ -122,6 +122,7 @@ class CandidateOut(ApiModel):
     provider: str
     provider_name: str | None = None
     provider_kind: str | None = None
+    account: str | None = Field(None, description="The billing account whose balance applies (RunPod for our endpoint)")
     eta_seconds: float | None = None
     eligible: bool
     reason: str | None
