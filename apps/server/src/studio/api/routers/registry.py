@@ -34,6 +34,9 @@ def _wrapped(reg: Registry, spec: ModelSpec) -> list[ModelSpec]:
     return [m for w in spec.wraps if (m := reg.model(w)) is not None and m.kind != "virtual"]
 
 
+# Part of the summary's ETag: bump it when what the summary computes changes (from-prices), so browsers holding the
+# last copy fetch it again even though the registry files didn't change.
+SUMMARY_VERSION = 2
 STAND_IN_SECONDS = 5  # a typical input clip or sound, for modes priced by input length (video edits)
 STAND_IN_PROMPT = "x" * 300  # a short script, for routes priced by the text (speech)
 
@@ -87,7 +90,7 @@ async def get_registry_summary(
 ) -> RegistryOut | Response:
     reg = get_registry()
     mode = (await modes.current(session)).provider  # the Settings switch changes what's runnable
-    etag = f'"{reg.hash}-{mode}"'
+    etag = f'"{reg.hash}-{mode}-{SUMMARY_VERSION}"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304)
     response.headers["ETag"] = etag
