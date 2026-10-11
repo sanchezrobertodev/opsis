@@ -30,7 +30,8 @@ test("a mock text-to-video take renders as a slate, then plays, then appears in 
   // becomes a playable video with the requested length
   const video = take.locator("video");
   await expect(video).toBeVisible();
-  await expect(take.getByText(/4\.0s, free/)).toBeVisible();
+  await expect(take.getByText("4.0s", { exact: true })).toBeVisible();
+  await expect(take.getByText("free", { exact: true })).toBeVisible();
 
   await page.goto("/library");
   await expect(page.getByRole("button", { name: new RegExp(prompt.slice(0, 30)) }).first()).toBeVisible();
