@@ -18,12 +18,12 @@ reference clip, on the Wan 2.2 experts). The studio reaches it through the
 
 ## Layout on RunPod
 
-- **Network volume** `wan-core-models`, 180 GB, STANDARD, in **US-NE-1**: models at `/runpod-volume/models/...`.
+- **Network volume** `wan-core-models`, 200 GB, STANDARD, in **US-NE-1**: models at `/runpod-volume/models/...`.
   US-NE-1 has the RTX PRO 6000 plus standard volumes. A volume pins the endpoint to its data center.
 - **Endpoint** `wan-core`: queue-based, workers 0 to 2, GPU pool `BLACKWELL_96` (RTX PRO 6000, $3.49/h), idle
   timeout 60 s, execution timeout 3600 s, FlashBoot on. The `ADA_80_PRO` pool (H100, $4.79/h) was dropped on
   2026-10-08 (AMS-13): every H100 job was slower and dearer, so a take now waits for a PRO 6000 instead.
-- Costs: the volume is $0.07/GB/month ($12.60/month for 180 GB, grown from 130 GB on 2026-10-08) whether or not you
+- Costs: the volume is $0.07/GB/month ($14.00/month for 200 GB, grown from 130 GB on 2026-10-08 and 180 GB on 2026-10-11) whether or not you
   use it. Workers
   bill per second only while running, plus the 60 s idle tail. The first take after a pause also loads about
   35 GB of weights from the volume.
@@ -32,9 +32,9 @@ reference clip, on the Wan 2.2 experts). The studio reaches it through the
 
 | Resource | Id | Notes |
 |---|---|---|
-| Image | `sanchezrobertodev/wan-core:0.3.0` | Docker Hub, public; 0.3.0 (2026-10-08) runs torch on CUDA 13, 0.2.0 puts big results in upload slots; older tags still there |
-| Network volume | `w5wwmiagkn` (`wan-core-models`) | 180 GB STANDARD, US-NE-1; the first 15 files fetched 2026-10-06 (14 min on a CPU pod), the VACE, Animate-2 and Uni3C groups 2026-10-08 |
-| Template | `1nphescjl4` (`wan-core-0.3.0`) | serverless, 30 GB container disk; `2gfqvv1ajl` (0.2.0) and `hgugk70qn7` (0.1.0) are the previous ones |
+| Image | `sanchezrobertodev/wan-core:0.4.0` | Docker Hub, public; 0.4.0 (2026-10-11) maps `latent_upscale_models` for LTX-2.5, 0.3.0 (2026-10-08) runs torch on CUDA 13, 0.2.0 puts big results in upload slots; older tags still there |
+| Network volume | `w5wwmiagkn` (`wan-core-models`) | 200 GB STANDARD, US-NE-1; the first 15 files fetched 2026-10-06 (14 min on a CPU pod), the VACE, Animate-2 and Uni3C groups 2026-10-08; the Wan t2v group swapped for the LTX group 2026-10-11 |
+| Template | `yjkg0eh9ka` (`wan-core-0.4.0`) | serverless, 30 GB container disk; `1nphescjl4` (0.3.0), `2gfqvv1ajl` (0.2.0) and `hgugk70qn7` (0.1.0) are the previous ones |
 | Endpoint | `ovktgiubxwld1j` (`wan-core`) | pool BLACKWELL_96 (ADA_80_PRO dropped 2026-10-08), workers 0 to 2, idle 60 s, timeout 3600 s |
 
 First live take through the studio: Wan 2.2 14B Fast, text-to-video, 480p, 3 s. It took 92.7 s on an RTX PRO 6000
@@ -113,21 +113,24 @@ apart from the absent weights. Weights: the `ltx` group, 39.7 GB (22B distilled 
 VAEs, x2 spatial upscaler). An nvfp4 transformer (18.7 GB, Blackwell only) exists too; the int8 one is what the
 templates use. Run times in the registry are estimates until the first live takes.
 
-Still to do on RunPod, in this order (nothing here has been run yet):
+Rolled out 2026-10-11:
 
-1. Accept the license at https://huggingface.co/Lightricks/LTX-2.5 with the account whose token the fetcher gets
-   (the repo is gated). Free.
-2. Grow the volume `w5wwmiagkn` from 180 to 200 GB: 171 GB is used, and the volume ends at 180.4 GB of models.
-   +$1.40/month ($14.00/month in all). A volume can grow but not shrink.
-3. Build and push `wan-core:0.4.0` (the `latent_upscale_models` path and the new `models.yaml`); only the small top
-   layer uploads. Make template `wan-core-0.4.0` from it and point the endpoint `ovktgiubxwld1j` at it. Free.
-4. On a CPU pod in US-NE-1 with the volume mounted (cents: the last 53.6 GB took 55 min for $0.15), delete the four
-   Wan t2v files (`wan2.2_t2v_*` in `diffusion_models/` and `loras/`), then fetch the new group:
-   `HF_TOKEN=... python -u /fetch_models.py --dest /runpod-volume/models --group ltx`. Delete first: 200 GB can't hold
-   both. Until the studio is deployed, Wan 2.2 14B Fast text to video then fails on the server.
-5. Deploy the studio (merge, then Deploy on the Hub).
-6. One live take, with your OK: `uv run python scripts/smoke_live.py --routes ltx-2.5@wan_core --cap 0.50
-   --confirm-spend` (720p, 2 s, about $0.16 from a cold worker at $3.49/h on an RTX PRO 6000).
+- The license is accepted on Hugging Face, and the downloader reads the token from the RunPod secret `hf_token`
+  (`HF_TOKEN={{ RUNPOD_SECRET_hf_token }}` in the pod's env).
+- The volume grew from 180 to 200 GB (+$1.40/month). It held exactly the 19 manifest files, with nothing stray.
+- On a 4-vCPU CPU pod (`cpu3c`, $0.12/h, `python:3.12-slim` with the fetcher and manifest passed in env vars), the four
+  Wan t2v files were deleted and the `ltx` group fetched: 39.7 GB in 2 min 37 s (60-157 MB/s per file), about $0.01.
+  All 20 files are present at their exact sizes.
+- `wan-core:0.4.0` was pushed (only the top layers uploaded), template `yjkg0eh9ka` (`wan-core-0.4.0`) made, and
+  the endpoint switched to the image (release 7). Workers move to it as they cycle: a job can still land on a 0.3.0
+  worker for a few minutes, which fails LTX-2.5 with "LatentUpscaleModelLoader ... not in []".
+
+- First live take (the registry's smoke example, through the studio's wan-core adapter): text to video, 720p, 2 s, from a
+  cold worker on an RTX PRO 6000. 72.3 s of run time, including loading the weights, so $0.128 with the idle tail
+  against the $0.163 estimate. The clip is 1280x704, 24 fps, 49 frames, with an AAC stereo track (quiet lake ambience,
+  -50 dB mean). The first try landed on a 0.3.0 worker before the rollout finished and failed at validation for $0.08.
+
+Left: deploy the studio (merge, then Deploy on the Hub).
 
 ## Big results (0.2.0)
 

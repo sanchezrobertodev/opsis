@@ -74,6 +74,7 @@ routes:
       basis: per_gpu_second
       # the run time (eta) + 60 s idle tail + ~90 s loading ~39 GB of weights on a cold worker (like Wan 14B's 37 GB).
       # A ceiling for caps: a warm take costs less, and the hourly reconcile books what RunPod billed.
+      # Live 2026-10-11 (wan-core 0.4.0): t2v 720p 2 s ran 72 s from a cold worker, $0.128 vs $0.163 here.
       quantity: >-
         ((10 + (6 if mode == 'flf2v' else 4) * duration) if resolution == '720p'
         else (20 + (15 if mode == 'flf2v' else 10) * duration)) + 60 + 90
