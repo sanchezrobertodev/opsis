@@ -19,7 +19,7 @@ from studio.domain.generations import CreateRequest, plan, routing_env
 from studio.registry.loader import MOCK_PROVIDER, Registry, get_registry
 from studio.registry.pricing import estimate
 from studio.registry.routing import candidates
-from studio.registry.schema import ModelSpec
+from studio.registry.schema import Mode, ModelSpec
 from studio.registry.validate import NormalizedRequest
 
 router = APIRouter(prefix="/registry", tags=["registry"])
@@ -34,6 +34,24 @@ def _wrapped(reg: Registry, spec: ModelSpec) -> list[ModelSpec]:
     return [m for w in spec.wraps if (m := reg.model(w)) is not None and m.kind != "virtual"]
 
 
+STAND_IN_SECONDS = 5  # a typical input clip or sound, for modes priced by input length (video edits)
+STAND_IN_PROMPT = "x" * 300  # a short script, for routes priced by the text (speech)
+
+
+def _stand_ins(mode: Mode) -> list[dict]:
+    """The least each required input slot takes, so a mode billed by its inputs isn't priced as if it had none."""
+    out = []
+    for slot in mode.medias:
+        if not slot.required:
+            continue
+        kind = slot.kinds[0]
+        timed = kind in ("video", "audio", "mask_video")
+        out += [{"role": slot.role, "kind": "video" if kind == "mask_video" else kind,
+                 "duration_ms": STAND_IN_SECONDS * 1000 if timed else None,
+                 "width": 1280 if timed else None, "height": 720 if timed else None}] * max(1, slot.min)
+    return out
+
+
 def _from_price(reg: Registry, spec: ModelSpec) -> float | None:
     if spec.kind == "virtual":
         prices = [p for m in _wrapped(reg, spec) if (p := _from_price(reg, m)) is not None]
@@ -41,11 +59,12 @@ def _from_price(reg: Registry, spec: ModelSpec) -> float | None:
     prices = []
     for mode in spec.modes:
         params = _defaults(spec, mode.id)
+        media = _stand_ins(mode)
         for route in spec.routes:
             if route.provider == MOCK_PROVIDER or not route.enabled or mode.id not in route.modes:
                 continue
             try:
-                prices.append(float(estimate(route.pricing, params, mode=mode.id).usd))
+                prices.append(float(estimate(route.pricing, params, STAND_IN_PROMPT, media=media, mode=mode.id).usd))
             except ValueError:
                 continue
     return min(prices) if prices else None
