@@ -33,8 +33,8 @@ const MODEL_CHIP_TONES = [
 ];
 
 /** Stable family colors, including models added to the registry later. */
-function modelChipTone(modelId: string) {
-  const family = modelId.split("-")[0];
+function modelChipTone(family?: string) {
+  if (!family) return "border-line bg-panel text-chalk";
   const hash = Array.from(family).reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 0);
   return MODEL_CHIP_TONES[hash % MODEL_CHIP_TONES.length];
 }
@@ -61,11 +61,13 @@ export function TakeCard({
   gen,
   takeNumber,
   modelName,
+  modelFamily,
   onOpen,
 }: {
   gen: Generation;
   takeNumber: number;
   modelName: string;
+  modelFamily?: string;
   onOpen?: (asset: Asset) => void;
 }) {
   const active = isActive(gen.status);
@@ -89,7 +91,7 @@ export function TakeCard({
       ) : (
         <Fault gen={gen} aspect={aspectOf(gen)} />
       )}
-      <TakeFooter gen={gen} takeNumber={takeNumber} modelName={modelName} prompt={prompt} assets={assets} />
+      <TakeFooter gen={gen} takeNumber={takeNumber} modelName={modelName} modelFamily={modelFamily} prompt={prompt} assets={assets} />
     </article>
   );
 }
@@ -241,12 +243,14 @@ function TakeFooter({
   gen,
   takeNumber,
   modelName,
+  modelFamily,
   prompt,
   assets,
 }: {
   gen: Generation;
   takeNumber: number;
   modelName: string;
+  modelFamily?: string;
   prompt: string;
   assets: Asset[];
 }) {
@@ -355,7 +359,7 @@ function TakeFooter({
           <dt className="sr-only">Take</dt>
           <dd className="tabular">Take {String(takeNumber).padStart(2, "0")}</dd>
         </div>
-        <div className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border px-2 py-1 font-medium", modelChipTone(gen.model_id))}>
+        <div className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border px-2 py-1 font-medium", modelChipTone(modelFamily))}>
           <dt className="sr-only">Model</dt>
           <dd className="flex min-w-0 items-center gap-1.5" title={modelName}>
             <span className="size-1.5 shrink-0 rounded-full bg-current" aria-hidden />

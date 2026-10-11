@@ -35,7 +35,7 @@ export function CreateStudio({
   const [open, setOpen] = useState<Asset | null>(null);
 
   const models = useMemo(() => modelsFor(registry?.models ?? [], studio, ops), [registry, studio, ops]);
-  const names = useMemo(() => Object.fromEntries((registry?.models ?? []).map((m) => [m.id, m.name])), [registry]);
+  const modelsById = useMemo(() => Object.fromEntries((registry?.models ?? []).map((m) => [m.id, m])), [registry]);
   const items = gens?.items ?? [];
   // Take numbers count up from the oldest generation in view, like a shooting log.
   const total = items.length;
@@ -70,7 +70,8 @@ export function CreateStudio({
                 key={g.id}
                 gen={g}
                 takeNumber={total - i}
-                modelName={viaName(g, names[g.model_id] ?? g.model_id)}
+                modelName={viaName(g, modelsById[g.model_id]?.name ?? g.model_id)}
+                modelFamily={modelsById[g.model_id]?.family}
                 onOpen={setOpen}
               />
             ))}
