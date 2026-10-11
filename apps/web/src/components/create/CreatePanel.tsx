@@ -1,5 +1,6 @@
 "use client";
 
+import type { Schemas } from "@studio/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -12,6 +13,7 @@ import { type CreateBody, useCreateGeneration, useModel } from "@/lib/queries";
 import { KINDS, modeMatches, type StudioKind } from "@/lib/studioKinds";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 import { CompareDialog } from "./CompareDialog";
+import { CostPanel } from "./CostPanel";
 import { KeyframeHint } from "./KeyframeHint";
 import { type Direction, DirectorPanel, mentionSlugs } from "./DirectorPanel";
 import { MediaSlotField } from "./MediaSlots";
@@ -330,6 +332,7 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
           liveUsd={liveRef?.estimate_usd ?? null}
           liveProvider={liveRef?.provider_name ?? liveRef?.provider}
           takes={draft.takes}
+          chosen={chosen}
         />
 
         {blockers.length > 0 && (
@@ -412,7 +415,9 @@ function CostLine({
   liveUsd,
   liveProvider,
   takes,
+  chosen,
 }: {
+  chosen?: Schemas["CandidateOut"];
   chosenUsd: number | null;
   isMock: boolean;
   isLocal: boolean;
@@ -450,10 +455,5 @@ function CostLine({
       </p>
     );
   }
-  return (
-    <p className="tabular text-xs text-muted">
-      Estimated <span className="text-chalk">{usd(chosenUsd != null ? chosenUsd * n : null)}</span>
-      {n > 1 && <span className="text-faint"> for {n} takes</span>}
-    </p>
-  );
+  return <CostPanel cost={chosenUsd} takes={n} chosen={chosen} />;
 }

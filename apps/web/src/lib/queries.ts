@@ -76,6 +76,11 @@ export function useBudget() {
   return useQuery({ queryKey: keys.budget, queryFn: () => unwrap(api.GET("/budget")) });
 }
 
+/** What's left on each provider account (the server keeps free reads for a minute). */
+export function useBalances() {
+  return useQuery({ queryKey: ["balances"], queryFn: () => unwrap(api.GET("/budget/balances")), staleTime: 60_000 });
+}
+
 export function useHealth() {
   return useQuery({ queryKey: keys.health, queryFn: () => unwrap(api.GET("/health")), refetchInterval: 30_000 });
 }

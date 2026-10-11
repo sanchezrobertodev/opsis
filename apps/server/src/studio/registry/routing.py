@@ -56,6 +56,7 @@ class Candidate:
     provider_name: str | None = None
     provider_kind: str | None = None
     eta_seconds: float | None = None
+    account: str | None = None  # the billing account (ProviderSpec.billing_account, else the provider id)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -63,6 +64,7 @@ class Candidate:
             "provider": self.route.provider,
             "provider_name": self.provider_name or self.route.provider,
             "provider_kind": self.provider_kind,
+            "account": self.account or self.route.provider,
             "eta_seconds": self.eta_seconds,
             "eligible": self.eligible,
             "reason": self.reason,
@@ -175,6 +177,7 @@ def candidates(
                     break
         out.append(Candidate(route=route, estimate=est, eligible=reason is None, reason=reason,
                              provider_name=provider.name if provider else None, provider_kind=kind,
+                             account=(provider.billing_account or provider.id) if provider else None,
                              eta_seconds=eta_seconds(route.eta, req.params, req.media, req.mode) if est else None))
 
     def sort_key(c: Candidate) -> tuple:
