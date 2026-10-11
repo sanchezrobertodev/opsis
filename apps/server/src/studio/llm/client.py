@@ -19,6 +19,7 @@ import anthropic
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from studio.budget import modes
 from studio.budget.guard import BudgetBlocked, summary
 from studio.config import get_settings
 from studio.db.models import SpendLedger
@@ -74,8 +75,11 @@ def get_client() -> anthropic.AsyncAnthropic:
     return _client
 
 
-def is_mock() -> bool:
-    return get_settings().llm_mode == "mock"
+async def is_mock(session: AsyncSession, user_id: uuid.UUID) -> bool:
+    """Claude's mode in effect: the Settings switch, capped by LLM_MODE in .env (budget/modes.py)."""
+    if get_settings().llm_mode == "mock":  # the ceiling: no switch can go past it, so nothing to look up
+        return True
+    return (await modes.current(session, user_id)).llm == "mock"
 
 
 async def _check_budget(session: AsyncSession, user_id: uuid.UUID, ceiling: Decimal) -> None:
@@ -102,7 +106,7 @@ async def structured[T: BaseModel](
     max_tokens: int = 8000,
 ) -> LLMResult[T]:
     """Ask Claude for an `output`-shaped answer. Commits nothing; the caller commits the ledger row."""
-    if is_mock():
+    if await is_mock(session, user_id):
         return LLMResult(output=mock(), model=f"{model} (mock)", mock=True)
 
     client = get_client()

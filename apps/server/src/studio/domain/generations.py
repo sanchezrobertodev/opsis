@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from studio.budget import guard
+from studio.budget import guard, modes
 from studio.config import get_settings
 from studio.db.base import uuid7
 from studio.db.models import Asset, Generation, GenerationAttempt, Project
@@ -76,6 +76,7 @@ class Plan:
     spec: ModelSpec | None = None  # the model that runs (a virtual model's engine)
     direction: dict[str, Any] | None = None  # with a virtual model's director params folded in
     via: dict[str, Any] | None = None  # the virtual model asked for, if any
+    provider_mode: str | None = None  # the mode it was routed in (the Settings switch within .env's)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -92,8 +93,14 @@ class Plan:
         }
 
 
-async def routing_env(session: AsyncSession, reg: Registry) -> RoutingEnv:
+async def routing_env(session: AsyncSession, reg: Registry, user_id: uuid.UUID | None = None,
+                      at_most: str | None = None) -> RoutingEnv:
+    """`at_most`: the mode a queued generation was approved in. Switching to a safer mode still applies to it (Mock
+    stops a paid job that hasn't started), but a generation made as a free mock run never turns paid."""
     settings = get_settings()
+    mode = (await modes.current(session, user_id)).provider  # the Settings switch, capped by PROVIDER_MODE
+    if at_most in modes.PROVIDER_MODES:
+        mode = modes.capped(mode, at_most, modes.PROVIDER_MODES)
 
     def has_key(provider_id: str) -> bool:
         provider = reg.providers.get(provider_id)
@@ -101,7 +108,7 @@ async def routing_env(session: AsyncSession, reg: Registry) -> RoutingEnv:
 
     reach = await local_reachability(reg)
     return RoutingEnv(
-        provider_mode=settings.provider_mode,
+        provider_mode=mode,
         live_allowlist=settings.live_routes,
         has_key=has_key,
         has_adapter=adapter_implemented,
@@ -253,11 +260,12 @@ async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, r
         raise GenerationRequestError(
             [f"direction: {e['msg']} at {'.'.join(map(str, e['loc']))}" for e in exc.errors()]) from None
     req.warnings.extend(virtual.warnings + mention.warnings + native_warnings)
-    env = await routing_env(session, reg)
+    env = await routing_env(session, reg, user_id)
     cands = candidates(reg, spec, req, env, body.route_policy)
     chosen = next((c for c in cands if c.eligible), None)
     return Plan(request=req, candidates=cands, chosen=chosen, live_reference=cheapest_live_estimate(cands),
-                compiled=compiled, mentions=mention.elements, spec=spec, direction=body.direction, via=virtual.via)
+                compiled=compiled, mentions=mention.elements, spec=spec, direction=body.direction, via=virtual.via,
+                provider_mode=env.provider_mode)
 
 
 async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest) -> tuple[Generation, bool]:
@@ -315,6 +323,8 @@ async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: Cre
         routing={
             "policy": body.route_policy,
             "planned": p.chosen.route.id,
+            # the mode it was estimated (and confirmed) in; the worker never routes it in a more paid one
+            "provider_mode": p.provider_mode,
             "candidates": [c.as_dict() for c in p.candidates],
             "live_reference": p.live_reference.as_dict() if p.live_reference else None,
             "tried": [],

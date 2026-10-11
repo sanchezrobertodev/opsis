@@ -291,6 +291,11 @@ class BudgetOut(ApiModel):
     monthly_cap_usd: float
     confirm_over_usd: float
     live_enabled: bool
+    provider_mode: Literal["mock", "mixed", "live"] = Field(description="In effect: the Settings switch within .env's")
+    provider_modes: list[str] = Field(description="What the switch may choose: PROVIDER_MODE in .env and safer")
+    llm_mode: Literal["mock", "live"] = Field(description="Claude's mode in effect, the same way")
+    llm_modes: list[str]
+    live_route_allowlist: list[str] = Field(description="Routes that run for real in mixed mode (LIVE_ROUTE_ALLOWLIST)")
 
 
 class SpendEntryOut(ApiModel):
@@ -367,6 +372,8 @@ class BudgetUpdate(ApiModel):
     monthly_cap_usd: float | None = Field(None, ge=0)
     confirm_over_usd: float | None = Field(None, ge=0)
     live_enabled: bool | None = None
+    provider_mode: Literal["mock", "mixed", "live"] | None = Field(None, description="Within PROVIDER_MODE in .env")
+    llm_mode: Literal["mock", "live"] | None = Field(None, description="Within LLM_MODE in .env")
 
 
 class LocalEngineOut(ApiModel):

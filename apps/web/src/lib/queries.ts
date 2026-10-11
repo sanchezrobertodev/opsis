@@ -197,8 +197,17 @@ export function useUpdateBudget() {
       monthly_cap_usd?: number;
       confirm_over_usd?: number;
       live_enabled?: boolean;
+      provider_mode?: "mock" | "mixed" | "live";
+      llm_mode?: "mock" | "live";
     }) => unwrap(api.PATCH("/budget", { body })),
-    onSuccess: (b) => qc.setQueryData(keys.budget, b),
+    onSuccess: (b, body) => {
+      qc.setQueryData(keys.budget, b);
+      // the mode switch changes which models can run and what the top bar says
+      if (body.provider_mode || body.llm_mode) {
+        void qc.invalidateQueries({ queryKey: keys.registry });
+        void qc.invalidateQueries({ queryKey: keys.health });
+      }
+    },
   });
 }
 

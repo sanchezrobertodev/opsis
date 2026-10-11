@@ -227,7 +227,7 @@ async def run_submit(gen_id: uuid.UUID) -> None:
                                  error=(ErrorClass.invalid_request, f"model {gen.model_id} is no longer in the registry"))
             return
         req = request_from(gen)
-        env = await routing_env(s, reg)
+        env = await routing_env(s, reg, gen.user_id, at_most=gen.routing.get("provider_mode"))
         cands = candidates(reg, spec, req, env, gen.routing.get("policy", "cheapest_healthy"))
         tried = set(gen.routing.get("tried", []))
         eligible = [c for c in cands if c.eligible and c.route.id not in tried]
