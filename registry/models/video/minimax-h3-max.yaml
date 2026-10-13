@@ -1,0 +1,109 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Fields and prices verified 2026-10-13 against fal's H3 Max queue OpenAPI and endpoint pages.
+# Regular rates: $0.05/s 480p, $0.08/s 768p, $0.16/s 1080p. Budget estimates use regular rates.
+# fal advertises 40% off text/image routes through October 15; do not bake expiring discounts into caps.
+id: minimax-h3-max
+name: MiniMax H3 Max
+family: minimax
+vendor: fal
+description: >-
+  fal's post-trained H3 variant: text, a start frame, first and last frames, or one reference image.
+  Native sound and dialogue are included. Budget estimates use $0.25 for a five-second 480p take on fal.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [cinematic, budget, audio, references, first-last-frame]
+prompt: {max_chars: 50000, dialect: default, supports_negative: false, dialogue: true}
+aspect_ratios: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]
+duration: {min: 1, max: 15, default: 5}
+
+parameters:
+  - {name: duration, label: Duration (s), type: int, min: 1, max: 15, default: 5, ui: slider}
+  - {name: resolution, type: enum, options: ["480p", "768p", "1080p"], default: "480p", ui: segmented,
+     help: "480p and 768p are native. 1080p refines a 768p result. Sound is included. Budget uses regular rates."}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+     default: "16:9", ui: aspect, modes: [t2v, reference]}
+  - {name: prompt_expansion_mode, label: Prompt expansion, type: enum,
+     options: [disabled, balanced, quality], default: disabled, group: advanced,
+     help: "Disabled keeps your prompt as written. Quality can add about 30 seconds."}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: t2v
+    label: Text to video
+    ops: [t2v]
+  - id: i2v
+    label: Image to video
+    ops: [i2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+  - id: flf2v
+    label: First and last frame
+    ops: [flf2v]
+    medias:
+      - {role: start_image, kinds: [image], label: First frame, required: true}
+      - {role: end_image, kinds: [image], label: Last frame, required: true}
+  - id: reference
+    label: Reference image
+    ops: [multi_ref]
+    medias:
+      # One supported reference image stays within the shared 4096-token allowance.
+      - {role: image_references, kinds: [image], label: "Reference image (included)", required: true, min: 1, max: 1}
+
+elements: {strategy: refs_native, ref_role: image_references, max_refs: 1, token: "Image {n}"}
+
+routes:
+  - id: minimax-h3-max@fal
+    provider: fal
+    modes:
+      t2v: {endpoint: minimax/h3-max/text-to-video}
+      # Image endpoints follow the input frame's aspect and do not accept aspect_ratio.
+      i2v: {endpoint: minimax/h3-max/image-to-video, drop: [aspect_ratio]}
+      flf2v: {endpoint: minimax/h3-max/image-to-video, drop: [aspect_ratio]}
+      reference: {endpoint: minimax/h3-max/reference-to-video}
+    map:
+      negative_prompt: null
+      params:
+        resolution: {to: resolution, transform: enum_map,
+                     args: {values: {"480p": "480P", "768p": "768P", "1080p": "1080P"}}}
+      media: {start_image: image_url, end_image: end_image_url, image_references: "reference_image_urls[]"}
+    pricing:
+      basis: per_output_second
+      rates:
+        - {when: {resolution: "480p"}, usd: 0.05}
+        - {when: {resolution: "768p"}, usd: 0.08}
+        - {when: {resolution: "1080p"}, usd: 0.16}
+      verified: 2026-10-13
+      source: https://fal.ai/models/minimax/h3-max/text-to-video
+    timeout_s: 1800
+    output: {path: video.url, kind: video}
+    notes: >-
+      Cheapest verified supported H3 Max provider. Estimates use regular rates after the October 15 promotion.
+      Audio and one reference image are included. Reference videos and audio inputs are not exposed.
+      Reference image aspect ratios must be between 2:5 and 5:2, as required by fal.
+
+examples:
+  - name: t2v_480p_smoke
+    mode: t2v
+    prompt: A small red sailboat drifts across a calm lake at sunrise. Gentle ripples and birdsong.
+    params: {resolution: "480p", duration: 1}
+    smoke: true
+    expect: {cost_usd_range: [0.05, 0.05]}
+  - name: i2v_768p
+    mode: i2v
+    prompt: The camera slowly pushes in as wind moves through the grass.
+    params: {resolution: "768p", duration: 5}
+    media: {start_image: "fixture:images/keyframe.png"}
+    expect: {cost_usd_range: [0.40, 0.40]}
+  - name: flf2v_1080p
+    mode: flf2v
+    prompt: The day turns to dusk as the camera drifts sideways.
+    params: {resolution: "1080p", duration: 5}
+    media: {start_image: "fixture:images/keyframe.png", end_image: "fixture:images/keyframe.png"}
+    expect: {cost_usd_range: [0.80, 0.80]}
+  - name: reference_480p
+    mode: reference
+    prompt: Image 1 shows the landscape. Slowly track across it as birds fly overhead.
+    params: {resolution: "480p", duration: 5}
+    media: {image_references: ["fixture:images/keyframe.png"]}
+    expect: {cost_usd_range: [0.25, 0.25]}
