@@ -2304,6 +2304,12 @@ export interface components {
             max_mb?: number | null;
             /** Min Side */
             min_side?: number | null;
+            /** Max Pixels */
+            max_pixels?: number | null;
+            /** Min Aspect */
+            min_aspect?: number | null;
+            /** Max Aspect */
+            max_aspect?: number | null;
             /** Min Fps */
             min_fps?: number | null;
             /**

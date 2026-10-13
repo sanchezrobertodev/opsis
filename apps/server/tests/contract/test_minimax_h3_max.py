@@ -62,6 +62,30 @@ def test_minimax_h3_max_reference_stays_within_included_token_allowance():
         ])
 
 
+@pytest.mark.parametrize(("width", "height"), [(2048, 2048), (2560, 1024), (1024, 2560)])
+def test_minimax_h3_max_reference_dimension_boundaries_are_included(width, height):
+    refs = [MediaRef(role="image_references", asset_id="ref", kind="image", width=width, height=height)]
+    req = normalize(SPEC, "reference", "Image 1 shows the character", {}, refs)
+    assert estimate(ROUTE.pricing, req.params, req.prompt, req.media, req.mode).usd == Decimal("0.25")
+
+
+@pytest.mark.parametrize(("width", "height", "message"), [
+    (4096, 4096, "resize it first"), (2049, 2048, "resize it first"),
+    (2561, 1024, "crop it first"), (1024, 2561, "crop it first"),
+    (None, 1024, "known image dimensions"), (1024, None, "known image dimensions"),
+    (0, 1024, "known image dimensions"), (-1, 1024, "known image dimensions"),
+])
+def test_minimax_h3_max_rejects_invalid_reference_dimensions(width, height, message):
+    refs = [MediaRef(role="image_references", asset_id="ref", kind="image", width=width, height=height)]
+    with pytest.raises(RequestError, match=message):
+        normalize(SPEC, "reference", "Image 1 shows the character", {}, refs)
+
+
+def test_minimax_h3_frames_are_not_subject_to_reference_pixel_limit():
+    refs = [MediaRef(role="start_image", asset_id="frame", kind="image", width=4096, height=4096)]
+    normalize(SPEC, "i2v", "The sun sets", {}, refs)
+
+
 @pytest.mark.parametrize("params", [{"duration": 0}, {"duration": 16}, {"resolution": "4k"},
                                  {"prompt_expansion_mode": "fast"}])
 def test_minimax_h3_max_rejects_unsupported_choices(params):

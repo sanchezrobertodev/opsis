@@ -94,6 +94,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `unpublished: true` when a provider returns a field its published schema doesn't list (the drift check skips it).
 - Media slots can require `min_side` (px, both sides) and `min_fps` for pictures and clips (Kling O3 Edit: 720, 23 fps), so a
   clip a provider would refuse is turned away before submit with a clear message.
+- Slots can also set `max_pixels` (width × height), `min_aspect` and `max_aspect` (width / height, inclusive).
+  These limits require known dimensions and reject oversized or out-of-shape inputs before submission.
 - Lipsync models carry the `lipsync` op and take `input_audio`; picture-driven ones also carry `avatar` and take
   `character_image`, clip-driven ones take `input_video`. Price them on `input_audio_seconds`. The mock makes a clip
   as long as the given `input_audio`, playing it.

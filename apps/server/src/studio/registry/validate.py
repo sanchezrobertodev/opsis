@@ -313,6 +313,20 @@ def normalize(
                 errors.append(f"{slot.label or slot.role} can be at most {slot.max_mb:g} MB; this one is "
                               f"{ref.size_bytes / (1024 * 1024):.0f} MB")
             short = min(ref.width, ref.height) if ref.width and ref.height else None
+            if slot.max_pixels is not None or slot.min_aspect is not None or slot.max_aspect is not None:
+                label = slot.label or slot.role
+                if not ref.width or not ref.height or ref.width <= 0 or ref.height <= 0:
+                    errors.append(f"{label} needs known image dimensions; upload the image again")
+                else:
+                    if slot.max_pixels is not None and ref.width * ref.height > slot.max_pixels:
+                        errors.append(f"{label} can be at most {slot.max_pixels:,} pixels; this one is "
+                                      f"{ref.width}x{ref.height} (resize it first)")
+                    aspect = ref.width / ref.height
+                    if ((slot.min_aspect is not None and aspect < slot.min_aspect)
+                            or (slot.max_aspect is not None and aspect > slot.max_aspect)):
+                        errors.append(f"{label} aspect ratio must be between {slot.min_aspect or 0:g} and "
+                                      f"{slot.max_aspect if slot.max_aspect is not None else float('inf'):g} "
+                                      f"(width / height); this one is {ref.width}x{ref.height} (crop it first)")
             if slot.min_side and short and short < slot.min_side:
                 errors.append(f"{slot.label or slot.role} must be at least {slot.min_side} px on each side; this one "
                               f"is {ref.width}x{ref.height} (upscale it first)")

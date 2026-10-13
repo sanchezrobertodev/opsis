@@ -47,8 +47,9 @@ modes:
     label: Reference image
     ops: [multi_ref]
     medias:
-      # One supported reference image stays within the shared 4096-token allowance.
-      - {role: image_references, kinds: [image], label: "Reference image (included)", required: true, min: 1, max: 1}
+      # Cap pixels as well as count to stay within the included reference allowance.
+      - {role: image_references, kinds: [image], label: "Reference image (up to 4 MP, 2:5 to 5:2)",
+         required: true, min: 1, max: 1, max_pixels: 4194304, min_aspect: 0.4, max_aspect: 2.5}
 
 elements: {strategy: refs_native, ref_role: image_references, max_refs: 1, token: "Image {n}"}
 
@@ -79,8 +80,8 @@ routes:
     output: {path: video.url, kind: video}
     notes: >-
       Cheapest verified supported H3 Max provider. Estimates use regular rates after the October 15 promotion.
-      Audio and one reference image are included. Reference videos and audio inputs are not exposed.
-      Reference image aspect ratios must be between 2:5 and 5:2, as required by fal.
+      Audio and one reference image of up to 4,194,304 pixels are included. Reference videos and audio inputs
+      are not exposed. Reference aspect ratios outside 2:5 to 5:2 are rejected before submission.
 
 examples:
   - name: t2v_480p_smoke
