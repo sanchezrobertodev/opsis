@@ -1,0 +1,57 @@
+{
+ "endpoint": "minimax/h3-max/image-to-video",
+ "variant": null,
+ "input": {
+  "duration": {
+   "type": "number",
+   "default": 5,
+   "minimum": 0.92,
+   "maximum": 15
+  },
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
+  "end_image_url": {
+   "type": "null|string"
+  },
+  "image_url": {
+   "type": "null|string"
+  },
+  "prompt": {
+   "type": "string"
+  },
+  "prompt_expansion_mode": {
+   "type": "string",
+   "default": "balanced"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "480P",
+    "768P",
+    "1080P"
+   ],
+   "default": "768P"
+  },
+  "seed": {
+   "type": "integer|null"
+  },
+  "sync_mode": {
+   "type": "boolean"
+  },
+  "target_audio_url": {
+   "type": "null|string"
+  }
+ },
+ "required": [
+  "prompt",
+  "prompt_expansion_mode"
+ ],
+ "output": [
+  "expanded_prompt",
+  "timings",
+  "video"
+ ],
+ "deprecated": false
+}

@@ -307,7 +307,7 @@ def _top(path: str) -> str:
 
 
 def _sample_media(mode: Mode) -> list[MediaRef]:
-    return [MediaRef(role=s.role, asset_id=f"{s.role}-{i}", kind=s.kinds[0])
+    return [MediaRef(role=s.role, asset_id=f"{s.role}-{i}", kind=s.kinds[0], width=1024, height=1024)
             for s in mode.medias for i in range(max(1, s.min or 0) if s.required else 0)]
 
 

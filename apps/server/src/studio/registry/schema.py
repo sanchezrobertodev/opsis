@@ -178,6 +178,9 @@ class MediaSlot(_Strict):
     max_duration_s: float | None = None
     max_mb: float | None = None
     min_side: int | None = None  # pixels, both sides of a picture or clip ("720p and up", portrait too)
+    max_pixels: int | None = Field(default=None, gt=0)  # total width * height
+    min_aspect: float | None = Field(default=None, gt=0)  # width / height, inclusive
+    max_aspect: float | None = Field(default=None, gt=0)
     min_fps: float | None = None  # for clips (Kling O3 Edit refuses under 23 fps, so 16 fps Wan clips too)
     auto: bool = False  # filled by the studio (a mentioned character's LoRA), never shown in the form
 
