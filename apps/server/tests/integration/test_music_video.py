@@ -114,3 +114,19 @@ async def test_models_that_cant_do_their_part_are_refused(client, tmp_path):
         "song": song["id"], "transcribe_model": "eleven-v4", "video_model": "nano-banana-2"}})
     assert r.status_code == 422
     assert "can't hear the lyrics" in r.text and "Nano Banana 2 can't animate a picture" in r.text
+
+
+async def test_a_saved_character_stars_in_the_music_video(client, in_memory_queue, tmp_path):
+    from test_elements import make_element
+
+    star = await make_element(client, "Maya Lind")
+    song = await a_song(client, tmp_path, seconds=8.0)
+    run = await start(client, "music_video", song=song["id"], character=star["slug"], captions=False)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    steps = {s["key"]: s for s in done["steps"]}
+    async with session_scope() as s:
+        frame = await s.get(Generation, uuid.UUID(steps["frame[s01]"]["generation_id"]))
+    assert frame and [m["asset_id"] for m in frame.request["media"]] == [star["images"][0]["asset"]["id"]]
+    assert "Maya Lind" in frame.request["compiled_prompt"]

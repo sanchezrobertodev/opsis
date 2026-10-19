@@ -106,3 +106,39 @@ async def test_a_script_short_of_shots_is_refused(db, monkeypatch):
     async with session_scope() as s:
         with pytest.raises(llm.LLMError, match="1 shots with lines instead of 3"):
             await vlog.write_vlog(s, uuid.uuid4(), idea="x", shots=3)
+
+
+async def test_a_saved_character_stars_by_handle_with_their_name(client, in_memory_queue):
+    from test_elements import make_element
+
+    maya = await make_element(client, "Maya Lind")
+    run = await start(client, "vlog", character=maya["slug"], idea="a rainy Sunday", shots=3, music=False,
+                      captions=False, review_script=False)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    steps = {s["key"]: s for s in done["steps"]}
+    async with session_scope() as s:
+        frame = await s.get(Generation, uuid.UUID(steps["frame[s01]"]["generation_id"]))
+        script = (await s.execute(select(PipelineStep.input).where(
+            PipelineStep.run_id == uuid.UUID(run["id"]), PipelineStep.key == "script"))).scalar_one()
+    assert frame is not None and script["character"] == maya["slug"]
+    # the @mention attached their picture and reads as their name
+    assert [(m["role"], m["asset_id"]) for m in frame.request["media"]] == [
+        ("image_references", maya["images"][0]["asset"]["id"])]
+    assert "Maya Lind" in frame.request["compiled_prompt"] and "@" not in frame.request["compiled_prompt"]
+
+
+async def test_a_missing_or_pictureless_character_stops_before_drawing(client, in_memory_queue):
+    from test_elements import make_element
+
+    bare = await make_element(client, "No Face", images=0)
+    for handle, why in [("nobody-here", "no saved character called @nobody-here"), (bare["slug"], "has no pictures")]:
+        run = await start(client, "vlog", character=handle, idea="x", shots=3, review_script=False)
+        await drain(in_memory_queue)
+        done = await get(client, run["id"])
+        assert done["status"] == "failed" and why in done["error"], done["error"]
+        assert [s["key"] for s in done["steps"]] == ["script"]
+    both = await client.post("/pipelines", json={"recipe": "vlog", "input": {
+        "character": "a", "character_image": str(uuid.uuid4()), "idea": "x"}})
+    assert both.status_code == 422 and "not both" in both.text

@@ -116,7 +116,12 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 ## Adding a template (guided stories)
 - The Templates page (`/templates`, formerly Presets) shows presets and guided templates. A template is one YAML in
   `registry/templates/<id>.yaml`: `recipe`, a fixed recipe `input` whose string values may hold `{key}` blanks from
-  `fields`, and `inputs` (`{key, kind, label}`: media whose asset id goes into the input at `key`). Rendering
+  `fields`, and `inputs` (`{key, kind, label, optional}`: media whose asset id goes into the input at `key`, or
+  `kind: character`, a saved character's handle, picked from a list; optional inputs are alternatives, so choosing one
+  clears the others, and the recipe says which it needs). The `vlog` and `music_video` recipes take `character` (a
+  handle) as well as `character_image`: each frame prompt mentions `@handle`, so the character's pictures attach
+  through the usual mention resolution, and the first Claude step checks the character exists and has a picture (the
+  vlog also takes their name). Rendering
   (`POST /templates/{id}/render`, `registry/presets.py:render_template`) returns a `RunCreate`; the page estimates and
   starts it like any run. The lint checks the recipe exists, blanks match fields, and a sample input passes the
   recipe's `Input` model and `validate()` (unknown models, wrong lipsync modes).

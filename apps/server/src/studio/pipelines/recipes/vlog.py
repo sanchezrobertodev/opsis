@@ -15,7 +15,7 @@ import math
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.config import get_settings
@@ -36,8 +36,13 @@ SINGLE_FRAME = "One single image of one moment, full frame: not a collage, grid,
 LINE_CHARS = 90  # about one spoken sentence (6 s), what the writer aims for per shot
 
 
+SLUG = r"^[a-z0-9][a-z0-9-]{0,39}$"  # an Element's handle, as written after @
+
+
 class VlogInput(BaseModel):
-    character_image: uuid.UUID = Field(description="A clear picture of the person who stars in the vlog")
+    character_image: uuid.UUID | None = Field(None, description="A clear picture of the person who stars in the vlog")
+    character: str | None = Field(None, pattern=SLUG, description="Or a saved character's @handle: their pictures "
+                                                                   "are the reference and their name is used")
     idea: str = Field(min_length=1, max_length=500, description="What the vlog is about")
     name: str = Field("", max_length=60, description="What the person is called, if they say it")
     shots: int = Field(5, ge=3, le=8)
@@ -55,6 +60,17 @@ class VlogInput(BaseModel):
     captions: bool = True
     caption_style: str = "editorial-motion-graphics"
     review_script: bool = Field(True, description="Stop for approval once the script is written")
+
+    @model_validator(mode="after")
+    def _one_star(self) -> VlogInput:
+        if (self.character_image is None) == (self.character is None):
+            raise ValueError("give a picture of the person or pick a saved character, not both")
+        return self
+
+    @property
+    def refs(self) -> list[dict[str, str]]:
+        """The picture to attach to every frame; a saved character's attach through their @mention instead."""
+        return [{"role": "image_references", "asset_id": str(self.character_image)}] if self.character_image else []
 
 
 # ---------------------------------------------------------------- the script (Claude)
@@ -138,10 +154,12 @@ def clip_key(i: int) -> str:
     return f"clip[s{i:02d}]"
 
 
-def frame_prompt(shot: dict[str, Any]) -> str:
+def frame_prompt(shot: dict[str, Any], character: str | None = None) -> str:
+    """A shot's picture: the person is the saved character's @mention (their pictures attach) or the attached photo."""
     who = ("talking straight into the camera lens, mouth relaxed, selfie framing" if shot["on_camera"]
            else "in the scene")
-    return (f"{shot['visual'].strip().rstrip('.')}. The person from the reference photo, same face, hair and build, "
+    person = f"@{character}" if character else "The person from the reference photo"
+    return (f"{shot['visual'].strip().rstrip('.')}. {person}, same face, hair and build, "
             f"{who}. Natural vlog look, real light, phone camera. {SINGLE_FRAME}")
 
 
@@ -204,9 +222,9 @@ class VlogRecipe(Recipe):
         video, lips = reg.models[inp.video_model], reg.models[inp.lipsync_model]
         seconds = LINE_CHARS / CHARS_PER_SECOND
         on = math.ceil(inp.shots / 2)
-        character = (("image_references", str(inp.character_image)),)
+        known = tuple((m["role"], m["asset_id"]) for m in inp.refs)
         out = [PlannedJob(image.id, ref_mode(image).id, self._frame_params(inp, reg), ("image_references",),  # type: ignore[union-attr]
-                          media=character) for _ in range(inp.shots)]
+                          media=known) for _ in range(inp.shots)]
         out += [PlannedJob(voice.id, mode_with_op(voice, "tts").id, dict(inp.voice), prompt_chars=LINE_CHARS)  # type: ignore[union-attr]
                 for _ in range(inp.shots)]
         out += [PlannedJob(lips.id, lipsync_mode(lips, "image").id, {}, ("character_image", "input_audio"),  # type: ignore[union-attr]
@@ -223,7 +241,8 @@ class VlogRecipe(Recipe):
 
     def plan(self, inp: VlogInput, settled: Settled, reg: Registry) -> list[StepSpec]:
         specs = [StepSpec("script", StepKind.llm, "Write the vlog", {
-            "op": "vlog_script", "idea": inp.idea, "shots": inp.shots, "name": inp.name, "language": inp.language,
+            "op": "vlog_script", "idea": inp.idea, "shots": inp.shots, "name": inp.name, "character": inp.character,
+            "language": inp.language,
             "notes": inp.notes})]
         script = ok(settled, "script")
         if script is None:
@@ -245,10 +264,10 @@ class VlogRecipe(Recipe):
         assert refs and tts and i2v and sync
         for i, shot in enumerate(shots, 1):
             specs.append(StepSpec(frame_key(i), StepKind.generate, f"Shot {i}: picture", {
-                "model_id": image.id, "mode": refs.id, "prompt": frame_prompt(shot),
+                "model_id": image.id, "mode": refs.id, "prompt": frame_prompt(shot, inp.character),
                 "params": self._frame_params(inp, reg),
-                "media": [{"role": (image.elements or {}).get("ref_role", "image_references"),
-                           "asset_id": str(inp.character_image)}]}, after))
+                "media": [{**m, "role": (image.elements or {}).get("ref_role", m["role"])} for m in inp.refs]},
+                after))
             specs.append(StepSpec(voice_key(i), StepKind.generate, f"Shot {i}: voice", {
                 "model_id": voice.id, "mode": tts.id, "prompt": shot["line"], "params": dict(inp.voice),
                 "media": []}, after))

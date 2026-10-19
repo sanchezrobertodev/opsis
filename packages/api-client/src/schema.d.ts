@@ -2320,7 +2320,7 @@ export interface components {
              */
             role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image" | "character_image" | "driving_video" | "input_image" | "training_data" | "lora" | "lora_high" | "input_model";
             /** Kinds */
-            kinds: ("image" | "video" | "audio" | "mask" | "mask_video" | "model3d" | "splat" | "lora" | "archive")[];
+            kinds: ("image" | "video" | "audio" | "mask" | "mask_video" | "model3d" | "splat" | "lora" | "archive" | "subtitle")[];
             /** Label */
             label?: string | null;
             /**
@@ -2368,7 +2368,7 @@ export interface components {
              * Ops
              * @default []
              */
-            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "song" | "segment" | "track" | "to_3d" | "panorama" | "world" | "depth_to_video" | "render_to_real" | "lora_train" | "rig")[];
+            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "song" | "segment" | "track" | "transcribe" | "to_3d" | "panorama" | "world" | "depth_to_video" | "render_to_real" | "lora_train" | "rig")[];
             /**
              * Prompt
              * @default required
@@ -3690,7 +3690,8 @@ export interface components {
         };
         /**
          * TemplateInput
-         * @description Media the user brings to a template; its asset id goes into the recipe input at `key`.
+         * @description What the user brings to a template: media (its asset id goes into the recipe input at `key`) or a saved
+         *     character (`kind: character`, its @handle goes there).
          */
         TemplateInput: {
             /** Key */
@@ -3699,9 +3700,14 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "image" | "video" | "audio";
+            kind: "image" | "video" | "audio" | "character";
             /** Label */
             label: string;
+            /**
+             * Optional
+             * @default false
+             */
+            optional: boolean;
         };
         /**
          * TemplateOut
@@ -3736,7 +3742,7 @@ export interface components {
             };
             /**
              * Media
-             * @description Input key -> asset id
+             * @description Input key -> asset id, or a saved character's handle
              * @default {}
              */
             media: {

@@ -29,7 +29,7 @@ async def render(template_id: str, body: TemplateRenderIn) -> RunCreate:
     if template is None or template.status != "active":
         raise HTTPException(404, f"unknown template {template_id}")
     try:
-        out = render_template(template, body.fields, {k: str(v) for k, v in body.media.items()})
+        out = render_template(template, body.fields, body.media)
     except PresetError as exc:
         raise GenerationRequestError(exc.errors) from exc
     return RunCreate.model_validate(out)

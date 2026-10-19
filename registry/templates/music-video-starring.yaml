@@ -4,7 +4,8 @@ summary: Your song as a music video starring the person in your picture, with sh
 recipe: music_video
 inputs:
   - {key: song, kind: audio, label: Your song}
-  - {key: character_image, kind: image, label: A clear picture of the star}
+  - {key: character_image, kind: image, label: A clear picture of the star, optional: true}
+  - {key: character, kind: character, label: Or one of your saved characters, optional: true}
 fields:
   - key: idea
     label: What the video is about or how it looks
