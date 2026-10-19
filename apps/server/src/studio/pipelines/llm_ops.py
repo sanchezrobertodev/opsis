@@ -105,7 +105,7 @@ async def music_video_plan(session: AsyncSession, run: PipelineRun, step: Pipeli
     if inp.get("character"):
         await _star(session, run, inp["character"])
     res = await plan_shots(session, run.user_id, sections=inp["sections"], idea=inp.get("idea", ""),
-                           star=bool(inp.get("star")))
+                           star=bool(inp.get("star")), brief=inp.get("brief", ""))
     return {"world": res.output.world, "shots": [s.model_dump() for s in res.output.shots], "model": res.model,
             "cost_usd": float(res.cost_usd)}
 

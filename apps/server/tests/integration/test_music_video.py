@@ -167,3 +167,21 @@ async def test_a_brief_becomes_a_sung_song_and_its_music_video(client, in_memory
     long_inp = MusicVideoRecipe.Input(brief="x", minutes=0.5, max_shots=4)
     sung = recipe._sing_params(long_inp, get_registry(), [["la"] * 8] * 4)
     assert sum(x["duration"] for x in sung["sections"]) <= 40
+
+
+async def test_the_shot_plan_sees_the_songs_brief(db, monkeypatch):
+    from studio.llm import client as llm
+    from studio.pipelines.recipes import music_video
+
+    seen = {}
+
+    async def capture(*args, prompt, mock, **kwargs):
+        seen["prompt"] = prompt
+        return llm.LLMResult(output=mock(), model="m", mock=True)
+
+    monkeypatch.setattr(music_video, "structured", capture)
+    async with session_scope() as s:
+        await music_video.plan_shots(s, uuid.uuid4(), sections=["la la"], idea="film grain", star=False,
+                                     brief="two friends driving to the coast")
+    assert "The song's brief (what it's about): two friends driving to the coast" in seen["prompt"]
+    assert "friends stay\n  friends" in music_video.PLAN_SYSTEM
