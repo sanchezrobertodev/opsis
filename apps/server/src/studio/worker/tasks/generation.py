@@ -61,9 +61,9 @@ SUBMIT_TIMEOUT_S = 120
 POLL_TIMEOUT_S = 60
 EXT = {"video/mp4": ".mp4", "video/webm": ".webm", "video/quicktime": ".mov", "image/png": ".png",
        "image/jpeg": ".jpg", "image/webp": ".webp", "audio/mpeg": ".mp3", "audio/wav": ".wav",
-       "model/gltf-binary": ".glb", "application/x-ply": ".ply"}
+       "model/gltf-binary": ".glb", "application/x-ply": ".ply", "application/json": ".json"}
 # outputs ffmpeg can't read: kept as files, with the extension their kind implies when the mime type is vague
-NOT_MEDIA = {"model3d": ".glb", "splat": ".spz", "lora": ".safetensors", "archive": ".zip"}
+NOT_MEDIA = {"model3d": ".glb", "splat": ".spz", "lora": ".safetensors", "archive": ".zip", "subtitle": ".json"}
 
 
 def _untitled(model_id: str, mode_id: str, gen_id: uuid.UUID) -> str:

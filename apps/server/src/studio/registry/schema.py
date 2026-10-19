@@ -35,12 +35,13 @@ MediaRole = Literal[
 # mask / mask_video: black-and-white mattes (white = the selected object), kept apart from ordinary media
 # model3d: a GLB; splat: a Gaussian-splat world (SPZ or PLY)
 # lora: LoRA weights (.safetensors); archive: a zip (a LoRA trainer's pictures). Neither is ever probed.
-MediaKind = Literal["image", "video", "audio", "mask", "mask_video", "model3d", "splat", "lora", "archive"]
+# subtitle: a transcript (words with timings, JSON), made by speech-to-text models
+MediaKind = Literal["image", "video", "audio", "mask", "mask_video", "model3d", "splat", "lora", "archive", "subtitle"]
 OpTag = Literal[
     "t2v", "i2v", "flf2v", "multi_ref", "multi_shot", "extend", "instruction_edit", "restyle", "reframe",
     "upscale", "interpolate", "bg_remove", "motion_transfer", "object_replace", "lipsync", "avatar",
     "t2i", "i2i", "relight", "add_sound", "trim", "retime", "reverse", "loop", "stabilize",
-    "tts", "sfx", "music", "song", "segment", "track",
+    "tts", "sfx", "music", "song", "segment", "track", "transcribe",
     "to_3d", "panorama", "world", "depth_to_video", "render_to_real", "lora_train", "rig",
 ]
 OutputType = Literal["video", "image", "audio", "3d", "lora", "mask", "text"]

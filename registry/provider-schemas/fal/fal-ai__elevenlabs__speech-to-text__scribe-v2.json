@@ -1,0 +1,35 @@
+{
+ "endpoint": "fal-ai/elevenlabs/speech-to-text/scribe-v2",
+ "variant": null,
+ "input": {
+  "audio_url": {
+   "type": "string"
+  },
+  "diarize": {
+   "type": "boolean",
+   "default": true
+  },
+  "keyterms": {
+   "type": "array<string>",
+   "default": [],
+   "maxItems": 100
+  },
+  "language_code": {
+   "type": "null|string"
+  },
+  "tag_audio_events": {
+   "type": "boolean",
+   "default": true
+  }
+ },
+ "required": [
+  "audio_url"
+ ],
+ "output": [
+  "language_code",
+  "language_probability",
+  "text",
+  "words"
+ ],
+ "deprecated": false
+}

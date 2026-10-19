@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names verified 2026-10-19 against fal's per-endpoint OpenAPI (fal-ai/elevenlabs/speech-to-text/scribe-v2).
+id: scribe-v2
+name: ElevenLabs Scribe v2
+family: elevenlabs
+vendor: elevenlabs
+description: Speech and sung lyrics to text, with a start and end time for every word.
+output_type: text
+status: active
+license_tier: commercial_api
+tags: [transcription, lyrics]
+
+modes:
+  - id: transcribe
+    label: Transcribe
+    ops: [transcribe]
+    prompt: none
+    medias:
+      - {role: input_audio, kinds: [audio, video], label: Audio, required: true}
+
+routes:
+  - id: scribe-v2@fal
+    provider: fal
+    modes:
+      transcribe: {endpoint: fal-ai/elevenlabs/speech-to-text/scribe-v2}
+    map:
+      media: {input_audio: audio_url}
+    pricing:
+      basis: per_output_second
+      quantity: input_audio_seconds
+      rates:
+        - {usd: 0.00013334}  # $0.008 a minute of audio
+      verified: 2026-10-19
+      source: "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai/elevenlabs/speech-to-text/scribe-v2 ($0.008/minute)"
+    timeout_s: 900
+    output: {path: words, kind: subtitle, decode: "studio.media.transcript:words_json"}
+
+examples:
+  - name: transcribe_smoke
+    mode: transcribe
+    media: {input_audio: "fixture:audio/line.mp3"}
+    smoke: true
+    expect: {cost_usd_range: [0, 0.05]}

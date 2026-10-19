@@ -720,6 +720,15 @@ def test_route_outputs_need_the_main_file():
                                                         (1, "model3d", {})]
 
 
+def test_a_decoded_empty_answer_is_still_an_output():
+    from studio.providers.common import route_outputs
+
+    spec = OutputSpec(path="words", kind="subtitle", decode="studio.media.transcript:words_json")
+    out = route_outputs({"text": "", "words": []}, spec)  # an instrumental: nothing heard
+    assert [(o.kind, o.data) for o in out] == [("subtitle", [])]
+    assert route_outputs({"text": ""}, spec) == []  # a missing answer is still missing
+
+
 def test_best_mime_keeps_3d_files():
     from studio.providers.common import best_mime
 
