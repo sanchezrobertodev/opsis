@@ -162,3 +162,27 @@ async def test_only_characters_with_ready_pictures_can_star(client, in_memory_qu
     await drain(in_memory_queue)
     done = await get(client, run["id"])
     assert done["status"] == "failed" and "has no pictures" in done["error"], done["error"]
+
+
+async def test_a_saved_characters_own_voice_speaks_when_none_is_picked(client, in_memory_queue):
+    from test_elements import make_element
+
+    maya = await make_element(client, "Maya Lind")
+    lily = {"voice_id": "pFZP5JQG7iQjIQuC4Bku", "tier": "turbo"}
+    r = await client.patch(f"/elements/{maya['id']}", json={"voice": {"model_id": "eleven-v4", "params": lily}})
+    assert r.status_code == 200, r.text
+    # the estimate prices her own voice, exactly as if it had been picked
+    base = {"character": maya["slug"], "idea": "x", "shots": 3}
+    saved = (await client.post("/pipelines/estimate", json={"recipe": "vlog", "input": base})).json()
+    picked = (await client.post("/pipelines/estimate", json={"recipe": "vlog", "input": {**base, "voice": lily}})).json()
+    assert saved["live_estimate_usd"] == picked["live_estimate_usd"]
+    run = await start(client, "vlog", character=maya["slug"], idea="x", shots=3, music=False, captions=False,
+                      review_script=False)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    voice = next(s for s in done["steps"] if s["key"] == "voice[s01]")
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(voice["generation_id"]))
+    assert gen and gen.request["params"]["voice_id"] == "pFZP5JQG7iQjIQuC4Bku"
+    assert done["input"]["voice"] == lily  # written into the run, so the steps and the estimate agree

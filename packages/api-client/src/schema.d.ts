@@ -2661,6 +2661,20 @@ export interface components {
              * @default 300
              */
             max_chars: number;
+            /** Choices */
+            choices?: string | null;
+            /**
+             * Options
+             * @default []
+             */
+            options: string[];
+            /**
+             * Option Labels
+             * @default {}
+             */
+            option_labels: {
+                [key: string]: string;
+            };
         };
         /** PresetInputOut */
         PresetInputOut: {

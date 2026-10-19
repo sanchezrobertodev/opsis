@@ -68,6 +68,11 @@ class Recipe(ABC):
     def title(self, inp: Any) -> str:
         return self.name
 
+    async def resolve(self, session: Any, user_id: Any, inp: Any, reg: Registry) -> Any:
+        """Fill the input from what's saved (a character's voice) before it's estimated and stored, so the estimate,
+        the run and its steps all see the same thing. Most recipes need nothing."""
+        return inp
+
     def validate(self, inp: Any, reg: Registry) -> list[str]:
         """Problems that would stop the run, checked before it starts."""
         return []

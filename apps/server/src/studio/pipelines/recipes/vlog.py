@@ -16,6 +16,7 @@ import uuid
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.config import get_settings
@@ -179,6 +180,21 @@ class VlogRecipe(Recipe):
     def title(self, inp: VlogInput) -> str:
         return f"Vlog: {inp.idea.strip()[:90]}"
 
+    async def resolve(self, session: AsyncSession, user_id: uuid.UUID, inp: VlogInput, reg: Registry) -> VlogInput:
+        """A saved character's own voice speaks when none was picked, written into the input so the estimate and
+        the run use it."""
+        if not inp.character or inp.voice:
+            return inp
+        from studio.db.models import Element, ElementKind  # local import: models import nothing from recipes
+
+        saved = (await session.execute(select(Element.voice).where(
+            Element.user_id == user_id, Element.slug == inp.character, Element.kind == ElementKind.character,
+            Element.deleted_at.is_(None)))).scalar_one_or_none() or {}
+        spec = reg.model(saved.get("model_id", ""))
+        if spec is None or mode_with_op(spec, "tts") is None or not saved.get("params"):
+            return inp
+        return inp.model_copy(update={"voice_model": spec.id, "voice": dict(saved["params"])})
+
     def validate(self, inp: VlogInput, reg: Registry) -> list[str]:
         errors = []
         if get_catalog().style(inp.caption_style) is None:
@@ -258,6 +274,7 @@ class VlogRecipe(Recipe):
 
         shots: list[dict[str, Any]] = script["shots"]
         image, voice = reg.models[inp.image_model], reg.models[inp.voice_model]
+        voice_params = dict(inp.voice)
         video, lips = reg.models[inp.video_model], reg.models[inp.lipsync_model]
         refs, tts = ref_mode(image), mode_with_op(voice, "tts")
         i2v, sync = start_frame_mode(video), lipsync_mode(lips, "image")
@@ -269,7 +286,7 @@ class VlogRecipe(Recipe):
                 "media": [{**m, "role": (image.elements or {}).get("ref_role", m["role"])} for m in inp.refs]},
                 after))
             specs.append(StepSpec(voice_key(i), StepKind.generate, f"Shot {i}: voice", {
-                "model_id": voice.id, "mode": tts.id, "prompt": shot["line"], "params": dict(inp.voice),
+                "model_id": voice.id, "mode": tts.id, "prompt": shot["line"], "params": voice_params,
                 "media": []}, after))
             frame, spoken = ok(settled, frame_key(i)), ok(settled, voice_key(i))
             if not (frame and spoken):
