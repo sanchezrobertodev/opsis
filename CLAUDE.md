@@ -117,8 +117,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 - The Templates page (`/templates`, formerly Presets) shows presets and guided templates. A template is one YAML in
   `registry/templates/<id>.yaml`: `recipe`, a fixed recipe `input` whose string values may hold `{key}` blanks from
   `fields`, and `inputs` (`{key, kind, label, optional}`: media whose asset id goes into the input at `key`, or
-  `kind: character`, a saved character's handle, picked from a list; optional inputs are alternatives, so choosing one
-  clears the others, and the recipe says which it needs). The `vlog` and `music_video` recipes take `character` (a
+  `kind: character`, a saved character's handle, picked from a list; `alternative: true` inputs are alternatives: the user
+  gives exactly one, and choosing one clears the others). The `vlog` and `music_video` recipes take `character` (a
   handle) as well as `character_image`: each frame prompt mentions `@handle`, so the character's pictures attach
   through the usual mention resolution, and the first Claude step checks the character exists and has a picture (the
   vlog also takes their name). Rendering

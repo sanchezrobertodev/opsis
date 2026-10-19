@@ -7,13 +7,13 @@ import uuid
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 from test_faceless import answer
 from test_pipelines import drain, get, start
 from test_talking import PICTURE, upload
 
 from studio.api.main import app as api
-from studio.db.models import Generation, PipelineStep
+from studio.db.models import Asset, Generation, PipelineStep
 from studio.db.session import session_scope
 from studio.pipelines.recipes.vlog import VlogRecipe
 from studio.registry.loader import get_registry
@@ -142,3 +142,23 @@ async def test_a_missing_or_pictureless_character_stops_before_drawing(client, i
     both = await client.post("/pipelines", json={"recipe": "vlog", "input": {
         "character": "a", "character_image": str(uuid.uuid4()), "idea": "x"}})
     assert both.status_code == 422 and "not both" in both.text
+
+
+async def test_only_characters_with_ready_pictures_can_star(client, in_memory_queue):
+    from test_elements import make_element
+
+    place = await make_element(client, "The Harbour", kind="location")
+    run = await start(client, "vlog", character=place["slug"], idea="x", shots=3, review_script=False)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "failed" and f"no saved character called @{place['slug']}" in done["error"]
+
+    pending = await make_element(client, "Half Uploaded")
+    async with session_scope() as s:
+        await s.execute(update(Asset).where(Asset.id == uuid.UUID(pending["images"][0]["asset"]["id"]))
+                        .values(status="processing"))
+        await s.commit()
+    run = await start(client, "vlog", character=pending["slug"], idea="x", shots=3, review_script=False)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "failed" and "has no pictures" in done["error"], done["error"]

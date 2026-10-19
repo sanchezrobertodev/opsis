@@ -132,13 +132,15 @@ def test_every_card_has_a_cover():
 
 
 def test_optional_inputs_and_saved_characters_in_templates():
-    t = template(inputs=[{"key": "image_asset_id", "kind": "image", "label": "A portrait", "optional": True}])
-    out = render_template(t, {"script": "x"}, {})  # optional: the recipe decides what it needs
-    assert "image_asset_id" not in out["input"]
+    t = template(inputs=[{"key": "image_asset_id", "kind": "image", "label": "A portrait", "alternative": True}])
+    with pytest.raises(PresetError, match="add a portrait"):  # alternatives: one of them is needed
+        render_template(t, {"script": "x"}, {})
     star = TemplateSpec.model_validate({
         "id": "v", "name": "V", "summary": "s", "recipe": "vlog", "fields": [{"key": "idea", "label": "Idea"}],
         "input": {"idea": "{idea}"}, "inputs": [
-            {"key": "character_image", "kind": "image", "label": "A picture", "optional": True},
-            {"key": "character", "kind": "character", "label": "Or a saved character", "optional": True}]})
+            {"key": "character_image", "kind": "image", "label": "A picture", "alternative": True},
+            {"key": "character", "kind": "character", "label": "Or a saved character", "alternative": True}]})
     assert lint_template(star) == []
     assert render_template(star, {"idea": "x"}, {"character": "maya"})["input"] == {"idea": "x", "character": "maya"}
+    with pytest.raises(PresetError, match="add a picture or a saved character"):
+        render_template(star, {"idea": "x"}, {})

@@ -12,8 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.budget.guard import BudgetBlocked
 from studio.config import get_settings
-from studio.db.models import Asset, Element, ElementAsset, PipelineRun, PipelineStep
+from studio.db.models import Asset, Element, ElementAsset, ElementKind, PipelineRun, PipelineStep
 from studio.director.elements import mentions
+from studio.domain.enums import AssetStatus
 from studio.faceless.catalog import get_catalog
 from studio.faceless.writer import plan_blocks, song_text, write_script, write_song
 from studio.llm.client import LLMError, structured
@@ -75,12 +76,14 @@ async def faceless_song(session: AsyncSession, run: PipelineRun, step: PipelineS
 async def _star(session: AsyncSession, run: PipelineRun, slug: str) -> Element:
     """The saved character a run stars, checked before anything is drawn: it must exist and have a picture."""
     element = (await session.execute(select(Element).where(
-        Element.user_id == run.user_id, Element.slug == slug, Element.deleted_at.is_(None)))).scalar_one_or_none()
+        Element.user_id == run.user_id, Element.slug == slug, Element.kind == ElementKind.character,
+        Element.deleted_at.is_(None)))).scalar_one_or_none()
     if element is None:
         raise StepFailed(f"there's no saved character called @{slug}")
     pictures = (await session.execute(select(func.count()).select_from(ElementAsset).join(
         Asset, Asset.id == ElementAsset.asset_id).where(
-        ElementAsset.element_id == element.id, Asset.kind == "image", Asset.deleted_at.is_(None)))).scalar_one()
+        ElementAsset.element_id == element.id, Asset.kind == "image", Asset.status == AssetStatus.ready,
+        Asset.deleted_at.is_(None)))).scalar_one()  # only ready pictures attach to a mention
     if not pictures:
         raise StepFailed(f"@{slug} has no pictures yet; add one on the Characters page so their face carries through")
     return element

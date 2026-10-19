@@ -478,7 +478,8 @@ class TemplateInput(_Strict):
     key: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
     kind: Literal["image", "video", "audio", "character"]
     label: str
-    optional: bool = False  # e.g. a picture or a saved character: the recipe says which it needs
+    # one of a template's alternatives (a picture or a saved character): the user gives exactly one of them
+    alternative: bool = False
 
 
 class TemplateSpec(_Strict):

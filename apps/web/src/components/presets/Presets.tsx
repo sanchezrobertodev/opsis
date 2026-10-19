@@ -312,8 +312,8 @@ function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) 
 }
 
 function TemplateCard({ template, onOpen }: { template: Template; onOpen: () => void }) {
-  const needs = template.inputs.filter((i) => !i.optional).map((i) => i.label.toLowerCase());
-  const either = template.inputs.filter((i) => i.optional).map((i) => i.label.toLowerCase().replace(/^or /, ""));
+  const needs = template.inputs.filter((i) => !i.alternative).map((i) => i.label.toLowerCase());
+  const either = template.inputs.filter((i) => i.alternative).map((i) => i.label.toLowerCase().replace(/^or /, ""));
   return (
     <button type="button" onClick={onOpen} className="group block w-full text-left">
       <Cover id={template.id}>
@@ -326,7 +326,7 @@ function TemplateCard({ template, onOpen }: { template: Template; onOpen: () => 
       <p className="tabular mt-1.5 text-2xs text-faint">
         Guided, {template.recipe_name.toLowerCase()}
         {needs.length > 0 && <>. Needs {needs.join(" and ")}</>}
-        {either.length > 0 && <>. Add {either.join(" or ")}</>}
+        {either.length > 0 && <>. Needs {either.join(" or ")}</>}
       </p>
     </button>
   );
@@ -354,10 +354,11 @@ function TemplateForm({ template }: { template: Template }) {
     setRun(null);
     setConfirm(null);
   };
-  /** Set one input. Optional inputs are alternatives (a picture or a saved character), so choosing one clears the rest. */
+  const either = template.inputs.filter((i) => i.alternative);
+  /** Set one input. Alternative inputs (a picture or a saved character), so choosing one clears the rest. */
   function choose(key: string, value: SlotAsset[] | string) {
-    const others = template.inputs.find((i) => i.key === key)?.optional
-      ? template.inputs.filter((i) => i.optional && i.key !== key).map((i) => i.key)
+    const others = template.inputs.find((i) => i.key === key)?.alternative
+      ? template.inputs.filter((i) => i.alternative && i.key !== key).map((i) => i.key)
       : [];
     setMedia((m) => ({ ...m, ...Object.fromEntries(others.map((k) => [k, []])),
       ...(typeof value === "string" ? {} : { [key]: value }) }));
@@ -368,7 +369,10 @@ function TemplateForm({ template }: { template: Template }) {
 
   const missing = [
     ...template.fields.filter((f) => f.required && !values[f.key]?.trim()).map((f) => f.label),
-    ...template.inputs.filter((i) => !i.optional && !media[i.key]?.length && !picked[i.key]).map((i) => i.label),
+    ...template.inputs.filter((i) => !i.alternative && !media[i.key]?.length && !picked[i.key]).map((i) => i.label),
+    ...(either.length && !either.some((i) => media[i.key]?.length || picked[i.key])
+      ? [either.map((i) => i.label.replace(/^Or /, "")).join(" or ")]
+      : []),
   ];
 
   async function rendered() {
@@ -423,7 +427,7 @@ function TemplateForm({ template }: { template: Template }) {
           ) : (
             <MediaSlotField
               key={i.key}
-              slot={{ role: ROLE_FOR_KIND[i.kind], kinds: [i.kind], label: i.label, required: !i.optional, min: 1, max: 1, auto: false }}
+              slot={{ role: ROLE_FOR_KIND[i.kind], kinds: [i.kind], label: i.label, required: !i.alternative, min: 1, max: 1, auto: false }}
               value={media[i.key] ?? []}
               onAdd={(a) => choose(i.key, [a])}
               onRemove={() => choose(i.key, [])}

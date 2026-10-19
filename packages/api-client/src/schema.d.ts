@@ -3704,10 +3704,10 @@ export interface components {
             /** Label */
             label: string;
             /**
-             * Optional
+             * Alternative
              * @default false
              */
-            optional: boolean;
+            alternative: boolean;
         };
         /**
          * TemplateOut
