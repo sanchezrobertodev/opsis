@@ -270,10 +270,11 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 
 - `elevenlabs`: Eleven v4 TTS (with word timings), sound effects, music and the voice changer (speech to speech,
   `eleven-voice-changer`, op `voice_change`, $0.12/min) (`ELEVENLABS_API_KEY`). The API is synchronous, so submit
-  parks the audio in a ResultStore (like Gemini images). A route that takes a recording gets it staged as
-  `file://<path>` and sent as a multipart upload.
+  parks the audio in a ResultStore (like Gemini images). A route that takes a recording gets it staged as a random
+  `staged-file:` token the adapter issued (never a path-like string) and sent as a multipart upload.
 - Voice cloning (`POST /elements/clone-voice`: name, 1-5 recordings or clips, consent): an ElevenLabs instant clone
-  kept as a `voice` Element (`voice.params.voice_id`); mock mode makes a stand-in id. Deleting it frees the account's
+  kept as a `voice` Element (`voice.params.voice_id`, and the server-only `cloned_voice_id`); mock mode, or mixed without an
+  `@elevenlabs` route allowlisted, makes a stand-in id. Deleting it frees the account's
   voice slot. `voice_id` params are `open: true` enums (an `EnumParam` that also takes unlisted values), so a cloned
   id works anywhere; the web's `useVoices` and template voice fields list your cloned voices first.
 - `revoice` recipe ("Change the voice" template): a clip's sound (`extract_audio`) or a recording -> the voice changer
