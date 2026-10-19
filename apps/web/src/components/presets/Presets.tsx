@@ -93,6 +93,25 @@ export function Presets() {
   );
 }
 
+/** A card's picture: its cover (`public/covers/<id>.webp`, an example of what it makes) when there is one, else the
+ * drawn stand-in it wraps. */
+function Cover({ id, children }: { id: string; children: React.ReactNode }) {
+  const [missing, setMissing] = useState(false);
+  if (missing) return <>{children}</>;
+  return (
+    <div className="h-40 overflow-hidden rounded-[var(--radius-frame)] bg-panel">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`/covers/${id}.webp`}
+        alt=""
+        loading="lazy"
+        onError={() => setMissing(true)}
+        className="size-full object-cover transition-transform group-hover:scale-[1.02]"
+      />
+    </div>
+  );
+}
+
 /** A viewfinder drawn at the shot's own aspect ratio, with the camera move playing on hover. */
 function Viewfinder({ preset }: { preset: Preset }) {
   const [w, h] = aspectOf(preset);
@@ -127,7 +146,9 @@ function PresetCard({ preset, onOpen }: { preset: Preset; onOpen: () => void }) 
   const needs = preset.inputs.map((i) => i.label.toLowerCase());
   return (
     <button type="button" onClick={onOpen} className="group block w-full text-left">
-      <Viewfinder preset={preset} />
+      <Cover id={preset.id}>
+        <Viewfinder preset={preset} />
+      </Cover>
       <p className="type-title mt-3 text-[15px]">{preset.name}</p>
       <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">{preset.summary}</p>
       <p className="tabular mt-1.5 text-2xs text-faint">
@@ -293,9 +314,11 @@ function TemplateCard({ template, onOpen }: { template: Template; onOpen: () => 
   const needs = template.inputs.map((i) => i.label.toLowerCase());
   return (
     <button type="button" onClick={onOpen} className="group block w-full text-left">
-      <div className="grid h-40 place-items-center rounded-[var(--radius-frame)] bg-panel transition-colors group-hover:bg-raised">
-        <BookOpen aria-hidden className="size-6 text-tungsten" />
-      </div>
+      <Cover id={template.id}>
+        <div className="grid h-40 place-items-center rounded-[var(--radius-frame)] bg-panel transition-colors group-hover:bg-raised">
+          <BookOpen aria-hidden className="size-6 text-tungsten" />
+        </div>
+      </Cover>
       <p className="type-title mt-3 text-[15px]">{template.name}</p>
       <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">{template.summary}</p>
       <p className="tabular mt-1.5 text-2xs text-faint">
