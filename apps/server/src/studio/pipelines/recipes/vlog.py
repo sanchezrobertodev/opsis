@@ -31,6 +31,8 @@ from studio.pipelines.recipes.talking import lipsync_mode
 from studio.registry.loader import Registry
 from studio.registry.schema import Mode, ModelSpec
 
+# without this, a shot describing two moments comes back as a collage of panels
+SINGLE_FRAME = "One single photograph of one moment, full frame: not a collage, grid, split screen or panels."
 LINE_CHARS = 90  # about one spoken sentence (6 s), what the writer aims for per shot
 
 
@@ -79,6 +81,7 @@ natural, like a creator on Shorts or Reels. Each shot is one or two short spoken
   while their voice carries on. The first and last shots are on camera.
 - `visual` is concrete: place, action, framing (selfie close-up, handheld medium, wide establishing). Never mention
   an art style. The person in every shot is the same one, seen in a reference photo; don't describe their face.
+- `visual` is one moment, a single picture: never two actions or "then". Movement goes in `motion`.
 - Only the spoken words go in `line`: no stage directions, emojis or hashtags."""
 
 
@@ -139,7 +142,7 @@ def frame_prompt(shot: dict[str, Any]) -> str:
     who = ("talking straight into the camera lens, mouth relaxed, selfie framing" if shot["on_camera"]
            else "in the scene")
     return (f"{shot['visual'].strip().rstrip('.')}. The person from the reference photo, same face, hair and build, "
-            f"{who}. Natural vlog look, real light, phone camera.")
+            f"{who}. Natural vlog look, real light, phone camera. {SINGLE_FRAME}")
 
 
 def frame_mode(spec: ModelSpec) -> Mode | None:

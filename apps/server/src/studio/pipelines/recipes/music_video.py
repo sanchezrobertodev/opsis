@@ -30,7 +30,7 @@ from studio.pipelines.recipes.common import (
     text_mode,
     with_param,
 )
-from studio.pipelines.recipes.vlog import frame_mode
+from studio.pipelines.recipes.vlog import SINGLE_FRAME, frame_mode
 from studio.registry.loader import Registry
 from studio.registry.schema import Mode, ModelSpec
 
@@ -73,6 +73,8 @@ PLAN_SYSTEM = """You direct music videos. You get the song's sections in order, 
   mood. Build a loose story across the video and vary the framing (wide, medium, close-up, overhead).
 - `visual` is concrete: subject, action, setting, framing. Never mention an art style or rendering. No text, letters
   or logos in the picture.
+- `visual` is one moment, the shot's opening frame: a single picture, never two actions or "then". What happens next
+  (climbing, then lighting the lamp) goes in `motion`.
 - When a star is given, they appear in most shots; write "the star" for them and never describe their face.
 - Return exactly one shot per section, in order. `world` pins the look of the whole video in one sentence."""
 
@@ -216,7 +218,7 @@ class MusicVideoRecipe(Recipe):
             specs.append(StepSpec(frame_key(i), StepKind.generate, f"Shot {i}: picture", {
                 "model_id": image.id, "mode": pic.id, "params": self._frame_params(inp, reg), "media": media,
                 "prompt": f"{shot['visual'].strip().rstrip('.')}. {plan['world'].strip().rstrip('.')}.{star} "
-                          "Cinematic music video still, no text or logos."}, ("plan",)))
+                          f"{SINGLE_FRAME} Cinematic music video still, no text or logos."}, ("plan",)))
             frame = ok(settled, frame_key(i))
             if frame:  # a failed clip falls back to its picture
                 specs.append(StepSpec(clip_key(i), StepKind.generate, f"Shot {i}: motion", {
