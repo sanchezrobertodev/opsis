@@ -1,0 +1,26 @@
+id: song-and-music-video
+name: Song and music video
+summary: Describe a song and get it written, sung and made into a music video that follows its lyrics, with captions.
+recipe: music_video
+fields:
+  - key: brief
+    label: What the song is about
+    placeholder: two friends driving to the coast at the end of summer
+    max_chars: 500
+  - key: style
+    label: How it sounds
+    placeholder: upbeat indie pop, jangly guitars, warm female vocals
+    required: false
+    max_chars: 200
+  - key: idea
+    label: How the video looks
+    placeholder: golden-hour road trip, film grain, sea glimpses
+    required: false
+    max_chars: 500
+input:
+  brief: "{brief}"
+  style: "{style}"
+  idea: "{idea}"
+  minutes: 1.5
+  aspect_ratio: "9:16"
+tags: [music, lyrics, vertical]

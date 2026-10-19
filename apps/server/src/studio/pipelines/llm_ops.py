@@ -19,7 +19,7 @@ from studio.faceless.catalog import get_catalog
 from studio.faceless.writer import plan_blocks, song_text, write_script, write_song
 from studio.llm.client import LLMError, structured
 from studio.pipelines.ops import StepFailed
-from studio.pipelines.recipes.music_video import plan_shots
+from studio.pipelines.recipes.music_video import plan_shots, write_lyrics
 from studio.pipelines.recipes.vlog import write_vlog
 from studio.providers.mock import strip_tags
 
@@ -110,6 +110,14 @@ async def music_video_plan(session: AsyncSession, run: PipelineRun, step: Pipeli
             "cost_usd": float(res.cost_usd)}
 
 
+async def music_video_lyrics(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    inp = step.input
+    res = await write_lyrics(session, run.user_id, brief=inp["brief"], style=inp.get("style", ""),
+                             minutes=inp["minutes"], language=inp.get("language", "English"))
+    return {"title": res.output.title, "song": res.output.model_dump(), "model": res.model,
+            "cost_usd": float(res.cost_usd)}
+
+
 class Reworded(BaseModel):
     prompts: list[str] = Field(description="Each prompt reworded, in the same order and number; one that shouldn't "
                                            "be made at all stays exactly as given")
@@ -172,4 +180,5 @@ LLM_OPS: dict[str, LLMOp] = {
     "faceless_song": _guarded(faceless_song),
     "vlog_script": _guarded(vlog_script),
     "music_video_plan": _guarded(music_video_plan),
+    "music_video_lyrics": _guarded(music_video_lyrics),
 }
