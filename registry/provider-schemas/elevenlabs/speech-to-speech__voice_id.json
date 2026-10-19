@@ -1,0 +1,35 @@
+{
+ "endpoint": "speech-to-speech/{voice_id}",
+ "variant": null,
+ "input": {
+  "audio": {
+   "type": "string"
+  },
+  "file_format": {
+   "type": "null|string",
+   "enum": [
+    "pcm_s16le_16",
+    "other"
+   ],
+   "default": "other"
+  },
+  "model_id": {
+   "type": "string",
+   "default": "eleven_english_sts_v2"
+  },
+  "remove_background_noise": {
+   "type": "boolean"
+  },
+  "seed": {
+   "type": "integer|null"
+  },
+  "voice_settings": {
+   "type": "null|string"
+  }
+ },
+ "required": [
+  "audio"
+ ],
+ "output": [],
+ "deprecated": false
+}

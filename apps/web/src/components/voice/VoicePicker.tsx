@@ -4,19 +4,22 @@ import { LoaderCircle, Play, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, isActive, mediaUrl, unwrap } from "@/lib/api";
+import { useClonedVoices } from "@/lib/elements";
 import { useGeneration, useModel } from "@/lib/queries";
 import { Field } from "@/components/ui/controls";
 
 export const VOICE_MODEL = "eleven-v4";
 const SAMPLE = "Hi, this is how I sound. The lamp has burned every night for forty years.";
 
-/** The text-to-speech model's voices, as [id, label] pairs. */
+/** The model's voices as [id, label] pairs: your cloned voices first, where the model takes them, then its own. */
 export function useVoices(modelId = VOICE_MODEL): [string, string][] {
   const { data: model } = useModel(modelId);
+  const cloned = useClonedVoices();
   const param = model?.parameters.find((p) => p.name === "voice_id");
   if (param?.type !== "enum") return [];
   const labels = (param.labels ?? {}) as Record<string, string>;
-  return param.options.map((o) => [String(o), labels[String(o)] ?? String(o)]);
+  const own = param.options.map((o) => [String(o), labels[String(o)] ?? String(o)] as [string, string]);
+  return param.open ? [...cloned, ...own] : own;
 }
 
 /** Pick a voice and hear it. A sample is made once per voice (the same request returns the same take after that). */

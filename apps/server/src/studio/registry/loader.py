@@ -114,6 +114,7 @@ def _fill_field_choices(models: dict[str, ModelSpec], cards: list[Any], errors: 
                 continue
             f.options = [str(o) for o in p.options]
             f.option_labels = {str(k): v for k, v in (p.labels or {}).items()}
+            f.open = p.open
 
 
 def _read_yaml_dir(directory: Path, errors: list[str]) -> list[tuple[Path, Any]]:

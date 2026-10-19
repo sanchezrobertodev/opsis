@@ -41,7 +41,7 @@ OpTag = Literal[
     "t2v", "i2v", "flf2v", "multi_ref", "multi_shot", "extend", "instruction_edit", "restyle", "reframe",
     "upscale", "interpolate", "bg_remove", "motion_transfer", "object_replace", "lipsync", "avatar",
     "t2i", "i2i", "relight", "add_sound", "trim", "retime", "reverse", "loop", "stabilize",
-    "tts", "sfx", "music", "song", "segment", "track", "transcribe",
+    "tts", "sfx", "music", "song", "segment", "track", "transcribe", "voice_change",
     "to_3d", "panorama", "world", "depth_to_video", "render_to_real", "lora_train", "rig",
 ]
 OutputType = Literal["video", "image", "audio", "3d", "lora", "mask", "text"]
@@ -72,6 +72,8 @@ class EnumParam(_ParamBase):
     labels: dict[str, str] = {}  # option -> what the user sees, for options that are ids (voices)
     # options come from this director list (registry/director/looks.yaml), filled in when the registry loads
     director: str | None = None
+    # also takes values that aren't listed (ids made per account, like cloned voices); the options are suggestions
+    open: bool = False
 
 
 class IntParam(_ParamBase):
@@ -457,6 +459,7 @@ class PresetField(_Strict):
     choices: str | None = Field(None, pattern=r"^[a-z0-9.-]+\.[a-z_]+$")
     options: list[str] = []  # filled from `choices` when the registry loads
     option_labels: dict[str, str] = {}
+    open: bool = False  # the param takes values beyond its options (the account's cloned voices)
 
 
 class PresetInput(_Strict):

@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Verified 2026-10-19: ElevenLabs speech-to-speech (POST /v1/speech-to-speech/{voice_id}, multipart `audio`) and its API
+# pricing page (Voice Changer $0.12 per minute).
+id: eleven-voice-changer
+name: ElevenLabs Voice Changer
+family: elevenlabs
+vendor: elevenlabs
+description: Re-voices a recording in another voice, keeping its words, timing and emotion. Works with your cloned voices.
+output_type: audio
+status: active
+license_tier: commercial_api
+tags: [voice, speech-to-speech]
+
+parameters:
+  - name: voice_id
+    label: Voice
+    type: enum
+    open: true  # your cloned voices' ids work too
+    default: JBFqnCBsd6RMkjVDRZzb
+    options: [JBFqnCBsd6RMkjVDRZzb, nPczCjzI2devNBz1zQrb, onwK4e9ZLuTAKqWW03F9, pqHfZKP75CvOlQylNhV4,
+              TX3LPaxmHKxFdv7VOQHJ, IKne3meq5aSn9XLyUdCD, 21m00Tcm4TlvDq8ikWAM, pFZP5JQG7iQjIQuC4Bku,
+              XrExE9yKIg1WjnnlVkGX, Xb7hH8MSUJpSbSDYk0k2, EXAVITQu4vr4xnSDxMaL, cgSgspJ2msm6clMCkdW9]
+    labels:
+      JBFqnCBsd6RMkjVDRZzb: "George: warm British storyteller"
+      nPczCjzI2devNBz1zQrb: "Brian: deep American narrator"
+      onwK4e9ZLuTAKqWW03F9: "Daniel: authoritative British newsreader"
+      pqHfZKP75CvOlQylNhV4: "Bill: trustworthy older American"
+      TX3LPaxmHKxFdv7VOQHJ: "Liam: articulate young American"
+      IKne3meq5aSn9XLyUdCD: "Charlie: relaxed Australian"
+      21m00Tcm4TlvDq8ikWAM: "Rachel: calm American"
+      pFZP5JQG7iQjIQuC4Bku: "Lily: warm British"
+      XrExE9yKIg1WjnnlVkGX: "Matilda: friendly American"
+      Xb7hH8MSUJpSbSDYk0k2: "Alice: confident British"
+      EXAVITQu4vr4xnSDxMaL: "Sarah: soft American"
+      cgSgspJ2msm6clMCkdW9: "Jessica: bright, expressive American"
+  - {name: remove_background_noise, label: Remove background noise, type: bool, default: false,
+     help: "Cleans the recording first; can lower quality when it's already clean."}
+
+modes:
+  - id: change
+    label: Change the voice
+    ops: [voice_change]
+    prompt: none
+    medias:
+      - {role: input_audio, kinds: [audio], label: Recording, required: true, max_mb: 50}
+
+routes:
+  - id: eleven-voice-changer@elevenlabs
+    provider: elevenlabs
+    modes:
+      change: {endpoint: "speech-to-speech/{voice_id}", fixed: {model_id: eleven_multilingual_sts_v2}}
+    map:
+      params:
+        voice_id: {to: null}
+        remove_background_noise: remove_background_noise
+      media: {input_audio: audio}
+    pricing:
+      basis: per_output_second
+      quantity: input_audio_seconds + input_video_seconds  # a clip given for its sound counts too
+      rates:
+        - {usd: 0.002}  # $0.12 a minute
+      verified: 2026-10-19
+      source: https://elevenlabs.io/pricing/api
+    timeout_s: 300
+    output: {path: audio, kind: audio}
+
+examples:
+  - name: change_smoke
+    mode: change
+    params: {voice_id: cgSgspJ2msm6clMCkdW9}
+    media: {input_audio: "fixture:audio/line.mp3"}
+    smoke: true
+    expect: {cost_usd_range: [0, 0.05]}

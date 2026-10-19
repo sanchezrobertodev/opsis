@@ -246,6 +246,47 @@ async def captions(session: AsyncSession, run: PipelineRun, step: PipelineStep) 
     return {"asset_id": str(out.id), "subtitle_asset_id": str(srt.id), "derive": [str(out.id)]}
 
 
+async def extract_audio(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    """A clip's sound as an audio asset (an MP3), for steps that work on speech."""
+    (clip,) = await _assets(session, run, [step.input["video"]])
+    if not clip.has_audio:
+        raise StepFailed("the clip has no sound")
+    storage = get_storage()
+    work = storage.temp_dir() / f"audio-{uuid7().hex}"
+    work.mkdir(parents=True)
+    try:
+        dest = work / "audio.mp3"  # small enough to upload: a minute is about 1.4 MB
+        await ffmpeg("-i", str(storage.path_for(clip.storage_key)), "-vn", "-c:a", "libmp3lame", "-b:a", "192k",
+                     str(dest))
+        audio = await save_derived(session, run.user_id, dest, kind=AssetKind.audio, source=AssetSource.pipeline,
+                                   title=f"Sound of {clip.title or 'a clip'}", parents=[(clip.id, "audio_of")],
+                                   pipeline_run_id=run.id, metadata={"recipe": run.recipe})
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return {"asset_id": str(audio.id)}
+
+
+async def replace_audio(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    """The clip with new sound: its picture as it was, the given audio under it, as long as the picture."""
+    inp = step.input
+    clip, audio = await _assets(session, run, [inp["video"], inp["audio"]])
+    storage = get_storage()
+    work = storage.temp_dir() / f"revoice-{uuid7().hex}"
+    work.mkdir(parents=True)
+    try:
+        dest = work / "revoiced.mp4"
+        await ffmpeg("-i", str(storage.path_for(clip.storage_key)), "-i", str(storage.path_for(audio.storage_key)),
+                     "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                     "-af", "apad", "-shortest", str(dest))
+        out = await save_derived(session, run.user_id, dest, kind=AssetKind.video, source=AssetSource.pipeline,
+                                 title=inp.get("title") or clip.title or run.title,
+                                 parents=[(clip.id, "picture_from"), (audio.id, "sound_from")],
+                                 pipeline_run_id=run.id, metadata={"recipe": run.recipe})
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return {"asset_id": str(out.id), "derive": [str(out.id)]}
+
+
 async def lyric_shots(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
     """Cut a song into shots at the pauses in its lyrics, from its transcript. Each shot keeps its words, timed from
     its own start (for captions); `seconds` are the shots' lengths (for cutting the song to match)."""
@@ -456,6 +497,8 @@ LOCAL_OPS: dict[str, Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitab
     "keep_background": keep_background,
     "split_audio": split_audio,
     "lyric_shots": lyric_shots,
+    "extract_audio": extract_audio,
+    "replace_audio": replace_audio,
     "lora_dataset": lora_dataset,
     "attach_lora": attach_lora,
     "add_element_image": add_element_image,

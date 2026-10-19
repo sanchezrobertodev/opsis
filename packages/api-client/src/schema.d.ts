@@ -113,6 +113,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/elements/clone-voice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clone Voice
+         * @description Make a voice from recordings (an ElevenLabs instant clone) and keep it as a voice you can pick anywhere.
+         *     In mock mode nothing is sent and a stand-in voice is made.
+         */
+        post: operations["clone_voice_elements_clone_voice_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/elements/{element_id}": {
         parameters: {
             query?: never;
@@ -1529,6 +1550,27 @@ export interface components {
             /** Choice */
             choice: string;
         };
+        /** CloneVoiceIn */
+        CloneVoiceIn: {
+            /** Name */
+            name: string;
+            /**
+             * Samples
+             * @description Recordings of the voice (audio or clips)
+             */
+            samples: string[];
+            /**
+             * Remove Background Noise
+             * @default false
+             */
+            remove_background_noise: boolean;
+            /**
+             * Consent
+             * @description The speaker agreed to having their voice cloned
+             * @constant
+             */
+            consent: true;
+        };
         /** CompileIn */
         CompileIn: {
             /** Model Id */
@@ -1924,6 +1966,11 @@ export interface components {
             };
             /** Director */
             director?: string | null;
+            /**
+             * Open
+             * @default false
+             */
+            open: boolean;
         };
         /** EstimateOut */
         EstimateOut: {
@@ -2368,7 +2415,7 @@ export interface components {
              * Ops
              * @default []
              */
-            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "song" | "segment" | "track" | "transcribe" | "to_3d" | "panorama" | "world" | "depth_to_video" | "render_to_real" | "lora_train" | "rig")[];
+            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "song" | "segment" | "track" | "transcribe" | "voice_change" | "to_3d" | "panorama" | "world" | "depth_to_video" | "render_to_real" | "lora_train" | "rig")[];
             /**
              * Prompt
              * @default required
@@ -2675,6 +2722,11 @@ export interface components {
             option_labels: {
                 [key: string]: string;
             };
+            /**
+             * Open
+             * @default false
+             */
+            open: boolean;
         };
         /** PresetInputOut */
         PresetInputOut: {
@@ -4135,6 +4187,46 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    clone_voice_elements_clone_voice_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloneVoiceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The voice service refused or failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

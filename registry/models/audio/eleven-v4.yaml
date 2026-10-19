@@ -16,6 +16,7 @@ parameters:
   - name: voice_id
     label: Voice
     type: enum
+    open: true  # your cloned voices' ids work too
     default: JBFqnCBsd6RMkjVDRZzb
     options: [JBFqnCBsd6RMkjVDRZzb, nPczCjzI2devNBz1zQrb, onwK4e9ZLuTAKqWW03F9, pqHfZKP75CvOlQylNhV4,
               TX3LPaxmHKxFdv7VOQHJ, IKne3meq5aSn9XLyUdCD, 21m00Tcm4TlvDq8ikWAM, pFZP5JQG7iQjIQuC4Bku,

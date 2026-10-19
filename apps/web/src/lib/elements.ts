@@ -45,6 +45,24 @@ export function usePatchElement() {
   });
 }
 
+/** Clone a voice from recordings (an ElevenLabs instant clone; a stand-in in mock mode). */
+export function useCloneVoice() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: Schemas["CloneVoiceIn"]) => unwrap(api.POST("/elements/clone-voice", { body })),
+    onSuccess: invalidate,
+  });
+}
+
+/** Your cloned voices as [voice id, label] pairs, for any voice list. */
+export function useClonedVoices(): [string, string][] {
+  const { data } = useElements("voice");
+  return (data ?? []).flatMap((e) => {
+    const id = (e.voice as { params?: { voice_id?: string } } | null)?.params?.voice_id;
+    return id ? [[id, `${e.name} (your voice)`] as [string, string]] : [];
+  });
+}
+
 export function useDeleteElement() {
   const invalidate = useInvalidate();
   return useMutation({

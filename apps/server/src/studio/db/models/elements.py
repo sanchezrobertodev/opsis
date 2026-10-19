@@ -35,6 +35,8 @@ class Element(IdMixin, TimestampMixin, Base):
     voice: Mapped[dict[str, Any]] = mapped_column(default=dict)
     lora: Mapped[dict[str, Any]] = mapped_column(default=dict)
     cover_asset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("assets.id"))
+    # set only when the clone endpoint made this voice on ElevenLabs: deleting the element removes exactly that voice
+    cloned_voice_id: Mapped[str | None] = mapped_column(String(80))
     deleted_at: Mapped[datetime | None]
 
 

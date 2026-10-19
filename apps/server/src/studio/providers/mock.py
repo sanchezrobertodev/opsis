@@ -165,7 +165,10 @@ class MockAdapter(ProviderAdapter):
             return "application/json"
         if output.kind == "audio":
             words = (output.meta.get("alignment") or {}).get("words")
-            duration = spoken_seconds(words) if words else float(p.get("duration") or 5)
+            heard = _first_path(p.get("input_audio"))  # a voice changer: as long as the recording
+            duration = (spoken_seconds(words) if words else
+                        ((await probe(heard)).duration_ms or 5000) / 1000 if heard and heard.exists() else
+                        float(p.get("duration") or 5))
             await mock_media.make_audio(dest, workdir, duration=duration, seed=seed)
             return "audio/mpeg"
         # lipsync and talking portraits: as long as the speech they were given, playing it

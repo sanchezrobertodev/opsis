@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -14,9 +15,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from studio.api.deps import current_user, get_session
 from studio.api.schemas import AssetOut
 from studio.api.serializers import asset_out
+from studio.budget import modes
+from studio.config import get_settings
 from studio.db.models import Asset, Element, ElementAsset, ElementKind, User
 from studio.director.elements import unique_slug
+from studio.domain.enums import AssetKind
+from studio.media.ffmpeg import ffmpeg
+from studio.providers import elevenlabs
+from studio.providers.base import ProviderError
 from studio.registry.loader import get_registry
+from studio.storage.local import get_storage
 
 router = APIRouter(prefix="/elements", tags=["elements"])
 
@@ -98,7 +106,8 @@ class ElementOut(BaseModel):
     created_at: datetime
 
 
-async def _owned_assets(session: AsyncSession, user: User, ids: list[uuid.UUID]) -> dict[uuid.UUID, Asset]:
+async def _owned_assets(session: AsyncSession, user: User, ids: list[uuid.UUID],
+                        images: bool = True) -> dict[uuid.UUID, Asset]:
     rows = (await session.execute(select(Asset).where(
         Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)))).scalars().all()
     found = {a.id: a for a in rows}
@@ -106,7 +115,7 @@ async def _owned_assets(session: AsyncSession, user: User, ids: list[uuid.UUID])
     if missing:
         raise HTTPException(422, f"assets not found: {', '.join(missing)}")
     bad = [str(a.id) for a in rows if a.kind.value != "image"]
-    if bad:
+    if images and bad:
         raise HTTPException(422, "reference images must be images")
     return found
 
@@ -163,6 +172,63 @@ async def create_element(body: ElementCreate, session: AsyncSession = Depends(ge
     return await _out(session, e)
 
 
+SAMPLE_MAX_BYTES = 25 << 20
+SAMPLES_MAX_BYTES = 50 << 20
+
+
+class CloneVoiceIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    samples: list[uuid.UUID] = Field(min_length=1, max_length=5, description="Recordings of the voice (audio or clips)")
+    remove_background_noise: bool = False
+    consent: Literal[True] = Field(description="The speaker agreed to having their voice cloned")
+
+
+@router.post("/clone-voice", response_model=ElementOut, status_code=201,
+             responses={502: {"description": "The voice service refused or failed"}})
+async def clone_voice(body: CloneVoiceIn, session: AsyncSession = Depends(get_session),
+                      user: User = Depends(current_user)) -> ElementOut:
+    """Make a voice from recordings (an ElevenLabs instant clone) and keep it as a voice you can pick anywhere.
+    In mock mode nothing is sent and a stand-in voice is made."""
+    assets = await _owned_assets(session, user, body.samples, images=False)
+    sounds = [a for a in assets.values() if a.kind in (AssetKind.audio, AssetKind.video) and a.has_audio is not False]
+    if len(sounds) != len(body.samples):
+        raise HTTPException(422, "every sample must be a recording or a clip with sound")
+    if any((a.size_bytes or 0) > SAMPLE_MAX_BYTES for a in sounds) or \
+            sum(a.size_bytes or 0 for a in sounds) > SAMPLES_MAX_BYTES:
+        raise HTTPException(422, f"keep each sample under {SAMPLE_MAX_BYTES >> 20} MB and all of them under "
+                                 f"{SAMPLES_MAX_BYTES >> 20} MB; a minute or two of clear speech is plenty")
+    mode = (await modes.current(session, user.id)).provider
+    live = mode == "live" or (mode == "mixed" and any(r.endswith("@elevenlabs") for r in get_settings().live_routes))
+    if not live:  # mock, or mixed without an ElevenLabs route allowed: nothing leaves the studio
+        voice_id = f"mock-voice-{uuid.uuid4().hex[:12]}"
+    else:
+        storage = get_storage()
+        work = storage.temp_dir() / f"clone-{uuid.uuid4().hex}"
+        work.mkdir(parents=True)
+        try:
+            files = []
+            for i, a in enumerate(sounds):
+                path = storage.path_for(a.storage_key)
+                if a.kind == AssetKind.video:  # the voice service takes audio: the clip's sound
+                    path = work / f"sample_{i}.mp3"
+                    await ffmpeg("-i", str(storage.path_for(a.storage_key)), "-vn", "-c:a", "libmp3lame", str(path))
+                files.append(path)
+            voice_id = await elevenlabs.clone_voice(body.name.strip(), files,
+                                                    remove_background_noise=body.remove_background_noise)
+        except ProviderError as exc:
+            raise HTTPException(502, f"ElevenLabs couldn't clone the voice: {exc.message}") from exc
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    e = Element(user_id=user.id, kind=ElementKind.voice, name=body.name.strip(),
+                slug=await unique_slug(session, user.id, body.name), description="",
+                attributes={"samples": [str(a.id) for a in sounds]},
+                voice={"model_id": "eleven-v4", "params": {"voice_id": voice_id}},
+                cloned_voice_id=voice_id if live else None)
+    session.add(e)
+    await session.commit()
+    return await _out(session, e)
+
+
 @router.get("/{element_id}", response_model=ElementOut)
 async def get_element(element_id: uuid.UUID, session: AsyncSession = Depends(get_session),
                       user: User = Depends(current_user)) -> ElementOut:
@@ -198,6 +264,11 @@ async def patch_element(element_id: uuid.UUID, body: ElementPatch, session: Asyn
 async def delete_element(element_id: uuid.UUID, session: AsyncSession = Depends(get_session),
                          user: User = Depends(current_user)) -> None:
     e = await _get(session, user, element_id, lock=True)
+    if e.cloned_voice_id:  # only a voice the clone endpoint made, never an id typed into the element
+        try:  # free the account's voice slot; keep ours if that fails, so the slot isn't lost track of
+            await elevenlabs.delete_voice(e.cloned_voice_id)
+        except ProviderError as exc:
+            raise HTTPException(502, f"ElevenLabs couldn't remove the voice: {exc.message}") from exc
     e.deleted_at = datetime.now(UTC)
     e.slug = f"{e.slug[:30]}-del-{uuid.uuid4().hex[:6]}"  # frees the handle for reuse
     await session.commit()

@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Plus, Sparkles, Trash2 } from "lucide-react";
+import { AudioLines, Copy, Mic, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import {
   type ElementKind,
   KIND_LABEL,
   useAddElementImages,
+  useCloneVoice,
   useCreateElement,
   useDeleteElement,
   useElements,
@@ -25,7 +26,7 @@ import { MediaSlotField } from "@/components/create/MediaSlots";
 import { VOICE_MODEL, VoicePicker } from "@/components/voice/VoicePicker";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 
-const FILTERS = ["all", "character", "location", "prop", "style"] as const;
+const FILTERS = ["all", "character", "location", "prop", "style", "voice"] as const;
 type Filter = (typeof FILTERS)[number];
 
 const REF_SLOT: MediaSlot = { role: "image_references", kinds: ["image"], label: "Reference images", max: 80, min: 0, required: false, auto: false };
@@ -35,13 +36,14 @@ export function Characters() {
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Element | "new" | null>(null);
   const [building, setBuilding] = useState(false);
+  const [cloning, setCloning] = useState(false);
   const { data, isLoading } = useElements(filter === "all" ? undefined : filter, q);
   const items = data ?? [];
 
   return (
     <div className="h-full overflow-y-auto p-6 scrollbar-quiet">
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <div className="max-w-lg flex-1">
+        <div className="max-w-2xl flex-1">
           <Segmented
             label="Show"
             value={filter}
@@ -58,6 +60,10 @@ export function Characters() {
           className="h-9 w-56 rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 text-sm outline-none placeholder:text-faint focus:border-tungsten/60"
         />
         <div className="ml-auto flex gap-2">
+          <Button tone="quiet" size="sm" onClick={() => setCloning(true)}>
+            <Mic className="size-4" aria-hidden />
+            Clone a voice
+          </Button>
           <Button tone="quiet" size="sm" onClick={() => setBuilding(true)}>
             <Sparkles className="size-4" aria-hidden />
             Design a character
@@ -88,7 +94,11 @@ export function Characters() {
                 aria-label={`${e.name}, ${KIND_LABEL[e.kind]}`}
               >
                 <div className="aspect-[3/4] overflow-hidden rounded-[var(--radius-frame)] bg-raised">
-                  {e.cover ? (
+                  {e.kind === "voice" ? (
+                    <span className="grid size-full place-items-center text-tungsten">
+                      <AudioLines className="size-8" aria-hidden />
+                    </span>
+                  ) : e.cover ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={mediaUrl(e.cover.thumb_url ?? e.cover.url)} alt="" className="size-full object-cover transition-transform group-hover:scale-[1.02]" />
                   ) : (
@@ -97,8 +107,8 @@ export function Characters() {
                 </div>
                 <p className="type-title mt-2 truncate text-[15px]">{e.name}</p>
                 <p className="truncate text-xs text-faint">
-                  <span className="text-tungsten">{e.handle}</span>, {KIND_LABEL[e.kind].toLowerCase()}, {e.images.length} image
-                  {e.images.length === 1 ? "" : "s"}
+                  <span className="text-tungsten">{e.handle}</span>, {KIND_LABEL[e.kind].toLowerCase()}
+                  {e.kind !== "voice" && <>, {e.images.length} image{e.images.length === 1 ? "" : "s"}</>}
                 </p>
               </button>
             </li>
@@ -106,9 +116,91 @@ export function Characters() {
         </ul>
       )}
 
-      <ElementDialog element={editing} onClose={() => setEditing(null)} />
+      <ElementDialog element={editing && editing !== "new" && editing.kind === "voice" ? null : editing}
+                     onClose={() => setEditing(null)} />
+      <VoiceDialog voice={editing && editing !== "new" && editing.kind === "voice" ? editing : null}
+                   onClose={() => setEditing(null)} />
+      <Dialog open={cloning} onClose={() => setCloning(false)} title="Clone a voice">
+        {cloning && <CloneVoiceForm onDone={() => setCloning(false)} />}
+      </Dialog>
       <TraitBuilder open={building} onClose={() => setBuilding(false)} />
     </div>
+  );
+}
+
+const SAMPLE_SLOT: MediaSlot = { role: "input_audio", kinds: ["audio", "video"], label: "Recordings of the voice", max: 5, min: 1, required: true, auto: false };
+
+/** Clone a voice: a minute or more of clean speech makes the best clone. */
+function CloneVoiceForm({ onDone }: { onDone: () => void }) {
+  const clone = useCloneVoice();
+  const [name, setName] = useState("");
+  const [samples, setSamples] = useState<SlotAsset[]>([]);
+  const [denoise, setDenoise] = useState(false);
+  const [consent, setConsent] = useState(false);
+  const ready = name.trim() && samples.length > 0 && consent;
+
+  async function save() {
+    try {
+      const voice = await clone.mutateAsync({ name: name.trim(), samples: samples.map((s) => s.id),
+                                              remove_background_noise: denoise, consent: true });
+      toast(`${voice.name} is ready: pick it in any voice list`);
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't clone the voice");
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm leading-relaxed text-muted">
+        Upload a minute or more of clear speech by one person. The clone then shows up wherever you pick a voice:
+        characters, vlogs, narration and the voice changer.
+      </p>
+      <label className="flex flex-col gap-1.5 text-xs text-muted">
+        <span>Name</span>
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="e.g. My voice"
+               className="h-10 rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60" />
+      </label>
+      <MediaSlotField slot={SAMPLE_SLOT} value={samples}
+                      onAdd={(a) => setSamples((s) => [...s.filter((x) => x.id !== a.id), a].slice(-5))}
+                      onRemove={(id) => setSamples((s) => s.filter((x) => x.id !== id))} />
+      <label className="flex items-center gap-2 text-sm text-muted">
+        <input type="checkbox" checked={denoise} onChange={(e) => setDenoise(e.target.checked)} />
+        Remove background noise (only if the recordings are noisy)
+      </label>
+      <label className="flex items-start gap-2 text-sm text-chalk">
+        <input type="checkbox" className="mt-1" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+        This is my voice, or the speaker agreed to having their voice cloned.
+      </label>
+      <div className="flex justify-end">
+        <Button tone="primary" onClick={() => void save()} disabled={!ready || clone.isPending}>
+          {clone.isPending ? "Cloning…" : "Clone the voice"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** A cloned voice: hear it, or delete it (which also frees its slot on the voice service). */
+function VoiceDialog({ voice, onClose }: { voice: Element | null; onClose: () => void }) {
+  const remove = useDeleteElement();
+  const id = (voice?.voice as { params?: { voice_id?: string } } | null)?.params?.voice_id ?? null;
+  return (
+    <Dialog open={voice !== null} onClose={onClose} title={voice?.name ?? ""}>
+      {voice && (
+        <div className="space-y-4">
+          <VoicePicker value={id} onChange={() => undefined} label="Hear it" />
+          <div className="flex justify-end">
+            <Button tone="quiet" disabled={remove.isPending} onClick={() => void remove.mutateAsync(voice.id)
+              .then(() => { toast(`${voice.name} deleted`); onClose(); })
+              .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Couldn't delete it"))}>
+              <Trash2 className="size-4" aria-hidden />
+              Delete this voice
+            </Button>
+          </div>
+        </div>
+      )}
+    </Dialog>
   );
 }
 
