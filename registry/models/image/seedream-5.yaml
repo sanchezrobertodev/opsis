@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Verified 2026-10-19 against fal's per-endpoint OpenAPI (bytedance/seedream/v5/{pro,lite,flash}/{text-to-image,edit}).
+# Sizes are sent as explicit pixels: Seedream wants 1024x1024 to 2048x2048 worth of pixels, which fal's named presets
+# (e.g. landscape_16_9 = 1024x576) fall short of.
+id: seedream-5
+name: Seedream 5
+family: seedream
+vendor: bytedance
+description: ByteDance's image model. Photoreal 2K pictures and edits from up to ten references, in three speed tiers.
+output_type: image
+status: active
+license_tier: commercial_api
+tags: [keyframes, edit, references, 2k]
+prompt: {max_chars: 3000, dialect: default}
+aspect_ratios: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+
+parameters:
+  - {name: tier, label: Tier, type: enum, options: [pro, lite, flash], default: pro, ui: segmented,
+     labels: {pro: Pro, lite: Lite, flash: Flash}, help: "Pro is the sharpest; Flash is the fastest and cheapest."}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
+     default: "16:9", ui: aspect}
+  - {name: num_images, label: Images, type: int, min: 1, max: 6, default: 1, ui: slider}
+
+modes:
+  - id: t2i
+    label: Text to image
+    ops: [t2i]
+  - id: edit
+    label: Edit with references
+    ops: [i2i, multi_ref]
+    medias:
+      - {role: image_references, kinds: [image], label: Images, required: true, min: 1, max: 10}
+
+elements: {strategy: refs_native, ref_role: image_references}
+
+routes:
+  - id: seedream-5@fal
+    provider: fal
+    modes:
+      t2i: {endpoint: "bytedance/seedream/v5/{tier}/text-to-image"}
+      edit: {endpoint: "bytedance/seedream/v5/{tier}/edit"}
+    map:
+      params:
+        tier: {to: null}
+        aspect_ratio:
+          to: image_size
+          transform: enum_map
+          args:
+            values:
+              "1:1": {width: 2048, height: 2048}
+              "16:9": {width: 2560, height: 1440}
+              "9:16": {width: 1440, height: 2560}
+              "4:3": {width: 2304, height: 1728}
+              "3:4": {width: 1728, height: 2304}
+              "3:2": {width: 2496, height: 1664}
+              "2:3": {width: 1664, height: 2496}
+        num_images: num_images
+      media: {image_references: image_urls}
+    pricing:
+      basis: per_image
+      rates:
+        - {when: {tier: pro}, usd: 0.0675}
+        - {when: {tier: lite}, usd: 0.035}
+        - {when: {tier: flash}, usd: 0.027}
+      verified: 2026-10-19
+      source: "https://api.fal.ai/v1/models/pricing?endpoint_id=bytedance/seedream/v5/pro/text-to-image ($0.0675; lite $0.035, flash $0.027 per image)"
+    output: {path: images, kind: image, multiple: true}
+
+examples:
+  - name: t2i_smoke
+    mode: t2i
+    prompt: A fisherman mending nets on a quiet harbour at dawn, soft mist, photoreal.
+    params: {tier: flash, num_images: 1}
+    smoke: true
+    expect: {cost_usd_range: [0.02, 0.04]}
