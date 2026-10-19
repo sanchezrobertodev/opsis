@@ -321,6 +321,11 @@ function TemplateForm({ template }: { template: Template }) {
   const [run, setRun] = useState<Schemas["RunCreate"] | null>(null);
   const estimate = useEstimateRun(run);
   const busy = renderTemplate.isPending || start.isPending;
+  // an estimate or a confirmation was for the old answers and media
+  const changed = () => {
+    setRun(null);
+    setConfirm(null);
+  };
 
   const missing = [
     ...template.fields.filter((f) => f.required && !values[f.key]?.trim()).map((f) => f.label),
@@ -354,7 +359,7 @@ function TemplateForm({ template }: { template: Template }) {
 
   const field =
     "rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 py-2.5 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60";
-  const est = estimate.data;
+  const est = run ? estimate.data : undefined; // the query keeps its last data as a placeholder
 
   return (
     <div className="grid gap-6 md:grid-cols-[1.3fr_1fr]">
@@ -367,11 +372,11 @@ function TemplateForm({ template }: { template: Template }) {
             value={media[i.key] ?? []}
             onAdd={(a) => {
               setMedia((m) => ({ ...m, [i.key]: [a] }));
-              setRun(null);
+              changed();
             }}
             onRemove={() => {
               setMedia((m) => ({ ...m, [i.key]: [] }));
-              setRun(null);
+              changed();
             }}
           />
         ))}
@@ -386,7 +391,7 @@ function TemplateForm({ template }: { template: Template }) {
               value={values[f.key] ?? ""}
               onChange={(e) => {
                 setValues((v) => ({ ...v, [f.key]: e.target.value }));
-                setRun(null); // the estimate was for the old answers
+                changed();
               }}
               maxLength={f.max_chars}
               placeholder={f.placeholder ? `e.g. ${f.placeholder}` : undefined}
