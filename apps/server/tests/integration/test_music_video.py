@@ -159,3 +159,11 @@ async def test_a_brief_becomes_a_sung_song_and_its_music_video(client, in_memory
     both = await client.post("/pipelines", json={"recipe": "music_video", "input": {
         "song": str(uuid.uuid4()), "brief": "x"}})
     assert both.status_code == 422 and "not both" in both.text
+    too_long = await client.post("/pipelines", json={"recipe": "music_video", "input": {
+        "brief": "x", "minutes": 1.5, "max_shots": 4}})
+    assert too_long.status_code == 422 and "4 shots cover at most 40 s" in too_long.text
+    # a song Claude writes longer than asked is sung no longer than its shots can cover
+    recipe = MusicVideoRecipe()
+    long_inp = MusicVideoRecipe.Input(brief="x", minutes=0.5, max_shots=4)
+    sung = recipe._sing_params(long_inp, get_registry(), [["la"] * 8] * 4)
+    assert sum(x["duration"] for x in sung["sections"]) <= 40

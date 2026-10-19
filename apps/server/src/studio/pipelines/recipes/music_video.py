@@ -205,6 +205,9 @@ class MusicVideoRecipe(Recipe):
         ]
         if inp.song is None:
             checks.append((inp.music_model, lambda s: mode_with_op(s, "song"), "sing a song from its lyrics"))
+            if inp.video_model in reg.models and inp.minutes * 60 > (cover := inp.max_shots * self._max_s(inp, reg)):
+                errors.append(f"{inp.max_shots} shots cover at most {cover:.0f} s; raise the shot limit or ask for a "
+                              f"shorter song than {inp.minutes:g} minutes")
         for model_id, find, what in checks:
             spec = reg.model(model_id)
             if spec is None:
@@ -217,6 +220,7 @@ class MusicVideoRecipe(Recipe):
                      names: list[str] | None = None) -> dict[str, Any]:
         """The sung sections, each as long as its lines need, fitted within the longest song the model makes."""
         limit = getattr(reg.models[inp.music_model].param("duration"), "max", None) or MAX_SONG_S
+        limit = min(float(limit), inp.max_shots * self._max_s(inp, reg))  # never longer than the shots can cover
         seconds = fit_song([section_seconds(lines) for lines in sections], float(limit))
         return {"sections": [{"name": names[i] if names else f"Part {i + 1}", "lines": lines, "duration": d}
                              for i, (lines, d) in enumerate(zip(sections, seconds, strict=True))]}
