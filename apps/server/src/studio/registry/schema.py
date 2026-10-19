@@ -444,6 +444,10 @@ class PresetField(_Strict):
     default: str = ""
     required: bool = True
     max_chars: int = 300
+    # "model.param": the answer is one of that enum param's options, picked from a list (a template's voice)
+    choices: str | None = Field(None, pattern=r"^[a-z0-9.-]+\.[a-z_]+$")
+    options: list[str] = []  # filled from `choices` when the registry loads
+    option_labels: dict[str, str] = {}
 
 
 class PresetInput(_Strict):

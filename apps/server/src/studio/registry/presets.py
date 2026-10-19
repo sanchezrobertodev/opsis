@@ -39,6 +39,8 @@ def _answers(fields: list[PresetField], values: dict[str, str]) -> dict[str, str
         value = " ".join(str(values.get(f.key) or "").split())[: f.max_chars] or f.default
         if not value and f.required:
             errors.append(f"{f.label} is required")
+        elif value and f.options and value not in f.options:
+            errors.append(f"pick one of the listed options for {f.label}")
         filled[f.key] = value
     if errors:
         raise PresetError(errors)
@@ -180,7 +182,7 @@ def lint_templates(reg: Registry) -> list[str]:
             errors.append(f"{where}: inputs overwrite fixed input {sorted(clash)}")
         # every required input plus the first alternative (a template offering "a picture or a saved character")
         given = [i for i in t.inputs if not i.alternative] + [i for i in t.inputs if i.alternative][:1]
-        sample = render_template(t, {f.key: f.placeholder or f.label for f in t.fields},
+        sample = render_template(t, {f.key: (f.options[0] if f.options else f.placeholder or f.label) for f in t.fields},
                                  {i.key: "sample-character" if i.kind == "character"
                                   else "00000000-0000-7000-8000-000000000000" for i in given})
         try:

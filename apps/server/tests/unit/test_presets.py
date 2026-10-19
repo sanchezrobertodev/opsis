@@ -144,3 +144,16 @@ def test_optional_inputs_and_saved_characters_in_templates():
     assert render_template(star, {"idea": "x"}, {"character": "maya"})["input"] == {"idea": "x", "character": "maya"}
     with pytest.raises(PresetError, match="add a picture or a saved character"):
         render_template(star, {"idea": "x"}, {})
+
+
+def test_a_choice_field_takes_one_of_its_options():
+    vlog = REG.templates["character-vlog"]
+    voice = next(f for f in vlog.fields if f.key == "voice")
+    assert voice.options and voice.option_labels[voice.options[0]]  # filled from eleven-v4's voice_id
+    media = {"character": "maya"}
+    with pytest.raises(PresetError, match="Their voice is required"):
+        render_template(vlog, {"idea": "x"}, media)
+    with pytest.raises(PresetError, match="pick one of the listed options"):
+        render_template(vlog, {"idea": "x", "voice": "not-a-voice"}, media)
+    rachel = "21m00Tcm4TlvDq8ikWAM"
+    assert render_template(vlog, {"idea": "x", "voice": rachel}, media)["input"]["voice"] == {"voice_id": rachel}

@@ -118,7 +118,9 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `registry/templates/<id>.yaml`: `recipe`, a fixed recipe `input` whose string values may hold `{key}` blanks from
   `fields`, and `inputs` (`{key, kind, label, optional}`: media whose asset id goes into the input at `key`, or
   `kind: character`, a saved character's handle, picked from a list; `alternative: true` inputs are alternatives: the user
-  gives exactly one, and choosing one clears the others). The `vlog` and `music_video` recipes take `character` (a
+  gives exactly one, and choosing one clears the others). A field with `choices: <model>.<param>` (an enum param, e.g.
+  `eleven-v4.voice_id`) is picked from that param's options and labels, filled in when the registry loads; the
+  Character vlog asks for the voice this way, and a saved character's own `voice` speaks when a run names none. The `vlog` and `music_video` recipes take `character` (a
   handle) as well as `character_image`: each frame prompt mentions `@handle`, so the character's pictures attach
   through the usual mention resolution, and the first Claude step checks the character exists and has a picture (the
   vlog also takes their name). Rendering

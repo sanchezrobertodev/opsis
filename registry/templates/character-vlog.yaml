@@ -10,6 +10,9 @@ fields:
     label: What the vlog is about
     placeholder: a rainy Sunday at the flower market
     max_chars: 500
+  - key: voice
+    label: Their voice
+    choices: eleven-v4.voice_id
   - key: name
     label: Their name
     placeholder: Ana
@@ -18,6 +21,7 @@ fields:
 input:
   idea: "{idea}"
   name: "{name}"
+  voice: {voice_id: "{voice}"}
   shots: 5
   aspect_ratio: "9:16"
 tags: [character, lipsync, vertical]

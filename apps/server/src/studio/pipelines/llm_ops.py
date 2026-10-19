@@ -91,13 +91,14 @@ async def _star(session: AsyncSession, run: PipelineRun, slug: str) -> Element:
 
 async def vlog_script(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
     inp = step.input
-    name = inp.get("name", "")
+    name, voice = inp.get("name", ""), {}
     if inp.get("character"):
-        name = name or (await _star(session, run, inp["character"])).name
+        star = await _star(session, run, inp["character"])
+        name, voice = name or star.name, star.voice or {}
     res = await write_vlog(session, run.user_id, idea=inp["idea"], shots=inp["shots"], name=name,
                            language=inp.get("language", "English"), notes=inp.get("notes", ""))
-    return {"title": res.output.title, "shots": [s.model_dump() for s in res.output.shots], "model": res.model,
-            "cost_usd": float(res.cost_usd)}
+    return {"title": res.output.title, "shots": [s.model_dump() for s in res.output.shots], "voice": voice,
+            "model": res.model, "cost_usd": float(res.cost_usd)}
 
 
 async def music_video_plan(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:

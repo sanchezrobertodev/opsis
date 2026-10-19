@@ -440,17 +440,28 @@ function TemplateForm({ template }: { template: Template }) {
               {f.label}
               {!f.required && <span className="text-faint"> (optional)</span>}
             </span>
-            <textarea
-              rows={f.max_chars > 300 ? 4 : 1}
-              value={values[f.key] ?? ""}
-              onChange={(e) => {
-                setValues((v) => ({ ...v, [f.key]: e.target.value }));
-                changed();
-              }}
-              maxLength={f.max_chars}
-              placeholder={f.placeholder ? `e.g. ${f.placeholder}` : undefined}
-              className={cn(field, "resize-none")}
-            />
+            {f.options.length > 0 ? (
+              <Select
+                value={values[f.key] ?? ""}
+                onChange={(v) => {
+                  setValues((old) => ({ ...old, [f.key]: v }));
+                  changed();
+                }}
+                options={[{ value: "", label: "Pick one" }, ...f.options.map((o) => ({ value: o, label: f.option_labels[o] ?? o }))]}
+              />
+            ) : (
+              <textarea
+                rows={f.max_chars > 300 ? 4 : 1}
+                value={values[f.key] ?? ""}
+                onChange={(e) => {
+                  setValues((v) => ({ ...v, [f.key]: e.target.value }));
+                  changed();
+                }}
+                maxLength={f.max_chars}
+                placeholder={f.placeholder ? `e.g. ${f.placeholder}` : undefined}
+                className={cn(field, "resize-none")}
+              />
+            )}
           </label>
         ))}
       </div>

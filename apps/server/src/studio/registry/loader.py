@@ -100,6 +100,22 @@ def _fill_director_options(models: dict[str, ModelSpec], root: Path, errors: lis
                 p.labels = {i.id: i.label for i in items}
 
 
+def _fill_field_choices(models: dict[str, ModelSpec], cards: list[Any], errors: list[str]) -> None:
+    """Preset and template fields with `choices: model.param` take that enum param's options and labels."""
+    for card in cards:
+        for f in card.fields:
+            if not f.choices:
+                continue
+            model_id, _, name = f.choices.rpartition(".")
+            spec = models.get(model_id)
+            p = spec.param(name) if spec else None
+            if not isinstance(p, EnumParam):
+                errors.append(f"{card.id}: field {f.key} chooses from {f.choices!r}, which isn't an enum param")
+                continue
+            f.options = [str(o) for o in p.options]
+            f.option_labels = {str(k): v for k, v in (p.labels or {}).items()}
+
+
 def _read_yaml_dir(directory: Path, errors: list[str]) -> list[tuple[Path, Any]]:
     out = []
     if not directory.exists():
@@ -171,6 +187,8 @@ def load_registry(root: Path) -> Registry:
         if template.id in templates:
             errors.append(f"{path.name}: duplicate template id {template.id}")
         templates[template.id] = template
+
+    _fill_field_choices(models, [*presets.values(), *templates.values()], errors)
 
     from studio.registry.lint import lint  # local import: lint depends on Registry
     from studio.registry.presets import lint_presets, lint_templates
