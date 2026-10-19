@@ -195,3 +195,15 @@ async def test_cloning_and_deleting_a_voice(monkeypatch, tmp_path):
     gone = respx.delete(f"{BASE_URL}/voices/vNEW").respond(200, json={"status": "ok"})
     await elevenlabs.delete_voice("vNEW")
     assert gone.called
+
+
+@respx.mock
+async def test_a_prompt_that_looks_like_a_path_is_never_read(adapter, tmp_path):
+    secret = tmp_path / "secret.txt"
+    secret.write_text("do not send")
+    call = respx.post(f"{BASE_URL}/text-to-speech/{GEORGE}/with-timestamps").respond(
+        200, json={"audio_base64": base64.b64encode(b"ID3").decode()})
+    for text in (f"file://{secret}", f"staged-file:{'0' * 32}"):  # not a token this adapter issued
+        await adapter.submit(route(), f"text-to-speech/{GEORGE}/with-timestamps", {"text": text}, client_ref="c")
+        sent = call.calls.last.request
+        assert sent.headers["content-type"] == "application/json" and b"do not send" not in sent.content

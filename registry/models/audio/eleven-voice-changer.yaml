@@ -42,7 +42,7 @@ modes:
     ops: [voice_change]
     prompt: none
     medias:
-      - {role: input_audio, kinds: [audio], label: Recording, required: true}
+      - {role: input_audio, kinds: [audio], label: Recording, required: true, max_mb: 50}
 
 routes:
   - id: eleven-voice-changer@elevenlabs

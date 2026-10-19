@@ -247,7 +247,7 @@ async def captions(session: AsyncSession, run: PipelineRun, step: PipelineStep) 
 
 
 async def extract_audio(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
-    """A clip's sound as an audio asset (a WAV), for steps that work on speech."""
+    """A clip's sound as an audio asset (an MP3), for steps that work on speech."""
     (clip,) = await _assets(session, run, [step.input["video"]])
     if not clip.has_audio:
         raise StepFailed("the clip has no sound")
@@ -255,8 +255,9 @@ async def extract_audio(session: AsyncSession, run: PipelineRun, step: PipelineS
     work = storage.temp_dir() / f"audio-{uuid7().hex}"
     work.mkdir(parents=True)
     try:
-        dest = work / "audio.wav"
-        await ffmpeg("-i", str(storage.path_for(clip.storage_key)), "-vn", "-c:a", "pcm_s16le", str(dest))
+        dest = work / "audio.mp3"  # small enough to upload: a minute is about 1.4 MB
+        await ffmpeg("-i", str(storage.path_for(clip.storage_key)), "-vn", "-c:a", "libmp3lame", "-b:a", "192k",
+                     str(dest))
         audio = await save_derived(session, run.user_id, dest, kind=AssetKind.audio, source=AssetSource.pipeline,
                                    title=f"Sound of {clip.title or 'a clip'}", parents=[(clip.id, "audio_of")],
                                    pipeline_run_id=run.id, metadata={"recipe": run.recipe})

@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +42,7 @@ BASE_URL = "https://api.elevenlabs.io/v1"
 OUTPUT_FORMAT = "mp3_44100_128"
 TIMEOUT = httpx.Timeout(300.0, connect=15.0)  # long narrations take a while to render
 SYNC_PREFIX = "sync:"
-FILE_PREFIX = "file://"  # a staged input: the local file to upload in its field
+STAGED_PREFIX = "staged-file:"  # a staged input: a random token this adapter issued for a local file it staged
 
 
 def _key() -> str:
@@ -51,7 +52,8 @@ def _key() -> str:
 async def clone_voice(name: str, files: list[Path], *, remove_background_noise: bool = False,
                       transport: httpx.AsyncBaseTransport | None = None) -> str:
     """An instant voice clone from recordings; returns its voice id. Free per call, but it takes a voice slot."""
-    parts = [("files", (p.name, p.read_bytes(), mimetypes.guess_type(p.name)[0] or "audio/mpeg")) for p in files]
+    parts = [("files", (p.name, await anyio.Path(p).read_bytes(), mimetypes.guess_type(p.name)[0] or "audio/mpeg"))
+             for p in files]
     async with httpx.AsyncClient(base_url=BASE_URL, headers={"xi-api-key": _key()}, timeout=TIMEOUT,
                                  transport=transport) as c:
         r = await c.post("/voices/add", data={"name": name, "remove_background_noise": str(remove_background_noise).lower()},
@@ -76,6 +78,9 @@ class ElevenLabsAdapter(ProviderAdapter):
     def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self._transport = transport
         self.store = ResultStore("elevenlabs")
+        # token -> file, for inputs staged by this adapter; a payload string is uploaded only if it's one of these,
+        # so a prompt that happens to look like a path is never read from disk
+        self._staged: dict[str, Path] = {}
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(base_url=BASE_URL, headers={"xi-api-key": _key()}, timeout=TIMEOUT,
@@ -86,15 +91,19 @@ class ElevenLabsAdapter(ProviderAdapter):
         for m in media:
             if m.kind != "audio":
                 raise ProviderError(ErrorClass.invalid_request, "ElevenLabs takes recordings as audio files")
-            staged.setdefault(m.role, []).append(f"{FILE_PREFIX}{m.path}")
+            token = f"{STAGED_PREFIX}{uuid.uuid4().hex}"
+            self._staged[token] = m.path
+            staged.setdefault(m.role, []).append(token)
         return staged
 
     async def submit(self, route: Route, endpoint: str, payload: dict[str, Any], *, client_ref: str) -> SubmitResult:
         try:
-            uploads = {k: v for k, v in payload.items() if _is_file(v)}
+            uploads = {k: path for k, v in payload.items() if (path := self._staged_path(v))}
             async with self._client() as c:
                 if uploads:  # a recording goes up as a file, the other fields as form values
-                    files = {k: _file_part(v) for k, v in uploads.items()}
+                    files = {k: (p.name, await anyio.Path(p).read_bytes(),
+                                 mimetypes.guess_type(p.name)[0] or "application/octet-stream")
+                             for k, p in uploads.items()}
                     data = {k: v if isinstance(v, str) else json.dumps(v) if isinstance(v, (dict, list))
                             else str(v).lower() if isinstance(v, bool) else str(v)
                             for k, v in payload.items() if k not in uploads}
@@ -128,6 +137,10 @@ class ElevenLabsAdapter(ProviderAdapter):
         self.store.write_meta(job_id, meta)
         return SubmitResult(job_id=f"{SYNC_PREFIX}{job_id}", raw={"endpoint": endpoint, "request_id": meta["request_id"]})
 
+    def _staged_path(self, value: Any) -> Path | None:
+        first = value[0] if isinstance(value, list) and value else value
+        return self._staged.pop(first, None) if isinstance(first, str) else None
+
     async def poll(self, route: Route, job_id: str) -> PollResult:
         store_id = job_id.removeprefix(SYNC_PREFIX)
         outputs = self.store.outputs(store_id, route.output.kind)
@@ -146,16 +159,6 @@ class ElevenLabsAdapter(ProviderAdapter):
     async def download(self, route: Route, output: ProviderOutput, dest: Path, workdir: Path) -> str:
         self.store.copy_out(output, dest)
         return "audio/mpeg"
-
-
-def _is_file(value: Any) -> bool:
-    first = value[0] if isinstance(value, list) and value else value
-    return isinstance(first, str) and first.startswith(FILE_PREFIX)
-
-
-def _file_part(value: Any) -> tuple[str, bytes, str]:
-    path = Path((value[0] if isinstance(value, list) else value).removeprefix(FILE_PREFIX))
-    return path.name, path.read_bytes(), mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
 def _int(value: str | None) -> int | None:

@@ -78,3 +78,48 @@ async def test_a_recording_is_revoiced_and_priced_by_its_length(client, in_memor
     both = await client.post("/pipelines", json={"recipe": "revoice", "input": {
         "audio_asset_id": rec["id"], "video_asset_id": rec["id"], "voice_id": "x"}})
     assert both.status_code == 422 and "not both" in both.text
+
+
+async def test_only_a_voice_the_clone_endpoint_made_is_removed_from_the_service(client, monkeypatch):
+    import respx
+
+    from studio.config import get_settings
+    from studio.providers.elevenlabs import BASE_URL
+
+    s = get_settings()
+    monkeypatch.setattr(s, "elevenlabs_api_key", "test-key")
+    sample = await upload(client, SPEECH, "audio/mpeg")
+    with respx.mock(assert_all_called=False) as service:
+        add = service.post(f"{BASE_URL}/voices/add").respond(200, json={"voice_id": "vREAL"})
+        remove = service.delete(url__regex=rf"{BASE_URL}/voices/.*").respond(200, json={})
+
+        # mixed mode with nothing ElevenLabs allowlisted: a stand-in, nothing sent
+        monkeypatch.setattr(s, "provider_mode", "mixed")
+        monkeypatch.setattr(s, "live_route_allowlist", "")
+        mixed = (await client.post("/elements/clone-voice", json={
+            "name": "Mixed", "samples": [sample["id"]], "consent": True})).json()
+        assert mixed["voice"]["params"]["voice_id"].startswith("mock-voice-") and not add.called
+
+        # live: the real clone, which deleting removes from the service
+        monkeypatch.setattr(s, "provider_mode", "live")
+        real = (await client.post("/elements/clone-voice", json={
+            "name": "Real", "samples": [sample["id"]], "consent": True})).json()
+        assert real["voice"]["params"]["voice_id"] == "vREAL" and add.called
+
+        # an element dressed up as a clone of someone else's voice never reaches the service
+        fake = (await client.post("/elements", json={"kind": "voice", "name": "Fake", "attributes": {"cloned": "elevenlabs"},
+                                                     "voice": {"params": {"voice_id": "victimVoice"}}})).json()
+        assert (await client.delete(f"/elements/{fake['id']}")).status_code == 204
+        assert not remove.called
+        assert (await client.delete(f"/elements/{real['id']}")).status_code == 204
+        assert remove.call_count == 1 and remove.calls.last.request.url.path.endswith("/voices/vREAL")
+    await client.patch("/budget", json={"provider_mode": "mock"})
+
+
+async def test_clone_samples_are_size_capped(client, monkeypatch):
+    from studio.api.routers import elements
+
+    sample = await upload(client, SPEECH, "audio/mpeg")
+    monkeypatch.setattr(elements, "SAMPLE_MAX_BYTES", 10)
+    r = await client.post("/elements/clone-voice", json={"name": "Big", "samples": [sample["id"]], "consent": True})
+    assert r.status_code == 422 and "keep each sample under" in r.text

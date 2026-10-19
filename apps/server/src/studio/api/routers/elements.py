@@ -16,6 +16,7 @@ from studio.api.deps import current_user, get_session
 from studio.api.schemas import AssetOut
 from studio.api.serializers import asset_out
 from studio.budget import modes
+from studio.config import get_settings
 from studio.db.models import Asset, Element, ElementAsset, ElementKind, User
 from studio.director.elements import unique_slug
 from studio.domain.enums import AssetKind
@@ -171,6 +172,10 @@ async def create_element(body: ElementCreate, session: AsyncSession = Depends(ge
     return await _out(session, e)
 
 
+SAMPLE_MAX_BYTES = 25 << 20
+SAMPLES_MAX_BYTES = 50 << 20
+
+
 class CloneVoiceIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     samples: list[uuid.UUID] = Field(min_length=1, max_length=5, description="Recordings of the voice (audio or clips)")
@@ -188,7 +193,13 @@ async def clone_voice(body: CloneVoiceIn, session: AsyncSession = Depends(get_se
     sounds = [a for a in assets.values() if a.kind in (AssetKind.audio, AssetKind.video) and a.has_audio is not False]
     if len(sounds) != len(body.samples):
         raise HTTPException(422, "every sample must be a recording or a clip with sound")
-    if (await modes.current(session, user.id)).provider == "mock":
+    if any((a.size_bytes or 0) > SAMPLE_MAX_BYTES for a in sounds) or \
+            sum(a.size_bytes or 0 for a in sounds) > SAMPLES_MAX_BYTES:
+        raise HTTPException(422, f"keep each sample under {SAMPLE_MAX_BYTES >> 20} MB and all of them under "
+                                 f"{SAMPLES_MAX_BYTES >> 20} MB; a minute or two of clear speech is plenty")
+    mode = (await modes.current(session, user.id)).provider
+    live = mode == "live" or (mode == "mixed" and any(r.endswith("@elevenlabs") for r in get_settings().live_routes))
+    if not live:  # mock, or mixed without an ElevenLabs route allowed: nothing leaves the studio
         voice_id = f"mock-voice-{uuid.uuid4().hex[:12]}"
     else:
         storage = get_storage()
@@ -210,8 +221,9 @@ async def clone_voice(body: CloneVoiceIn, session: AsyncSession = Depends(get_se
             shutil.rmtree(work, ignore_errors=True)
     e = Element(user_id=user.id, kind=ElementKind.voice, name=body.name.strip(),
                 slug=await unique_slug(session, user.id, body.name), description="",
-                attributes={"cloned": "elevenlabs", "samples": [str(a.id) for a in sounds]},
-                voice={"model_id": "eleven-v4", "params": {"voice_id": voice_id}})
+                attributes={"samples": [str(a.id) for a in sounds]},
+                voice={"model_id": "eleven-v4", "params": {"voice_id": voice_id}},
+                cloned_voice_id=voice_id if live else None)
     session.add(e)
     await session.commit()
     return await _out(session, e)
@@ -252,10 +264,9 @@ async def patch_element(element_id: uuid.UUID, body: ElementPatch, session: Asyn
 async def delete_element(element_id: uuid.UUID, session: AsyncSession = Depends(get_session),
                          user: User = Depends(current_user)) -> None:
     e = await _get(session, user, element_id, lock=True)
-    voice_id = (e.voice or {}).get("params", {}).get("voice_id", "")
-    if (e.attributes or {}).get("cloned") == "elevenlabs" and voice_id and not voice_id.startswith("mock-"):
+    if e.cloned_voice_id:  # only a voice the clone endpoint made, never an id typed into the element
         try:  # free the account's voice slot; keep ours if that fails, so the slot isn't lost track of
-            await elevenlabs.delete_voice(voice_id)
+            await elevenlabs.delete_voice(e.cloned_voice_id)
         except ProviderError as exc:
             raise HTTPException(502, f"ElevenLabs couldn't remove the voice: {exc.message}") from exc
     e.deleted_at = datetime.now(UTC)
