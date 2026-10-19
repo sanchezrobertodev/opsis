@@ -19,9 +19,10 @@ import {
   useTemplates,
 } from "@/lib/presets";
 import { useCreateGeneration } from "@/lib/queries";
+import { useElements } from "@/lib/elements";
 import { useEstimateRun, useStartRun } from "@/lib/runs";
 import { MediaSlotField } from "@/components/create/MediaSlots";
-import { Button, Dialog, Segmented } from "@/components/ui/controls";
+import { Button, Dialog, Segmented, Select } from "@/components/ui/controls";
 
 const FILTERS = ["all", "guided", "camera", "effects", "look", "character", "product", "social", "edit"] as const;
 type Filter = (typeof FILTERS)[number];
@@ -311,7 +312,8 @@ function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) 
 }
 
 function TemplateCard({ template, onOpen }: { template: Template; onOpen: () => void }) {
-  const needs = template.inputs.map((i) => i.label.toLowerCase());
+  const needs = template.inputs.filter((i) => !i.alternative).map((i) => i.label.toLowerCase());
+  const either = template.inputs.filter((i) => i.alternative).map((i) => i.label.toLowerCase().replace(/^or /, ""));
   return (
     <button type="button" onClick={onOpen} className="group block w-full text-left">
       <Cover id={template.id}>
@@ -324,6 +326,7 @@ function TemplateCard({ template, onOpen }: { template: Template; onOpen: () => 
       <p className="tabular mt-1.5 text-2xs text-faint">
         Guided, {template.recipe_name.toLowerCase()}
         {needs.length > 0 && <>. Needs {needs.join(" and ")}</>}
+        {either.length > 0 && <>. Needs {either.join(" or ")}</>}
       </p>
     </button>
   );
@@ -340,26 +343,46 @@ function TemplateForm({ template }: { template: Template }) {
     () => Object.fromEntries(template.fields.map((f) => [f.key, f.default ?? ""])),
   );
   const [media, setMedia] = useState<Record<string, SlotAsset[]>>({});
+  const [picked, setPicked] = useState<Record<string, string>>({}); // saved characters' handles, by input key
   const [confirm, setConfirm] = useState<number | null>(null);
   const [run, setRun] = useState<Schemas["RunCreate"] | null>(null);
   const estimate = useEstimateRun(run);
+  const { data: characters } = useElements("character");
   const busy = renderTemplate.isPending || start.isPending;
   // an estimate or a confirmation was for the old answers and media
   const changed = () => {
     setRun(null);
     setConfirm(null);
   };
+  const either = template.inputs.filter((i) => i.alternative);
+  /** Set one input. Alternative inputs (a picture or a saved character), so choosing one clears the rest. */
+  function choose(key: string, value: SlotAsset[] | string) {
+    const others = template.inputs.find((i) => i.key === key)?.alternative
+      ? template.inputs.filter((i) => i.alternative && i.key !== key).map((i) => i.key)
+      : [];
+    setMedia((m) => ({ ...m, ...Object.fromEntries(others.map((k) => [k, []])),
+      ...(typeof value === "string" ? {} : { [key]: value }) }));
+    setPicked((p) => ({ ...p, ...Object.fromEntries(others.map((k) => [k, ""])),
+      ...(typeof value === "string" ? { [key]: value } : {}) }));
+    changed();
+  }
 
   const missing = [
     ...template.fields.filter((f) => f.required && !values[f.key]?.trim()).map((f) => f.label),
-    ...template.inputs.filter((i) => !media[i.key]?.length).map((i) => i.label),
+    ...template.inputs.filter((i) => !i.alternative && !media[i.key]?.length && !picked[i.key]).map((i) => i.label),
+    ...(either.length && !either.some((i) => media[i.key]?.length || picked[i.key])
+      ? [either.map((i) => i.label.replace(/^Or /, "")).join(" or ")]
+      : []),
   ];
 
   async function rendered() {
     const body = await renderTemplate.mutateAsync({
       id: template.id,
       fields: values,
-      media: Object.fromEntries(Object.entries(media).flatMap(([key, list]) => (list[0] ? [[key, list[0].id]] : []))),
+      media: {
+        ...Object.fromEntries(Object.entries(media).flatMap(([key, list]) => (list[0] ? [[key, list[0].id]] : []))),
+        ...Object.fromEntries(Object.entries(picked).filter(([, handle]) => handle)),
+      },
     });
     setRun(body);
     return body;
@@ -388,21 +411,29 @@ function TemplateForm({ template }: { template: Template }) {
     <div className="grid gap-6 md:grid-cols-[1.3fr_1fr]">
       <div className="space-y-4">
         <p className="leading-relaxed text-chalk">{template.summary}</p>
-        {template.inputs.map((i) => (
-          <MediaSlotField
-            key={i.key}
-            slot={{ role: ROLE_FOR_KIND[i.kind], kinds: [i.kind], label: i.label, required: true, min: 1, max: 1, auto: false }}
-            value={media[i.key] ?? []}
-            onAdd={(a) => {
-              setMedia((m) => ({ ...m, [i.key]: [a] }));
-              changed();
-            }}
-            onRemove={() => {
-              setMedia((m) => ({ ...m, [i.key]: [] }));
-              changed();
-            }}
-          />
-        ))}
+        {template.inputs.map((i) =>
+          i.kind === "character" ? (
+            <label key={i.key} className="flex flex-col gap-1.5 text-xs text-muted">
+              <span>{i.label}</span>
+              <Select
+                value={picked[i.key] ?? ""}
+                onChange={(v) => choose(i.key, v)}
+                options={[
+                  { value: "", label: characters?.length ? "None" : "No saved characters yet" },
+                  ...(characters ?? []).map((c) => ({ value: c.slug, label: `${c.name} (@${c.slug})` })),
+                ]}
+              />
+            </label>
+          ) : (
+            <MediaSlotField
+              key={i.key}
+              slot={{ role: ROLE_FOR_KIND[i.kind], kinds: [i.kind], label: i.label, required: !i.alternative, min: 1, max: 1, auto: false }}
+              value={media[i.key] ?? []}
+              onAdd={(a) => choose(i.key, [a])}
+              onRemove={() => choose(i.key, [])}
+            />
+          ),
+        )}
         {template.fields.map((f) => (
           <label key={f.key} className="flex flex-col gap-1.5 text-xs text-muted">
             <span>

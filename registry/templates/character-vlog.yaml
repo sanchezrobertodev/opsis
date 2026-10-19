@@ -3,7 +3,8 @@ name: Character vlog
 summary: The person in your picture stars in a short talking vlog about your idea, with cutaways, music and captions.
 recipe: vlog
 inputs:
-  - {key: character_image, kind: image, label: A clear picture of the person}
+  - {key: character_image, kind: image, label: A clear picture of the person, alternative: true}
+  - {key: character, kind: character, label: Or one of your saved characters, alternative: true}
 fields:
   - key: idea
     label: What the vlog is about

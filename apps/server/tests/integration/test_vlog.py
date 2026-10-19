@@ -7,13 +7,13 @@ import uuid
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 from test_faceless import answer
 from test_pipelines import drain, get, start
 from test_talking import PICTURE, upload
 
 from studio.api.main import app as api
-from studio.db.models import Generation, PipelineStep
+from studio.db.models import Asset, Generation, PipelineStep
 from studio.db.session import session_scope
 from studio.pipelines.recipes.vlog import VlogRecipe
 from studio.registry.loader import get_registry
@@ -106,3 +106,59 @@ async def test_a_script_short_of_shots_is_refused(db, monkeypatch):
     async with session_scope() as s:
         with pytest.raises(llm.LLMError, match="1 shots with lines instead of 3"):
             await vlog.write_vlog(s, uuid.uuid4(), idea="x", shots=3)
+
+
+async def test_a_saved_character_stars_by_handle_with_their_name(client, in_memory_queue):
+    from test_elements import make_element
+
+    maya = await make_element(client, "Maya Lind")
+    run = await start(client, "vlog", character=maya["slug"], idea="a rainy Sunday", shots=3, music=False,
+                      captions=False, review_script=False)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    steps = {s["key"]: s for s in done["steps"]}
+    async with session_scope() as s:
+        frame = await s.get(Generation, uuid.UUID(steps["frame[s01]"]["generation_id"]))
+        script = (await s.execute(select(PipelineStep.input).where(
+            PipelineStep.run_id == uuid.UUID(run["id"]), PipelineStep.key == "script"))).scalar_one()
+    assert frame is not None and script["character"] == maya["slug"]
+    # the @mention attached their picture and reads as their name
+    assert [(m["role"], m["asset_id"]) for m in frame.request["media"]] == [
+        ("image_references", maya["images"][0]["asset"]["id"])]
+    assert "Maya Lind" in frame.request["compiled_prompt"] and "@" not in frame.request["compiled_prompt"]
+
+
+async def test_a_missing_or_pictureless_character_stops_before_drawing(client, in_memory_queue):
+    from test_elements import make_element
+
+    bare = await make_element(client, "No Face", images=0)
+    for handle, why in [("nobody-here", "no saved character called @nobody-here"), (bare["slug"], "has no pictures")]:
+        run = await start(client, "vlog", character=handle, idea="x", shots=3, review_script=False)
+        await drain(in_memory_queue)
+        done = await get(client, run["id"])
+        assert done["status"] == "failed" and why in done["error"], done["error"]
+        assert [s["key"] for s in done["steps"]] == ["script"]
+    both = await client.post("/pipelines", json={"recipe": "vlog", "input": {
+        "character": "a", "character_image": str(uuid.uuid4()), "idea": "x"}})
+    assert both.status_code == 422 and "not both" in both.text
+
+
+async def test_only_characters_with_ready_pictures_can_star(client, in_memory_queue):
+    from test_elements import make_element
+
+    place = await make_element(client, "The Harbour", kind="location")
+    run = await start(client, "vlog", character=place["slug"], idea="x", shots=3, review_script=False)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "failed" and f"no saved character called @{place['slug']}" in done["error"]
+
+    pending = await make_element(client, "Half Uploaded")
+    async with session_scope() as s:
+        await s.execute(update(Asset).where(Asset.id == uuid.UUID(pending["images"][0]["asset"]["id"]))
+                        .values(status="processing"))
+        await s.commit()
+    run = await start(client, "vlog", character=pending["slug"], idea="x", shots=3, review_script=False)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "failed" and "has no pictures" in done["error"], done["error"]

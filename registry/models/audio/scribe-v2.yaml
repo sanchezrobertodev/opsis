@@ -33,7 +33,7 @@ routes:
       verified: 2026-10-19
       source: "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai/elevenlabs/speech-to-text/scribe-v2 ($0.008/minute)"
     timeout_s: 900
-    output: {path: words, kind: subtitle, decode: "studio.media.transcript:words_json"}
+    output: {path: words, kind: subtitle, decode: "studio.media.transcript:words_json", empty_ok: true}
 
 examples:
   - name: transcribe_smoke

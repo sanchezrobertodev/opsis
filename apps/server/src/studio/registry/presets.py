@@ -148,11 +148,13 @@ def _filled(value: Any, filled: dict[str, str]) -> Any:
 
 def render_template(template: TemplateSpec, values: dict[str, str], media: dict[str, str]) -> dict[str, Any]:
     """The run this template starts with these answers and inputs (media: input key -> asset id)."""
-    missing = [i.label for i in template.inputs if not media.get(i.key)]
+    missing = [i.label for i in template.inputs if not i.alternative and not media.get(i.key)]
+    if (either := [i for i in template.inputs if i.alternative]) and not any(media.get(i.key) for i in either):
+        missing.append(" or ".join(i.label.lower().removeprefix("or ") for i in either))
     if missing:
         raise PresetError([f"add {', '.join(missing).lower()}"])
     inp = _filled(template.input, _answers(template.fields, values))
-    inp |= {i.key: media[i.key] for i in template.inputs}
+    inp |= {i.key: media[i.key] for i in template.inputs if media.get(i.key)}
     return {"recipe": template.recipe, "input": inp, "title": template.name}
 
 
@@ -176,8 +178,11 @@ def lint_templates(reg: Registry) -> list[str]:
             errors.append(f"{where}: fields never used in the input {sorted(unused)}")
         if clash := {i.key for i in t.inputs} & set(t.input):
             errors.append(f"{where}: inputs overwrite fixed input {sorted(clash)}")
+        # every required input plus the first alternative (a template offering "a picture or a saved character")
+        given = [i for i in t.inputs if not i.alternative] + [i for i in t.inputs if i.alternative][:1]
         sample = render_template(t, {f.key: f.placeholder or f.label for f in t.fields},
-                                 {i.key: "00000000-0000-7000-8000-000000000000" for i in t.inputs})
+                                 {i.key: "sample-character" if i.kind == "character"
+                                  else "00000000-0000-7000-8000-000000000000" for i in given})
         try:
             inp = recipe.Input.model_validate(sample["input"])
         except ValidationError as exc:

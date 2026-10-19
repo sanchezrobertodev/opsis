@@ -723,10 +723,12 @@ def test_route_outputs_need_the_main_file():
 def test_a_decoded_empty_answer_is_still_an_output():
     from studio.providers.common import route_outputs
 
-    spec = OutputSpec(path="words", kind="subtitle", decode="studio.media.transcript:words_json")
+    spec = OutputSpec(path="words", kind="subtitle", decode="studio.media.transcript:words_json", empty_ok=True)
     out = route_outputs({"text": "", "words": []}, spec)  # an instrumental: nothing heard
     assert [(o.kind, o.data) for o in out] == [("subtitle", [])]
     assert route_outputs({"text": ""}, spec) == []  # a missing answer is still missing
+    strict = OutputSpec(path="rle", kind="mask_video", decode="studio.media.rle:mask_video")
+    assert route_outputs({"rle": []}, strict) == []  # where empty isn't allowed, it's no result
 
 
 def test_best_mime_keeps_3d_files():

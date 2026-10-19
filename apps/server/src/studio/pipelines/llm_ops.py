@@ -7,12 +7,14 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.budget.guard import BudgetBlocked
 from studio.config import get_settings
-from studio.db.models import PipelineRun, PipelineStep
+from studio.db.models import Asset, Element, ElementAsset, ElementKind, PipelineRun, PipelineStep
 from studio.director.elements import mentions
+from studio.domain.enums import AssetStatus
 from studio.faceless.catalog import get_catalog
 from studio.faceless.writer import plan_blocks, song_text, write_script, write_song
 from studio.llm.client import LLMError, structured
@@ -71,9 +73,28 @@ async def faceless_song(session: AsyncSession, run: PipelineRun, step: PipelineS
             "cost_usd": float(res.cost_usd)}
 
 
+async def _star(session: AsyncSession, run: PipelineRun, slug: str) -> Element:
+    """The saved character a run stars, checked before anything is drawn: it must exist and have a picture."""
+    element = (await session.execute(select(Element).where(
+        Element.user_id == run.user_id, Element.slug == slug, Element.kind == ElementKind.character,
+        Element.deleted_at.is_(None)))).scalar_one_or_none()
+    if element is None:
+        raise StepFailed(f"there's no saved character called @{slug}")
+    pictures = (await session.execute(select(func.count()).select_from(ElementAsset).join(
+        Asset, Asset.id == ElementAsset.asset_id).where(
+        ElementAsset.element_id == element.id, Asset.kind == "image", Asset.status == AssetStatus.ready,
+        Asset.deleted_at.is_(None)))).scalar_one()  # only ready pictures attach to a mention
+    if not pictures:
+        raise StepFailed(f"@{slug} has no pictures yet; add one on the Characters page so their face carries through")
+    return element
+
+
 async def vlog_script(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
     inp = step.input
-    res = await write_vlog(session, run.user_id, idea=inp["idea"], shots=inp["shots"], name=inp.get("name", ""),
+    name = inp.get("name", "")
+    if inp.get("character"):
+        name = name or (await _star(session, run, inp["character"])).name
+    res = await write_vlog(session, run.user_id, idea=inp["idea"], shots=inp["shots"], name=name,
                            language=inp.get("language", "English"), notes=inp.get("notes", ""))
     return {"title": res.output.title, "shots": [s.model_dump() for s in res.output.shots], "model": res.model,
             "cost_usd": float(res.cost_usd)}
@@ -81,6 +102,8 @@ async def vlog_script(session: AsyncSession, run: PipelineRun, step: PipelineSte
 
 async def music_video_plan(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
     inp = step.input
+    if inp.get("character"):
+        await _star(session, run, inp["character"])
     res = await plan_shots(session, run.user_id, sections=inp["sections"], idea=inp.get("idea", ""),
                            star=bool(inp.get("star")))
     return {"world": res.output.world, "shots": [s.model_dump() for s in res.output.shots], "model": res.model,

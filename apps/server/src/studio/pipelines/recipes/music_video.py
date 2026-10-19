@@ -15,7 +15,7 @@ import math
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.config import get_settings
@@ -30,7 +30,7 @@ from studio.pipelines.recipes.common import (
     text_mode,
     with_param,
 )
-from studio.pipelines.recipes.vlog import SINGLE_FRAME, frame_mode
+from studio.pipelines.recipes.vlog import SINGLE_FRAME, SLUG, frame_mode
 from studio.registry.loader import Registry
 from studio.registry.schema import Mode, ModelSpec
 
@@ -43,6 +43,7 @@ class MusicVideoInput(BaseModel):
     song: uuid.UUID = Field(description="The song (an audio file or a clip with sound)")
     idea: str = Field("", max_length=500, description="What the video is about or how it looks")
     character_image: uuid.UUID | None = Field(None, description="Someone to star in every shot")
+    character: str | None = Field(None, pattern=SLUG, description="Or a saved character's @handle to star")
     aspect_ratio: Literal["9:16", "16:9"] = "9:16"
     resolution: Literal["720p", "1080p"] = "1080p"
     max_shots: int = Field(24, ge=4, le=40)
@@ -51,6 +52,16 @@ class MusicVideoInput(BaseModel):
     video_model: str = "ltx-2.5"
     captions: bool = True
     caption_style: str = "editorial-motion-graphics"
+
+    @model_validator(mode="after")
+    def _one_star(self) -> MusicVideoInput:
+        if self.character_image is not None and self.character is not None:
+            raise ValueError("give a picture of the star or pick a saved character, not both")
+        return self
+
+    @property
+    def star(self) -> bool:
+        return self.character_image is not None or self.character is not None
 
 
 # ---------------------------------------------------------------- the shot plan (Claude)
@@ -132,7 +143,7 @@ class MusicVideoRecipe(Recipe):
         errors = []
         if inp.captions and get_catalog().style(inp.caption_style) is None:
             errors.append(f"unknown caption style {inp.caption_style!r}")
-        star = inp.character_image is not None
+        star = inp.star
         checks = [
             (inp.transcribe_model, lambda s: mode_with_op(s, "transcribe"), "hear the lyrics"),
             (inp.image_model, lambda s: _picture_mode(s, star),
@@ -156,7 +167,7 @@ class MusicVideoRecipe(Recipe):
 
     def _frame_params(self, inp: MusicVideoInput, reg: Registry) -> dict[str, Any]:
         spec = reg.models[inp.image_model]
-        mode = _picture_mode(spec, inp.character_image is not None)
+        mode = _picture_mode(spec, inp.star)
         assert mode is not None
         return with_param(spec, mode.id, {}, "aspect_ratio", inp.aspect_ratio)
 
@@ -172,12 +183,13 @@ class MusicVideoRecipe(Recipe):
         heard, image, video = (reg.models[m] for m in (inp.transcribe_model, inp.image_model, inp.video_model))
         target = max(TARGET_S, SONG_GUESS_S / inp.max_shots)
         n = min(inp.max_shots, math.ceil(SONG_GUESS_S / target))
-        pic = _picture_mode(image, inp.character_image is not None)
+        pic = _picture_mode(image, inp.star)
         assert pic is not None
         refs = ((self._ref_role(reg, inp), str(inp.character_image)),) if inp.character_image else ()
         out = [PlannedJob(heard.id, mode_with_op(heard, "transcribe").id, {}, ("input_audio",),  # type: ignore[union-attr]
                           media=(("input_audio", str(inp.song)),))]
-        out += [PlannedJob(image.id, pic.id, self._frame_params(inp, reg), tuple(r for r, _ in refs), media=refs)
+        roles = (self._ref_role(reg, inp),) if inp.star else ()  # a saved character's pictures come with the mention
+        out += [PlannedJob(image.id, pic.id, self._frame_params(inp, reg), roles, media=refs)
                 for _ in range(n)]
         out += [PlannedJob(video.id, start_frame_mode(video).id, self._clip_params(inp, reg, target),  # type: ignore[union-attr]
                            ("start_image",)) for _ in range(n)]
@@ -200,7 +212,7 @@ class MusicVideoRecipe(Recipe):
         sections: list[dict[str, Any]] = cut["shots"]
         specs.append(StepSpec("plan", StepKind.llm, "Plan the shots", {
             "op": "music_video_plan", "sections": [s["text"] for s in sections], "idea": inp.idea,
-            "star": inp.character_image is not None}, ("shots",)))
+            "star": inp.star, "character": inp.character}, ("shots",)))
         specs.append(StepSpec("parts", StepKind.local, "Cut the song at the shots", {
             "op": "split_audio", "audio": str(inp.song), "seconds": cut["seconds"], "title": "Music video"},
             ("shots",)))
@@ -209,11 +221,12 @@ class MusicVideoRecipe(Recipe):
             return specs
 
         image, video = reg.models[inp.image_model], reg.models[inp.video_model]
-        pic, i2v = _picture_mode(image, inp.character_image is not None), start_frame_mode(video)
+        pic, i2v = _picture_mode(image, inp.star), start_frame_mode(video)
         assert pic and i2v
         media = ([{"role": self._ref_role(reg, inp), "asset_id": str(inp.character_image)}]
                  if inp.character_image else [])
-        star = " The star is the person from the reference photo, same face, hair and build." if media else ""
+        star = (f" The star is @{inp.character}." if inp.character else  # their pictures attach through the mention
+                " The star is the person from the reference photo, same face, hair and build." if media else "")
         for i, (shot, section) in enumerate(zip(plan["shots"], sections, strict=True), 1):
             specs.append(StepSpec(frame_key(i), StepKind.generate, f"Shot {i}: picture", {
                 "model_id": image.id, "mode": pic.id, "params": self._frame_params(inp, reg), "media": media,

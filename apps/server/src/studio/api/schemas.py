@@ -469,7 +469,7 @@ class TemplateOut(ApiModel):
 
 class TemplateRenderIn(ApiModel):
     fields: dict[str, str] = {}
-    media: dict[str, uuid.UUID] = Field({}, description="Input key -> asset id")
+    media: dict[str, str] = Field({}, description="Input key -> asset id, or a saved character's handle")
 
 
 # ---------------------------------------------------------------- Claude
