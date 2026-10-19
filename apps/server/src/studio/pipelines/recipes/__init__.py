@@ -20,11 +20,12 @@ from studio.pipelines.recipes.lora_train import LoraTrainRecipe
 from studio.pipelines.recipes.object_swap import ObjectSwapRecipe
 from studio.pipelines.recipes.sequence import SequenceRecipe
 from studio.pipelines.recipes.talking import TalkingShotRecipe
+from studio.pipelines.recipes.vlog import VlogRecipe
 
 RECIPES: dict[str, Recipe] = {r.id: r for r in (
     SequenceRecipe(), CompareRecipe(), KeyframeRecipe(), FacelessRecipe(), ObjectSwapRecipe(), TalkingShotRecipe(),
     CinemaFramesRecipe(), CinemaTakesRecipe(), CinemaSceneRecipe(), CinemaExtendRecipe(), CinemaEditRecipe(),
-    CinemaExportRecipe(), CinemaCastRecipe(), Jutsu3dRecipe(), LoraTrainRecipe(),
+    CinemaExportRecipe(), CinemaCastRecipe(), Jutsu3dRecipe(), LoraTrainRecipe(), VlogRecipe(),
 )}
 
 

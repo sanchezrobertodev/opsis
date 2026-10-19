@@ -180,7 +180,7 @@ async def narrated_cut(session: AsyncSession, run: PipelineRun, step: PipelineSt
             raise StepFailed(f"the narration {voice.id} has no length")
         kind = "video" if visual.kind == AssetKind.video else "image"
         blocks.append(Block(storage.path_for(visual.storage_key), kind, storage.path_for(voice.storage_key),
-                            _seconds(voice)))
+                            _seconds(voice), hold=bool(b.get("hold"))))
     work = storage.temp_dir() / f"episode-{uuid7().hex}"
     dest = work / "master.mp4"
     try:

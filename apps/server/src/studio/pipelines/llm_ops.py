@@ -17,6 +17,7 @@ from studio.faceless.catalog import get_catalog
 from studio.faceless.writer import plan_blocks, song_text, write_script, write_song
 from studio.llm.client import LLMError, structured
 from studio.pipelines.ops import StepFailed
+from studio.pipelines.recipes.vlog import write_vlog
 from studio.providers.mock import strip_tags
 
 LLMOp = Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitable[dict[str, Any]]]
@@ -66,6 +67,14 @@ async def faceless_song(session: AsyncSession, run: PipelineRun, step: PipelineS
                            language=inp.get("language", "English"), notes=inp.get("notes", ""))
     song = res.output
     return {"title": song.title, "script": song_text(song), "song": song.model_dump(), "model": res.model,
+            "cost_usd": float(res.cost_usd)}
+
+
+async def vlog_script(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    inp = step.input
+    res = await write_vlog(session, run.user_id, idea=inp["idea"], shots=inp["shots"], name=inp.get("name", ""),
+                           language=inp.get("language", "English"), notes=inp.get("notes", ""))
+    return {"title": res.output.title, "shots": [s.model_dump() for s in res.output.shots], "model": res.model,
             "cost_usd": float(res.cost_usd)}
 
 
@@ -129,4 +138,5 @@ LLM_OPS: dict[str, LLMOp] = {
     "faceless_script": _guarded(faceless_script),
     "faceless_plan": _guarded(faceless_plan),
     "faceless_song": _guarded(faceless_song),
+    "vlog_script": _guarded(vlog_script),
 }
