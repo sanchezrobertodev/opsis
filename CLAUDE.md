@@ -136,8 +136,11 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 - Built-in: `sequence` (last-frame chaining + ffmpeg join; also how any model "extends"), `compare` (fan-out +
   pick checkpoint), `keyframe` (render a start frame from @character refs, then animate; for Kling), `faceless`
   (script -> approve -> block plan -> narration + stills or clips -> music -> assembly -> captions -> thumbnail),
-  `object_swap` (track a SAM mask -> edit with 1-3 models -> composite through the matte -> pick), and
-  `talking_shot` (a picture or clip + script -> TTS -> lipsync on 1-3 models -> pick; or recorded speech).
+  `object_swap` (track a SAM mask -> edit with 1-3 models -> composite through the matte -> pick),
+  `talking_shot` (a picture or clip + script -> TTS -> lipsync on 1-3 models -> pick; or recorded speech), and `vlog`
+  (a picture + an idea -> Claude's shots -> each shot drawn from the picture, voiced, then lip-synced on camera or
+  animated as a cutaway; a failed one falls back to its picture -> music -> cut -> captions). A narrated cut's block
+  with `hold: true` (a lip-synced clip) is never slowed to fill its block; its last frame is held instead.
 - A generate step whose take the provider refuses on content grounds (`error_code` moderation) gets one more try:
   the engine holds it, Claude (Sonnet) rewords its prompt, or each shot's of a multi-shot take, in one call, each no
   longer than the original and keeping its meaning and @mentions

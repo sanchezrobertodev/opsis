@@ -32,6 +32,7 @@ class Block:
     kind: Literal["image", "video"]
     narration: Path
     seconds: float  # how long the narration runs
+    hold: bool = False  # a clip in sync with its narration (lip-synced): never slowed, its last frame held instead
 
 
 @dataclass
@@ -101,7 +102,7 @@ async def render_segment(block: Block, seconds: float, dest: Path, *, size: tupl
     length = (info.duration_ms or 0) / 1000 or seconds
     chain = []
     if length < seconds:
-        slow = min(MAX_SLOWDOWN, seconds / length)
+        slow = 1.0 if block.hold else min(MAX_SLOWDOWN, seconds / length)
         chain.append(f"setpts={slow:.4f}*PTS")
         if length * slow < seconds:
             chain.append(f"tpad=stop_mode=clone:stop_duration={seconds - length * slow + 0.2:.3f}")
