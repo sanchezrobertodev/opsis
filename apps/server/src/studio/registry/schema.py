@@ -300,6 +300,7 @@ class OutputSpec(_Strict):
     # "module:function" that turns the value at `path` into a file on our side, for answers that aren't files
     # (SAM 3 video's per-frame run-length masks: studio.media.rle:mask_video)
     decode: str | None = None
+    empty_ok: bool = False  # a decoded answer may be empty and still be the result (a transcript of silence)
     # the endpoint returns `path` though its published schema doesn't list it (seen live); the drift check skips it
     unpublished: bool = False
 
@@ -471,11 +472,13 @@ class PresetSpec(_Strict):
 
 
 class TemplateInput(_Strict):
-    """Media the user brings to a template; its asset id goes into the recipe input at `key`."""
+    """What the user brings to a template: media (its asset id goes into the recipe input at `key`) or a saved
+    character (`kind: character`, its @handle goes there)."""
 
     key: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
-    kind: Literal["image", "video", "audio"]
+    kind: Literal["image", "video", "audio", "character"]
     label: str
+    optional: bool = False  # e.g. a picture or a saved character: the recipe says which it needs
 
 
 class TemplateSpec(_Strict):
