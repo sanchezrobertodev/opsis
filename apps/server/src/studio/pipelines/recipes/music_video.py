@@ -140,13 +140,16 @@ PLAN_SYSTEM = """You direct music videos. You get the song's sections in order, 
 - `visual` is one moment, the shot's opening frame: a single picture, never two actions or "then". What happens next
   (climbing, then lighting the lamp) goes in `motion`.
 - When a star is given, they appear in most shots; write "the star" for them and never describe their face.
+- When the song's brief is given, keep the people, their relationships and the story it describes: friends stay
+  friends, a solo singer stays alone.
 - Return exactly one shot per section, in order. `world` pins the look of the whole video in one sentence."""
 
 
 async def plan_shots(session: AsyncSession, user_id: uuid.UUID, *, sections: list[str], idea: str,
-                     star: bool) -> LLMResult[MusicPlan]:
+                     star: bool, brief: str = "") -> LLMResult[MusicPlan]:
     listed = "\n".join(f"Section {i}: {text or '(instrumental)'}" for i, text in enumerate(sections, 1))
     prompt = "\n".join(line for line in [
+        f"The song's brief (what it's about): {brief}" if brief else "",
         f"Idea: {idea}" if idea else "",
         "A star appears: the person from a reference photo." if star else "No star: show the world of the song.",
         f"\n{listed}",
@@ -320,7 +323,7 @@ class MusicVideoRecipe(Recipe):
             return specs
         sections: list[dict[str, Any]] = cut["shots"]
         specs.append(StepSpec("plan", StepKind.llm, "Plan the shots", {
-            "op": "music_video_plan", "sections": [s["text"] for s in sections], "idea": inp.idea,
+            "op": "music_video_plan", "sections": [s["text"] for s in sections], "idea": inp.idea, "brief": inp.brief,
             "star": inp.star, "character": inp.character}, ("shots",)))
         specs.append(StepSpec("parts", StepKind.local, "Cut the song at the shots", {
             "op": "split_audio", "audio": song, "seconds": cut["seconds"], "title": "Music video"},
