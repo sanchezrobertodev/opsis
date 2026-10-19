@@ -1,0 +1,17 @@
+id: music-video-starring
+name: Music video starring you
+summary: Your song as a music video starring the person in your picture, with shots that follow the lyrics.
+recipe: music_video
+inputs:
+  - {key: song, kind: audio, label: Your song}
+  - {key: character_image, kind: image, label: A clear picture of the star}
+fields:
+  - key: idea
+    label: What the video is about or how it looks
+    placeholder: a road trip at golden hour that ends at the sea
+    required: false
+    max_chars: 500
+input:
+  idea: "{idea}"
+  aspect_ratio: "9:16"
+tags: [music, lyrics, character, vertical]

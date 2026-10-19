@@ -1,0 +1,16 @@
+id: music-video
+name: Music video
+summary: Your song as a music video whose shots follow the lyrics, with the words as captions. Add a picture to star in it.
+recipe: music_video
+inputs:
+  - {key: song, kind: audio, label: Your song}
+fields:
+  - key: idea
+    label: What the video is about or how it looks
+    placeholder: a road trip at golden hour that ends at the sea
+    required: false
+    max_chars: 500
+input:
+  idea: "{idea}"
+  aspect_ratio: "9:16"
+tags: [music, lyrics, vertical]

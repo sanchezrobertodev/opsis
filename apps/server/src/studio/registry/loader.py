@@ -58,6 +58,8 @@ def mock_route(spec: ModelSpec) -> Route:
     if spec.output_type in ("3d", "splat"):  # mock the file kind the real routes return
         kinds = {r.output.kind for r in spec.routes}
         kind = kinds.pop() if len(kinds) == 1 else "model3d"
+    if spec.output_type == "text":  # speech to text: a transcript
+        kind = "subtitle"
     if spec.output_type == "mask":  # one mode segments an image, another tracks a clip
         kinds = {r.output.kind for r in spec.routes}
         kind = "mask_video" if kinds == {"mask_video"} else "mask"

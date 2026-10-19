@@ -16,11 +16,11 @@ LABELS = {
 # classified by the mode each generation ran
 RECIPES = {"faceless": "faceless", "object_swap": "swap", "talking_shot": "lipsync", "jutsu3d": "jutsu3d",
            "sequence": "create_video", "keyframe": "create_video", "lora_train": "characters",
-           "vlog": "templates"}
+           "vlog": "templates", "music_video": "templates"}
 PROJECTS = {"cinema": "cinema", "jutsu3d": "jutsu3d"}
 # first match wins, so a lipsync or tracking mode isn't counted as plain video
 OPS = [({"lora_train"}, "characters"), ({"lipsync"}, "lipsync"), ({"motion_transfer"}, "motion"), ({"segment", "track"}, "swap"),
-       ({"tts", "sfx", "music", "song"}, "audio"), ({"world", "panorama"}, "worlds"), ({"to_3d", "depth_to_video", "render_to_real", "rig"}, "jutsu3d"),
+       ({"tts", "sfx", "music", "song", "transcribe"}, "audio"), ({"world", "panorama"}, "worlds"), ({"to_3d", "depth_to_video", "render_to_real", "rig"}, "jutsu3d"),
        ({"t2i", "i2i"}, "create_image"),
        ({"instruction_edit", "restyle", "relight", "extend", "reframe", "upscale", "interpolate", "bg_remove",
          "add_sound", "stabilize", "trim", "retime", "reverse", "loop", "object_replace"}, "edit"),

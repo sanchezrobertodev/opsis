@@ -24,7 +24,7 @@ import anyio
 
 from studio.config import get_settings
 from studio.domain.enums import ErrorClass
-from studio.media import mock_media
+from studio.media import mock_media, transcript
 from studio.media.ffmpeg import probe
 from studio.media.speech import estimate_words, spoken_seconds
 from studio.providers.base import (
@@ -158,6 +158,11 @@ class MockAdapter(ProviderAdapter):
         if output.kind == "splat":
             await anyio.to_thread.run_sync(lambda: mock_media.make_splat_ply(dest, seed=seed))
             return "application/x-ply"
+        if output.kind == "subtitle":  # a transcript: a sung "la" every half second, with a breath every four
+            heard = _first_path(p.get("input_audio"))
+            length = ((await probe(heard)).duration_ms or 5000) / 1000 if heard and heard.exists() else 5.0
+            await anyio.Path(dest).write_text(json.dumps(transcript.mock(length)), encoding="utf-8")
+            return "application/json"
         if output.kind == "audio":
             words = (output.meta.get("alignment") or {}).get("words")
             duration = spoken_seconds(words) if words else float(p.get("duration") or 5)

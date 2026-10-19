@@ -26,6 +26,8 @@ from studio.media.ops import concat_clips
 from studio.media.speech import join_speech
 from studio.media.swap import masked_merge
 from studio.media.timeline import FPS, Card, Clip, Sound, cut_film, cut_timeline, normalize_clip
+from studio.media.transcript import read as read_transcript
+from studio.media.transcript import shots as lyric_cuts
 from studio.storage.local import get_storage
 
 mimetypes.add_type("application/x-subrip", ".srt")
@@ -214,6 +216,9 @@ async def captions(session: AsyncSession, run: PipelineRun, step: PipelineStep) 
         items = line_cues([(t + lead, t + _seconds(v), lines)
                            for v, t, lines in zip(voices, inp["starts"], inp["sung"], strict=True)],
                           max_chars=look.max_chars)
+    elif inp.get("words"):  # word timings per block, already known (a song's transcript)
+        words = inp["words"]
+        items = cues(place_words(words, inp["starts"]), max_chars=look.max_chars)
     else:
         words = [(v.metadata_ or {}).get("alignment", {}).get("words") or fit_words(text, _seconds(v))
                  for v, text in zip(voices, inp["narrations"], strict=True)]
@@ -239,6 +244,25 @@ async def captions(session: AsyncSession, run: PipelineRun, step: PipelineStep) 
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return {"asset_id": str(out.id), "subtitle_asset_id": str(srt.id), "derive": [str(out.id)]}
+
+
+async def lyric_shots(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    """Cut a song into shots at the pauses in its lyrics, from its transcript. Each shot keeps its words, timed from
+    its own start (for captions); `seconds` are the shots' lengths (for cutting the song to match)."""
+    inp = step.input
+    song, script = await _assets(session, run, [inp["audio"], inp["transcript"]])
+    total = _seconds(song)
+    if total <= 0:
+        raise StepFailed("the song has no length")
+    longest = float(inp["max_shots"]) * float(inp["max_s"])
+    if total > longest:
+        raise StepFailed(f"the song runs {total:.0f} s; at most {inp['max_shots']} shots of {inp['max_s']:.0f} s "
+                         f"cover {longest:.0f} s. Raise the shot limit or trim the song")
+    target = max(float(inp["target_s"]), total / float(inp["max_shots"]))
+    words = read_transcript(get_storage().path_for(script.storage_key))
+    cut = lyric_cuts(words, total, target_s=target, min_s=min(float(inp["min_s"]), target),
+                     max_s=float(inp["max_s"]))
+    return {"shots": cut, "seconds": [round(s["end"] - s["start"], 3) for s in cut], "lyrics": bool(words)}
 
 
 async def split_audio(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
@@ -431,6 +455,7 @@ LOCAL_OPS: dict[str, Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitab
     "captions": captions,
     "keep_background": keep_background,
     "split_audio": split_audio,
+    "lyric_shots": lyric_shots,
     "lora_dataset": lora_dataset,
     "attach_lora": attach_lora,
     "add_element_image": add_element_image,

@@ -141,6 +141,15 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   (a picture + an idea -> Claude's shots -> each shot drawn from the picture, voiced, then lip-synced on camera or
   animated as a cutaway; a failed one falls back to its picture -> music -> cut -> captions). A narrated cut's block
   with `hold: true` (a lip-synced clip) is never slowed to fill its block; its last frame is held instead.
+- `music_video`: a song (+ an optional star's picture) -> `transcribe` (a speech-to-text model, op `transcribe`;
+  `scribe-v2`, ElevenLabs Scribe v2 on fal, $0.008/min) -> `shots` (local op `lyric_shots`, `media/transcript.py:shots`:
+  cut at the breaths nearest ~6 s, 3-10 s each) -> `plan` (Claude: a visual per section from its lyrics) -> a picture
+  and a clip per shot (a failed clip shows its picture) -> `parts` (the song cut at the shots) -> `cut` (gap 0, so the
+  song plays unbroken) -> `captions` with each shot's transcript words (`captions` op `words`). An instrumental (no
+  words heard) gets shots from the idea and no captions. The estimate prices a three-minute song.
+- Speech-to-text models have `output_type: text`; their route decodes the answer into a transcript asset (kind
+  `subtitle`, JSON `{"words": [{text, start, end}]}`, `transcript.py:words_json`). The mock hears a "la" every half
+  second with a breath after every eight.
 - A generate step whose take the provider refuses on content grounds (`error_code` moderation) gets one more try:
   the engine holds it, Claude (Sonnet) rewords its prompt, or each shot's of a multi-shot take, in one call, each no
   longer than the original and keeping its meaning and @mentions
