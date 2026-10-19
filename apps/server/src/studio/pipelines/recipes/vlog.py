@@ -29,6 +29,7 @@ from studio.pipelines.recipes.common import fit_duration, mode_with_op, start_fr
 from studio.pipelines.recipes.keyframe import ref_mode
 from studio.pipelines.recipes.talking import lipsync_mode
 from studio.registry.loader import Registry
+from studio.registry.schema import Mode, ModelSpec
 
 LINE_CHARS = 90  # about one spoken sentence (6 s), what the writer aims for per shot
 
@@ -93,9 +94,10 @@ async def write_vlog(session: AsyncSession, user_id: uuid.UUID, *, idea: str, sh
     result = await structured(
         session, user_id, purpose="vlog.script", model=get_settings().llm_smart_model, system=VLOG_SYSTEM,
         prompt=prompt, output=VlogScript, mock=lambda: _mock_vlog(idea, shots), effort="medium", max_tokens=6000)
-    result.output.shots = [s for s in result.output.shots if s.line.strip()][:shots]
-    if not result.output.shots:
-        raise LLMError("Claude returned a vlog with no lines. Try again.", retryable=True)
+    kept = [s for s in result.output.shots if s.line.strip()]
+    if len(kept) < shots:  # the estimate and the confirmation were for `shots`
+        raise LLMError(f"Claude wrote {len(kept)} shots with lines instead of {shots}. Try again.", retryable=True)
+    result.output.shots = kept[:shots]
     return result
 
 
@@ -140,6 +142,13 @@ def frame_prompt(shot: dict[str, Any]) -> str:
             f"{who}. Natural vlog look, real light, phone camera.")
 
 
+def frame_mode(spec: ModelSpec) -> Mode | None:
+    """The image model's reference mode, if it draws pictures that natively take reference images."""
+    if spec.output_type != "image" or (spec.elements or {}).get("strategy") != "refs_native":
+        return None
+    return ref_mode(spec)
+
+
 class VlogRecipe(Recipe):
     id = "vlog"
     name = "Character vlog"
@@ -154,7 +163,7 @@ class VlogRecipe(Recipe):
         if get_catalog().style(inp.caption_style) is None:
             errors.append(f"unknown caption style {inp.caption_style!r}")
         checks = [
-            (inp.image_model, ref_mode, "draw a picture from a reference photo"),
+            (inp.image_model, frame_mode, "draw a picture from a reference photo"),
             (inp.voice_model, lambda s: mode_with_op(s, "tts"), "speak the lines"),
             (inp.video_model, start_frame_mode, "animate a picture"),
             (inp.lipsync_model, lambda s: lipsync_mode(s, "image"), "make a picture speak"),

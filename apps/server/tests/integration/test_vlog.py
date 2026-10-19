@@ -85,7 +85,24 @@ def test_a_refused_shot_falls_back_to_its_picture():
 async def test_models_that_cant_do_their_part_are_refused(client):
     me = await upload(client, PICTURE, "image/png")
     r = await client.post("/pipelines", json={"recipe": "vlog", "input": {
-        "character_image": me["id"], "idea": "x", "lipsync_model": "veo-3.1", "video_model": "eleven-v4"}})
+        "character_image": me["id"], "idea": "x", "lipsync_model": "veo-3.1", "video_model": "eleven-v4",
+        "image_model": "veo-3.1"}})
     assert r.status_code == 422
     assert "Veo 3.1 can't make a picture speak" in r.text and "can't animate a picture" in r.text
+    assert "Veo 3.1 can't draw a picture from a reference photo" in r.text  # it takes references but makes video
     assert VlogRecipe().validate(VlogRecipe.Input(character_image=uuid.uuid4(), idea="x"), get_registry()) == []
+
+
+async def test_a_script_short_of_shots_is_refused(db, monkeypatch):
+    from studio.llm import client as llm
+    from studio.pipelines.recipes import vlog
+
+    async def few(*args, **kwargs):
+        return llm.LLMResult(output=vlog.VlogScript(title="t", shots=[
+            vlog.VlogShot(line="Hi.", visual="v", on_camera=True), vlog.VlogShot(line=" ", visual="v", on_camera=False)]),
+            model="m", mock=True)
+
+    monkeypatch.setattr(vlog, "structured", few)
+    async with session_scope() as s:
+        with pytest.raises(llm.LLMError, match="1 shots with lines instead of 3"):
+            await vlog.write_vlog(s, uuid.uuid4(), idea="x", shots=3)
