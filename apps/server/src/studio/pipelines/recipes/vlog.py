@@ -32,7 +32,7 @@ from studio.registry.loader import Registry
 from studio.registry.schema import Mode, ModelSpec
 
 # without this, a shot describing two moments comes back as a collage of panels
-SINGLE_FRAME = "One single photograph of one moment, full frame: not a collage, grid, split screen or panels."
+SINGLE_FRAME = "One single image of one moment, full frame: not a collage, grid, split screen or panels."
 LINE_CHARS = 90  # about one spoken sentence (6 s), what the writer aims for per shot
 
 
