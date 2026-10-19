@@ -12,13 +12,13 @@ import respx
 from studio.config import get_settings
 from studio.domain.enums import ErrorClass
 from studio.media.speech import estimate_words, spoken_seconds, words_from_characters
-from studio.providers.base import AmbiguousSubmitError, ProviderError
+from studio.providers.base import AmbiguousSubmitError, ProviderError, ResolvedMedia
 from studio.providers.elevenlabs import BASE_URL, ElevenLabsAdapter
 from studio.registry.loader import load_registry
 from studio.registry.mapping import build_payload
 from studio.registry.pricing import estimate
 from studio.registry.schema import OutputSpec, Pricing, Rate, Route, RouteMode
-from studio.registry.validate import normalize
+from studio.registry.validate import MediaRef, normalize
 
 REG = load_registry(get_settings().resolve_registry_dir())
 GEORGE = "JBFqnCBsd6RMkjVDRZzb"
@@ -146,3 +146,52 @@ def test_music_and_sfx_payloads():
 def test_voice_labels_cover_known_options():
     voice = REG.model("eleven-v4").param("voice_id")
     assert set(voice.labels) == set(voice.options)
+
+
+# ---------------------------------------------------------------- the voice changer and voice cloning
+
+
+def test_a_cloned_voice_id_passes_where_a_voice_is_picked():
+    spec = REG.model("eleven-voice-changer")
+    out = normalize(spec, "change", "", {"voice_id": "a1B2c3CustomVoice"},
+                    [MediaRef(role="input_audio", asset_id="a", kind="audio")])
+    assert out.params["voice_id"] == "a1B2c3CustomVoice"  # voice_id is open: the account's own voices count
+    with pytest.raises(Exception, match="must be one of"):  # a closed list still refuses
+        normalize(REG.model("eleven-v4"), "tts", "hi", {"tier": "ultra"}, [])
+
+
+@respx.mock
+async def test_the_voice_changer_uploads_the_recording(adapter, tmp_path):
+    rec = tmp_path / "line.mp3"
+    rec.write_bytes(b"ID3recording")
+    staged = await adapter.stage_inputs(route(), [ResolvedMedia("input_audio", "a", rec, "audio/mpeg", "audio")])
+    spec = REG.model("eleven-voice-changer")
+    req = normalize(spec, "change", "", {"voice_id": "cgSgspJ2msm6clMCkdW9", "remove_background_noise": True},
+                    [MediaRef(role="input_audio", asset_id="a", kind="audio")])
+    endpoint, payload, _ = build_payload(spec, spec.route("eleven-voice-changer@elevenlabs"), req, staged)
+    assert endpoint == "speech-to-speech/cgSgspJ2msm6clMCkdW9"
+    call = respx.post(f"{BASE_URL}/{endpoint}").respond(200, content=b"ID3changed", headers={"content-type": "audio/mpeg"})
+    res = await adapter.submit(route(), endpoint, payload, client_ref="c")
+    body = call.calls.last.request.content
+    assert b'name="audio"; filename="line.mp3"' in body and b"ID3recording" in body
+    assert b'name="model_id"' in body and b"eleven_multilingual_sts_v2" in body
+    assert b'name="remove_background_noise"' in body and b"true" in body
+    assert (await adapter.poll(route(), res.job_id)).status == "succeeded"
+    with pytest.raises(ProviderError, match="audio files"):
+        await adapter.stage_inputs(route(), [ResolvedMedia("input_audio", "a", rec, "video/mp4", "video")])
+
+
+@respx.mock
+async def test_cloning_and_deleting_a_voice(monkeypatch, tmp_path):
+    from studio.providers import elevenlabs
+
+    monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "test-key")
+    sample = tmp_path / "me.mp3"
+    sample.write_bytes(b"ID3me")
+    add = respx.post(f"{BASE_URL}/voices/add").respond(200, json={"voice_id": "vNEW", "requires_verification": False})
+    assert await elevenlabs.clone_voice("Me", [sample], remove_background_noise=False) == "vNEW"
+    sent = add.calls.last.request.content
+    assert b'name="name"' in sent and b"Me" in sent and b'name="files"; filename="me.mp3"' in sent
+    gone = respx.delete(f"{BASE_URL}/voices/vNEW").respond(200, json={"status": "ok"})
+    await elevenlabs.delete_voice("vNEW")
+    assert gone.called

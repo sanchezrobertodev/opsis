@@ -19,7 +19,7 @@ import {
   useTemplates,
 } from "@/lib/presets";
 import { useCreateGeneration } from "@/lib/queries";
-import { useElements } from "@/lib/elements";
+import { useClonedVoices, useElements } from "@/lib/elements";
 import { useEstimateRun, useStartRun } from "@/lib/runs";
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { Button, Dialog, Segmented, Select } from "@/components/ui/controls";
@@ -348,6 +348,7 @@ function TemplateForm({ template }: { template: Template }) {
   const [run, setRun] = useState<Schemas["RunCreate"] | null>(null);
   const estimate = useEstimateRun(run);
   const { data: characters } = useElements("character");
+  const cloned = useClonedVoices(); // listed in fields that take values beyond their options (voices)
   const busy = renderTemplate.isPending || start.isPending;
   // an estimate or a confirmation was for the old answers and media
   const changed = () => {
@@ -447,7 +448,11 @@ function TemplateForm({ template }: { template: Template }) {
                   setValues((old) => ({ ...old, [f.key]: v }));
                   changed();
                 }}
-                options={[{ value: "", label: "Pick one" }, ...f.options.map((o) => ({ value: o, label: f.option_labels[o] ?? o }))]}
+                options={[
+                  { value: "", label: "Pick one" },
+                  ...(f.open ? cloned.map(([id, label]) => ({ value: id, label })) : []),
+                  ...f.options.map((o) => ({ value: o, label: f.option_labels[o] ?? o })),
+                ]}
               />
             ) : (
               <textarea

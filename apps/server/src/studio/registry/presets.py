@@ -39,7 +39,7 @@ def _answers(fields: list[PresetField], values: dict[str, str]) -> dict[str, str
         value = " ".join(str(values.get(f.key) or "").split())[: f.max_chars] or f.default
         if not value and f.required:
             errors.append(f"{f.label} is required")
-        elif value and f.options and value not in f.options:
+        elif value and f.options and not f.open and value not in f.options:
             errors.append(f"pick one of the listed options for {f.label}")
         filled[f.key] = value
     if errors:

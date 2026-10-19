@@ -161,8 +161,8 @@ async def test_a_character_keeps_a_voice(client):
     assert r.status_code == 201, r.text
     e = r.json()
     assert e["voice"] == {"model_id": "eleven-v4", "params": {"voice_id": "XrExE9yKIg1WjnnlVkGX"}}
-    bad = await client.patch(f"/elements/{e['id']}", json={"voice": {"params": {"voice_id": "nobody"}}})
-    assert bad.status_code == 422 and "voice_id" in bad.text
+    bad = await client.patch(f"/elements/{e['id']}", json={"voice": {"params": {"voice_id": "nobody", "tier": "ultra"}}})
+    assert bad.status_code == 422 and "tier" in bad.text  # voice ids are open (cloned voices); other params aren't
     not_tts = await client.patch(f"/elements/{e['id']}", json={"voice": {"model_id": "veo-3.1", "params": {}}})
     assert not_tts.status_code == 422 and "can't speak" in not_tts.text
     cleared = await client.patch(f"/elements/{e['id']}", json={"clear_voice": True})

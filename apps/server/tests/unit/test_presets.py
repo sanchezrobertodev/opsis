@@ -153,7 +153,12 @@ def test_a_choice_field_takes_one_of_its_options():
     media = {"character": "maya"}
     with pytest.raises(PresetError, match="Their voice is required"):
         render_template(vlog, {"idea": "x"}, media)
+    # voice ids are open, so a cloned voice's id passes where a listed one would
+    assert render_template(vlog, {"idea": "x", "voice": "myClonedVoice"}, media)["input"]["voice"] == {
+        "voice_id": "myClonedVoice"}
+    closed = voice.model_copy(update={"open": False})
+    strict = vlog.model_copy(update={"fields": [closed if f.key == "voice" else f for f in vlog.fields]})
     with pytest.raises(PresetError, match="pick one of the listed options"):
-        render_template(vlog, {"idea": "x", "voice": "not-a-voice"}, media)
+        render_template(strict, {"idea": "x", "voice": "not-a-voice"}, media)
     rachel = "21m00Tcm4TlvDq8ikWAM"
     assert render_template(vlog, {"idea": "x", "voice": rachel}, media)["input"]["voice"] == {"voice_id": rachel}

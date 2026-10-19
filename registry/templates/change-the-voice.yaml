@@ -1,0 +1,14 @@
+id: change-the-voice
+name: Change the voice
+summary: Say a clip or a recording again in another voice, with the same words, timing and emotion. Your cloned voices work too.
+recipe: revoice
+inputs:
+  - {key: video_asset_id, kind: video, label: A clip with speech, alternative: true}
+  - {key: audio_asset_id, kind: audio, label: Or a recording, alternative: true}
+fields:
+  - key: voice
+    label: The new voice
+    choices: eleven-voice-changer.voice_id
+input:
+  voice_id: "{voice}"
+tags: [voice]

@@ -268,8 +268,17 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   Results over 5 MB go to a fal storage upload slot the adapter makes per output at submit (`uploads`, kept a day)
   and are ingested from its link; smaller ones, and any whose upload fails (up to 20 MB), come back inline as base64.
 
-- `elevenlabs`: Eleven v4 TTS (with word timings), sound effects and music (`ELEVENLABS_API_KEY`). The API is
-  synchronous, so submit parks the audio in a ResultStore (like Gemini images). TTS word timings land on the asset
+- `elevenlabs`: Eleven v4 TTS (with word timings), sound effects, music and the voice changer (speech to speech,
+  `eleven-voice-changer`, op `voice_change`, $0.12/min) (`ELEVENLABS_API_KEY`). The API is synchronous, so submit
+  parks the audio in a ResultStore (like Gemini images). A route that takes a recording gets it staged as
+  `file://<path>` and sent as a multipart upload.
+- Voice cloning (`POST /elements/clone-voice`: name, 1-5 recordings or clips, consent): an ElevenLabs instant clone
+  kept as a `voice` Element (`voice.params.voice_id`); mock mode makes a stand-in id. Deleting it frees the account's
+  voice slot. `voice_id` params are `open: true` enums (an `EnumParam` that also takes unlisted values), so a cloned
+  id works anywhere; the web's `useVoices` and template voice fields list your cloned voices first.
+- `revoice` recipe ("Change the voice" template): a clip's sound (`extract_audio`) or a recording -> the voice changer
+  -> for a clip, `replace_audio` puts the new voice under its picture. `Recipe.resolve()` (async, before the estimate
+  and storing a run's input) measures the clip so the estimate prices it. TTS word timings land on the asset
   as `metadata.alignment.words` (`[{text, start, end}]`); the mock times words at a reading pace instead.
 
 ## Faceless Studio and Object Swap
