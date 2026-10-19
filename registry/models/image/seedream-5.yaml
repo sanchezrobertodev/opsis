@@ -59,11 +59,11 @@ routes:
     pricing:
       basis: per_image
       rates:
-        - {when: {tier: pro}, usd: 0.0675}
+        - {when: {tier: pro}, usd: 0.135}  # every size here is over 1536x1536, fal's 2K tier
         - {when: {tier: lite}, usd: 0.035}
         - {when: {tier: flash}, usd: 0.027}
       verified: 2026-10-19
-      source: "https://api.fal.ai/v1/models/pricing?endpoint_id=bytedance/seedream/v5/pro/text-to-image ($0.0675; lite $0.035, flash $0.027 per image)"
+      source: "https://fal.ai/models/bytedance/seedream/v5/pro/text-to-image ($0.135 per image between 1536x1536 and 2048x2048; lite $0.035, flash $0.027 flat)"
     output: {path: images, kind: image, multiple: true}
 
 examples:

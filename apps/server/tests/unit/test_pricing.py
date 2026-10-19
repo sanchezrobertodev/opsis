@@ -73,3 +73,19 @@ def test_never_negative_and_monotonic_in_duration(d1, d2, rate):
     a, b = estimate(p, {"duration": lo}).usd, estimate(p, {"duration": hi}).usd
     assert a >= 0 and b >= 0
     assert a <= b
+
+
+def test_extra_charges_add_per_reference_beyond_the_first():
+    from studio.config import get_settings
+    from studio.registry.loader import load_registry
+
+    route = load_registry(get_settings().resolve_registry_dir()).model("gpt-image-2.5").route("gpt-image-2.5@fal")
+    params = {"quality": "high", "aspect_ratio": "4:3", "num_images": 1}
+    ref = {"role": "image_references", "kind": "image", "duration_ms": None, "width": 1024, "height": 1024}
+    t2i = estimate(route.pricing, params, mode="t2i")
+    one = estimate(route.pricing, params, mode="edit", media=[ref])
+    three = estimate(route.pricing, params, mode="edit", media=[ref] * 3)
+    assert t2i.usd == one.usd == Decimal("0.03612")  # fal's table already counts one input image
+    assert three.usd == Decimal("0.03612") + 2 * Decimal("0.0083")
+    two_out = estimate(route.pricing, {**params, "num_images": 2}, mode="edit", media=[ref] * 3)
+    assert two_out.usd == 2 * Decimal("0.03612") + 2 * Decimal("0.0083")  # inputs bill once per request
