@@ -1,0 +1,81 @@
+{
+ "endpoint": "blackforestlabs/flux-3/edit-image",
+ "variant": null,
+ "input": {
+  "aspect_ratio": {
+   "type": "string",
+   "enum": [
+    "auto",
+    "21:9",
+    "2:1",
+    "16:9",
+    "3:2",
+    "7:5",
+    "4:3",
+    "5:4",
+    "1:1",
+    "4:5",
+    "3:4",
+    "5:7",
+    "2:3",
+    "9:16",
+    "1:2"
+   ],
+   "default": "auto"
+  },
+  "enable_prompt_expansion": {
+   "type": "boolean"
+  },
+  "image_urls": {
+   "type": "array<string>",
+   "minItems": 1,
+   "maxItems": 10
+  },
+  "output_format": {
+   "type": "string",
+   "enum": [
+    "jpeg",
+    "png"
+   ],
+   "default": "jpeg"
+  },
+  "prompt": {
+   "type": "string"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "512sq",
+    "768sq",
+    "1k",
+    "2k",
+    "4k"
+   ],
+   "default": "1k"
+  },
+  "safety_tolerance": {
+   "type": "integer",
+   "default": 2,
+   "minimum": 0,
+   "maximum": 4
+  },
+  "sync_mode": {
+   "type": "boolean"
+  },
+  "version": {
+   "type": "str",
+   "enum": [
+    "latest"
+   ],
+   "default": "latest"
+  }
+ },
+ "required": [
+  "image_urls",
+  "prompt"
+ ],
+ "output": [
+  "images"
+ ],
+ "deprecated": false
+}

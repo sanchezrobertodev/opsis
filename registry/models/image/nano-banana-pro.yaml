@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Verified 2026-10-19 against fal's per-endpoint OpenAPI (fal-ai/nano-banana-pro, /edit) and its model page.
+id: nano-banana-pro
+name: Nano Banana Pro
+family: nano-banana
+vendor: google
+description: Gemini 3 Pro Image. Google's highest-fidelity image model, strong at text, layouts and multi-reference edits.
+output_type: image
+status: active
+license_tier: commercial_api
+tags: [keyframes, edit, references, quality]
+prompt: {max_chars: 4000, dialect: nano-banana}
+aspect_ratios: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "4:5", "5:4"]
+
+parameters:
+  - {name: resolution, type: enum, options: ["1k", "2k", "4k"], default: "1k", ui: segmented,
+     help: "4K costs twice as much."}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "4:5", "5:4"],
+     default: "16:9", ui: aspect}
+  - {name: num_images, label: Images, type: int, min: 1, max: 4, default: 1, ui: slider}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: t2i
+    label: Text to image
+    ops: [t2i]
+  - id: edit
+    label: Edit with references
+    ops: [i2i, multi_ref]
+    medias:
+      - {role: image_references, kinds: [image], label: Images, required: true, min: 1, max: 14}
+
+elements: {strategy: refs_native, ref_role: image_references}
+
+routes:
+  - id: nano-banana-pro@fal
+    provider: fal
+    modes:
+      t2i: {endpoint: fal-ai/nano-banana-pro}
+      edit: {endpoint: fal-ai/nano-banana-pro/edit}
+    map:
+      params:
+        resolution: {to: resolution, transform: enum_map, args: {values: {"1k": "1K", "2k": "2K", "4k": "4K"}}}
+        aspect_ratio: aspect_ratio
+        num_images: num_images
+        seed: seed
+      media: {image_references: image_urls}
+    pricing:
+      basis: per_image
+      rates:
+        - {when: {resolution: "1k"}, usd: 0.15}
+        - {when: {resolution: "2k"}, usd: 0.15}
+        - {when: {resolution: "4k"}, usd: 0.30}
+      verified: 2026-10-19
+      source: "https://fal.ai/models/fal-ai/nano-banana-pro ($0.15 per image; 4K outputs charged at double the rate)"
+    output: {path: images, kind: image, multiple: true}
+
+examples:
+  - name: t2i_smoke
+    mode: t2i
+    prompt: A hand-painted shop sign reading "Mara's Bakery" above a sunlit doorway, morning light.
+    params: {resolution: "1k", num_images: 1}
+    smoke: true
+    expect: {cost_usd_range: [0.1, 0.2]}

@@ -232,6 +232,14 @@ class Rate(_Strict):
     per: float = 1.0
 
 
+class Extra(_Strict):
+    """A charge added on top of the rate: `usd` times `quantity` (an expression over the pricing variables), e.g. each
+    reference image an edit bills as input."""
+
+    quantity: str
+    usd: float
+
+
 class Multiplier(_Strict):
     when: dict[str, Scalar | list[Scalar]]
     factor: float
@@ -248,6 +256,7 @@ class Pricing(_Strict):
     multipliers: list[Multiplier] = []
     quantity: str | None = None  # simpleeval expression overriding the basis quantity
     formula: str | None = None  # basis=formula: full USD expression
+    extra: list[Extra] = []
     minimum_usd: float = 0.0
     verified: date | None = None
     source: str | None = None

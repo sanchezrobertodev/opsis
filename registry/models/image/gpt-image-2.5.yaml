@@ -1,0 +1,113 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Verified 2026-10-19 against fal's per-endpoint OpenAPI (openai/gpt-image-2.5/{flare,sunburst}/{text-to-image,edit})
+# and its model pages: both variants cost the same per image, by size and quality. Sizes are explicit pixels
+# (multiples of 16), each priced at its nearest size in fal's table.
+id: gpt-image-2.5
+name: GPT Image 2.5
+family: gpt-image
+vendor: openai
+description: OpenAI's image model. Natural lighting, rich textures, legible text and complex layouts; edits from up to 16 references.
+output_type: image
+status: active
+license_tier: commercial_api
+tags: [keyframes, edit, references, text]
+prompt: {max_chars: 4000, dialect: default}
+aspect_ratios: ["1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16"]
+
+parameters:
+  - {name: variant, label: Variant, type: enum, options: [flare, sunburst], default: flare, ui: segmented,
+     labels: {flare: Flare, sunburst: Sunburst}, help: "Sunburst spends longer for extra fine detail; same price."}
+  - {name: quality, label: Quality, type: enum, options: [low, medium, high, xhigh, max], default: high, ui: segmented,
+     help: "Low is a fraction of a cent; Max costs about four times High."}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16"], default: "16:9", ui: aspect}
+  - {name: num_images, label: Images, type: int, min: 1, max: 4, default: 1, ui: slider}
+
+modes:
+  - id: t2i
+    label: Text to image
+    ops: [t2i]
+  - id: edit
+    label: Edit with references
+    ops: [i2i, multi_ref]
+    medias:
+      - {role: image_references, kinds: [image], label: Images, required: true, min: 1, max: 16}
+
+elements: {strategy: refs_native, ref_role: image_references}
+
+routes:
+  - id: gpt-image-2.5@fal
+    provider: fal
+    modes:
+      t2i: {endpoint: "openai/gpt-image-2.5/{variant}/text-to-image"}
+      edit: {endpoint: "openai/gpt-image-2.5/{variant}/edit"}
+    map:
+      params:
+        variant: {to: null}
+        quality: quality
+        aspect_ratio:
+          to: image_size
+          transform: enum_map
+          args:
+            values:
+              "1:1": {width: 1024, height: 1024}
+              "4:3": {width: 1024, height: 768}
+              "3:4": {width: 768, height: 1024}
+              "3:2": {width: 1536, height: 1024}
+              "2:3": {width: 1024, height: 1536}
+              "16:9": {width: 1792, height: 1008}
+              "9:16": {width: 1008, height: 1792}
+        num_images: num_images
+      media: {image_references: image_urls}
+    pricing:
+      basis: per_image
+      rates:
+        - {when: {quality: low, aspect_ratio: "1:1"}, usd: 0.00588}
+        - {when: {quality: medium, aspect_ratio: "1:1"}, usd: 0.01317}
+        - {when: {quality: high, aspect_ratio: "1:1"}, usd: 0.05268}
+        - {when: {quality: xhigh, aspect_ratio: "1:1"}, usd: 0.09366}
+        - {when: {quality: max, aspect_ratio: "1:1"}, usd: 0.21072}
+        - {when: {quality: low, aspect_ratio: "4:3"}, usd: 0.00402}
+        - {when: {quality: medium, aspect_ratio: "4:3"}, usd: 0.00903}
+        - {when: {quality: high, aspect_ratio: "4:3"}, usd: 0.03612}
+        - {when: {quality: xhigh, aspect_ratio: "4:3"}, usd: 0.0642}
+        - {when: {quality: max, aspect_ratio: "4:3"}, usd: 0.14445}
+        - {when: {quality: low, aspect_ratio: "3:4"}, usd: 0.00402}
+        - {when: {quality: medium, aspect_ratio: "3:4"}, usd: 0.00903}
+        - {when: {quality: high, aspect_ratio: "3:4"}, usd: 0.03612}
+        - {when: {quality: xhigh, aspect_ratio: "3:4"}, usd: 0.0642}
+        - {when: {quality: max, aspect_ratio: "3:4"}, usd: 0.14445}
+        - {when: {quality: low, aspect_ratio: "3:2"}, usd: 0.00474}
+        - {when: {quality: medium, aspect_ratio: "3:2"}, usd: 0.01029}
+        - {when: {quality: high, aspect_ratio: "3:2"}, usd: 0.04116}
+        - {when: {quality: xhigh, aspect_ratio: "3:2"}, usd: 0.07377}
+        - {when: {quality: max, aspect_ratio: "3:2"}, usd: 0.16464}
+        - {when: {quality: low, aspect_ratio: "2:3"}, usd: 0.00474}
+        - {when: {quality: medium, aspect_ratio: "2:3"}, usd: 0.01029}
+        - {when: {quality: high, aspect_ratio: "2:3"}, usd: 0.04116}
+        - {when: {quality: xhigh, aspect_ratio: "2:3"}, usd: 0.07377}
+        - {when: {quality: max, aspect_ratio: "2:3"}, usd: 0.16464}
+        - {when: {quality: low, aspect_ratio: "16:9"}, usd: 0.00441}
+        - {when: {quality: medium, aspect_ratio: "16:9"}, usd: 0.01029}
+        - {when: {quality: high, aspect_ratio: "16:9"}, usd: 0.0396}
+        - {when: {quality: xhigh, aspect_ratio: "16:9"}, usd: 0.07041}
+        - {when: {quality: max, aspect_ratio: "16:9"}, usd: 0.1584}
+        - {when: {quality: low, aspect_ratio: "9:16"}, usd: 0.00441}
+        - {when: {quality: medium, aspect_ratio: "9:16"}, usd: 0.01029}
+        - {when: {quality: high, aspect_ratio: "9:16"}, usd: 0.0396}
+        - {when: {quality: xhigh, aspect_ratio: "9:16"}, usd: 0.07041}
+        - {when: {quality: max, aspect_ratio: "9:16"}, usd: 0.1584}
+      # fal's table counts one input image; each further reference bills as image input ($8 per million tokens,
+      # about $0.0083 for a 1024x1024 picture)
+      extra:
+        - {quantity: "max(0, input_images - 1)", usd: 0.0083}  # inputs bill once per request
+      verified: 2026-10-19
+      source: "https://fal.ai/models/openai/gpt-image-2.5/flare/edit (per-image table incl. one input image; image input $8/M tokens)"
+    output: {path: images, kind: image, multiple: true}
+
+examples:
+  - name: t2i_smoke
+    mode: t2i
+    prompt: A vintage travel poster for a seaside town, bold flat colours, the words "Visit Porthleven" in large type.
+    params: {quality: low, num_images: 1}
+    smoke: true
+    expect: {cost_usd_range: [0, 0.02]}

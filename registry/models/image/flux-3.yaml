@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Verified 2026-10-19 against fal's per-endpoint OpenAPI (blackforestlabs/flux-3/text-to-image, /edit-image).
+id: flux-3
+name: FLUX 3
+family: flux
+vendor: black-forest-labs
+description: Black Forest Labs' flagship image model. Crisp detail and faithful prompt following, up to 4K, with reference edits.
+output_type: image
+status: active
+license_tier: commercial_api
+tags: [keyframes, edit, references, 4k]
+prompt: {max_chars: 3000, dialect: flux}
+aspect_ratios: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "4:5", "5:4"]
+
+parameters:
+  - {name: resolution, type: enum, options: ["1k", "2k", "4k"], default: "1k", ui: segmented,
+     help: "Priced by megapixel: 2K is about four times 1K, 4K about sixteen times."}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "4:5", "5:4"],
+     default: "16:9", ui: aspect}
+
+modes:
+  - id: t2i
+    label: Text to image
+    ops: [t2i]
+  - id: edit
+    label: Edit with references
+    ops: [i2i, multi_ref]
+    medias:
+      - {role: image_references, kinds: [image], label: Images, required: true, min: 1, max: 10}
+
+elements: {strategy: refs_native, ref_role: image_references}
+
+routes:
+  - id: flux-3@fal
+    provider: fal
+    modes:
+      t2i: {endpoint: blackforestlabs/flux-3/text-to-image}
+      edit: {endpoint: blackforestlabs/flux-3/edit-image}
+    map:
+      params:
+        resolution: resolution
+        aspect_ratio: aspect_ratio
+      media: {image_references: image_urls}
+    pricing:
+      basis: per_image
+      # $0.048 a megapixel: 1K is 1 MP, 4K 16 MP (fal's page); 2K taken as 4 MP
+      rates:
+        - {when: {resolution: "1k"}, usd: 0.048}
+        - {when: {resolution: "2k"}, usd: 0.192}
+        - {when: {resolution: "4k"}, usd: 0.768}
+      verified: 2026-10-19
+      source: "https://fal.ai/models/blackforestlabs/flux-3/text-to-image (1K, 1 MP, $0.048; up to 4K, 16 MP; $0.048/megapixel)"
+    output: {path: images, kind: image, multiple: true}
+
+examples:
+  - name: t2i_smoke
+    mode: t2i
+    prompt: A macro photograph of dew on a spider web at sunrise, every droplet catching the light.
+    params: {resolution: "1k"}
+    smoke: true
+    expect: {cost_usd_range: [0.03, 0.06]}

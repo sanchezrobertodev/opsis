@@ -170,6 +170,7 @@ def estimate(pricing: Pricing, params: dict[str, Any], prompt: str = "",
 
     rate = _pick_rate(pricing.rates, values)
     usd = rate.usd * quantity / rate.per * _apply_multipliers(pricing.multipliers, values)
+    usd += sum(x.usd * _evaluate(x.quantity, values) for x in pricing.extra)
     return _finish(usd, pricing, pricing.basis, quantity, rate.usd, values)
 
 

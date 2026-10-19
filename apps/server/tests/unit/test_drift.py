@@ -5,8 +5,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+from studio.config import get_settings
 from studio.registry import drift
-from studio.registry.loader import Registry
+from studio.registry.loader import Registry, load_registry
 from studio.registry.schema import ModelSpec
 
 SPEC = ModelSpec.model_validate({
@@ -220,3 +221,14 @@ async def test_fal_treats_a_text_answer_as_gone():
         pass
     else:
         raise AssertionError("a page instead of a schema means fal no longer serves it")
+
+
+def test_a_field_that_takes_named_sizes_or_objects_accepts_objects():
+    reg = load_registry(get_settings().resolve_registry_dir())
+    spec = reg.model("seedream-5")
+    route = spec.route("seedream-5@fal")
+    summary = drift.Summary.from_json({"input": {
+        "prompt": {"type": "string"}, "num_images": {"type": "integer"}, "image_urls": {"type": "array<string>"},
+        "image_size": {"type": "object<ImageSize>|string", "enum": ["square_hd", "auto_2K"]}}, "required": ["prompt"]})
+    target = drift.Target("fal", "bytedance/seedream/v5/pro/text-to-image", None)
+    assert drift.check_route(spec, route, spec.mode("t2i"), summary, target, False) == []

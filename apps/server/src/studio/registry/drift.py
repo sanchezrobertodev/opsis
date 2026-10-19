@@ -416,7 +416,10 @@ def check_route(spec: ModelSpec, route: Route, mode: Mode, summary: Summary, tar
             continue
         if "enum" in live:
             accepted = {str(v) for v in live["enum"]}
-            if bad := [v for v in values if v not in ("", None) and str(v) not in accepted]:
+            # a field that also takes an object (a named size or {width, height}) accepts the objects we send
+            takes_objects = "object" in live.get("type", "")
+            if bad := [v for v in values if v not in ("", None) and str(v) not in accepted
+                       and not (takes_objects and isinstance(v, dict))]:
                 note(f"{mode.id}: `{name}` can be {', '.join(map(str, bad))}, which the endpoint rejects "
                      f"(it takes {', '.join(map(str, live['enum']))})")
         elif (low := live.get("minimum")) is not None or live.get("maximum") is not None:
