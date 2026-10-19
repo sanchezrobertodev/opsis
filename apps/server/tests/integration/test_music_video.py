@@ -67,6 +67,7 @@ async def test_a_song_and_a_star_become_a_captioned_music_video(client, in_memor
     async with session_scope() as s:
         frame = await s.get(Generation, uuid.UUID(steps["frame[s01]"]["generation_id"]))
     assert frame and [(m["role"], m["asset_id"]) for m in frame.request["media"]] == [("image_references", star["id"])]
+    assert "not a collage" in frame.request["prompt"]  # one moment per picture, never panels
 
     cut = await step_input(run["id"], "cut")
     assert len(cut["blocks"]) == len(shots) and cut["gap_s"] == 0  # the song plays through, unbroken
