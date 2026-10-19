@@ -27,3 +27,16 @@ export function useRenderPreset() {
       unwrap(api.POST("/presets/{preset_id}/render", { params: { path: { preset_id: id } }, body })),
   });
 }
+
+export type Template = Schemas["TemplateOut"];
+
+export function useTemplates() {
+  return useQuery({ queryKey: ["templates"], queryFn: () => unwrap(api.GET("/templates")), staleTime: 60_000 });
+}
+
+export function useRenderTemplate() {
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Schemas["TemplateRenderIn"]) =>
+      unwrap(api.POST("/templates/{template_id}/render", { params: { path: { template_id: id } }, body })),
+  });
+}

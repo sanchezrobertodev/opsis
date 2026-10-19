@@ -1,0 +1,14 @@
+id: kids-song
+name: Kids song
+summary: A sung children's song with a picture for every verse and captions to sing along.
+recipe: faceless
+fields:
+  - key: topic
+    label: What the song is about
+    placeholder: brushing your teeth before bed
+input:
+  topic: "{topic}"
+  theme: kids
+  style: colorful-3d
+  format: song
+tags: [music]

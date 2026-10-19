@@ -8,8 +8,16 @@ import pytest
 
 from studio.config import get_settings
 from studio.registry.loader import load_registry
-from studio.registry.presets import PresetError, lint_presets, placeholders, render, render_prompt
-from studio.registry.schema import PresetSpec
+from studio.registry.presets import (
+    PresetError,
+    lint_presets,
+    lint_templates,
+    placeholders,
+    render,
+    render_prompt,
+    render_template,
+)
+from studio.registry.schema import PresetSpec, TemplateSpec
 
 REG = load_registry(get_settings().resolve_registry_dir())
 
@@ -67,3 +75,49 @@ def test_render_requires_inputs_and_keeps_only_declared_roles():
 ])
 def test_lint_catches_broken_presets(over, message):
     assert any(message in e for e in lint_one(preset(**over))), lint_one(preset(**over))
+
+
+# ---------------------------------------------------------------- templates (recipe runs)
+
+
+def template(**over) -> TemplateSpec:
+    base = {
+        "id": "t", "name": "Talk", "summary": "s", "recipe": "talking_shot",
+        "inputs": [{"key": "image_asset_id", "kind": "image", "label": "A portrait"}],
+        "fields": [{"key": "script", "label": "Script"}],
+        "input": {"script": "Hello, {script}", "models": [{"model_id": "kling-avatar-2"}]},
+    }
+    return TemplateSpec.model_validate({**base, **over})
+
+
+def lint_template(t: TemplateSpec) -> list[str]:
+    reg = copy.copy(REG)
+    reg.templates = {t.id: t}
+    return lint_templates(reg)
+
+
+def test_every_shipped_template_is_clean():
+    assert REG.templates, "registry/templates should ship some templates"
+    assert lint_templates(REG) == []
+
+
+def test_template_render_fills_blanks_and_media():
+    t = template()
+    with pytest.raises(PresetError, match="add a portrait"):
+        render_template(t, {"script": "world"}, {})
+    out = render_template(t, {"script": " world "}, {"image_asset_id": "a1"})
+    assert out == {"recipe": "talking_shot", "title": "Talk", "input": {
+        "script": "Hello, world", "models": [{"model_id": "kling-avatar-2"}], "image_asset_id": "a1"}}
+
+
+@pytest.mark.parametrize(("over", "message"), [
+    ({"recipe": "nope"}, "unknown recipe"),
+    ({"input": {"script": "{who}", "models": [{"model_id": "kling-avatar-2"}]}}, "undeclared fields"),
+    ({"input": {"script": "hi", "models": [{"model_id": "kling-avatar-2"}]}}, "never used"),
+    ({"input": {"script": "{script}", "models": []}}, "models"),
+    ({"input": {"script": "{script}", "models": [{"model_id": "veo-3.1"}]}}, "can't make a picture speak"),
+    ({"input": {"script": "{script}", "image_asset_id": "x", "models": [{"model_id": "kling-avatar-2"}]}},
+     "overwrite fixed input"),
+])
+def test_lint_catches_broken_templates(over, message):
+    assert any(message in e for e in lint_template(template(**over))), lint_template(template(**over))

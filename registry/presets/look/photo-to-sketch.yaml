@@ -1,0 +1,17 @@
+id: photo-to-sketch
+name: Photo to sketch
+summary: Redraw any photo as a pencil, ink or charcoal drawing.
+category: look
+model_id: nano-banana-2
+mode: edit
+inputs:
+  - {role: image_references, label: Your photo}
+fields:
+  - key: medium
+    label: Drawn with
+    placeholder: graphite pencil
+    default: graphite pencil
+prompt: >-
+  Redraw the reference photo as a hand-made {medium} drawing on textured paper: confident lines, natural
+  shading, the same composition and subject, no color unless the medium has it
+tags: [art]

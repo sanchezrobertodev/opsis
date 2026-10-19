@@ -44,8 +44,9 @@ export const STUDIOS: Studio[] = [
     summary: "Shots that continue from each other's last frame, joined into one cut.",
   },
   {
-    slug: "presets", name: "Presets", href: "/presets", icon: Sparkles, group: "create",
-    summary: "One-click camera moves, effects, looks and edits. Fill in a blank or two and generate.",
+    slug: "templates", name: "Templates", href: "/templates", icon: Sparkles, group: "create",
+    summary: "One-click effects, looks and photo tricks, and guided stories like explainers, kids songs and talking " +
+      "photos. Fill in a blank or two and generate.",
   },
   {
     slug: "edit", name: "Edit video", href: "/edit", icon: Scissors, group: "studios",

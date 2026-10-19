@@ -1,0 +1,21 @@
+id: action-figure
+name: Action figure
+summary: You as a boxed collectible figure, with accessories and packaging.
+category: character
+model_id: nano-banana-2
+mode: edit
+inputs:
+  - {role: image_references, label: Your photo}
+fields:
+  - key: accessories
+    label: Accessories in the box
+    placeholder: a laptop, a coffee cup and a skateboard
+  - key: name
+    label: Name on the box
+    placeholder: Weekend Hero
+    required: false
+prompt: >-
+  A collectible action figure of the person in the reference photo, sealed in a retail blister pack with
+  {accessories} in their own slots, the box titled {name}, glossy plastic, studio product photo, same face
+params: {aspect_ratio: "3:4"}
+tags: [toy, viral]

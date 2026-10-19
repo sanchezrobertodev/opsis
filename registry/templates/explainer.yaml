@@ -1,0 +1,21 @@
+id: explainer
+name: Explainer
+summary: A narrated explainer on any topic, with motion graphics, music and captions.
+recipe: faceless
+fields:
+  - key: topic
+    label: What to explain
+    placeholder: how vaccines teach the immune system
+  - key: notes
+    label: Anything the script should cover
+    placeholder: keep it for teenagers, end with one surprising fact
+    required: false
+    max_chars: 1000
+input:
+  topic: "{topic}"
+  notes: "{notes}"
+  theme: education
+  style: editorial-motion-graphics
+  format: stills
+  minutes: 1.5
+tags: [narrated]

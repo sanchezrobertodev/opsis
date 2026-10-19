@@ -113,6 +113,14 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   models/modes/params/moves, undeclared or unused blanks, and missing required inputs.
 - Rendering returns an ordinary generation request, so presets get the same routing and spend guard.
 
+## Adding a template (guided stories)
+- The Templates page (`/templates`, formerly Presets) shows presets and guided templates. A template is one YAML in
+  `registry/templates/<id>.yaml`: `recipe`, a fixed recipe `input` whose string values may hold `{key}` blanks from
+  `fields`, and `inputs` (`{key, kind, label}`: media whose asset id goes into the input at `key`). Rendering
+  (`POST /templates/{id}/render`, `registry/presets.py:render_template`) returns a `RunCreate`; the page estimates and
+  starts it like any run. The lint checks the recipe exists, blanks match fields, and a sample input passes the
+  recipe's `Input` model and `validate()` (unknown models, wrong lipsync modes).
+
 ## Pipelines (recipe runs)
 - `studio/pipelines/`: a recipe is a **pure planner**. `plan(input, settled_outputs)` returns every step it can
   define now (`generate`, `local`, `llm`, `checkpoint`), keyed by stable keys like `shot[02]`. The engine

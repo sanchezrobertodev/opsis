@@ -22,6 +22,7 @@ from studio.registry.schema import (
     Rate,
     Route,
     RouteMode,
+    TemplateSpec,
 )
 
 log = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class Registry:
     providers: dict[str, ProviderSpec]
     hash: str
     presets: dict[str, PresetSpec] = field(default_factory=dict)
+    templates: dict[str, TemplateSpec] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -157,12 +159,23 @@ def load_registry(root: Path) -> Registry:
             errors.append(f"{path.name}: duplicate preset id {preset.id}")
         presets[preset.id] = preset
 
-    from studio.registry.lint import lint  # local import: lint depends on Registry
-    from studio.registry.presets import lint_presets
+    templates: dict[str, TemplateSpec] = {}
+    for path, data in _read_yaml_dir(root / "templates", errors):
+        try:
+            template = TemplateSpec.model_validate(data)
+        except ValidationError as exc:
+            errors.append(f"{path.relative_to(root).as_posix()}: {exc}")
+            continue
+        if template.id in templates:
+            errors.append(f"{path.name}: duplicate template id {template.id}")
+        templates[template.id] = template
 
-    reg = Registry(models=models, providers=providers, hash=_digest(root), presets=presets)
+    from studio.registry.lint import lint  # local import: lint depends on Registry
+    from studio.registry.presets import lint_presets, lint_templates
+
+    reg = Registry(models=models, providers=providers, hash=_digest(root), presets=presets, templates=templates)
     lint_errors, lint_warnings = lint(reg)
-    reg.errors = errors + lint_errors + lint_presets(reg)
+    reg.errors = errors + lint_errors + lint_presets(reg) + lint_templates(reg)
     reg.warnings = lint_warnings
     if reg.errors:
         raise RegistryError(reg.errors)

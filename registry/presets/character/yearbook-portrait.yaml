@@ -1,0 +1,18 @@
+id: yearbook-portrait
+name: Yearbook portrait
+summary: Turn a selfie into a school yearbook photo from the decade you pick.
+category: character
+model_id: nano-banana-2
+mode: edit
+inputs:
+  - {role: image_references, label: Your photo}
+fields:
+  - key: decade
+    label: Which decade
+    placeholder: the 1990s
+    default: the 1990s
+prompt: >-
+  A school yearbook portrait of the person in the reference photo, taken in {decade}: period hairstyle,
+  clothes and makeup, classic studio backdrop, soft flash lighting, slightly faded film print, same face
+params: {aspect_ratio: "3:4"}
+tags: [retro, viral]

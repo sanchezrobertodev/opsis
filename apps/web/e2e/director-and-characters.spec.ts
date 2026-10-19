@@ -34,7 +34,7 @@ test("@mentions autocomplete saved characters and the preview describes them", a
 
 test("a preset fills in a blank and starts a normal take", async ({ page }) => {
   const place = `a misty fjord ${Date.now()}`;
-  await page.goto("/presets");
+  await page.goto("/templates");
   await page.getByRole("button", { name: /FPV dive/ }).click();
   await page.getByPlaceholder(/canyon river/).fill(place);
   await page.getByRole("button", { name: "Generate", exact: true }).click();
