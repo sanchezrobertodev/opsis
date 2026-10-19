@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 
 import pytest
 
@@ -121,3 +122,10 @@ def test_template_render_fills_blanks_and_media():
 ])
 def test_lint_catches_broken_templates(over, message):
     assert any(message in e for e in lint_template(template(**over))), lint_template(template(**over))
+
+
+def test_every_card_has_a_cover():
+    """The Templates page shows apps/web/public/covers/<id>.webp on each card (a drawn stand-in if it's missing)."""
+    covers = Path(__file__).resolve().parents[4] / "apps" / "web" / "public" / "covers"
+    missing = [i for i in [*REG.presets, *REG.templates] if not (covers / f"{i}.webp").exists()]
+    assert not missing, f"add covers for {missing}"
