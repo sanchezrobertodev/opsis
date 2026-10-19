@@ -130,3 +130,32 @@ async def test_a_saved_character_stars_in_the_music_video(client, in_memory_queu
         frame = await s.get(Generation, uuid.UUID(steps["frame[s01]"]["generation_id"]))
     assert frame and [m["asset_id"] for m in frame.request["media"]] == [star["images"][0]["asset"]["id"]]
     assert "Maya Lind" in frame.request["compiled_prompt"]
+
+
+async def test_a_brief_becomes_a_sung_song_and_its_music_video(client, in_memory_queue):
+    from test_faceless import answer
+
+    inp = {"brief": "two friends driving to the coast", "style": "indie pop", "minutes": 0.5, "captions": False}
+    est = (await client.post("/pipelines/estimate", json={"recipe": "music_video", "input": inp})).json()
+    assert est["generations"] == 1 + 1 + 5 + 5  # the song, its transcript, then 30 s of six-second shots
+
+    run = await start(client, "music_video", **inp)
+    await drain(in_memory_queue)
+    waiting = await get(client, run["id"])
+    assert waiting["status"] == "waiting" and [s["key"] for s in waiting["steps"]] == ["lyrics", "review"]
+    await answer(client, run["id"], "review", "approve")
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    steps = {s["key"]: s for s in done["steps"]}
+    sung = steps["sing"]["output"]["asset_id"]
+    async with session_scope() as s:
+        sing = await s.get(Generation, uuid.UUID(steps["sing"]["generation_id"]))
+        heard = await s.get(Generation, uuid.UUID(steps["transcribe"]["generation_id"]))
+    assert sing and sing.mode == "song" and "indie pop" in sing.request["prompt"]
+    assert heard and [m["asset_id"] for m in heard.request["media"]] == [sung]  # the new song is what's cut
+    assert (await step_input(run["id"], "parts"))["audio"] == sung
+
+    both = await client.post("/pipelines", json={"recipe": "music_video", "input": {
+        "song": str(uuid.uuid4()), "brief": "x"}})
+    assert both.status_code == 422 and "not both" in both.text

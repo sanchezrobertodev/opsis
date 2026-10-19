@@ -21,6 +21,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from studio.config import get_settings
 from studio.db.models import StepKind
 from studio.faceless.catalog import get_catalog
+from studio.faceless.writer import (
+    LINES_PER_SECTION,
+    MAX_SECTIONS,
+    MAX_SONG_S,
+    Song,
+    fit_song,
+    section_seconds,
+    song_lines,
+    song_text,
+)
+from studio.faceless.writer import _mock_song as mock_song
 from studio.llm.client import LLMError, LLMResult, structured
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import (
@@ -40,7 +51,14 @@ SONG_GUESS_S = 180  # the estimate before the song is measured: a three-minute s
 
 
 class MusicVideoInput(BaseModel):
-    song: uuid.UUID = Field(description="The song (an audio file or a clip with sound)")
+    song: uuid.UUID | None = Field(None, description="The song (an audio file or a clip with sound)")
+    brief: str = Field("", max_length=500, description="Or what a new song should be about: Claude writes the "
+                                                       "lyrics and a music model sings them")
+    style: str = Field("", max_length=200, description="How the new song sounds: genre, instruments, voice")
+    minutes: float = Field(1.5, ge=0.5, le=4, description="About how long the new song runs")
+    language: str = Field("English", max_length=40)
+    music_model: str = "eleven-music"
+    review_lyrics: bool = Field(True, description="Stop for approval before the new song is sung")
     idea: str = Field("", max_length=500, description="What the video is about or how it looks")
     character_image: uuid.UUID | None = Field(None, description="Someone to star in every shot")
     character: str | None = Field(None, pattern=SLUG, description="Or a saved character's @handle to star")
@@ -57,11 +75,46 @@ class MusicVideoInput(BaseModel):
     def _one_star(self) -> MusicVideoInput:
         if self.character_image is not None and self.character is not None:
             raise ValueError("give a picture of the star or pick a saved character, not both")
+        if (self.song is None) == (not self.brief.strip()):
+            raise ValueError("give a song or a brief for a new one, not both")
         return self
 
     @property
     def star(self) -> bool:
         return self.character_image is not None or self.character is not None
+
+
+# ---------------------------------------------------------------- a new song (Claude writes, a music model sings)
+
+
+LYRICS_SYSTEM = """You write songs for music videos: the lyrics are sung by a vocal music model, then the video is cut
+to them.
+
+Write verses and a repeated chorus (repeat the chorus section in full each time it comes back), in at most 12 sections.
+Lines are short, rhythmic and singable, with natural rhymes, in the voice and mood the brief asks for. Hit the target
+length closely: each line takes about four seconds to sing.
+
+Give `music` as a few comma-separated styles (genre, instruments, voice, tempo) that fit the brief. Give each section a
+`picture` (one concrete moment it suggests, no art-style words) and `world` one sentence on the look; the video's
+director uses them as hints."""
+
+
+async def write_lyrics(session: AsyncSession, user_id: uuid.UUID, *, brief: str, style: str, minutes: float,
+                       language: str) -> LLMResult[Song]:
+    prompt = "\n".join(line for line in [
+        f"Brief: {brief}",
+        f"How it should sound: {style}" if style else "",
+        f"Length: about {song_lines(minutes)} sung lines in all, choruses included.",
+        f"Language: {language}.",
+    ] if line)
+    result = await structured(
+        session, user_id, purpose="music_video.lyrics", model=get_settings().llm_smart_model, system=LYRICS_SYSTEM,
+        prompt=prompt, output=Song, mock=lambda: mock_song(brief), effort="medium", max_tokens=8000)
+    song = result.output
+    song.sections = [x for x in song.sections if any(line.strip() for line in x.lines)][:MAX_SECTIONS]
+    if not song.sections:
+        raise LLMError("Claude wrote a song without lyrics. Try again.", retryable=True)
+    return result
 
 
 # ---------------------------------------------------------------- the shot plan (Claude)
@@ -137,7 +190,7 @@ class MusicVideoRecipe(Recipe):
     Input = MusicVideoInput
 
     def title(self, inp: MusicVideoInput) -> str:
-        return f"Music video: {inp.idea.strip()[:80] or 'your song'}"
+        return f"Music video: {(inp.idea or inp.brief).strip()[:80] or 'your song'}"
 
     def validate(self, inp: MusicVideoInput, reg: Registry) -> list[str]:
         errors = []
@@ -150,6 +203,8 @@ class MusicVideoRecipe(Recipe):
              "draw a picture from a reference photo" if star else "draw a picture from text"),
             (inp.video_model, start_frame_mode, "animate a picture"),
         ]
+        if inp.song is None:
+            checks.append((inp.music_model, lambda s: mode_with_op(s, "song"), "sing a song from its lyrics"))
         for model_id, find, what in checks:
             spec = reg.model(model_id)
             if spec is None:
@@ -157,6 +212,42 @@ class MusicVideoRecipe(Recipe):
             elif find(spec) is None:
                 errors.append(f"{spec.name} can't {what}")
         return errors
+
+    def _sing_params(self, inp: MusicVideoInput, reg: Registry, sections: list[list[str]],
+                     names: list[str] | None = None) -> dict[str, Any]:
+        """The sung sections, each as long as its lines need, fitted within the longest song the model makes."""
+        limit = getattr(reg.models[inp.music_model].param("duration"), "max", None) or MAX_SONG_S
+        seconds = fit_song([section_seconds(lines) for lines in sections], float(limit))
+        return {"sections": [{"name": names[i] if names else f"Part {i + 1}", "lines": lines, "duration": d}
+                             for i, (lines, d) in enumerate(zip(sections, seconds, strict=True))]}
+
+    def _song(self, inp: MusicVideoInput, settled: Settled, reg: Registry) -> tuple[list[StepSpec], str | None]:
+        """The steps that make a new song from the brief, and the song's asset once it's sung (or the upload)."""
+        if inp.song is not None:
+            return [], str(inp.song)
+        specs = [StepSpec("lyrics", StepKind.llm, "Write the song", {
+            "op": "music_video_lyrics", "brief": inp.brief, "style": inp.style, "minutes": inp.minutes,
+            "language": inp.language})]
+        written = ok(settled, "lyrics")
+        if written is None:
+            return specs, None
+        song = Song.model_validate(written["song"])
+        after: tuple[str, ...] = ("lyrics",)
+        if inp.review_lyrics:
+            specs.append(StepSpec("review", StepKind.checkpoint, "Approve the lyrics", {
+                "type": "approve", "options": [{"value": "approve", "label": "Sing these lyrics"}],
+                "script": song_text(song), "title": song.title}, after))
+            if ok(settled, "review") is None:
+                return specs, None
+            after = ("review",)
+        music = reg.models[inp.music_model]
+        specs.append(StepSpec("sing", StepKind.generate, "Sing the song", {
+            "model_id": music.id, "mode": mode_with_op(music, "song").id,  # type: ignore[union-attr]
+            "prompt": ", ".join(x for x in (inp.style, song.music) if x),
+            "params": self._sing_params(inp, reg, [x.lines for x in song.sections], [x.name for x in song.sections]),
+            "media": []}, after))
+        sung = ok(settled, "sing")
+        return specs, sung["asset_id"] if sung else None
 
     def _ref_role(self, reg: Registry, inp: MusicVideoInput) -> str:
         return (reg.models[inp.image_model].elements or {}).get("ref_role", "image_references")
@@ -178,16 +269,27 @@ class MusicVideoRecipe(Recipe):
         return with_param(spec, mode, params, "duration", fit_duration(spec, mode, seconds))
 
     def jobs(self, inp: MusicVideoInput, reg: Registry) -> list[PlannedJob]:
-        """The song's length is only known once it's measured, so this prices a three-minute song (the transcript
-        itself at the song's real length)."""
+        """A song's length is only known once it's measured, so this prices a three-minute upload (the transcript itself
+        at its real length), or a new song of about `minutes`."""
         heard, image, video = (reg.models[m] for m in (inp.transcribe_model, inp.image_model, inp.video_model))
-        target = max(TARGET_S, SONG_GUESS_S / inp.max_shots)
-        n = min(inp.max_shots, math.ceil(SONG_GUESS_S / target))
+        length = SONG_GUESS_S if inp.song else inp.minutes * 60
+        target = max(TARGET_S, length / inp.max_shots)
+        n = min(inp.max_shots, math.ceil(length / target))
         pic = _picture_mode(image, inp.star)
         assert pic is not None
         refs = ((self._ref_role(reg, inp), str(inp.character_image)),) if inp.character_image else ()
-        out = [PlannedJob(heard.id, mode_with_op(heard, "transcribe").id, {}, ("input_audio",),  # type: ignore[union-attr]
-                          media=(("input_audio", str(inp.song)),))]
+        out = []
+        if inp.song is None:  # before the lyrics exist: about four lines a section
+            lines = song_lines(inp.minutes)
+            k = min(MAX_SECTIONS, max(1, math.ceil(lines / LINES_PER_SECTION)))
+            sections = [["la"] * (lines // k + (i < lines % k)) for i in range(k)]
+            out.append(PlannedJob(inp.music_model, mode_with_op(reg.models[inp.music_model], "song").id,  # type: ignore[union-attr]
+                                  self._sing_params(inp, reg, sections)))
+            out.append(PlannedJob(heard.id, mode_with_op(heard, "transcribe").id, {}, ("input_audio",),  # type: ignore[union-attr]
+                                  planned_seconds=(("input_audio", length),)))
+        else:
+            out.append(PlannedJob(heard.id, mode_with_op(heard, "transcribe").id, {}, ("input_audio",),  # type: ignore[union-attr]
+                                  media=(("input_audio", str(inp.song)),)))
         roles = (self._ref_role(reg, inp),) if inp.star else ()  # a saved character's pictures come with the mention
         out += [PlannedJob(image.id, pic.id, self._frame_params(inp, reg), roles, media=refs)
                 for _ in range(n)]
@@ -197,14 +299,17 @@ class MusicVideoRecipe(Recipe):
 
     def plan(self, inp: MusicVideoInput, settled: Settled, reg: Registry) -> list[StepSpec]:
         heard = reg.models[inp.transcribe_model]
-        specs = [StepSpec("transcribe", StepKind.generate, "Hear the lyrics", {
+        specs, song = self._song(inp, settled, reg)
+        if song is None:
+            return specs
+        specs.append(StepSpec("transcribe", StepKind.generate, "Hear the lyrics", {
             "model_id": heard.id, "mode": mode_with_op(heard, "transcribe").id, "prompt": "",  # type: ignore[union-attr]
-            "params": {}, "media": [{"role": "input_audio", "asset_id": str(inp.song)}]})]
+            "params": {}, "media": [{"role": "input_audio", "asset_id": song}]}, ("sing",) if inp.song is None else ()))
         script = ok(settled, "transcribe")
         if script is None:
             return specs
         specs.append(StepSpec("shots", StepKind.local, "Cut the song into shots", {
-            "op": "lyric_shots", "audio": str(inp.song), "transcript": script["asset_id"], "max_shots": inp.max_shots,
+            "op": "lyric_shots", "audio": song, "transcript": script["asset_id"], "max_shots": inp.max_shots,
             "target_s": TARGET_S, "min_s": MIN_S, "max_s": self._max_s(inp, reg)}, ("transcribe",)))
         cut = ok(settled, "shots")
         if cut is None:
@@ -214,7 +319,7 @@ class MusicVideoRecipe(Recipe):
             "op": "music_video_plan", "sections": [s["text"] for s in sections], "idea": inp.idea,
             "star": inp.star, "character": inp.character}, ("shots",)))
         specs.append(StepSpec("parts", StepKind.local, "Cut the song at the shots", {
-            "op": "split_audio", "audio": str(inp.song), "seconds": cut["seconds"], "title": "Music video"},
+            "op": "split_audio", "audio": song, "seconds": cut["seconds"], "title": "Music video"},
             ("shots",)))
         plan = ok(settled, "plan")
         if plan is None:

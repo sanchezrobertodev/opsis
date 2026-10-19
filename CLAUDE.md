@@ -151,7 +151,10 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   cut at the breaths nearest ~6 s, 3-10 s each) -> `plan` (Claude: a visual per section from its lyrics) -> a picture
   and a clip per shot (a failed clip shows its picture) -> `parts` (the song cut at the shots) -> `cut` (gap 0, so the
   song plays unbroken) -> `captions` with each shot's transcript words (`captions` op `words`). An instrumental (no
-  words heard) gets shots from the idea and no captions. The estimate prices a three-minute song.
+  words heard) gets shots from the idea and no captions. The estimate prices a three-minute song. Given a `brief`
+  instead of a song, it first writes one: `lyrics` (Claude, `music_video_lyrics`, the Faceless `Song` shape) ->
+  `review` (approve the lyrics) -> `sing` (the music model's `song` mode, sections timed like the Kids song), then the
+  sung song goes through the same steps; the estimate then prices a song of about `minutes`.
 - Speech-to-text models have `output_type: text`; their route decodes the answer into a transcript asset (kind
   `subtitle`, JSON `{"words": [{text, start, end}]}`, `transcript.py:words_json`). The mock hears a "la" every half
   second with a breath after every eight.
