@@ -41,14 +41,18 @@ def mock(length: float) -> dict[str, Any]:
     return {"words": words}
 
 
-def shots(words: list[dict[str, Any]], total: float, *, target_s: float, min_s: float, max_s: float) -> list[dict]:
-    """Cut [0, total] into consecutive shots of about `target_s` (never over `max_s`, rarely under `min_s`), each
-    cut at the longest pause between words in its window, so a shot never breaks mid-word when a pause exists.
-    Each shot carries its words, timed from its own start."""
+def shots(words: list[dict[str, Any]], total: float, *, target_s: float, min_s: float, max_s: float,
+          max_shots: int) -> list[dict]:
+    """Cut [0, total] into at most `max_shots` consecutive shots of about `target_s` (never over `max_s`, rarely under
+    `min_s`), each cut at a pause in the singing near the target, so a shot never breaks mid-word when a pause exists.
+    Each shot carries its words, timed from its own start. Needs total <= max_shots * max_s."""
     gaps = [((a["end"] + b["start"]) / 2, b["start"] - a["end"]) for a, b in itertools.pairwise(words)]
     cuts, t0 = [], 0.0
     while total - t0 > max_s:
-        lo, hi, ideal = t0 + min_s, t0 + max_s, t0 + target_s
+        # every cut leaves a remainder the shots still allowed can cover, so there are never more than max_shots
+        left = max_shots - len(cuts) - 1
+        lo, hi = max(t0 + min_s, total - left * max_s), t0 + max_s
+        ideal = t0 + max(target_s, (total - t0) / (left + 1))  # what the shots still allowed average out to
         if total - hi < min_s:  # leave the last shot room
             hi = total - min_s
         window = [(at, gap) for at, gap in gaps if lo <= at <= hi]

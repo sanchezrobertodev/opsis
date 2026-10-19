@@ -261,7 +261,7 @@ async def lyric_shots(session: AsyncSession, run: PipelineRun, step: PipelineSte
     target = max(float(inp["target_s"]), total / float(inp["max_shots"]))
     words = read_transcript(get_storage().path_for(script.storage_key))
     cut = lyric_cuts(words, total, target_s=target, min_s=min(float(inp["min_s"]), target),
-                     max_s=float(inp["max_s"]))
+                     max_s=float(inp["max_s"]), max_shots=int(inp["max_shots"]))
     return {"shots": cut, "seconds": [round(s["end"] - s["start"], 3) for s in cut], "lyrics": bool(words)}
 
 

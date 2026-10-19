@@ -108,8 +108,9 @@ def route_outputs(result: Any, spec: OutputSpec) -> list[ProviderOutput]:
     An empty list means the main output is missing (extras alone don't count as a result). A route that decodes its
     answer gets one output holding the value at `path`, made into a file at ingest."""
     if spec.decode:
-        value = next((v for alt in spec.path.split("|") if (v := dig(result, alt.strip()))), None)
-        main = [ProviderOutput(index=0, kind=spec.kind, data=value)] if value else []
+        # an empty answer is still an answer (no words heard in an instrumental); only a missing one isn't
+        value = next((v for alt in spec.path.split("|") if (v := dig(result, alt.strip())) is not None), None)
+        main = [ProviderOutput(index=0, kind=spec.kind, data=value)] if value is not None else []
     else:
         main = extract_outputs(result, spec.path, spec.kind)
     if not main:
