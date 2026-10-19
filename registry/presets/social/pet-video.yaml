@@ -1,0 +1,16 @@
+id: pet-video
+name: Pet video
+summary: Bring a photo of your pet to life doing something fun, with sound.
+category: social
+model_id: ltx-2.5
+mode: i2v
+inputs:
+  - {role: start_image, label: A photo of your pet}
+fields:
+  - key: action
+    label: What your pet does
+    placeholder: chases a butterfly across the garden, then sneezes
+prompt: >-
+  The pet in the photo {action}, natural animal movement, soft fur detail, playful and charming, real sounds
+params: {duration: 6}
+tags: [pets, viral]

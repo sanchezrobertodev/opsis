@@ -18,6 +18,7 @@ from studio.registry.schema import (
     PresetField,
     PromptSpec,
     Rule,
+    TemplateInput,
     VirtualSpec,
 )
 
@@ -451,6 +452,24 @@ class PresetRenderOut(ApiModel):
     params: dict[str, Any]
     media: list[MediaInput]
     direction: ShotDirection | None = None
+
+
+class TemplateOut(ApiModel):
+    """A guided template: a recipe run that asks only for these answers and inputs."""
+
+    id: str
+    name: str
+    summary: str
+    tags: list[str]
+    recipe: str
+    recipe_name: str
+    fields: list[PresetField]
+    inputs: list[TemplateInput]
+
+
+class TemplateRenderIn(ApiModel):
+    fields: dict[str, str] = {}
+    media: dict[str, uuid.UUID] = Field({}, description="Input key -> asset id")
 
 
 # ---------------------------------------------------------------- Claude

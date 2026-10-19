@@ -1,0 +1,15 @@
+id: talking-photo
+name: Talking photo
+summary: Make a portrait speak your script, with lips, face and head moving to the voice.
+recipe: talking_shot
+inputs:
+  - {key: image_asset_id, kind: image, label: A portrait}
+fields:
+  - key: script
+    label: What they say
+    placeholder: Hi! I'm Ana, and today I'll show you three tricks for better coffee at home.
+    max_chars: 2000
+input:
+  script: "{script}"
+  models: [{model_id: kling-avatar-2}]
+tags: [lipsync]

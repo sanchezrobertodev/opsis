@@ -53,3 +53,24 @@ async def test_render_then_generate(client):
 
 async def test_unknown_preset_is_404(client):
     assert (await client.post("/presets/nope/render", json={})).status_code == 404
+
+
+async def test_template_renders_a_run_that_starts(client):
+    r = await client.get("/templates")
+    assert r.status_code == 200
+    explainer = {t["id"]: t for t in r.json()}["explainer"]
+    assert explainer["recipe_name"] and explainer["fields"][0]["key"] == "topic"
+
+    missing = await client.post("/templates/explainer/render", json={})
+    assert missing.status_code == 422 and missing.json()["errors"] == ["What to explain is required"]
+
+    r = await client.post("/templates/explainer/render", json={"fields": {"topic": "why the sky is blue"}})
+    assert r.status_code == 200, r.text
+    run = r.json()
+    assert run["recipe"] == "faceless" and run["input"]["topic"] == "why the sky is blue"
+    assert run["input"]["theme"] == "education" and run["input"]["notes"] == ""
+
+    started = await client.post("/pipelines", json=run)
+    assert started.status_code == 201, started.text
+    assert started.json()["recipe"] == "faceless"
+    assert (await client.post("/templates/nope/render", json={})).status_code == 404

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-from studio.registry.schema import PresetSpec
+from studio.registry.schema import PresetField, PresetSpec, TemplateSpec
 from studio.registry.validate import MediaRef, RequestError, normalize
 
 if TYPE_CHECKING:
@@ -31,22 +31,31 @@ def placeholders(template: str) -> list[str]:
     return list(dict.fromkeys(PLACEHOLDER.findall(template)))
 
 
-def render_prompt(preset: PresetSpec, values: dict[str, str]) -> str:
-    """Fill {key} blanks. Unknown keys are ignored; missing required ones are an error."""
+def _answers(fields: list[PresetField], values: dict[str, str]) -> dict[str, str]:
+    """Each field's tidied answer (or default). Missing required ones are an error."""
     errors: list[str] = []
     filled: dict[str, str] = {}
-    for f in preset.fields:
+    for f in fields:
         value = " ".join(str(values.get(f.key) or "").split())[: f.max_chars] or f.default
         if not value and f.required:
             errors.append(f"{f.label} is required")
         filled[f.key] = value
     if errors:
         raise PresetError(errors)
-    text = PLACEHOLDER.sub(lambda m: filled.get(m.group(1), ""), preset.prompt)
+    return filled
+
+
+def _fill(template: str, filled: dict[str, str]) -> str:
+    text = PLACEHOLDER.sub(lambda m: filled.get(m.group(1), ""), template)
     # optional blanks left empty shouldn't leave stray punctuation or double spaces behind
     text = re.sub(r"\s+([,.;:])", r"\1", text)
     text = re.sub(r",\s*,", ",", text)
     return " ".join(text.split()).strip(" ,")
+
+
+def render_prompt(preset: PresetSpec, values: dict[str, str]) -> str:
+    """Fill {key} blanks. Unknown keys are ignored; missing required ones are an error."""
+    return _fill(preset.prompt, _answers(preset.fields, values))
 
 
 def render(preset: PresetSpec, values: dict[str, str], media: list[dict[str, str]]) -> dict[str, Any]:
@@ -114,4 +123,65 @@ def lint_presets(reg: Registry) -> list[str]:
                 errors.append(f"{where}: direction: {exc.errors()[0]['msg']}")
                 continue
             errors += [f"{where}: {e}" for e in unknown_ids(d, library)]
+    return errors
+
+
+def _strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+def _filled(value: Any, filled: dict[str, str]) -> Any:
+    if isinstance(value, str):
+        return _fill(value, filled) if PLACEHOLDER.search(value) else value
+    if isinstance(value, dict):
+        return {k: _filled(v, filled) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_filled(v, filled) for v in value]
+    return value
+
+
+def render_template(template: TemplateSpec, values: dict[str, str], media: dict[str, str]) -> dict[str, Any]:
+    """The run this template starts with these answers and inputs (media: input key -> asset id)."""
+    missing = [i.label for i in template.inputs if not media.get(i.key)]
+    if missing:
+        raise PresetError([f"add {', '.join(missing).lower()}"])
+    inp = _filled(template.input, _answers(template.fields, values))
+    inp |= {i.key: media[i.key] for i in template.inputs}
+    return {"recipe": template.recipe, "input": inp, "title": template.name}
+
+
+def lint_templates(reg: Registry) -> list[str]:
+    from studio.pipelines.recipes import get_recipe  # local import: recipes depend on the registry
+
+    errors: list[str] = []
+    for t in reg.templates.values():
+        where = f"template {t.id}"
+        recipe = get_recipe(t.recipe)
+        if recipe is None:
+            errors.append(f"{where}: unknown recipe {t.recipe!r}")
+            continue
+        keys = [f.key for f in t.fields]
+        used = {k for s in _strings(t.input) for k in placeholders(s)}
+        if len(keys) != len(set(keys)):
+            errors.append(f"{where}: duplicate field keys")
+        if unknown := used - set(keys):
+            errors.append(f"{where}: input uses undeclared fields {sorted(unknown)}")
+        if unused := set(keys) - used:
+            errors.append(f"{where}: fields never used in the input {sorted(unused)}")
+        if clash := {i.key for i in t.inputs} & set(t.input):
+            errors.append(f"{where}: inputs overwrite fixed input {sorted(clash)}")
+        sample = render_template(t, {f.key: f.placeholder or f.label for f in t.fields},
+                                 {i.key: "00000000-0000-7000-8000-000000000000" for i in t.inputs})
+        try:
+            inp = recipe.Input.model_validate(sample["input"])
+        except ValidationError as exc:
+            errors += [f"{where}: {'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors()]
+            continue
+        errors += [f"{where}: {e}" for e in recipe.validate(inp, reg)]
     return errors

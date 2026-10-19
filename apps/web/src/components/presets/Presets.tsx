@@ -1,18 +1,29 @@
 "use client";
 
-import { Package, Palette, Scissors, Smartphone, Sparkles, UserRound } from "lucide-react";
+import { BookOpen, Package, Palette, Scissors, Smartphone, Sparkles, UserRound } from "lucide-react";
+import type { Schemas } from "@studio/api-client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { type SlotAsset, useDraft } from "@/lib/draft";
-import { CATEGORY_LABEL, type Preset, type PresetCategory, usePresets, useRenderPreset } from "@/lib/presets";
+import {
+  CATEGORY_LABEL,
+  type Preset,
+  type PresetCategory,
+  type Template,
+  usePresets,
+  useRenderPreset,
+  useRenderTemplate,
+  useTemplates,
+} from "@/lib/presets";
 import { useCreateGeneration } from "@/lib/queries";
+import { useEstimateRun, useStartRun } from "@/lib/runs";
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 
-const FILTERS = ["all", "camera", "effects", "look", "character", "product", "social", "edit"] as const;
+const FILTERS = ["all", "guided", "camera", "effects", "look", "character", "product", "social", "edit"] as const;
 type Filter = (typeof FILTERS)[number];
 
 const CATEGORY_ICON: Record<PresetCategory, typeof Sparkles> = {
@@ -39,8 +50,11 @@ function priceText(p: Preset) {
 export function Presets() {
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<Preset | null>(null);
+  const [openTemplate, setOpenTemplate] = useState<Template | null>(null);
   const { data, isLoading } = usePresets();
+  const { data: templates } = useTemplates();
   const items = (data ?? []).filter((p) => filter === "all" || p.category === filter);
+  const guided = filter === "all" || filter === "guided" ? (templates ?? []) : [];
 
   return (
     <div className="h-full overflow-y-auto p-6 scrollbar-quiet">
@@ -49,13 +63,18 @@ export function Presets() {
           label="Show"
           value={filter}
           options={FILTERS}
-          render={(f) => (f === "all" ? "Everything" : CATEGORY_LABEL[f])}
+          render={(f) => (f === "all" ? "Everything" : f === "guided" ? "Stories" : CATEGORY_LABEL[f])}
           onChange={setFilter}
         />
       </div>
 
       {isLoading ? null : (
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-x-5 gap-y-7">
+          {guided.map((t) => (
+            <li key={`t-${t.id}`}>
+              <TemplateCard template={t} onOpen={() => setOpenTemplate(t)} />
+            </li>
+          ))}
           {items.map((p) => (
             <li key={p.id}>
               <PresetCard preset={p} onOpen={() => setOpen(p)} />
@@ -66,6 +85,9 @@ export function Presets() {
 
       <Dialog open={open !== null} onClose={() => setOpen(null)} title={open?.name ?? ""} wide>
         {open && <PresetForm key={open.id} preset={open} onDone={() => setOpen(null)} />}
+      </Dialog>
+      <Dialog open={openTemplate !== null} onClose={() => setOpenTemplate(null)} title={openTemplate?.name ?? ""} wide>
+        {openTemplate && <TemplateForm key={openTemplate.id} template={openTemplate} />}
       </Dialog>
     </div>
   );
@@ -261,6 +283,167 @@ function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) 
               Generate
             </Button>
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TemplateCard({ template, onOpen }: { template: Template; onOpen: () => void }) {
+  const needs = template.inputs.map((i) => i.label.toLowerCase());
+  return (
+    <button type="button" onClick={onOpen} className="group block w-full text-left">
+      <div className="grid h-40 place-items-center rounded-[var(--radius-frame)] bg-panel transition-colors group-hover:bg-raised">
+        <BookOpen aria-hidden className="size-6 text-tungsten" />
+      </div>
+      <p className="type-title mt-3 text-[15px]">{template.name}</p>
+      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">{template.summary}</p>
+      <p className="tabular mt-1.5 text-2xs text-faint">
+        Guided, {template.recipe_name.toLowerCase()}
+        {needs.length > 0 && <>. Needs {needs.join(" and ")}</>}
+      </p>
+    </button>
+  );
+}
+
+const ROLE_FOR_KIND = { image: "start_image", video: "input_video", audio: "input_audio" } as const;
+
+/** A guided template: answer its blanks, add its media, and it starts a run you follow on the Runs page. */
+function TemplateForm({ template }: { template: Template }) {
+  const router = useRouter();
+  const renderTemplate = useRenderTemplate();
+  const start = useStartRun();
+  const [values, setValues] = useState<Record<string, string>>(
+    () => Object.fromEntries(template.fields.map((f) => [f.key, f.default ?? ""])),
+  );
+  const [media, setMedia] = useState<Record<string, SlotAsset[]>>({});
+  const [confirm, setConfirm] = useState<number | null>(null);
+  const [run, setRun] = useState<Schemas["RunCreate"] | null>(null);
+  const estimate = useEstimateRun(run);
+  const busy = renderTemplate.isPending || start.isPending;
+
+  const missing = [
+    ...template.fields.filter((f) => f.required && !values[f.key]?.trim()).map((f) => f.label),
+    ...template.inputs.filter((i) => !media[i.key]?.length).map((i) => i.label),
+  ];
+
+  async function rendered() {
+    const body = await renderTemplate.mutateAsync({
+      id: template.id,
+      fields: values,
+      media: Object.fromEntries(Object.entries(media).flatMap(([key, list]) => (list[0] ? [[key, list[0].id]] : []))),
+    });
+    setRun(body);
+    return body;
+  }
+
+  async function generate(confirmCost?: number) {
+    try {
+      const body = await rendered();
+      const started = await start.mutateAsync({ ...body, confirm_cost_usd: confirmCost ?? null });
+      toast(`${template.name} started`);
+      router.push(`/runs/${started.id}`);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setConfirm((err.body as { estimate_usd: number }).estimate_usd);
+        return;
+      }
+      toast.error(err instanceof Error ? err.message : "Could not start it");
+    }
+  }
+
+  const field =
+    "rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 py-2.5 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60";
+  const est = estimate.data;
+
+  return (
+    <div className="grid gap-6 md:grid-cols-[1.3fr_1fr]">
+      <div className="space-y-4">
+        <p className="leading-relaxed text-chalk">{template.summary}</p>
+        {template.inputs.map((i) => (
+          <MediaSlotField
+            key={i.key}
+            slot={{ role: ROLE_FOR_KIND[i.kind], kinds: [i.kind], label: i.label, required: true, min: 1, max: 1, auto: false }}
+            value={media[i.key] ?? []}
+            onAdd={(a) => {
+              setMedia((m) => ({ ...m, [i.key]: [a] }));
+              setRun(null);
+            }}
+            onRemove={() => {
+              setMedia((m) => ({ ...m, [i.key]: [] }));
+              setRun(null);
+            }}
+          />
+        ))}
+        {template.fields.map((f) => (
+          <label key={f.key} className="flex flex-col gap-1.5 text-xs text-muted">
+            <span>
+              {f.label}
+              {!f.required && <span className="text-faint"> (optional)</span>}
+            </span>
+            <textarea
+              rows={f.max_chars > 300 ? 4 : 1}
+              value={values[f.key] ?? ""}
+              onChange={(e) => {
+                setValues((v) => ({ ...v, [f.key]: e.target.value }));
+                setRun(null); // the estimate was for the old answers
+              }}
+              maxLength={f.max_chars}
+              placeholder={f.placeholder ? `e.g. ${f.placeholder}` : undefined}
+              className={cn(field, "resize-none")}
+            />
+          </label>
+        ))}
+      </div>
+
+      <aside className="space-y-4 rounded-[var(--radius-control)] bg-bay p-4 text-xs">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+          <dt className="text-faint">Runs</dt>
+          <dd className="text-chalk">{template.recipe_name}</dd>
+          <dt className="text-faint">Cost</dt>
+          <dd className="text-chalk">
+            {est ? (
+              <>
+                {usd(est.estimate_usd)} now
+                {est.live_estimate_usd != null && est.live_estimate_usd !== est.estimate_usd && (
+                  <span className="text-faint">, {usd(est.live_estimate_usd)} live</span>
+                )}
+                <span className="text-faint">, capped at {usd(est.cap_usd)}</span>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="text-muted underline-offset-2 hover:underline disabled:opacity-50"
+                disabled={busy || missing.length > 0}
+                onClick={() => void rendered().catch(() => undefined)}
+              >
+                Check the cost
+              </button>
+            )}
+          </dd>
+        </dl>
+        <p className="leading-relaxed text-faint">
+          It runs step by step on the Runs page, and stops to ask you where the recipe has a checkpoint, like approving
+          the script.
+        </p>
+      </aside>
+
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line-soft pt-4 md:col-span-2">
+        {missing.length > 0 && <p className="mr-auto text-xs text-faint">Add {missing.join(", ").toLowerCase()} to start.</p>}
+        {confirm != null ? (
+          <>
+            <p className="mr-auto text-xs text-chalk">This run is estimated at {usd(confirm)}.</p>
+            <Button type="button" tone="ghost" onClick={() => setConfirm(null)}>
+              Cancel
+            </Button>
+            <Button type="button" tone="primary" onClick={() => void generate(confirm)} disabled={busy}>
+              Start for {usd(confirm)}
+            </Button>
+          </>
+        ) : (
+          <Button type="button" tone="primary" onClick={() => void generate()} disabled={busy || missing.length > 0}>
+            Start
+          </Button>
         )}
       </div>
     </div>

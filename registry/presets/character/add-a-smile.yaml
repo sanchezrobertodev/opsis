@@ -1,0 +1,17 @@
+id: add-a-smile
+name: Add a smile
+summary: A natural, warm smile on a portrait, keeping the person recognizable.
+category: character
+model_id: nano-banana-2
+mode: edit
+inputs:
+  - {role: image_references, label: A portrait}
+fields:
+  - key: smile
+    label: What kind of smile
+    placeholder: a relaxed, closed-mouth smile
+    default: a natural, warm smile
+prompt: >-
+  The same photo of the same person, now with {smile}: change only the mouth, cheeks and eyes as a real smile
+  would, keep identity, lighting, clothes and background exactly as they are
+tags: [portrait]

@@ -1,0 +1,15 @@
+id: bedtime-story
+name: Bedtime story
+summary: A short fairy tale, read aloud over painted pictures with soft music.
+recipe: faceless
+fields:
+  - key: topic
+    label: The story
+    placeholder: a fox who is afraid of the dark finds a friend in the moon
+input:
+  topic: "{topic}"
+  theme: storytelling
+  style: fairy-tale-myth
+  format: stills
+  minutes: 2
+tags: [narrated]

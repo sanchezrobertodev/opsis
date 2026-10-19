@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
   // The API client is a TypeScript workspace package; Next compiles it with the app.
   transpilePackages: ["@studio/api-client"],
   reactStrictMode: true,
+  // the gallery was called Presets before it took guided templates too
+  redirects: async () => [{ source: "/presets", destination: "/templates", permanent: true }],
   ...(standalone && { output: "standalone", outputFileTracingRoot: path.join(__dirname, "../..") }),
 };
 

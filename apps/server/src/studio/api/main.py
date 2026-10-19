@@ -23,6 +23,7 @@ from studio.api.routers import (
     projects,
     registry,
     renders,
+    templates,
 )
 from studio.api.schemas import CandidateOut, ConfirmationProblem, ValidationProblem
 from studio.api.sse import hub
@@ -101,6 +102,7 @@ app.include_router(registry.router)
 app.include_router(director.router)
 app.include_router(elements.router)
 app.include_router(presets.router)
+app.include_router(templates.router)
 app.include_router(llm.router)
 app.include_router(pipelines.router)
 app.include_router(faceless.router)

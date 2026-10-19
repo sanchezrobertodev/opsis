@@ -467,3 +467,26 @@ class PresetSpec(_Strict):
     inputs: list[PresetInput] = []
     tags: list[str] = []
     status: Literal["active", "hidden"] = "active"
+
+
+class TemplateInput(_Strict):
+    """Media the user brings to a template; its asset id goes into the recipe input at `key`."""
+
+    key: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    kind: Literal["image", "video", "audio"]
+    label: str
+
+
+class TemplateSpec(_Strict):
+    """A guided template: a recipe run with most of its input fixed. String values in `input` may use {key}
+    blanks from `fields`."""
+
+    id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    name: str
+    summary: str
+    recipe: str
+    input: dict[str, Any] = {}
+    fields: list[PresetField] = []
+    inputs: list[TemplateInput] = []
+    tags: list[str] = []
+    status: Literal["active", "hidden"] = "active"

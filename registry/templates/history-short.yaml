@@ -1,0 +1,16 @@
+id: history-short
+name: Vertical history short
+summary: A one-minute vertical history story for Shorts, Reels and TikTok.
+recipe: faceless
+fields:
+  - key: topic
+    label: The moment in history
+    placeholder: the night the Titanic's band kept playing
+input:
+  topic: "{topic}"
+  theme: history
+  style: paper-collage
+  format: stills
+  minutes: 1
+  aspect_ratio: "9:16"
+tags: [narrated, vertical]

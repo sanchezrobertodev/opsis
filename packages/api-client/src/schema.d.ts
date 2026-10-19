@@ -206,6 +206,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Templates
+         * @description Guided templates: recipe runs with most of their input chosen.
+         */
+        get: operations["list_templates_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/templates/{template_id}/render": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Render
+         * @description The run this template starts with these answers and inputs: post it to /pipelines. Free.
+         */
+        post: operations["render_templates__template_id__render_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/llm/enhance": {
         parameters: {
             query?: never;
@@ -3648,6 +3688,61 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * TemplateInput
+         * @description Media the user brings to a template; its asset id goes into the recipe input at `key`.
+         */
+        TemplateInput: {
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "image" | "video" | "audio";
+            /** Label */
+            label: string;
+        };
+        /**
+         * TemplateOut
+         * @description A guided template: a recipe run that asks only for these answers and inputs.
+         */
+        TemplateOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Summary */
+            summary: string;
+            /** Tags */
+            tags: string[];
+            /** Recipe */
+            recipe: string;
+            /** Recipe Name */
+            recipe_name: string;
+            /** Fields */
+            fields: components["schemas"]["PresetField"][];
+            /** Inputs */
+            inputs: components["schemas"]["TemplateInput"][];
+        };
+        /** TemplateRenderIn */
+        TemplateRenderIn: {
+            /**
+             * Fields
+             * @default {}
+             */
+            fields: {
+                [key: string]: string;
+            };
+            /**
+             * Media
+             * @description Input key -> asset id
+             * @default {}
+             */
+            media: {
+                [key: string]: string;
+            };
+        };
         /** TextParam */
         TextParam: {
             /** Name */
@@ -4227,6 +4322,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PresetRenderOut"];
+                };
+            };
+            /** @description Missing answers or inputs */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_templates_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateOut"][];
+                };
+            };
+        };
+    };
+    render_templates__template_id__render_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateRenderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunCreate"];
                 };
             };
             /** @description Missing answers or inputs */
