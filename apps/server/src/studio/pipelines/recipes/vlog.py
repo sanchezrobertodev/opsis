@@ -16,6 +16,7 @@ import uuid
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.config import get_settings
@@ -179,6 +180,21 @@ class VlogRecipe(Recipe):
     def title(self, inp: VlogInput) -> str:
         return f"Vlog: {inp.idea.strip()[:90]}"
 
+    async def resolve(self, session: AsyncSession, user_id: uuid.UUID, inp: VlogInput, reg: Registry) -> VlogInput:
+        """A saved character's own voice speaks when none was picked, written into the input so the estimate and
+        the run use it."""
+        if not inp.character or inp.voice:
+            return inp
+        from studio.db.models import Element, ElementKind  # local import: models import nothing from recipes
+
+        saved = (await session.execute(select(Element.voice).where(
+            Element.user_id == user_id, Element.slug == inp.character, Element.kind == ElementKind.character,
+            Element.deleted_at.is_(None)))).scalar_one_or_none() or {}
+        spec = reg.model(saved.get("model_id", ""))
+        if spec is None or mode_with_op(spec, "tts") is None or not saved.get("params"):
+            return inp
+        return inp.model_copy(update={"voice_model": spec.id, "voice": dict(saved["params"])})
+
     def validate(self, inp: VlogInput, reg: Registry) -> list[str]:
         errors = []
         if get_catalog().style(inp.caption_style) is None:
@@ -259,9 +275,6 @@ class VlogRecipe(Recipe):
         shots: list[dict[str, Any]] = script["shots"]
         image, voice = reg.models[inp.image_model], reg.models[inp.voice_model]
         voice_params = dict(inp.voice)
-        saved = script.get("voice") or {}  # a saved character's own voice, used when none was picked
-        if not inp.voice and (spec := reg.model(saved.get("model_id", ""))) and mode_with_op(spec, "tts"):
-            voice, voice_params = spec, dict(saved.get("params") or {})
         video, lips = reg.models[inp.video_model], reg.models[inp.lipsync_model]
         refs, tts = ref_mode(image), mode_with_op(voice, "tts")
         i2v, sync = start_frame_mode(video), lipsync_mode(lips, "image")
