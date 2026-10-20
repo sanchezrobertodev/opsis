@@ -261,7 +261,7 @@ async def test_takes_still_rendering_when_a_run_fails_settle_into_their_steps(cl
                            request={}, group_id=run.id)
             s.add(g)
             await s.flush()
-            st = PipelineStep(run_id=run.id, key=f"shot[{i + 1:02d}]", kind=StepKind.generate, input={},
+            st = PipelineStep(run_id=run.id, key=f"shot[{i + 1:02d}]", kind=StepKind.generate, input={}, sort=i,
                               input_hash="x", status=StepStatus.running, generation_id=g.id)
             s.add(st)
             gens.append(g)
@@ -295,3 +295,119 @@ async def test_takes_still_rendering_when_a_run_fails_settle_into_their_steps(cl
     assert [(st["status"], st["error"]) for st in out["steps"]] == [
         ("succeeded", None), ("failed", "the provider timed out")]
     assert (await reap(datetime.now(UTC)))["runs"] == 0  # nothing left to settle
+
+
+async def test_a_deploy_never_redoes_finished_takes_but_an_edit_does(client, in_memory_queue, monkeypatch):
+    """The plan of a waiting run changes because the registry or a catalog did (a deploy), not its input: its finished
+    takes are kept. Editing the run's input still redoes them."""
+    from studio.pipelines.recipes import get_recipe
+    from studio.worker.tasks.pipeline import defer_advance
+
+    run = await start(client, "compare", prompt="a paper boat", entries=[{"model_id": "kling-3.0"},
+                                                                         {"model_id": "seedance-2.5"}])
+    await drain(in_memory_queue)
+    assert (await get(client, run["id"]))["status"] == "waiting"
+
+    async def takes() -> int:
+        async with session_scope() as s:
+            return len((await s.execute(select(Generation.id).where(Generation.group_id == uuid.UUID(run["id"]))))
+                       .scalars().all())
+
+    before = await takes()
+    recipe = get_recipe("compare")
+    plan = type(recipe).plan
+
+    def deployed(self, inp, settled, reg):  # what a changed model YAML does to every take's input
+        specs = plan(self, inp, settled, reg)
+        for sp in specs:
+            if sp.kind.value == "generate":
+                sp.input["params"] = {**sp.input.get("params", {}), "new_default": 1}
+        return specs
+
+    monkeypatch.setattr(type(recipe), "plan", deployed)
+    await defer_advance(uuid.UUID(run["id"]))
+    await drain(in_memory_queue)
+    kept = await get(client, run["id"])
+    assert await takes() == before and kept["status"] == "waiting"  # nothing paid for twice
+
+    r = await client.post(f"/pipelines/{run['id']}/revise", json={"input": {
+        "prompt": "a paper boat at night", "entries": [{"model_id": "kling-3.0"}, {"model_id": "seedance-2.5"}]}})
+    assert r.status_code == 200, r.text
+    await drain(in_memory_queue)
+    assert await takes() == before + 2  # an edit to the run itself is redone
+
+    # a revision that leaves two takes as they were, then another deploy: those two are still kept
+    r = await client.post(f"/pipelines/{run['id']}/revise", json={"input": {
+        "prompt": "a paper boat at night", "entries": [{"model_id": "kling-3.0"}, {"model_id": "seedance-2.5"},
+                                                       {"model_id": "veo-3.1", "params": {"duration": 4}}]}})
+    assert r.status_code == 200, r.text
+    await drain(in_memory_queue)
+    assert await takes() == before + 3  # only the new entry's take
+
+    def deployed_again(self, inp, settled, reg):
+        specs = deployed(self, inp, settled, reg)
+        for sp in specs:
+            if sp.kind.value == "generate":
+                sp.input["params"] = {**sp.input["params"], "another_default": 2}
+        return specs
+
+    monkeypatch.setattr(type(recipe), "plan", deployed_again)
+    await defer_advance(uuid.UUID(run["id"]))
+    await drain(in_memory_queue)
+    assert await takes() == before + 3
+
+
+async def test_runs_that_used_to_hang_now_end_or_carry_on(client, in_memory_queue, monkeypatch):
+    """Ways a run sat at "running" forever: a take blocked by the budget cap, a local step whose job was lost in a
+    restart, and a plan that can no longer be made (a model renamed in the registry)."""
+    from studio.config import get_settings
+    from studio.db.models import PipelineRun, PipelineStep, RunStatus, StepKind, StepStatus
+    from studio.domain.enums import GenStatus
+    from studio.pipelines.recipes import get_recipe
+    from studio.registry.loader import get_registry
+
+    user = get_settings().owner_user_id
+    advance = worker.tasks["pipeline.advance"].func
+    seq = get_recipe("sequence")
+    first = seq.plan(seq.Input.model_validate({"model_id": "kling-3.0", "shots": [{"prompt": "a"}]}), {},
+                     get_registry())[0]
+    async with session_scope() as s:
+        run = PipelineRun(user_id=user, recipe="sequence", title="capped", status=RunStatus.running,
+                          input={"model_id": "kling-3.0", "shots": [{"prompt": "a"}]})
+        s.add(run)
+        await s.flush()
+        g = Generation(user_id=user, model_id="kling-3.0", mode="t2v", output_type="video",
+                       status=GenStatus.blocked_budget, status_reason="over the $20 daily cap", request={},
+                       group_id=run.id)
+        s.add(g)
+        await s.flush()
+        s.add(PipelineStep(run_id=run.id, key=first.key, kind=StepKind.generate, input=first.input,
+                           input_hash=first.digest(), status=StepStatus.running, generation_id=g.id))
+        lost = PipelineRun(user_id=user, recipe="sequence", title="restarted", status=RunStatus.running,
+                           input={"model_id": "kling-3.0", "shots": [{"prompt": "a"}]})
+        s.add(lost)
+        await s.flush()
+        join = PipelineStep(run_id=lost.id, key="join", kind=StepKind.local, input={"op": "concat"}, input_hash="x",
+                            status=StepStatus.running)
+        s.add(join)
+        await s.commit()
+        capped_id, gen_id, lost_id, join_id = run.id, g.id, lost.id, join.id
+
+    await advance(run_id=str(capped_id))
+    capped = await get(client, str(capped_id))
+    assert capped["status"] == "failed" and "daily cap" in capped["error"]
+    async with session_scope() as s:
+        assert (await s.get(Generation, gen_id)).status == GenStatus.canceled  # no longer counted as pending
+
+    await advance(run_id=str(lost_id))
+    queued = [j for j in in_memory_queue.jobs.values()
+              if j["task_name"] == "pipeline.step" and j["args"].get("step_id") == str(join_id)]
+    assert queued, "the lost local step was not queued again"
+
+    def broken(self, inp, settled, reg):
+        raise KeyError("kling-3.0")
+
+    monkeypatch.setattr(type(get_recipe("sequence")), "plan", broken)
+    await advance(run_id=str(lost_id))
+    gone = await get(client, str(lost_id))
+    assert gone["status"] == "failed" and "couldn't plan" in gone["error"]

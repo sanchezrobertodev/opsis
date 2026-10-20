@@ -54,6 +54,7 @@ class CreateRequest:
     media: list[dict[str, str]] = field(default_factory=list)  # [{role, asset_id}]
     route_policy: str = "cheapest_healthy"
     confirm_cost_usd: float | None = None
+    max_cost_usd: float | None = None  # a hard limit whatever the estimate (what's left of a run's cap)
     idempotency_key: str | None = None
     group_id: uuid.UUID | None = None
     parent_generation_id: uuid.UUID | None = None
@@ -295,6 +296,8 @@ async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: Cre
     policy = await guard.get_policy(session, user_id)
     if guard.needs_confirmation(estimate, policy.confirm_over_usd, body.confirm_cost_usd):
         raise ConfirmationRequired(estimate, p.chosen.route.id, policy.confirm_over_usd)
+    if body.max_cost_usd is not None and estimate > Decimal(str(body.max_cost_usd)):
+        raise ConfirmationRequired(estimate, p.chosen.route.id, Decimal(str(body.max_cost_usd)))
 
     spec = p.spec
     assert spec is not None
@@ -325,6 +328,8 @@ async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: Cre
             "planned": p.chosen.route.id,
             # the mode it was estimated (and confirmed) in; the worker never routes it in a more paid one
             "provider_mode": p.provider_mode,
+            # a hard limit (what was left of its run's cap): the worker never picks a route that costs more
+            "max_cost_usd": body.max_cost_usd,
             "candidates": [c.as_dict() for c in p.candidates],
             "live_reference": p.live_reference.as_dict() if p.live_reference else None,
             "tried": [],

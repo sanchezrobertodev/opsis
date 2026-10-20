@@ -195,3 +195,57 @@ async def test_runpod_public_endpoint_charges_what_runpod_reports(client, http, 
         charge = (await s.execute(select(SpendLedger).where(
             SpendLedger.generation_attempt_id == attempt.id, SpendLedger.entry_type == "charge"))).scalar_one()
     assert charge.amount_usd == Decimal("0.290000") and charge.estimated is False
+
+
+async def test_a_runs_cap_stops_a_take_however_cheap(client, in_memory_queue):
+    """A take under the confirmation threshold still has to fit in what's left of its run's cap."""
+    from test_pipelines import drain, get
+
+    from studio.db.models import PipelineRun
+
+    r = await client.post("/pipelines", json={"recipe": "sequence", "input": {
+        "model_id": "seedance-2.5", "shots": [{"prompt": "a lighthouse at dusk", "duration": 4}]}})
+    assert r.status_code == 201, r.text
+    run_id = r.json()["id"]
+    async with session_scope() as s:  # the cap shrinks to less than the take costs (as if earlier takes spent it)
+        run = await s.get(PipelineRun, uuid.UUID(run_id))
+        run.cap_usd = Decimal("0.01")
+    await drain(in_memory_queue)
+    done = await get(client, run_id)
+    assert done["status"] == "failed" and "cap" in done["steps"][0]["error"]
+    assert done["steps"][0]["generation_id"] is None  # nothing was created, so nothing was sent
+
+
+async def test_an_unreadable_status_parks_the_take_instead_of_paying_again(client, http, mp4_bytes):
+    """The status call fails with 401 (a rotated key) while the accepted job runs: no failover, a human decides."""
+    routes = mock_replicate(http, mp4_bytes)
+    routes["status"].respond(401, json={"detail": "Invalid token"})
+    body = {"model_id": "seedance-2.5", "mode": "t2v", "prompt": "a calm sea", "params": {"duration": 4}}
+    gen = (await client.post("/generations", json=body)).json()
+    await run_submit(uuid.UUID(gen["id"]))
+    async with session_scope() as s:
+        attempt = (await s.execute(select(GenerationAttempt).where(
+            GenerationAttempt.generation_id == uuid.UUID(gen["id"])))).scalar_one()
+    await run_poll(attempt.id)
+    done = (await client.get(f"/generations/{gen['id']}")).json()
+    assert done["status"] == "unknown" and "401" in done["error_message"]
+    assert routes["predict"].call_count == 1  # never sent again
+    budget = (await client.get("/budget")).json()
+    assert budget["reserved_usd"] > 0  # its money stays held until someone checks the provider
+
+
+async def test_a_reroute_never_goes_over_what_is_left_of_the_runs_cap(client, http, mp4_bytes):
+    """The take was affordable when made; by the time the worker routes it (a failover, a cheaper route gone) the
+    route it picks must still fit the limit the take carries."""
+    from studio.db.models import Generation
+
+    routes = mock_replicate(http, mp4_bytes)
+    gen = (await client.post("/generations", json={"model_id": "seedance-2.5", "mode": "t2v", "prompt": "a calm sea",
+                                                   "params": {"duration": 4}})).json()
+    async with session_scope() as s:  # as if made by a run with $0.10 left
+        g = await s.get(Generation, uuid.UUID(gen["id"]))
+        g.routing = {**g.routing, "max_cost_usd": 0.10}
+    await run_submit(uuid.UUID(gen["id"]))
+    done = (await client.get(f"/generations/{gen['id']}")).json()
+    assert done["status"] == "failed" and "left in the run's cap" in done["error_message"]
+    assert routes["predict"].call_count == 0  # nothing sent

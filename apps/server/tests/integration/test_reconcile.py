@@ -47,10 +47,11 @@ def long_ago() -> datetime:
     return (datetime.now(UTC) - timedelta(days=random.randint(40, 4000))).replace(minute=30, second=0, microsecond=0)
 
 
-async def attempt(s, user, *, provider, route, job=None, usd=None, estimated=True, when, ran=None):
+async def attempt(s, user, *, provider, route, job=None, usd=None, estimated=True, when, ran=None,
+                  status=GenStatus.succeeded):
     """`ran`: (sent, finished) for a job on our RunPod endpoint; it's charged when it finishes."""
     g = Generation(user_id=user, model_id=route.split("@")[0], mode="t2v", output_type="video",
-                   status=GenStatus.succeeded, request={})
+                   status=status, request={})
     s.add(g)
     await s.flush()
     a = GenerationAttempt(generation_id=g.id, attempt_no=1, route_id=route, provider=provider, provider_job_id=job,
@@ -214,3 +215,29 @@ async def test_the_api_runs_the_check(client, keys):
     r = await client.post("/budget/reconcile?days=2")
     assert r.status_code == 200
     assert {x["provider"]: x["status"] for x in r.json()} == {"fal": "ok", "runpod_wan_core": "ok"}
+
+
+@respx.mock
+async def test_a_job_still_being_saved_is_compared_once_it_is_charged(client, keys):
+    """fal bills a job before the studio has saved and charged it: comparing then would book the whole bill on top of
+    the charge that's about to come."""
+    user, now = get_settings().owner_user_id, long_ago()
+    rid = str(uuid.uuid4())
+    async with session_scope() as s:
+        saving = await attempt(s, user, provider="fal", route="kling-3.0@fal", job=f"fal-ai/kling::{rid}",
+                               when=now - timedelta(hours=2), status=GenStatus.ingesting)
+    respx.get("https://api.fal.ai/v1/models/billing-events").respond(200, json={"next_cursor": None, "billing_events": [
+        {"request_id": rid, "endpoint_id": "fal-ai/kling-video/v3", "cost_total": 0.42}]})
+    respx.get("https://api.runpod.io/v2/billing/serverless").respond(200, json={"records": []})
+    async with session_scope() as s:
+        first = {r.provider: r for r in await reconcile(s, days=1, now=now)}["fal"]
+    assert first.booked_usd == 0 and first.outside_usd == 0  # not someone else's job either
+
+    async with session_scope() as s:  # ingest finishes and charges the estimate
+        (await s.get(Generation, saving.generation_id)).status = GenStatus.succeeded
+        s.add(SpendLedger(user_id=user, entry_type=LedgerEntry.charge, amount_usd=Decimal("0.40"), provider="fal",
+                          route_id="kling-3.0@fal", generation_attempt_id=saving.id, estimated=True,
+                          created_at=now - timedelta(hours=2)))
+    async with session_scope() as s:
+        later = {r.provider: r for r in await reconcile(s, days=1, now=now)}["fal"]
+    assert later.booked_usd == pytest.approx(0.02)  # the bill less the charge, once

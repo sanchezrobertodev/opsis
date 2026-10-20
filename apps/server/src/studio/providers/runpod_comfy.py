@@ -45,7 +45,14 @@ from studio.providers.base import (
     SubmitResult,
 )
 from studio.providers.comfy_workflows import load_template
-from studio.providers.common import best_mime, download_url, http_error, looks_like_moderation
+from studio.providers.common import (
+    best_mime,
+    download_url,
+    http_error,
+    looks_like_moderation,
+    submit_error,
+    submit_failure,
+)
 from studio.providers.runpod import RunPodAdapter
 from studio.registry.schema import ProviderSpec, Route
 
@@ -141,12 +148,10 @@ class RunPodComfyAdapter(RunPodAdapter):
         try:
             async with self._client() as c:
                 r = await c.post(f"/{runpod_endpoint}/run", json={"input": job_input})
-        except httpx.TimeoutException as exc:
-            raise AmbiguousSubmitError(f"RunPod submit timed out: {exc!r}") from exc
         except httpx.HTTPError as exc:
-            raise ProviderError(ErrorClass.transient, f"RunPod submit failed before sending: {exc!r}") from exc
+            raise submit_failure("RunPod", exc) from exc
         if r.status_code not in (200, 201):
-            raise http_error("RunPod", r)
+            raise submit_error("RunPod", r)
         job = r.json().get("id")
         if not job:
             raise AmbiguousSubmitError(f"RunPod accepted the request but returned no job id: {r.text[:300]}")

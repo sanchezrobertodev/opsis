@@ -16,11 +16,14 @@ Claude keeps the prompt as it was, the step fails as it would have (an optional 
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -163,6 +166,12 @@ async def _sync_generation(session: AsyncSession, step: PipelineStep, *, may_rew
     elif gen.status in (GenStatus.failed, GenStatus.canceled):
         step.status = StepStatus.failed
         step.error = gen.error_message or f"the take was {gen.status.value}"
+    elif gen.status == GenStatus.blocked_budget:
+        # over the daily or monthly cap, and nothing moves it on by itself: end the take, so the run says why
+        # (and stops counting it) instead of waiting forever; a retry after raising the cap starts a new one
+        reason = gen.status_reason or "over the spending cap"
+        await fsm.transition(session, gen, GenStatus.canceled, reason=reason)
+        step.status, step.error = StepStatus.failed, f"blocked by the budget: {reason}"
     else:
         return False
     step.finished_at = _now()
@@ -179,8 +188,8 @@ async def _start_generate(session: AsyncSession, run: PipelineRun, step: Pipelin
         direction=step.input.get("direction"), group_id=run.id, pipeline_step_id=step.id,
         project_id=uuid.UUID(step.input["project_id"]) if step.input.get("project_id") else None,
         shot_key=step.input.get("shot_key"),
-        # the run's cap is the confirmation: anything that fits in what's left may start
-        confirm_cost_usd=float(remaining),
+        # the run's cap is the confirmation and the limit: a take starts only if it fits in what's left, however cheap
+        confirm_cost_usd=float(remaining), max_cost_usd=float(remaining),
         idempotency_key=f"run:{run.id}:{step.key}:{step.input_hash[:16]}:{step.attempts}",
     )
     try:
@@ -199,11 +208,25 @@ async def _start_generate(session: AsyncSession, run: PipelineRun, step: Pipelin
         fx.submit.append(gen.id)
 
 
-def _apply_spec(step: PipelineStep, spec: StepSpec, sort: int) -> None:
+def _apply_spec(step: PipelineStep, spec: StepSpec, sort: int, run_digest: str) -> None:
     step.kind, step.label, step.sort = spec.kind, spec.label, sort
     step.depends_on = list(spec.depends_on)
-    step.input = {**spec.input, **({"_optional": True} if spec.optional else {})}
+    # `_run`: the run's input it was planned from, so a finished step is redone only when that changes
+    step.input = {**spec.input, **({"_optional": True} if spec.optional else {}), "_run": run_digest}
     step.input_hash = spec.digest()
+
+
+def _only_the_catalog_moved(st: PipelineStep, steps: dict[str, PipelineStep], run_digest: str) -> bool:
+    """A finished step whose plan changed although the run's input didn't and nothing it depends on was redone after
+    it: only the registry or a catalog moved under it (a deploy). It keeps its work; redoing it would pay again."""
+    if st.status != StepStatus.succeeded or st.input.get("_run") != run_digest or st.finished_at is None:
+        return False
+    deps = (steps.get(k) for k in st.depends_on or ())
+    return not any(d and d.finished_at and d.finished_at > st.finished_at for d in deps)
+
+
+def _input_digest(value: dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
 async def _settle_after_end(session: AsyncSession, run: PipelineRun) -> None:
@@ -232,7 +255,6 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
         await emit_run(session, run)
         return
     reg = get_registry()
-    inp = recipe.Input.model_validate(run.input)
     rows = (await session.execute(select(PipelineStep).where(PipelineStep.run_id == run.id)
                                   .with_for_update())).scalars().all()
     steps = {st.key: st for st in rows}
@@ -242,27 +264,43 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
             # a refused take waiting for its rewording is (re)queued: the step task locks it and runs it once
             if "_reword" in st.input or await _sync_generation(session, st, may_reword=True):
                 fx.steps.append(st.id)
+        elif st.kind in (StepKind.local, StepKind.llm) and st.status == StepStatus.running:
+            # its job was lost (a restart mid-op): queue it again. One still being run holds this row's lock, so
+            # it can't be seen here as running; a copy already queued is dropped by the step's queueing lock.
+            fx.steps.append(st.id)
 
-    specs = recipe.plan(inp, settled_outputs(steps), reg)
+    try:
+        inp = recipe.Input.model_validate(run.input)
+        specs = recipe.plan(inp, settled_outputs(steps), reg)
+    except Exception as exc:  # a model renamed in the registry, an input the recipe no longer takes: say so
+        log.exception("planning run %s failed", run.id)
+        run.status, run.error, run.finished_at = RunStatus.failed, f"couldn't plan the run: {exc}"[:2000], _now()
+        await emit_run(session, run)
+        return
+    run_digest = _input_digest(run.input)
     wanted: set[str] = set()
     for i, spec in enumerate(specs):
         wanted.add(spec.key)
         st = steps.get(spec.key)
         if st is None:
             st = PipelineStep(run_id=run.id, key=spec.key, status=StepStatus.pending)
-            _apply_spec(st, spec, i)
+            _apply_spec(st, spec, i, run_digest)
             session.add(st)
             steps[spec.key] = st
         elif st.input_hash != spec.digest() and st.status == StepStatus.waiting:
             # a checkpoint still waiting for its answer asks about the latest input (an edited script)
-            _apply_spec(st, spec, i)
-        elif st.input_hash != spec.digest() and st.status != StepStatus.running:
-            # its inputs changed (an edited shot, an upstream redo): do it again
-            _apply_spec(st, spec, i)
+            _apply_spec(st, spec, i, run_digest)
+        elif ((st.input_hash != spec.digest() or st.status == StepStatus.skipped) and st.status != StepStatus.running
+              and not _only_the_catalog_moved(st, steps, run_digest)):
+            # its inputs changed (an edited shot, an upstream redo), or it was skipped and is wanted again: do it
+            _apply_spec(st, spec, i, run_digest)
             st.status, st.output, st.error, st.generation_id = StepStatus.pending, {}, None, None
             st.started_at = st.finished_at = None
         else:
             st.sort, st.label = i, spec.label
+            if st.input_hash == spec.digest() and st.input.get("_run") != run_digest:
+                # unchanged by a revision of the run: it was planned from the new input too
+                st.input = {**st.input, "_run": run_digest}
     for key, st in steps.items():
         if key not in wanted and st.status in (StepStatus.pending, StepStatus.waiting):
             st.status, st.finished_at = StepStatus.skipped, _now()

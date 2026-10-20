@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.config import get_settings
 from studio.db.models import Generation, GenerationAttempt, SpendLedger
-from studio.domain.enums import SPENT, LedgerEntry
+from studio.domain.enums import SPENT, TERMINAL_STATUSES, LedgerEntry
 from studio.registry.loader import get_registry
 
 log = logging.getLogger(__name__)
@@ -114,19 +114,21 @@ async def _fal(session: AsyncSession, c: httpx.AsyncClient, since: datetime, now
 
     # attempts are made a little before fal bills them; look back a day further than the bill
     rows = (await session.execute(
-        select(GenerationAttempt, Generation.user_id)
+        select(GenerationAttempt, Generation.user_id, Generation.status)
         .join(Generation, Generation.id == GenerationAttempt.generation_id)
         .where(GenerationAttempt.provider == "fal", GenerationAttempt.provider_job_id.is_not(None),
                GenerationAttempt.created_at >= since - timedelta(days=1)))).all()
-    attempts = {a.provider_job_id.rsplit("::", 1)[-1]: (a, user) for a, user in rows}
-    ledger = await _ledger_by_attempt(session, [a.id for a, _ in rows])
+    attempts = {a.provider_job_id.rsplit("::", 1)[-1]: (a, user, status) for a, user, status in rows}
+    ledger = await _ledger_by_attempt(session, [a.id for a, _, _ in rows])
 
     res = Result(provider="fal", status="ok")
     for rid, usd in billed.items():
         if rid not in attempts:
             res.outside_usd += float(usd)
             continue
-        attempt, user = attempts[rid]
+        attempt, user, status = attempts[rid]
+        if status not in TERMINAL_STATUSES:
+            continue  # still running or being saved: its charge isn't booked yet, so compare it next time
         charged, adjusted, when = ledger.get(attempt.id, (Decimal(0), False, None))
         res.checked += 1
         res.billed_usd += float(usd)
