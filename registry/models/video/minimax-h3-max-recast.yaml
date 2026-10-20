@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Verified 2026-10-19 against fal's OpenAPI for minimax/h3-max/recast and its pricing note ($0.30/s of output at 768p,
+# $0.45/s at 1080p; reference images included). The output is as long as the source clip (5-30 s).
+id: minimax-h3-max-recast
+name: MiniMax H3 Max Recast
+family: minimax
+vendor: fal
+description: >-
+  Recasts a clip: the people in it become the people in your photos, in every shot, with the source's motion, camera
+  and sound. The best-looking swap, and the priciest.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [swap, face-swap, recast]
+prompt: {max_chars: 2000, dialect: default}
+
+parameters:
+  - {name: resolution, type: enum, options: ["768p", "1080p"], default: "768p", ui: segmented}
+  - {name: enhance_realism, label: Enhance realism, type: bool, default: false,
+     help: "More natural skin and better blending of the new people into the scene."}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: recast
+    label: Recast the people
+    ops: [person_swap]
+    prompt: optional  # who becomes whom, or what else to keep or change
+    medias:
+      - {role: input_video, kinds: [video], label: "Clip (5-30 s)", required: true, min_duration_s: 5,
+         max_duration_s: 30}
+      - {role: image_references, kinds: [image], label: "Photos of the new people, left to right", required: true,
+         min: 1, max: 4}
+
+routes:
+  - id: minimax-h3-max-recast@fal
+    provider: fal
+    modes:
+      recast: {endpoint: minimax/h3-max/recast}
+    map:
+      negative_prompt: null
+      params:
+        resolution: {to: resolution, transform: enum_map, args: {values: {"768p": "768P", "1080p": "1080P"}}}
+        enhance_realism: enhance_realism
+        seed: seed
+      media: {input_video: video_url, image_references: "reference_image_urls[]"}
+    pricing:
+      basis: per_output_second
+      quantity: input_video_seconds
+      rates:
+        - {when: {resolution: "768p"}, usd: 0.30}
+        - {when: {resolution: "1080p"}, usd: 0.45}
+      verified: 2026-10-19
+      source: https://fal.ai/models/minimax/h3-max/recast
+    timeout_s: 3600
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: recast_smoke
+    mode: recast
+    params: {resolution: "768p"}
+    media: {input_video: "fixture:videos/person_5s.mp4", image_references: "fixture:images/person.jpg"}
+    smoke: true
+    expect: {cost_usd_range: [0, 1.5]}  # the contract test prices it without probing the clip

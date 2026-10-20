@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Verified 2026-10-19 against fal's OpenAPI for fal-ai/pixverse/swap and its pricing note ($0.15 at 360p/540p, $0.20 at
+# 720p for a clip up to 5 s; longer clips cost double).
+id: pixverse-swap
+name: PixVerse Swap
+family: pixverse
+vendor: pixverse
+description: >-
+  Puts the person from a photo into a clip in place of the person filmed, keeping the camera, motion, lighting and
+  sound. Fast and cheap.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [swap, face-swap]
+
+parameters:
+  - {name: resolution, type: enum, options: ["360p", "540p", "720p"], default: "720p", ui: segmented}
+  - {name: keep_sound, label: Keep the clip's sound, type: bool, default: true}
+  - {name: keyframe, label: Frame to match the person on, type: int, min: 1, max: 720, default: 1, group: advanced,
+     help: "At 24 frames a second: 1 is the first frame, 24 one second in. Pick a frame where the face is clear."}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: person
+    label: Swap the person
+    ops: [person_swap]
+    prompt: none
+    medias:
+      - {role: input_video, kinds: [video], label: Clip with a person, required: true}
+      - {role: character_image, kinds: [image], label: Photo of the new person, required: true}
+
+routes:
+  - id: pixverse-swap@fal
+    provider: fal
+    modes:
+      person: {endpoint: fal-ai/pixverse/swap, fixed: {mode: person}}
+    map:
+      params:
+        resolution: resolution
+        keep_sound: original_sound_switch
+        keyframe: keyframe_id
+        seed: seed
+      media: {input_video: video_url, character_image: image_url}
+    pricing:
+      # a price per 5 s of clip; fal states only that a clip over 5 s costs double, so longer ones are priced per 5 s
+      basis: per_request
+      quantity: "ceil(max(input_video_seconds, 1) / 5)"
+      rates:
+        - {when: {resolution: "360p"}, usd: 0.15}
+        - {when: {resolution: "540p"}, usd: 0.15}
+        - {when: {resolution: "720p"}, usd: 0.20}
+      verified: 2026-10-19
+      source: https://fal.ai/models/fal-ai/pixverse/swap
+    output: {path: video.url, kind: video}
+
+examples:
+  - name: person_smoke
+    mode: person
+    params: {resolution: "360p"}
+    media: {input_video: "fixture:videos/person_3s.mp4", character_image: "fixture:images/person.jpg"}
+    smoke: true
+    expect: {cost_usd_range: [0.1, 0.2]}

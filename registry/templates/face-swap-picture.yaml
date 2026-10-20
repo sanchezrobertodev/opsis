@@ -1,0 +1,16 @@
+id: face-swap-picture
+name: Face swap a picture
+summary: Put someone else's face on the person in a picture, keeping the pose, hair, clothes and light. Only swap people who agreed.
+recipe: face_swap
+inputs:
+  - {key: picture_asset_id, kind: image, label: A picture with a person}
+  - {key: face_asset_id, kind: image, label: Photo of the new face, alternative: true}
+  - {key: character, kind: character, label: Or one of your characters, alternative: true}
+fields:
+  - key: consent
+    label: Consent
+    options: ["true"]
+    option_labels: {"true": "The people in it, and the person whose face goes in, agreed to this swap"}
+input:
+  consent: "{consent}"
+tags: [character]

@@ -1,0 +1,45 @@
+{
+ "endpoint": "minimax/h3-max/recast",
+ "variant": null,
+ "input": {
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
+  "enhance_realism": {
+   "type": "boolean"
+  },
+  "prompt": {
+   "type": "null|string"
+  },
+  "reference_image_urls": {
+   "type": "array<string>",
+   "minItems": 1,
+   "maxItems": 4
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "768P",
+    "1080P"
+   ],
+   "default": "1080P"
+  },
+  "seed": {
+   "type": "integer|null",
+   "minimum": 0
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "reference_image_urls",
+  "video_url"
+ ],
+ "output": [
+  "seed",
+  "video"
+ ],
+ "deprecated": false
+}
