@@ -27,6 +27,19 @@ def mode_for(spec: ModelSpec, roles: set[str]) -> Mode | None:
     return text_mode(spec)
 
 
+def clip_params(spec: ModelSpec, aspect: str, seconds: float, base: dict | None = None) -> dict:
+    """A clip from a start frame: the frame's shape and as close to `seconds` as the model's durations allow."""
+    mode = start_frame_mode(spec).id  # type: ignore[union-attr]
+    params = with_param(spec, mode, dict(base or {}), "aspect_ratio", aspect)
+    return with_param(spec, mode, params, "duration", fit_duration(spec, mode, seconds))
+
+
+def music_params(spec: ModelSpec, seconds: float) -> dict:
+    """A score as close to `seconds` long as the music model allows."""
+    mode = mode_with_op(spec, "music").id  # type: ignore[union-attr]
+    return with_param(spec, mode, {}, "duration", fit_duration(spec, mode, seconds))
+
+
 def with_param(spec: ModelSpec, mode_id: str, params: dict, name: str, value: object) -> dict:
     """Set a param only if the model takes it in this mode."""
     if value is None or not any(p.name == name for p in spec.params_for(mode_id)):

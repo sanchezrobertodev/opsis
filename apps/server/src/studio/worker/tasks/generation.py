@@ -335,6 +335,11 @@ async def run_submit(gen_id: uuid.UUID) -> None:
                 attempt.provider_job_id = result.job_id
                 attempt.status = AttemptStatus.canceled
                 cancel_remote = True
+            elif ambiguous is not None:
+                # it may have gone through and be billed: say so instead of showing a clean cancel
+                attempt.status, attempt.error_message = AttemptStatus.unknown, ambiguous
+                gen.error_message = (f"stopped while it was being sent, and the provider may have taken it (and may "
+                                     f"bill it): check {route.provider}'s dashboard. {ambiguous}")[:2000]
         elif result is not None:
             attempt.provider_job_id = result.job_id
             attempt.status = AttemptStatus.submitted

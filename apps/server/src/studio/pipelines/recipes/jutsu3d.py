@@ -27,7 +27,7 @@ from studio.pipelines.recipes.common import (
     start_frame_mode,
     with_param,
 )
-from studio.pipelines.recipes.keyframe import ref_mode
+from studio.pipelines.recipes.keyframe import ref_image, ref_mode
 from studio.registry.loader import Registry
 from studio.registry.schema import Mode, ModelSpec
 
@@ -106,12 +106,6 @@ class Jutsu3dRecipe(Recipe):
 
     # ------------------------------------------------------------ choosing modes
 
-    def _image(self, inp: Jutsu3dInput, reg: Registry) -> tuple[ModelSpec, Mode, str]:
-        image = reg.models[inp.image_model_id]
-        mode = ref_mode(image)
-        assert mode is not None
-        return image, mode, (image.elements or {}).get("ref_role", "image_references")
-
     def _video_mode(self, inp: Jutsu3dInput, spec: ModelSpec) -> Mode | None:
         if inp.path in DRIVEN:
             return driven_mode(spec, inp.path)
@@ -167,7 +161,8 @@ class Jutsu3dRecipe(Recipe):
         assert mode is not None
         out: list[PlannedJob] = []
         if inp.stills:
-            image, img_mode, role = self._image(inp, reg)
+            image = reg.models[inp.image_model_id]
+            img_mode, role = ref_image(image)
             out += [PlannedJob(image.id, img_mode.id, self._look_params(inp, image, img_mode), (role,))
                     for _ in inp.stills]
         if inp.path in DRIVEN:
@@ -185,7 +180,8 @@ class Jutsu3dRecipe(Recipe):
     # ------------------------------------------------------------ plan
 
     def _looks(self, inp: Jutsu3dInput, reg: Registry) -> list[StepSpec]:
-        image, mode, role = self._image(inp, reg)
+        image = reg.models[inp.image_model_id]
+        mode, role = ref_image(image)
         slot = mode.slot(role)
         extra = [str(a) for a in inp.reference_asset_ids][: max(0, (slot.max if slot else 1) - 1)]
         return [StepSpec(look_key(i), StepKind.generate, f"Angle {i + 1} as a finished frame", {

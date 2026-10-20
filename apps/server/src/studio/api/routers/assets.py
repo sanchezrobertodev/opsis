@@ -30,6 +30,8 @@ from studio.worker.tasks.assets import defer_derive
 router = APIRouter(tags=["assets"])
 
 MAX_UPLOAD_BYTES = 4 * 1024**3
+# formats that are lists of other files: probing or converting one reads whatever it names on this machine
+POINTS_ELSEWHERE = {"hls", "dash", "concat", "applehttp"}
 CHUNK = 1 << 20
 
 
@@ -61,7 +63,10 @@ def _extension(mime: str, filename: str) -> str:
     if suffix and _type_of_name(filename) == mime:
         return suffix
     ext = mimetypes.guess_extension(mime) or suffix
-    return ".jpg" if ext == ".jpe" else ext
+    ext = ".jpg" if ext == ".jpe" else ext
+    # /media picks the served type from the name: one that isn't media (".html") would be served as a web page
+    named = _type_of_name(f"x{ext}") or ""
+    return ext if named.split("/")[0] in ("image", "video", "audio") or named == "model/gltf-binary" else ".bin"
 
 
 def _kind_for(mime: str, filename: str = "") -> AssetKind:
@@ -70,6 +75,8 @@ def _kind_for(mime: str, filename: str = "") -> AssetKind:
         return AssetKind.model3d
     if name.endswith((".spz", ".ply")):
         return AssetKind.splat
+    if mime == "image/svg+xml" or name.endswith((".svg", ".svgz")):
+        raise HTTPException(415, "SVG can't be uploaded: it can carry scripts; export it as PNG or WebP")
     if mime.startswith("image/"):
         return AssetKind.image
     if mime.startswith("video/"):
@@ -115,6 +122,8 @@ async def upload(
                 info = await probe(tmp)
             except FFmpegError:
                 raise HTTPException(415, "could not read this file as media") from None
+            if set((info.format_name or "").split(",")) & POINTS_ELSEWHERE:
+                raise HTTPException(415, "playlists and lists of other files can't be uploaded; upload the media itself")
         key = asset_key(user.id, asset_id, f"original{ext}")
         storage.put_file(key, tmp, move=True)
     finally:

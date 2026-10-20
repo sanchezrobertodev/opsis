@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -96,3 +97,58 @@ async def test_tags_build_the_driving_clip_library(client):
     listed = (await client.get("/assets", params={"tag": "driving", "kind": "video"})).json()["items"]
     assert up["id"] in [a["id"] for a in listed]
     assert all("driving" in a["tags"] for a in listed)
+
+
+async def test_uploads_are_served_as_media_and_never_as_pages(client, tmp_path):
+    """A file named .html with a vague audio type, an SVG, a playlist pointing at other files on the server, and a
+    media key that climbs out of the user's folder."""
+    line = (ROOT / "fixtures" / "audio" / "line.mp3").read_bytes()
+    r = await client.post("/uploads", files={"file": ("song.html", line, "audio/x-anything")})
+    assert r.status_code == 201, r.text
+    url = r.json()["url"]
+    assert not url.endswith(".html")  # never stored under a name /media would serve as a web page
+    served = await client.get(url)
+    assert served.status_code == 200
+    assert served.headers["content-security-policy"] == "sandbox"
+    assert served.headers["x-content-type-options"] == "nosniff"
+    assert "html" not in served.headers["content-type"]
+
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    assert (await client.post("/uploads", files={"file": ("a.svg", svg, "image/svg+xml")})).status_code == 415
+
+    from studio.storage.local import get_storage
+
+    near = Path(os.path.relpath(CLIP, get_storage().temp_dir())).as_posix()  # relative to where uploads are probed
+    playlist = f"#EXTM3U\n#EXT-X-TARGETDURATION:3\n#EXTINF:3,\n{near}\n#EXT-X-ENDLIST\n".encode()
+    r = await client.post("/uploads", files={"file": ("x.m3u8", playlist, "video/x-anything")})
+    assert r.status_code == 415 and "playlist" in r.text
+
+    me = url.split("/media/")[1].split("/")[1]
+    for key in (f"u/{me}/../../tmp/x", f"u/{me}/a/../../{me}x/a/b"):
+        assert (await client.get(f"/media/{key}")).status_code == 404
+
+
+async def test_an_upload_too_large_is_refused_before_it_is_read(client):
+    from studio.api.main import MAX_BODY_BYTES
+
+    big = {"content-length": str(MAX_BODY_BYTES + 1), "content-type": "multipart/form-data; boundary=x"}
+    r = await client.post("/uploads", content=b"--x--", headers=big)
+    assert r.status_code == 413
+
+
+async def test_abandoned_render_frames_are_swept(db, in_memory_queue):
+    from datetime import UTC, datetime, timedelta
+
+    from studio.storage.local import get_storage
+    from studio.worker.tasks.maintenance import reap
+
+    folder = get_storage().temp_dir() / "renders"
+    old, fresh = folder / "abandoned-test", folder / "in-progress-test"
+    for d in (old, fresh):
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "0001.jpg").write_bytes(b"x")
+    two_days = (datetime.now(UTC) - timedelta(days=2)).timestamp()
+    os.utime(old, (two_days, two_days))
+    await reap(datetime.now(UTC))
+    assert not old.exists() and fresh.exists()
+    shutil.rmtree(fresh)

@@ -59,16 +59,18 @@ REPLAY_LIMIT = 500
 @router.get("/media/{key:path}", tags=["media"], include_in_schema=False)
 async def media(key: str, user: User = Depends(current_user)) -> FileResponse:
     """Serve stored media with HTTP Range support (video seeking). Keys are scoped to the owner."""
-    if not key.startswith(f"u/{user.id}/"):
-        raise HTTPException(404, "not found")
+    storage = get_storage()
     try:
-        path = get_storage().path_for(key)
+        path = storage.path_for(key)
     except ValueError:
         raise HTTPException(404, "not found") from None
-    if not path.is_file():
+    # checked on the resolved path, so "u/<me>/../<someone else>" or "u/<me>/../../tmp" can't step out
+    if (storage.root / "u" / str(user.id)) not in path.parents or not path.is_file():
         raise HTTPException(404, "not found")
-    # Content is immutable per key, so browsers may cache aggressively.
-    return FileResponse(path, headers={"Cache-Control": "private, max-age=31536000, immutable"})
+    # Content is immutable per key, so browsers may cache aggressively. Opened on its own, a file is a sandboxed
+    # page that runs no script, whatever is inside it.
+    return FileResponse(path, headers={"Cache-Control": "private, max-age=31536000, immutable",
+                                       "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox"})
 
 
 @router.get("/events/stream", tags=["events"])

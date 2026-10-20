@@ -89,9 +89,12 @@ class ProviderAdapter(ABC):
     @abstractmethod
     async def cancel(self, route: Route, job_id: str) -> bool: ...
 
-    @abstractmethod
     async def download(self, route: Route, output: ProviderOutput, dest: Path, workdir: Path) -> str:
-        """Write the output to `dest`; return its MIME type."""
+        """Write the output to `dest`; return its MIME type. By default its link is fetched."""
+        from studio.providers.common import best_mime, download_url  # common imports this module
+
+        content_type = await download_url(output.url or "", dest)
+        return best_mime(output.mime, content_type, kind=output.kind)
 
     async def reachable(self) -> bool:
         """For local engines: can this machine run jobs right now? Remote APIs are assumed up (health

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import base64
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import anyio
@@ -22,13 +21,10 @@ from studio.providers.base import (
     PollResult,
     ProviderAdapter,
     ProviderError,
-    ProviderOutput,
     ResolvedMedia,
     SubmitResult,
 )
 from studio.providers.common import (
-    best_mime,
-    download_url,
     http_error,
     require_key,
     route_outputs,
@@ -146,6 +142,3 @@ class RunwayAdapter(ProviderAdapter):
             return False
         return r.status_code in (200, 204)
 
-    async def download(self, route: Route, output: ProviderOutput, dest: Path, workdir: Path) -> str:
-        content_type = await download_url(output.url or "", dest)
-        return best_mime(output.mime, content_type, kind=output.kind)

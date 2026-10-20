@@ -236,7 +236,35 @@ async def test_a_run_spends_only_what_was_charged_plus_what_is_still_running(cli
         await s.flush()
         before = await run_spent(s, row)  # whatever the compare run itself made on the mock: free
         assert before == Decimal("0.40")  # the billed failure ($0.10) and the queued job's estimate ($0.30)
+        # its Claude steps count too: a script written for this run, not one for another
+        s.add(SpendLedger(user_id=user, entry_type=LedgerEntry.charge, amount_usd=Decimal("0.07"),
+                          pipeline_run_id=row.id, provider="anthropic"))
+        s.add(SpendLedger(user_id=user, entry_type=LedgerEntry.charge, amount_usd=Decimal("0.05"),
+                          provider="anthropic"))
+        await s.flush()
+        assert await run_spent(s, row) == Decimal("0.47")
         await s.rollback()
+
+
+async def test_a_claude_call_made_by_a_run_step_is_charged_to_the_run(monkeypatch):
+    """While the engine runs a Claude step, structured() knows the run, so its charge counts against the run's cap."""
+    from types import SimpleNamespace
+
+    from studio.db.models import StepKind
+    from studio.llm.client import CURRENT_RUN
+    from studio.pipelines import engine
+
+    seen = []
+
+    async def op(session, run, step):
+        seen.append(CURRENT_RUN.get())  # what structured() would book the charge to
+        return {}
+
+    monkeypatch.setitem(engine.LLM_OPS, "test_op", op)
+    run = SimpleNamespace(id=uuid.uuid4())
+    step = SimpleNamespace(kind=StepKind.llm, input={"op": "test_op"}, key="script", id=uuid.uuid4())
+    await engine.execute_step(None, step, run)  # type: ignore[arg-type]
+    assert seen == [run.id] and CURRENT_RUN.get() is None  # and only while the step runs
 
 
 async def test_takes_still_rendering_when_a_run_fails_settle_into_their_steps(client, in_memory_queue):

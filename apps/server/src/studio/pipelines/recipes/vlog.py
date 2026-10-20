@@ -26,7 +26,13 @@ from studio.llm.client import LLMError, LLMResult, structured
 from studio.media.assemble import GAP_S
 from studio.media.speech import CHARS_PER_SECOND
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
-from studio.pipelines.recipes.common import fit_duration, mode_with_op, start_frame_mode, with_param
+from studio.pipelines.recipes.common import (
+    clip_params,
+    mode_with_op,
+    music_params,
+    start_frame_mode,
+    with_param,
+)
 from studio.pipelines.recipes.keyframe import ref_mode
 from studio.pipelines.recipes.talking import lipsync_mode
 from studio.registry.loader import Registry
@@ -221,17 +227,6 @@ class VlogRecipe(Recipe):
         spec = reg.models[inp.image_model]
         return with_param(spec, ref_mode(spec).id, {}, "aspect_ratio", inp.aspect_ratio)  # type: ignore[union-attr]
 
-    def _clip_params(self, inp: VlogInput, reg: Registry, seconds: float) -> dict[str, Any]:
-        spec = reg.models[inp.video_model]
-        mode = start_frame_mode(spec).id  # type: ignore[union-attr]
-        params = with_param(spec, mode, {}, "aspect_ratio", inp.aspect_ratio)
-        return with_param(spec, mode, params, "duration", fit_duration(spec, mode, seconds))
-
-    def _music_params(self, inp: VlogInput, reg: Registry, seconds: float) -> dict[str, Any]:
-        spec = reg.models[inp.music_model]
-        mode = mode_with_op(spec, "music").id  # type: ignore[union-attr]
-        return with_param(spec, mode, {}, "duration", fit_duration(spec, mode, seconds))
-
     def jobs(self, inp: VlogInput, reg: Registry) -> list[PlannedJob]:
         """Before the script exists: a line of about LINE_CHARS a shot, half the shots on camera."""
         image, voice = reg.models[inp.image_model], reg.models[inp.voice_model]
@@ -245,12 +240,12 @@ class VlogRecipe(Recipe):
                 for _ in range(inp.shots)]
         out += [PlannedJob(lips.id, lipsync_mode(lips, "image").id, {}, ("character_image", "input_audio"),  # type: ignore[union-attr]
                            planned_seconds=(("input_audio", seconds),)) for _ in range(on)]
-        out += [PlannedJob(video.id, start_frame_mode(video).id, self._clip_params(inp, reg, seconds + GAP_S),  # type: ignore[union-attr]
+        out += [PlannedJob(video.id, start_frame_mode(video).id, clip_params(reg.models[inp.video_model], inp.aspect_ratio, seconds + GAP_S),  # type: ignore[union-attr]
                            ("start_image",)) for _ in range(inp.shots - on)]
         if inp.music:
             music = reg.models[inp.music_model]
             out.append(PlannedJob(music.id, mode_with_op(music, "music").id,  # type: ignore[union-attr]
-                                  self._music_params(inp, reg, inp.shots * (seconds + GAP_S))))
+                                  music_params(reg.models[inp.music_model], inp.shots * (seconds + GAP_S))))
         return out
 
     # ---------------------------------------------------------------- the plan
@@ -304,7 +299,7 @@ class VlogRecipe(Recipe):
                 specs.append(StepSpec(clip_key(i), StepKind.generate, f"Shot {i}: cutaway", {
                     "model_id": video.id, "mode": i2v.id,
                     "prompt": f"{shot['visual'].strip().rstrip('.')}. {shot.get('motion') or 'gentle handheld motion'}",
-                    "params": self._clip_params(inp, reg, seconds),
+                    "params": clip_params(reg.models[inp.video_model], inp.aspect_ratio, seconds),
                     "media": [{"role": "start_image", "asset_id": frame["asset_id"]}]}, deps, optional=True))
 
         voices = [ok(settled, voice_key(i)) for i in range(1, len(shots) + 1)]
@@ -317,7 +312,7 @@ class VlogRecipe(Recipe):
             specs.append(StepSpec("music", StepKind.generate, "Music", {
                 "model_id": music.id, "mode": mode_with_op(music, "music").id,  # type: ignore[union-attr]
                 "prompt": "light, upbeat lifestyle vlog background music, no vocals",
-                "params": self._music_params(inp, reg, total), "media": []}, voice_keys, optional=True))
+                "params": music_params(reg.models[inp.music_model], total), "media": []}, voice_keys, optional=True))
 
         blocks = [self._block(settled, i, shot) for i, shot in enumerate(shots, 1)]
         if not all(blocks) or (inp.music and "music" not in settled):
