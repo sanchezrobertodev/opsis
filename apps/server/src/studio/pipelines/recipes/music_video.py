@@ -35,7 +35,7 @@ from studio.faceless.writer import _mock_song as mock_song
 from studio.llm.client import LLMError, LLMResult, structured
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import (
-    fit_duration,
+    clip_params,
     mode_with_op,
     start_frame_mode,
     text_mode,
@@ -269,12 +269,6 @@ class MusicVideoRecipe(Recipe):
         assert mode is not None
         return with_param(spec, mode.id, {}, "aspect_ratio", inp.aspect_ratio)
 
-    def _clip_params(self, inp: MusicVideoInput, reg: Registry, seconds: float) -> dict[str, Any]:
-        spec = reg.models[inp.video_model]
-        mode = start_frame_mode(spec).id  # type: ignore[union-attr]
-        params = with_param(spec, mode, {}, "aspect_ratio", inp.aspect_ratio)
-        return with_param(spec, mode, params, "duration", fit_duration(spec, mode, seconds))
-
     def jobs(self, inp: MusicVideoInput, reg: Registry) -> list[PlannedJob]:
         """A song's length is only known once it's measured, so this prices a three-minute upload (the transcript itself
         at its real length), or a new song of about `minutes`."""
@@ -300,7 +294,7 @@ class MusicVideoRecipe(Recipe):
         roles = (self._ref_role(reg, inp),) if inp.star else ()  # a saved character's pictures come with the mention
         out += [PlannedJob(image.id, pic.id, self._frame_params(inp, reg), roles, media=refs)
                 for _ in range(n)]
-        out += [PlannedJob(video.id, start_frame_mode(video).id, self._clip_params(inp, reg, target),  # type: ignore[union-attr]
+        out += [PlannedJob(video.id, start_frame_mode(video).id, clip_params(reg.models[inp.video_model], inp.aspect_ratio, target),  # type: ignore[union-attr]
                            ("start_image",)) for _ in range(n)]
         return out
 
@@ -349,7 +343,7 @@ class MusicVideoRecipe(Recipe):
                 specs.append(StepSpec(clip_key(i), StepKind.generate, f"Shot {i}: motion", {
                     "model_id": video.id, "mode": i2v.id,
                     "prompt": f"{shot['visual'].strip().rstrip('.')}. {shot['motion']}",
-                    "params": self._clip_params(inp, reg, section["end"] - section["start"]),
+                    "params": clip_params(reg.models[inp.video_model], inp.aspect_ratio, section["end"] - section["start"]),
                     "media": [{"role": "start_image", "asset_id": frame["asset_id"]}]}, (frame_key(i),), optional=True))
 
         parts = (ok(settled, "parts") or {}).get("asset_ids")

@@ -41,8 +41,9 @@ from studio.media.assemble import GAP_S
 from studio.media.speech import CHARS_PER_SECOND
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import (
-    fit_duration,
+    clip_params,
     mode_with_op,
+    music_params,
     start_frame_mode,
     text_mode,
     with_param,
@@ -161,12 +162,12 @@ class FacelessRecipe(Recipe):
             video = reg.models[inp.video_model]
             mode = start_frame_mode(video)
             seconds = chars / CHARS_PER_SECOND / n + GAP_S
-            out += [PlannedJob(video.id, mode.id, self._clip_params(inp, reg, seconds), ("start_image",))
+            out += [PlannedJob(video.id, mode.id, clip_params(reg.models[inp.video_model], inp.aspect_ratio, seconds, inp.video_params), ("start_image",))
                     for _ in range(n)]
         if inp.music:
             music = reg.models[inp.music_model]
             out.append(PlannedJob(music.id, mode_with_op(music, "music").id,
-                                  self._music_params(inp, reg, chars / CHARS_PER_SECOND + n * GAP_S)))
+                                  music_params(reg.models[inp.music_model], chars / CHARS_PER_SECOND + n * GAP_S)))
         if inp.thumbnail:
             out.append(PlannedJob(image.id, text_mode(image).id, self._thumb_params(inp, reg)))
         return out
@@ -204,17 +205,6 @@ class FacelessRecipe(Recipe):
     def _thumb_params(self, inp: FacelessInput, reg: Registry) -> dict[str, Any]:
         spec = reg.models[inp.image_model]
         return with_param(spec, text_mode(spec).id, self._image_params(inp, reg), "num_images", 3)
-
-    def _clip_params(self, inp: FacelessInput, reg: Registry, seconds: float) -> dict[str, Any]:
-        spec = reg.models[inp.video_model]
-        mode = start_frame_mode(spec).id
-        params = with_param(spec, mode, dict(inp.video_params), "aspect_ratio", inp.aspect_ratio)
-        return with_param(spec, mode, params, "duration", fit_duration(spec, mode, seconds))
-
-    def _music_params(self, inp: FacelessInput, reg: Registry, seconds: float) -> dict[str, Any]:
-        spec = reg.models[inp.music_model]
-        mode = mode_with_op(spec, "music").id
-        return with_param(spec, mode, {}, "duration", fit_duration(spec, mode, seconds))
 
     # ---------------------------------------------------------------- the plan
 
@@ -281,7 +271,7 @@ class FacelessRecipe(Recipe):
                     specs.append(StepSpec(clip_key(i), StepKind.generate, f"Clip {i}", {
                         "model_id": video.id, "mode": start_frame_mode(video).id,
                         "prompt": f"{block['visual'].strip().rstrip('.')}. {motion}",
-                        "params": self._clip_params(inp, reg, seconds),
+                        "params": clip_params(reg.models[inp.video_model], inp.aspect_ratio, seconds, inp.video_params),
                         "media": [{"role": "start_image", "asset_id": still["asset_id"]}],
                     }, (still_key(i), voice_key(i)), optional=True))  # a failed clip falls back to its still
 
@@ -296,7 +286,7 @@ class FacelessRecipe(Recipe):
             music_spec = reg.models[inp.music_model]
             specs.append(StepSpec("music", StepKind.generate, "Music", {
                 "model_id": music_spec.id, "mode": mode_with_op(music_spec, "music").id, "prompt": theme.music,
-                "params": self._music_params(inp, reg, total), "media": []}, voice_keys, optional=True))
+                "params": music_params(reg.models[inp.music_model], total), "media": []}, voice_keys, optional=True))
 
         visuals = [self._visual(inp, settled, i) for i in range(1, len(blocks) + 1)]
         if not all(visuals) or (inp.music and "music" not in settled):

@@ -16,7 +16,6 @@ without it, small images are sent inline as data URIs and anything else is refus
 from __future__ import annotations
 
 import base64
-from pathlib import Path
 from typing import Any
 
 import anyio
@@ -29,13 +28,10 @@ from studio.providers.base import (
     PollResult,
     ProviderAdapter,
     ProviderError,
-    ProviderOutput,
     ResolvedMedia,
     SubmitResult,
 )
 from studio.providers.common import (
-    best_mime,
-    download_url,
     http_error,
     looks_like_moderation,
     require_key,
@@ -140,6 +136,3 @@ class RunPodAdapter(ProviderAdapter):
             return False
         return r.status_code == 200
 
-    async def download(self, route: Route, output: ProviderOutput, dest: Path, workdir: Path) -> str:
-        content_type = await download_url(output.url or "", dest)
-        return best_mime(output.mime, content_type, kind=output.kind)

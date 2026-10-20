@@ -11,7 +11,6 @@ paid job several times (fal-client 1.0.3), and a submit whose outcome is unknown
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import fal_client
@@ -24,14 +23,11 @@ from studio.providers.base import (
     PollResult,
     ProviderAdapter,
     ProviderError,
-    ProviderOutput,
     ResolvedMedia,
     SubmitResult,
 )
 from studio.providers.common import (
-    best_mime,
     classify_http,
-    download_url,
     looks_like_moderation,
     require_key,
     route_outputs,
@@ -141,6 +137,3 @@ class FalAdapter(ProviderAdapter):
             return False
         return True
 
-    async def download(self, route: Route, output: ProviderOutput, dest: Path, workdir: Path) -> str:
-        content_type = await download_url(output.url or "", dest)
-        return best_mime(output.mime, content_type, kind=output.kind)

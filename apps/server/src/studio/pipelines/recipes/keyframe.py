@@ -23,6 +23,13 @@ class KeyframeInput(BaseModel):
     image_model_id: str = Field("nano-banana-2", description="Renders the opening frame from the references")
 
 
+def ref_image(spec: ModelSpec) -> tuple[Mode, str]:
+    """The model's mode that draws from reference pictures, and the role they go in."""
+    mode = ref_mode(spec)
+    assert mode is not None
+    return mode, (spec.elements or {}).get("ref_role", "image_references")
+
+
 def ref_mode(spec: ModelSpec) -> Mode | None:
     """The image model's mode that accepts reference images."""
     role = (spec.elements or {}).get("ref_role", "image_references")

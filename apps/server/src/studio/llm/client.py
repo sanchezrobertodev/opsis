@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
@@ -92,6 +93,11 @@ async def _check_budget(session: AsyncSession, user_id: uuid.UUID, ceiling: Deci
         raise BudgetBlocked(f"monthly cap ${s.monthly_cap_usd:.2f} would be exceeded")
 
 
+# the pipeline run a Claude call is made for, set by the engine while it runs a step: its charge counts toward the
+# run's cap like the run's generations
+CURRENT_RUN: ContextVar[uuid.UUID | None] = ContextVar("current_run", default=None)
+
+
 async def structured[T: BaseModel](
     session: AsyncSession,
     user_id: uuid.UUID,
@@ -149,6 +155,7 @@ async def structured[T: BaseModel](
     session.add(SpendLedger(
         user_id=user_id, entry_type=LedgerEntry.charge, amount_usd=charge, provider="anthropic",
         route_id=f"anthropic/{response.model}", llm_call_id=uuid.uuid4(), estimated=fell_back,
+        pipeline_run_id=CURRENT_RUN.get(),
         basis={"purpose": purpose, "model": response.model, "requested_model": model, **usage,
                "request_id": response._request_id, "prices_verified": pricing.VERIFIED},
     ))

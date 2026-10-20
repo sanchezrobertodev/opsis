@@ -25,6 +25,7 @@ from studio.api.routers import (
     renders,
     templates,
 )
+from studio.api.routers.assets import MAX_UPLOAD_BYTES
 from studio.api.schemas import CandidateOut, ConfirmationProblem, ValidationProblem
 from studio.api.sse import hub
 from studio.config import get_settings
@@ -70,14 +71,30 @@ app = FastAPI(
     lifespan=lifespan,
     description="Personal AI video studio: model registry, generations, assets and live events.",
 )
+MAX_BODY_BYTES = MAX_UPLOAD_BYTES + (16 << 20)  # the largest upload plus the form around it
+_web = get_settings().web_origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[get_settings().web_origin, "http://127.0.0.1:3000"],
+    # 127.0.0.1 is the same dev web app as localhost; a deployed API trusts only its own web app
+    allow_origins=[_web, *(["http://127.0.0.1:3000"] if _web.startswith("http://localhost") else [])],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["ETag"],
 )
+
+
+@app.middleware("http")
+async def _body_size(request: Request, call_next):  # type: ignore[no-untyped-def]
+    """Refuse an upload by its declared size before it's read: the form parser spools every file to disk first,
+    so a size check in the route comes after the disk filled up."""
+    if request.method in ("POST", "PUT", "PATCH"):
+        length = request.headers.get("content-length")
+        if length is None and "multipart/" in request.headers.get("content-type", ""):
+            return JSONResponse(status_code=411, content={"detail": "uploads need a Content-Length"})
+        if length is not None and (not length.isdigit() or int(length) > MAX_BODY_BYTES):
+            return JSONResponse(status_code=413, content={"detail": "file too large"})
+    return await call_next(request)
 
 
 @app.exception_handler(GenerationRequestError)

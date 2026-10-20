@@ -402,6 +402,10 @@ async def cancel_generation(session: AsyncSession, gen: Generation) -> Generatio
     attempt = await inflight_attempt(session, gen.id)
     await fsm.transition(session, gen, GenStatus.canceled, reason="canceled by user")
     if attempt is not None:
+        if attempt.status == AttemptStatus.submitting:
+            # still being sent: the send settles it once it knows whether the provider took the job (an unknown
+            # outcome keeps its money held until someone checks)
+            return None
         remote = attempt.provider_job_id is not None and attempt.status != AttemptStatus.unknown
         attempt.status = AttemptStatus.canceled
         # Providers may bill partial work; P1 adapters report it. Until then release the reservation.

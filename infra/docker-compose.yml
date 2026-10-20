@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: studio
       POSTGRES_DB: studio
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:

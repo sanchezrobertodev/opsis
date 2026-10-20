@@ -30,6 +30,8 @@ from studio.worker.tasks.assets import defer_derive
 router = APIRouter(tags=["assets"])
 
 MAX_UPLOAD_BYTES = 4 * 1024**3
+# formats that are lists of other files: probing or converting one reads whatever it names on this machine
+POINTS_ELSEWHERE = {"hls", "dash", "concat", "applehttp"}
 CHUNK = 1 << 20
 
 
@@ -61,7 +63,17 @@ def _extension(mime: str, filename: str) -> str:
     if suffix and _type_of_name(filename) == mime:
         return suffix
     ext = mimetypes.guess_extension(mime) or suffix
-    return ".jpg" if ext == ".jpe" else ext
+    ext = ".jpg" if ext == ".jpe" else ext
+    # /media picks the served type from the name: one that isn't media (".html") would be served as a web page
+    named = _type_of_name(f"x{ext}") or ""
+    return ext if named.split("/")[0] in ("image", "video", "audio") or named == "model/gltf-binary" else ".bin"
+
+
+def _names_other_files(start: bytes) -> bool:
+    """A playlist or file list (HLS, DASH, ffconcat): ffprobe would open the files it names, so it must be refused
+    before probing. These are text formats that announce themselves in their first lines."""
+    text = start.lstrip(b"\xef\xbb\xbf \t\r\n").lower()
+    return text.startswith((b"#extm3u", b"ffconcat")) or (text.startswith(b"<") and b"<mpd" in text)
 
 
 def _kind_for(mime: str, filename: str = "") -> AssetKind:
@@ -70,6 +82,8 @@ def _kind_for(mime: str, filename: str = "") -> AssetKind:
         return AssetKind.model3d
     if name.endswith((".spz", ".ply")):
         return AssetKind.splat
+    if mime == "image/svg+xml" or name.endswith((".svg", ".svgz")):
+        raise HTTPException(415, "SVG can't be uploaded: it can carry scripts; export it as PNG or WebP")
     if mime.startswith("image/"):
         return AssetKind.image
     if mime.startswith("video/"):
@@ -104,9 +118,12 @@ async def upload(
                     raise HTTPException(413, "file too large")
                 digest.update(chunk)
                 await out.write(chunk)
+        async with await anyio.open_file(tmp, "rb") as fh:
+            start = await fh.read(4096)
+        if _names_other_files(start):
+            raise HTTPException(415, "playlists and lists of other files can't be uploaded; upload the media itself")
         if kind in NOT_MEDIA:
-            async with await anyio.open_file(tmp, "rb") as fh:
-                head = await fh.read(4)
+            head = start[:4]
             if not head.startswith(NOT_MEDIA[kind]):
                 raise HTTPException(415, f"this doesn't look like a {'GLB' if kind == AssetKind.model3d else 'splat'} file")
             info = Probe(None, None, None, None, False, None, None, {})
@@ -115,6 +132,8 @@ async def upload(
                 info = await probe(tmp)
             except FFmpegError:
                 raise HTTPException(415, "could not read this file as media") from None
+            if set((info.format_name or "").split(",")) & POINTS_ELSEWHERE:
+                raise HTTPException(415, "playlists and lists of other files can't be uploaded; upload the media itself")
         key = asset_key(user.id, asset_id, f"original{ext}")
         storage.put_file(key, tmp, move=True)
     finally:

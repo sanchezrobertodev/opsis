@@ -49,6 +49,7 @@ from studio.domain.generations import (
     cancel_generation,
     create_generation,
 )
+from studio.llm.client import CURRENT_RUN
 from studio.pipelines.llm_ops import LLM_OPS, reword
 from studio.pipelines.ops import LOCAL_OPS, StepFailed
 from studio.pipelines.recipe import Settled, StepSpec
@@ -109,7 +110,12 @@ async def run_spent(session: AsyncSession, run: PipelineRun) -> Decimal:
         select(func.coalesce(func.sum(Generation.estimated_cost_usd), 0))
         .where(Generation.group_id == run.id, Generation.status.in_(ACTIVE_STATUSES))
     )).scalar_one()
-    return Decimal(charged) + Decimal(pending)
+    claude = (await session.execute(  # its Claude steps (scripts, plans, rewording)
+        select(func.coalesce(func.sum(SpendLedger.amount_usd), 0))
+        .where(SpendLedger.pipeline_run_id == run.id, SpendLedger.generation_attempt_id.is_(None),
+               SpendLedger.entry_type.in_(SPENT))
+    )).scalar_one()
+    return Decimal(charged) + Decimal(pending) + Decimal(claude)
 
 
 def _texts(step: PipelineStep) -> list[tuple[str, int | None, str]]:
@@ -353,6 +359,14 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
 async def execute_step(session: AsyncSession, step: PipelineStep, run: PipelineRun) -> list[uuid.UUID]:
     """Run one local/llm step in place (or reword a refused take's prompt). Returns assets that need derivatives.
     Caller commits."""
+    token = CURRENT_RUN.set(run.id)  # Claude calls made now are charged to this run
+    try:
+        return await _execute_step(session, step, run)
+    finally:
+        CURRENT_RUN.reset(token)
+
+
+async def _execute_step(session: AsyncSession, step: PipelineStep, run: PipelineRun) -> list[uuid.UUID]:
     if step.kind == StepKind.generate:
         await _reword(session, step, run)
         return []

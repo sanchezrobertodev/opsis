@@ -35,7 +35,7 @@ from studio.pipelines.recipes.common import (
     text_mode,
     with_param,
 )
-from studio.pipelines.recipes.keyframe import ref_mode
+from studio.pipelines.recipes.keyframe import ref_image, ref_mode
 from studio.pipelines.recipes.talking import lipsync_mode
 from studio.registry.loader import Registry, get_registry
 from studio.registry.schema import Mode, ModelSpec
@@ -691,18 +691,13 @@ class CinemaExtendRecipe(Recipe):
         assert mode is not None
         return mode, with_param(spec, mode.id, dict(inp.params), "duration", fit_duration(spec, mode.id, inp.duration))
 
-    def _image(self, inp: CinemaExtendInput, reg: Registry) -> tuple[ModelSpec, Mode, str]:
-        image = reg.models[inp.image_model_id]
-        mode = ref_mode(image)
-        assert mode is not None
-        return image, mode, (image.elements or {}).get("ref_role", "image_references")
-
     def jobs(self, inp: CinemaExtendInput, reg: Registry) -> list[PlannedJob]:
         spec = reg.models[inp.model_id]
         mode, params = self._video(inp, spec)
         if inp.side == "after":
             return [PlannedJob(spec.id, mode.id, params, ("start_image",))]
-        image, img_mode, role = self._image(inp, reg)
+        image = reg.models[inp.image_model_id]
+        img_mode, role = ref_image(image)
         return [PlannedJob(image.id, img_mode.id, {}, (role,)),
                 PlannedJob(spec.id, mode.id, params, ("start_image", "end_image"))]
 
@@ -731,7 +726,8 @@ class CinemaExtendRecipe(Recipe):
                     "clips": [{"asset_id": take}, {"asset_id": more["asset_id"], "trim_in": EDGE}]}, ("more",)))
             return specs
 
-        image, img_mode, role = self._image(inp, reg)
+        image = reg.models[inp.image_model_id]
+        img_mode, role = ref_image(image)
         specs.append(StepSpec("lead_frame", StepKind.generate, "The frame it starts on", {
             "model_id": image.id, "mode": img_mode.id, "prompt": lead_frame_prompt(inp.prompt),
             "media": [{"role": role, "asset_id": edge["asset_id"]}],

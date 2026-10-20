@@ -213,7 +213,11 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   `pnpm dev` adds `--reload`, so saving server code restarts the API and drops requests in flight (`/health`
   reports `reloads_on_change`). For a long live run, start it without `--reload` or don't edit `apps/server/src`
   meanwhile; `smoke_live.py` retries dropped requests either way. Generations aren't affected: the worker runs them.
-- Media is served by the API at `/media/{key}` with Range support; files live under `data/media/`.
+- Media is served by the API at `/media/{key}` with Range support; files live under `data/media/`. Files are served
+  sandboxed (`Content-Security-Policy: sandbox`, `nosniff`) only from the caller's own folder (checked on the resolved
+  path). Uploads keep a media extension (anything else is stored as `.bin`), refuse SVG and playlists or file lists
+  (`hls`, `dash`, `concat`: ffmpeg would read the files they name), and are refused by `Content-Length` before the
+  body is read.
 
 ## Backups and schema checks
 - `scripts/schedule_tasks.ps1` registers two Windows scheduled tasks (`-Remove` takes them away): the database

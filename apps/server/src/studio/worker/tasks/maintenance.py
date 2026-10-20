@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
@@ -20,6 +21,7 @@ from studio.db.models import (
 from studio.db.session import session_scope
 from studio.domain import fsm
 from studio.domain.enums import AttemptStatus, ErrorClass, GenStatus
+from studio.storage.local import get_storage
 from studio.worker.app import Q_MAINT, app
 from studio.worker.tasks.generation import (
     PREPARE_TIMEOUT_S,
@@ -39,6 +41,7 @@ STUCK_SUBMIT = timedelta(seconds=PREPARE_TIMEOUT_S + SUBMIT_TIMEOUT_S + 120)
 STALE_INGEST = timedelta(minutes=5)
 STALE_RUN = timedelta(minutes=2)
 EVENT_RETENTION = timedelta(days=7)
+ABANDONED_RENDER = timedelta(days=1)
 
 
 @app.periodic(cron="* * * * *")
@@ -104,9 +107,20 @@ async def reap(now: datetime) -> dict[str, int]:
     for rid in runs:
         await defer_advance(rid)
         counts["runs"] += 1
+    counts["renders"] = _sweep_renders(now)
     if any(counts.values()):
         log.info("reaper: %s", counts)
     return counts
+
+
+def _sweep_renders(now: datetime) -> int:
+    """Frames of a 3D render that was never finished (the tab closed): `/finish` removes the rest."""
+    folder = get_storage().temp_dir() / "renders"
+    old = [d for d in folder.iterdir() if d.is_dir() and d.stat().st_mtime < (now - ABANDONED_RENDER).timestamp()] \
+        if folder.is_dir() else []
+    for d in old:
+        shutil.rmtree(d, ignore_errors=True)
+    return len(old)
 
 
 @app.periodic(cron="23 * * * *")

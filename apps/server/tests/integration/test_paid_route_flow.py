@@ -249,3 +249,60 @@ async def test_a_reroute_never_goes_over_what_is_left_of_the_runs_cap(client, ht
     done = (await client.get(f"/generations/{gen['id']}")).json()
     assert done["status"] == "failed" and "left in the run's cap" in done["error_message"]
     assert routes["predict"].call_count == 0  # nothing sent
+
+
+async def test_a_take_canceled_while_its_send_is_in_doubt_says_so(client, http, mp4_bytes, monkeypatch):
+    """Canceled while being sent, and the send ends with no answer: the provider may bill it, so the take says to
+    check instead of showing a clean cancel."""
+    from studio.providers.base import AmbiguousSubmitError
+    from studio.providers.replicate import ReplicateAdapter
+
+    mock_replicate(http, mp4_bytes)
+    gen = (await client.post("/generations", json={"model_id": "seedance-2.5", "mode": "t2v", "prompt": "a calm sea",
+                                                   "params": {"duration": 4}})).json()
+
+    async def cancel_then_drop(self, route, endpoint, payload, *, client_ref):
+        assert (await client.post(f"/generations/{gen['id']}/cancel")).status_code == 200
+        raise AmbiguousSubmitError("Replicate submit may have gone through: server disconnected")
+
+    monkeypatch.setattr(ReplicateAdapter, "submit", cancel_then_drop)
+    await run_submit(uuid.UUID(gen["id"]))
+    done = (await client.get(f"/generations/{gen['id']}")).json()
+    assert done["status"] == "canceled" and "may have taken it" in done["error_message"]
+    async with session_scope() as s:
+        attempt = (await s.execute(select(GenerationAttempt).where(
+            GenerationAttempt.generation_id == uuid.UUID(gen["id"])))).scalar_one()
+    assert attempt.status.value == "unknown"
+    held = (await client.get("/budget")).json()["reserved_usd"]
+    assert held >= float(attempt.estimated_cost_usd) > 0  # held while nobody knows whether it's billed
+
+    # checked on the provider's dashboard: marking it releases the money; the take stays canceled
+    r = await client.post(f"/generations/{gen['id']}/resolve-unknown")
+    assert r.status_code == 200 and r.json()["status"] == "canceled"
+    assert (await client.get("/budget")).json()["reserved_usd"] == pytest.approx(held - float(attempt.estimated_cost_usd))
+
+
+async def test_a_take_canceled_while_sending_that_was_taken_is_canceled_there(client, http, mp4_bytes, monkeypatch):
+    """The send that a cancel raced with got a job id: the job is canceled at the provider and the money released."""
+    from studio.domain.generations import cancel_generation
+    from studio.providers.base import SubmitResult
+    from studio.providers.replicate import ReplicateAdapter
+
+    mock_replicate(http, mp4_bytes)
+    gen = (await client.post("/generations", json={"model_id": "seedance-2.5", "mode": "t2v", "prompt": "a calm sea",
+                                                   "params": {"duration": 4}})).json()
+
+    async def cancel_then_taken(self, route, endpoint, payload, *, client_ref):
+        assert (await client.post(f"/generations/{gen['id']}/cancel")).status_code == 200
+        return SubmitResult(job_id="p-taken")
+
+    monkeypatch.setattr(ReplicateAdapter, "submit", cancel_then_taken)
+    await run_submit(uuid.UUID(gen["id"]))
+    async with session_scope() as s:
+        attempt = (await s.execute(select(GenerationAttempt).where(
+            GenerationAttempt.generation_id == uuid.UUID(gen["id"])))).scalar_one()
+        kinds = {e.entry_type.value for e in (await s.execute(
+            select(SpendLedger).where(SpendLedger.generation_attempt_id == attempt.id))).scalars()}
+    assert attempt.status.value == "canceled" and attempt.provider_job_id == "p-taken"
+    assert kinds == {"reservation", "release"}
+    assert cancel_generation  # the cancel itself left the attempt to the send
