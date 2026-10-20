@@ -46,7 +46,8 @@ export type CinemaSettings = {
 export type CinemaDoc = { logline: string; script: string; cast: string[]; settings: CinemaSettings; scenes: Scene[];
                           cut?: Cut };
 
-export function newId(prefix: "s" | "c" | "i" | "a") {
+/** A short random id: a letter that says what it names (shot, scene, object...) and six hex digits. */
+export function newId(prefix: string) {
   const bytes = crypto.getRandomValues(new Uint8Array(3));
   return prefix + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }

@@ -1,31 +1,27 @@
 "use client";
 
-import { cva, type VariantProps } from "class-variance-authority";
 import { forwardRef, useEffect, useId, useRef } from "react";
 import { cn } from "@/lib/cn";
 
 // ---------------------------------------------------------------- Button
 
-const button = cva(
-  "inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45",
-  {
-    variants: {
-      tone: {
-        primary: "bg-tungsten text-bay hover:bg-[#f5b955]",
-        quiet: "bg-raised text-chalk hover:bg-line",
-        ghost: "text-muted hover:bg-raised hover:text-chalk",
-        danger: "bg-fault/15 text-fault hover:bg-fault/25",
-      },
-      size: { sm: "h-8 px-3 text-xs", md: "h-10 px-4 text-sm", lg: "h-12 px-5 text-[15px]" },
-    },
-    defaultVariants: { tone: "quiet", size: "md" },
-  },
-);
+const BUTTON =
+  "inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45";
+const TONE = {
+  primary: "bg-tungsten text-bay hover:bg-[#f5b955]",
+  quiet: "bg-raised text-chalk hover:bg-line",
+  ghost: "text-muted hover:bg-raised hover:text-chalk",
+  danger: "bg-fault/15 text-fault hover:bg-fault/25",
+};
+const SIZE = { sm: "h-8 px-3 text-xs", md: "h-10 px-4 text-sm", lg: "h-12 px-5 text-[15px]" };
 
-export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof button>;
+export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  tone?: keyof typeof TONE | null;
+  size?: keyof typeof SIZE | null;
+};
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(({ className, tone, size, ...props }, ref) => (
-  <button ref={ref} className={cn(button({ tone, size }), className)} {...props} />
+  <button ref={ref} className={cn(BUTTON, TONE[tone ?? "quiet"], SIZE[size ?? "md"], className)} {...props} />
 ));
 Button.displayName = "Button";
 

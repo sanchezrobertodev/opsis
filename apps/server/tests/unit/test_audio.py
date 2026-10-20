@@ -270,3 +270,15 @@ async def test_uploads_are_streamed_not_read_whole(adapter, tmp_path, monkeypatc
     await adapter.submit(dub_route(), "dubbing/project", {"file": staged["input_audio"][0], "target_language": "es"},
                          client_ref="c")
     assert len(create.calls.last.request.content) > 300_000  # the whole file still went up
+
+
+def test_a_voice_id_cant_rewrite_the_elevenlabs_address():
+    from studio.registry.mapping import endpoint_for
+
+    assert endpoint_for("text-to-speech/{voice_id}/with-timestamps", {"voice_id": GEORGE}) == \
+        f"text-to-speech/{GEORGE}/with-timestamps"
+    for sneaky in ("../../voices/abc/edit?x=", "..", "."):
+        url = endpoint_for("text-to-speech/{voice_id}/with-timestamps", {"voice_id": sneaky})
+        segment = url.removeprefix("text-to-speech/").removesuffix("/with-timestamps")
+        assert "/" not in segment and "?" not in segment and segment not in (".", ".."), url
+        assert str(httpx.URL(f"https://api.test/v1/{url}").path).startswith("/v1/text-to-speech/")

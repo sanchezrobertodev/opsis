@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import quote
 
 from studio.registry.schema import ModelSpec, ParamMapEntry, Route
 from studio.registry.validate import NormalizedRequest
@@ -158,12 +159,18 @@ def build_payload(
     return endpoint_for(route_mode.endpoint, req.params), payload, warnings
 
 
+def _segment(value: Any) -> str:
+    text = quote(str(value), safe="")
+    return text if text.strip(".") else text.replace(".", "%2E")  # "." and ".." would be read as directories
+
+
 def endpoint_for(template: str, params: dict[str, Any]) -> str:
     """Fill `{param}` placeholders, for providers that put a quality tier in the path
     (e.g. `fal-ai/kling-video/v3/{tier}/motion-control`). Map such params `to: null` so they stay out of the body."""
     if "{" not in template:
         return template
     try:
-        return template.format_map({k: str(v) for k, v in params.items()})
+        # escaped whole: an open value (a cloned voice id) can't climb the path ("..") or add a query
+        return template.format_map({k: _segment(v) for k, v in params.items()})
     except KeyError as exc:
         raise ValueError(f"endpoint {template!r} needs the {exc.args[0]!r} parameter") from None

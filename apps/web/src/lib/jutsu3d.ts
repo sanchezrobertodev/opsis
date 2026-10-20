@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { temporal } from "zundo";
 import { create } from "zustand";
 import { api, unwrap } from "./api";
+import { newId } from "@/lib/cinema";
 
 /** Mirrors studio/jutsu3d/document.py. Metres, XYZ Euler radians, y up. */
 export type Vec3 = [number, number, number];
@@ -44,10 +45,7 @@ export const KIND_LABEL: Record<ObjectKind, string> = {
   model: "Model", world: "World", sun: "Sun", point_light: "Point light", spot_light: "Spot light", camera: "Camera",
 };
 
-export function newId(prefix = "o") {
-  const bytes = crypto.getRandomValues(new Uint8Array(3));
-  return prefix + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
+export { newId };
 
 export function newObject(kind: ObjectKind, partial: Partial<SceneObject> = {}): SceneObject {
   const lift = kind === "plane" || kind === "mannequin" || kind === "model" || kind === "world" ? 0 : kind === "camera" ? 1.6

@@ -66,17 +66,6 @@ class Settings(BaseSettings):
     def live_routes(self) -> set[str]:
         return {r.strip() for r in self.live_route_allowlist.split(",") if r.strip()}
 
-    def provider_key(self, provider: str) -> str:
-        return {
-            "fal": self.fal_key,
-            "google": self.gemini_api_key,
-            "runway": self.runway_api_key,
-            "replicate": self.replicate_api_token,
-            "runpod": self.runpod_api_key,
-            "elevenlabs": self.elevenlabs_api_key,
-            "worldlabs": self.worldlabs_api_key,
-        }.get(provider, "")
-
     def resolve_media_root(self) -> Path:
         root = self.media_root if self.media_root.is_absolute() else REPO_ROOT / self.media_root
         return root.resolve()
