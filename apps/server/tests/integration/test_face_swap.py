@@ -43,6 +43,7 @@ async def test_a_picture_gets_the_new_face(client, in_memory_queue):
     await drain(in_memory_queue)
     gen = await _swap_generation(client, run["id"])
     assert gen.model_id == "nano-banana-pro" and "Image 2" in gen.request["prompt"]
+    assert gen.request["params"]["aspect_ratio"] == "16:9"  # the keyframe fixture's 1280 x 720, kept
     # the picture first, then the face, as the prompt says
     assert [m["asset_id"] for m in gen.request["media"]] == [picture["id"], face["id"]]
 
@@ -82,6 +83,26 @@ async def test_whole_person_and_recast_models_and_their_limits(client, in_memory
     await drain(in_memory_queue)
     gen = await _swap_generation(client, run["id"])
     assert gen.model_id == "minimax-h3-max-recast" and gen.request["media"][1]["role"] == "image_references"
+
+
+def test_the_swap_keeps_the_pictures_shape():
+    from studio.config import get_settings
+    from studio.pipelines.recipes.face_swap import keep_shape
+    from studio.registry.loader import load_registry
+
+    spec = load_registry(get_settings().resolve_registry_dir()).models["nano-banana-pro"]
+    assert keep_shape(spec, 1080 / 1920) == {"aspect_ratio": "9:16"}
+    assert keep_shape(spec, 1.0) == {"aspect_ratio": "1:1"}
+    assert keep_shape(spec, 1200 / 1500) == {"aspect_ratio": "4:5"}
+    assert keep_shape(spec, None) == {}
+
+
+async def test_a_video_model_cant_swap_a_picture(client, in_memory_queue):
+    picture = await upload(client, PICTURE, "image/png")
+    r = await client.post("/pipelines", json={"recipe": "face_swap", "input": {
+        "picture_asset_id": picture["id"], "face_asset_id": picture["id"], "consent": True,
+        "image_model": "minimax-h3-max"}})
+    assert r.status_code == 422 and "can't edit a picture" in r.text
 
 
 async def test_consent_and_a_face_are_required(client, in_memory_queue):

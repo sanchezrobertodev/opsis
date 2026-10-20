@@ -9,6 +9,7 @@ agreed: the input carries that consent, like a voice clone's.
 
 from __future__ import annotations
 
+import math
 import uuid
 from typing import Any
 
@@ -38,6 +39,7 @@ class FaceSwapInput(BaseModel):
     consent: bool = Field(False, description="The people in both agreed to the swap (required)")
     image_model: str = "nano-banana-pro"
     swap_model: str = "pixverse-swap"
+    picture_aspect: float | None = Field(None, description="Filled in when the run starts: the picture's width / height")
 
     @model_validator(mode="after")
     def _one_each(self) -> FaceSwapInput:
@@ -53,6 +55,16 @@ class FaceSwapInput(BaseModel):
 def _slot(mode: Mode, kind: str) -> str | None:
     """The role of the mode's first slot that takes `kind` (the clip, or the new person's photo)."""
     return next((s.role for s in mode.medias if kind in s.kinds and not s.auto), None)
+
+
+def keep_shape(spec: ModelSpec, aspect: float | None) -> dict[str, Any]:
+    """The model's aspect choice nearest the picture's, so the swap comes back the picture's shape."""
+    param = next((p for p in spec.parameters if p.name == "aspect_ratio" and p.type == "enum"), None)
+    choices = [o for o in getattr(param, "options", []) if isinstance(o, str) and ":" in o]
+    if not aspect or not choices:
+        return {}
+    ratio = lambda o: int(o.split(":")[0]) / int(o.split(":")[1])  # noqa: E731
+    return {"aspect_ratio": min(choices, key=lambda o: abs(math.log(ratio(o) / aspect)))}
 
 
 def swap_mode(spec: ModelSpec) -> Mode | None:
@@ -72,10 +84,22 @@ class FaceSwapRecipe(Recipe):
 
     async def resolve(self, session: AsyncSession, user_id: uuid.UUID, inp: FaceSwapInput,
                       reg: Registry) -> FaceSwapInput:
-        """A saved character's face is their main picture (else their cover), written into the input."""
+        """A saved character's face is their main picture (else their cover), and the picture's shape, written
+        into the input."""
+        from studio.db.models import (  # models import nothing from recipes
+            Asset,
+            Element,
+            ElementAsset,
+            ElementKind,
+        )
+
+        if inp.picture_asset_id is not None:
+            w, h = (await session.execute(select(Asset.width, Asset.height).where(
+                Asset.id == inp.picture_asset_id, Asset.user_id == user_id))).one_or_none() or (None, None)
+            if w and h:
+                inp = inp.model_copy(update={"picture_aspect": w / h})
         if inp.character is None or inp.face_asset_id is not None:
             return inp
-        from studio.db.models import Element, ElementAsset, ElementKind  # models import nothing from recipes
 
         element = (await session.execute(select(Element).where(
             Element.user_id == user_id, Element.slug == inp.character, Element.kind == ElementKind.character,
@@ -93,7 +117,7 @@ class FaceSwapRecipe(Recipe):
             errors.append(f"@{inp.character} has no picture to take the face from")
         if inp.picture_asset_id:
             spec = reg.model(inp.image_model)
-            if spec is None or mode_with_op(spec, "multi_ref") is None:
+            if spec is None or spec.output_type != "image" or mode_with_op(spec, "multi_ref") is None:
                 errors.append(f"{inp.image_model!r} can't edit a picture with a reference")
         else:
             spec = reg.model(inp.swap_model)
@@ -102,7 +126,7 @@ class FaceSwapRecipe(Recipe):
         return errors
 
     def _job(self, inp: FaceSwapInput, reg: Registry) -> tuple[ModelSpec, Mode, list[tuple[str, str]], str]:
-        """The one generation: its model, mode, inputs (role, asset id) in order, and prompt."""
+        """The one generation: its model, mode, inputs (role, asset id) in order, and prompt (params: `_params`)."""
         face = str(inp.face_asset_id)
         if inp.picture_asset_id:
             spec = reg.models[inp.image_model]
@@ -117,12 +141,16 @@ class FaceSwapRecipe(Recipe):
         if inp.face_asset_id is None:
             return []
         spec, mode, media, _ = self._job(inp, reg)
-        return [PlannedJob(spec.id, mode.id, {}, tuple(dict.fromkeys(r for r, _ in media)), media=tuple(media))]
+        return [PlannedJob(spec.id, mode.id, self._params(inp, spec), tuple(dict.fromkeys(r for r, _ in media)),
+                           media=tuple(media))]
+
+    def _params(self, inp: FaceSwapInput, spec: ModelSpec) -> dict[str, Any]:
+        return keep_shape(spec, inp.picture_aspect) if inp.picture_asset_id else {}
 
     def plan(self, inp: FaceSwapInput, settled: Settled, reg: Registry) -> list[StepSpec]:
         spec, mode, media, prompt = self._job(inp, reg)
         return [StepSpec("swap", StepKind.generate, "Swap the face", {
-            "model_id": spec.id, "mode": mode.id, "prompt": prompt, "params": {},
+            "model_id": spec.id, "mode": mode.id, "prompt": prompt, "params": self._params(inp, spec),
             "media": [{"role": r, "asset_id": a} for r, a in media]})]
 
     def result(self, inp: FaceSwapInput, settled: Settled) -> dict[str, Any] | None:
