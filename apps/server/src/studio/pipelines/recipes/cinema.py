@@ -67,10 +67,6 @@ def checked_direction(value: dict[str, Any] | None) -> dict[str, Any] | None:
 Direction = Annotated[dict[str, Any] | None, AfterValidator(checked_direction)]
 
 
-def frames_key(shot: str, n: int | None = None) -> str:
-    return f"frames[{shot}]" if n is None else f"frames[{shot}:{n}]"
-
-
 def take_key(shot: str, n: int) -> str:
     return f"take[{shot}:{n}]"
 
