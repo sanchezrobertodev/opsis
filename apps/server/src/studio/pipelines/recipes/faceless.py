@@ -183,7 +183,8 @@ class FacelessRecipe(Recipe):
                 errors.append(f"unknown model {inp.video_model!r}")
             elif spec.output_type != "video" or start_frame_mode(spec) is None:
                 errors.append(f"{spec.name} can't animate a still")
-            elif inp.clip_sound and "generate_audio" not in {p.name for p in spec.params_for(start_frame_mode(spec).id)}:  # type: ignore[union-attr]
+            # sound on a switch, or always (H3: tagged audio), like `llm/enhance.py`
+            elif inp.clip_sound and spec.param("generate_audio") is None and "audio" not in spec.tags:
                 errors.append(f"{spec.name} makes clips without sound; turn clip sound off or pick a model with "
                               "its own sound (Kling 3.0, Seedance 2.5, Veo 3.1)")
         # a star and clip sound apply where they can: a song draws no star (yet) and stills have no sound of their own

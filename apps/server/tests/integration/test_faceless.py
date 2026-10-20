@@ -370,4 +370,6 @@ def test_clip_sound_needs_a_model_that_makes_sound_and_a_star_name_is_kept_as_wr
     silent = FacelessInput(topic="a wendigo hunts", format="motion", clip_sound=True, video_model="runway-gen-4-turbo")
     assert any("without sound" in e for e in FacelessRecipe().validate(silent, reg))
     assert not any("without sound" in e for e in FacelessRecipe().validate(silent.model_copy(update={"clip_sound": False}), reg))
+    always = silent.model_copy(update={"video_model": "minimax-h3-max"})  # sound included, no switch
+    assert not any("without sound" in e for e in FacelessRecipe().validate(always, reg))
     assert named("Close-up of the star waiting", "Creature \\1") == "Close-up of Creature \\1 waiting"
