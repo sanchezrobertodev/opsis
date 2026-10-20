@@ -40,7 +40,7 @@ def test_writer_helpers():
     blocks = split_narration(text, 6.0)
     assert " ".join(blocks) == text and all(len(b) < 6 * 14.5 * 1.5 for b in blocks)
     script = _mock_script("A topic", 150)
-    assert len(script.narration.split()) >= 150
+    assert 140 <= len(script.narration.split()) <= 150  # close to its words, never over
     plan = _mock_plan(script.narration, "motion")
     assert " ".join(b.narration for b in plan.blocks) == " ".join(script.narration.split())
     assert all(b.motion for b in plan.blocks)

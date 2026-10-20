@@ -464,8 +464,10 @@ async def add_element_image(session: AsyncSession, run: PipelineRun, step: Pipel
         raise StepFailed("only a picture can be a character's reference")
     links = (await session.execute(select(ElementAsset).where(ElementAsset.element_id == element.id))).scalars().all()
     if not any(x.asset_id == picture.id for x in links):  # a rerun of the step keeps one link
+        # `first`: right after the main picture (a reference sheet), so it's among the two a mention attaches
+        sort = min((x.sort for x in links), default=0) - 1 if inp.get("first") else len(links)
         session.add(ElementAsset(element_id=element.id, asset_id=picture.id, view=inp.get("view") or "front",
-                                 is_primary=not links, sort=len(links)))
+                                 is_primary=not links, sort=sort))
     if element.cover_asset_id is None:
         element.cover_asset_id = picture.id
     return {"element_id": str(element.id), "asset_id": str(picture.id)}

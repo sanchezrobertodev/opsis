@@ -250,7 +250,7 @@ async def test_a_creature_documentary_stars_a_saved_creature_and_keeps_the_clips
     from studio.db.models import Generation
     from studio.media.assemble import CLIP_SOUND_DB
 
-    griffin = await make_element(client, "Griffin")
+    griffin = await make_element(client, "Griffin", description="a lion's body with an eagle's head and wings")
     rendered = await client.post("/templates/creature-documentary/render", json={
         "fields": {"topic": "A griffin defends its cliff nest", "footage": "kling-3.0", "shape": "9:16"},
         "media": {"character": griffin["slug"]}})
@@ -285,8 +285,9 @@ async def test_a_creature_documentary_stars_a_saved_creature_and_keeps_the_clips
             assert still.mode == "t2i" and still.request["media"] == []
         clip = await gen_of(steps[f"clip[b{i:02d}]"])
         assert clip.request["params"]["generate_audio"] is True and "Natural sound of the scene" in clip.request["prompt"]
-        if block["star"]:  # the video model is told what it is by name, not "the star"
-            assert "Griffin" in clip.request["prompt"] and "the star" not in clip.request["prompt"]
+        if block["star"]:  # the video model is told what it is, by name and look, not "the star"
+            assert "Griffin (a lion's body with an eagle's head and wings)" in clip.request["prompt"]
+            assert "the star" not in clip.request["prompt"]
     thumbs = await gen_of(steps["thumbs"])
     assert thumbs.mode == "edit" and picture in [m["asset_id"] for m in thumbs.request["media"]]
     async with session_scope() as s:
@@ -373,3 +374,101 @@ def test_clip_sound_needs_a_model_that_makes_sound_and_a_star_name_is_kept_as_wr
     always = silent.model_copy(update={"video_model": "minimax-h3-max"})  # sound included, no switch
     assert not any("without sound" in e for e in FacelessRecipe().validate(always, reg))
     assert named("Close-up of the star waiting", "Creature \\1") == "Close-up of Creature \\1 waiting"
+    assert named("The star lands; the star folds its wings.", "Griffin", "a lion with eagle wings.") == (
+        "Griffin (a lion with eagle wings) lands; Griffin folds its wings.")  # described once, then named
+
+
+STORY = " ".join(f"The griffin circles the ridge for the {n} time, watching the ravens below the nest." for n in
+                 ("first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"))
+
+
+async def test_a_longest_length_stops_before_the_clips_and_the_voices_pace_is_measured(client, in_memory_queue):
+    """With a longest length set, the clips wait for every narration; an episode that runs over stops with its exact
+    length before any clip is paid for, and goes on when told to. Its narrations then measure the voice's pace."""
+    from studio.config import get_settings
+    from studio.faceless.writer import WORDS_PER_MINUTE
+    from studio.media.assemble import timeline
+    from studio.pipelines.llm_ops import voice_pace
+
+    run = await start(client, "faceless", script=STORY, format="motion", max_seconds=10, music=False, captions=False,
+                      thumbnail=False, review_script=False, voice={"voice_id": "BNgbHR0DNeZixGQVzloa"})
+    await drain(in_memory_queue)
+    held = await get(client, run["id"])
+    steps = steps_of(held)
+    assert held["status"] == "waiting" and steps["length"]["status"] == "waiting"
+    assert not any(k.startswith("clip[") for k in steps) and "cut" not in steps
+    voiced = [s["output"]["duration_ms"] / 1000 for k, s in sorted(steps.items()) if k.startswith("voice[")]
+    assert "over your 10 s" in steps["length"]["label"] and f"{timeline(voiced).total:.1f} s" in steps["length"]["label"]
+
+    await answer(client, run["id"], "length", "approve")
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    async with session_scope() as s:  # the length it stopped with is the episode's length
+        cut = await s.get(Asset, uuid.UUID(steps_of(done)["cut"]["output"]["asset_id"]))
+        assert cut is not None
+    info = await probe(get_storage().path_for(cut.storage_key))
+    assert abs((info.duration_ms or 0) / 1000 - timeline(voiced).total) < 0.1
+
+    async with session_scope() as s:
+        wpm = await voice_pace(s, get_settings().owner_user_id, "eleven-v4", "BNgbHR0DNeZixGQVzloa")
+        other = await voice_pace(s, get_settings().owner_user_id, "eleven-v4", "a-voice-never-heard")
+    assert wpm != WORDS_PER_MINUTE and 60 < wpm < 400 and other == WORDS_PER_MINUTE
+
+    under = await start(client, "faceless", script=STORY, format="motion", max_seconds=600, music=False,
+                        captions=False, thumbnail=False, review_script=False)
+    await drain(in_memory_queue)
+    done = await get(client, under["id"])
+    assert done["status"] == "succeeded" and "length" not in steps_of(done)
+
+
+async def test_a_script_fits_its_length_after_the_pauses_and_is_shortened_when_long(monkeypatch):
+    from studio.config import get_settings
+    from studio.faceless import writer
+    from studio.faceless.catalog import get_catalog
+
+    # the pauses the cut adds come off: half a minute at 150 a minute is fewer than 75 words, a slower voice fewer still
+    assert writer.target_words(0.5, "motion", 138) < writer.target_words(0.5, "motion") < 75
+    calls: list[int] = []
+    original = writer._mock_script
+
+    def wordy(topic, words):
+        calls.append(words)
+        return original(topic, words * 2 if len(calls) == 1 else words)  # the first draft runs twice as long
+
+    monkeypatch.setattr(writer, "_mock_script", wordy)
+    async with session_scope() as s:
+        res = await writer.write_script(s, get_settings().owner_user_id, topic="A griffin", minutes=0.5, wpm=138,
+                                        theme=get_catalog().theme("creature-documentary"))
+    target = writer.target_words(0.5, "motion", 138)
+    assert len(calls) == 2 and len(res.output.narration.split()) <= target * writer.OVER_BY
+
+
+async def test_a_reference_sheet_is_drawn_from_the_characters_pictures_and_attaches_next(client, in_memory_queue):
+    """The sheet is drawn in the image model's reference mode from the character's pictures, kept right after its
+    main picture, so a mention attaches the main picture and the sheet (a character attaches two)."""
+    from test_elements import make_element
+
+    from studio.config import get_settings
+    from studio.director.elements import resolve_mentions
+    from studio.registry.loader import get_registry
+
+    griffin = await make_element(client, "Griffin", description="a lion with eagle wings", images=2)
+    pictures = [i["asset"]["id"] for i in griffin["images"]]
+    r = await client.post("/pipelines/estimate", json={"recipe": "character_sheet", "input": {
+        "element_id": griffin["id"], "slug": "nobody-here"}})
+    assert r.status_code == 422 and "no saved character called @nobody-here" in r.text
+    run = await start(client, "character_sheet", element_id=griffin["id"], slug=griffin["slug"])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    sheet = done["output"]["asset_id"]
+    async with session_scope() as s:
+        from studio.db.models import Generation
+
+        drawn = await s.get(Generation, uuid.UUID(steps_of(done)["sheet"]["generation_id"]))
+        assert drawn is not None and drawn.mode == "edit"
+        assert [m["asset_id"] for m in drawn.request["media"]] == pictures  # from its own pictures
+        spec = get_registry().models["nano-banana-2"]
+        res = await resolve_mentions(s, get_settings().owner_user_id, spec, "edit", f"@{griffin['slug']} lands", [])
+    assert [m["asset_id"] for m in res.media] == [pictures[0], sheet]

@@ -32,6 +32,8 @@ export type EpisodeSettings = {
   character: string | null;
   /** Motion: each clip made with its own sound, kept under the narration. */
   clip_sound: boolean;
+  /** Stops before the clips once the voiced narration runs longer than this many seconds. */
+  max_seconds: number | null;
 };
 
 export type CaptionLook = {

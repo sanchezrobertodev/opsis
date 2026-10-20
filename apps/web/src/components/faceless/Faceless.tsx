@@ -205,8 +205,15 @@ export function Faceless() {
         </Field>
         {!writeOwn && (
           <Field label="Length">
-            <Slider value={s.minutes} min={0.5} max={5} step={0.5} onChange={(v) => patch({ minutes: v })}
+            <Slider value={s.minutes} min={0.5} max={5} step={0.5}
+                    onChange={(v) => patch({ minutes: v, ...(s.max_seconds != null ? { max_seconds: Math.round(v * 60) } : {}) })}
                     format={(v) => `${v} min`} />
+            {!song && (
+              <Toggle label="Hold to the length"
+                      hint={`Once the narration is voiced, the exact length is known: past ${Math.round(s.minutes * 60)} s, it stops before ${s.format === "motion" ? "the clips" : "the cut"} so you can shorten it.`}
+                      checked={s.max_seconds != null}
+                      onChange={(v) => patch({ max_seconds: v ? Math.round(s.minutes * 60) : null })} />
+            )}
           </Field>
         )}
         <Field label="Aspect">

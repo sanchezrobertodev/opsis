@@ -188,7 +188,7 @@ function StepRow({ run, step }: { run: Run; step: Step }) {
       )}
       {run.recipe === "faceless" && step.key === "plan" && step.status === "succeeded" && <PlanBlocks step={step} />}
       {step.kind === "checkpoint" && step.status === "waiting" && !(step.options ?? []).some((o) => o.asset) && (
-        run.recipe === "faceless" && step.key === "review" ? (
+        run.recipe === "faceless" && (step.key === "review" || step.key === "length") ? (
           <ScriptReview run={run} step={step} />
         ) : (
           <div className="mt-3 flex gap-2 pl-6">
