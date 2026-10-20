@@ -144,18 +144,21 @@ async def cancel(
 async def resolve_unknown(
     generation_id: uuid.UUID, session: AsyncSession = Depends(get_session), user: User = Depends(current_user)
 ) -> GenerationOut:
-    """A submit whose outcome is unknown: the user checked the provider dashboard and marks it failed."""
-    gen = await _get_owned(session, user, generation_id, lock=True)
-    if gen.status != GenStatus.unknown:
-        raise HTTPException(409, "generation is not in the unknown state")
-    attempt = await inflight_attempt(session, gen.id)
-    if attempt is not None:
-        from studio.budget import guard
-        from studio.domain.enums import AttemptStatus
+    """A submit whose outcome is unknown: the user checked the provider dashboard and marks it failed. Also a take
+    canceled while it was being sent whose send ended with no answer: its held money is released."""
+    from studio.budget import guard
+    from studio.domain.enums import AttemptStatus
 
+    gen = await _get_owned(session, user, generation_id, lock=True)
+    attempt = await inflight_attempt(session, gen.id)
+    held = gen.status == GenStatus.canceled and attempt is not None and attempt.status == AttemptStatus.unknown
+    if gen.status != GenStatus.unknown and not held:
+        raise HTTPException(409, "generation is not in the unknown state")
+    if attempt is not None:
         attempt.status = AttemptStatus.failed
         await guard.settle(session, gen.user_id, attempt, None, estimated=True)
-    await fsm.transition(session, gen, GenStatus.failed, reason="marked failed by user",
-                         error=(ErrorClass.transient, gen.error_message or "submit outcome unknown"))
+    if not held:
+        await fsm.transition(session, gen, GenStatus.failed, reason="marked failed by user",
+                             error=(ErrorClass.transient, gen.error_message or "submit outcome unknown"))
     await session.commit()
     return (await _with_assets(session, [gen]))[0]

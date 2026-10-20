@@ -331,15 +331,18 @@ async def run_submit(gen_id: uuid.UUID) -> None:
         assert gen is not None and attempt is not None
         attempt.payload = _scrub({"endpoint": endpoint, "body": payload})
         if gen.status in (GenStatus.canceled, GenStatus.failed):  # canceled, or marked failed while it was sending
-            if result is not None:
-                attempt.provider_job_id = result.job_id
-                attempt.status = AttemptStatus.canceled
-                cancel_remote = True
-            elif ambiguous is not None:
-                # it may have gone through and be billed: say so instead of showing a clean cancel
+            if ambiguous is not None:
+                # it may have gone through and be billed: its money stays held and the take says to check
                 attempt.status, attempt.error_message = AttemptStatus.unknown, ambiguous
                 gen.error_message = (f"stopped while it was being sent, and the provider may have taken it (and may "
-                                     f"bill it): check {route.provider}'s dashboard. {ambiguous}")[:2000]
+                                     f"bill it): check {route.provider}'s dashboard, then mark it checked. "
+                                     f"{ambiguous}")[:2000]
+            else:
+                if result is not None:  # it was taken: cancel it there
+                    attempt.provider_job_id = result.job_id
+                    cancel_remote = True
+                attempt.status = AttemptStatus.canceled
+                await guard.settle(s, gen.user_id, attempt, None, estimated=True)
         elif result is not None:
             attempt.provider_job_id = result.job_id
             attempt.status = AttemptStatus.submitted

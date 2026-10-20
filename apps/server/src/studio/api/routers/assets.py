@@ -69,6 +69,13 @@ def _extension(mime: str, filename: str) -> str:
     return ext if named.split("/")[0] in ("image", "video", "audio") or named == "model/gltf-binary" else ".bin"
 
 
+def _names_other_files(start: bytes) -> bool:
+    """A playlist or file list (HLS, DASH, ffconcat): ffprobe would open the files it names, so it must be refused
+    before probing. These are text formats that announce themselves in their first lines."""
+    text = start.lstrip(b"\xef\xbb\xbf \t\r\n").lower()
+    return text.startswith((b"#extm3u", b"ffconcat")) or (text.startswith(b"<") and b"<mpd" in text)
+
+
 def _kind_for(mime: str, filename: str = "") -> AssetKind:
     name = filename.lower()
     if mime == "model/gltf-binary" or name.endswith(".glb"):
@@ -111,9 +118,12 @@ async def upload(
                     raise HTTPException(413, "file too large")
                 digest.update(chunk)
                 await out.write(chunk)
+        async with await anyio.open_file(tmp, "rb") as fh:
+            start = await fh.read(4096)
+        if _names_other_files(start):
+            raise HTTPException(415, "playlists and lists of other files can't be uploaded; upload the media itself")
         if kind in NOT_MEDIA:
-            async with await anyio.open_file(tmp, "rb") as fh:
-                head = await fh.read(4)
+            head = start[:4]
             if not head.startswith(NOT_MEDIA[kind]):
                 raise HTTPException(415, f"this doesn't look like a {'GLB' if kind == AssetKind.model3d else 'splat'} file")
             info = Probe(None, None, None, None, False, None, None, {})

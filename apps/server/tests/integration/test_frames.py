@@ -99,7 +99,7 @@ async def test_tags_build_the_driving_clip_library(client):
     assert all("driving" in a["tags"] for a in listed)
 
 
-async def test_uploads_are_served_as_media_and_never_as_pages(client, tmp_path):
+async def test_uploads_are_served_as_media_and_never_as_pages(client, tmp_path, monkeypatch):
     """A file named .html with a vague audio type, an SVG, a playlist pointing at other files on the server, and a
     media key that climbs out of the user's folder."""
     line = (ROOT / "fixtures" / "audio" / "line.mp3").read_bytes()
@@ -120,8 +120,18 @@ async def test_uploads_are_served_as_media_and_never_as_pages(client, tmp_path):
 
     near = Path(os.path.relpath(CLIP, get_storage().temp_dir())).as_posix()  # relative to where uploads are probed
     playlist = f"#EXTM3U\n#EXT-X-TARGETDURATION:3\n#EXTINF:3,\n{near}\n#EXT-X-ENDLIST\n".encode()
-    r = await client.post("/uploads", files={"file": ("x.m3u8", playlist, "video/x-anything")})
-    assert r.status_code == 415 and "playlist" in r.text
+    from studio.api.routers import assets
+
+    async def never(path):  # refused by its first bytes: ffprobe never opens the files it names
+        raise AssertionError("a playlist was probed")
+
+    monkeypatch.setattr(assets, "probe", never)
+    concat = f"ffconcat version 1.0\nfile '{near}'\n".encode()
+    mpd = b'<?xml version="1.0"?>\n<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"></MPD>'
+    for name, body in (("x.m3u8", playlist), ("list.txt", concat), ("x.mpd", mpd)):
+        r = await client.post("/uploads", files={"file": (name, body, "video/x-anything")})
+        assert r.status_code == 415 and "playlist" in r.text, name
+    monkeypatch.undo()
 
     me = url.split("/media/")[1].split("/")[1]
     for key in (f"u/{me}/../../tmp/x", f"u/{me}/a/../../{me}x/a/b"):
