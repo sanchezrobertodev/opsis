@@ -193,17 +193,10 @@ def test_runway_failure_codes():
 
 
 class FakeFal:
-    def __init__(self, statuses, result=None, submit_error=None):
+    def __init__(self, statuses, result=None):
         self.statuses = list(statuses)
         self.result_value = result
-        self.submit_error = submit_error
         self.calls = []
-
-    async def submit(self, endpoint, arguments):
-        self.calls.append(("submit", endpoint, arguments))
-        if self.submit_error:
-            raise self.submit_error
-        return SimpleNamespace(request_id="req-1")
 
     async def status(self, app, request_id, with_logs=False):
         self.calls.append(("status", app, request_id))
@@ -216,13 +209,20 @@ class FakeFal:
         self.calls.append(("cancel", app, request_id))
 
 
-async def test_fal_lifecycle():
+FQ = "https://queue.fal.run"
+
+
+@respx.mock
+async def test_fal_lifecycle(keys):
+    submit = respx.post(f"{FQ}/fal-ai/veo3.1/image-to-video").respond(200, json={"request_id": "req-1"})
     fake = FakeFal([fal_client.Queued(position=0), fal_client.InProgress(logs=[]),
                     fal_client.Completed(logs=[], metrics={"inference_time": 30.5})],
                    result={"video": {"url": "https://v3.fal.media/files/v.mp4", "content_type": "video/mp4"}})
     a, rt = FalAdapter(client=fake), route(path="video.url")
     res = await a.submit(rt, "fal-ai/veo3.1/image-to-video", {"prompt": "x"}, client_ref="c")
-    assert res.job_id == "fal-ai/veo3.1::req-1"
+    assert res.job_id == "fal-ai/veo3.1::req-1" and submit.call_count == 1
+    assert submit.calls.last.request.headers["authorization"] == "Key test-key"
+    assert json.loads(submit.calls.last.request.content) == {"prompt": "x"}
     q = await a.poll(rt, res.job_id)
     assert q.status == "queued" and q.queue_position == 1
     assert fake.calls[-1] == ("status", "fal-ai/veo3.1", "req-1")
@@ -233,14 +233,44 @@ async def test_fal_lifecycle():
     assert await a.cancel(rt, res.job_id) and fake.calls[-1][0] == "cancel"
 
 
-async def test_fal_errors():
-    http_err = fal_client.FalClientHTTPError(message="Unauthorized", status_code=401, response_headers={},
-                                             response=httpx.Response(401))
+@respx.mock
+async def test_fal_errors(keys):
+    submit = respx.post(f"{FQ}/fal-ai/x")
+    submit.respond(401, json={"detail": "Unauthorized"})
     with pytest.raises(ProviderError) as exc:
-        await FalAdapter(client=FakeFal([], submit_error=http_err)).submit(route(), "fal-ai/x", {}, client_ref="c")
+        await FalAdapter().submit(route(), "fal-ai/x", {}, client_ref="c")
     assert exc.value.error_class == ErrorClass.route_unavailable
-    with pytest.raises(AmbiguousSubmitError):
-        await FalAdapter(client=FakeFal([], submit_error=httpx.ReadTimeout("t"))).submit(route(), "fal-ai/x", {}, client_ref="c")
+
+
+@respx.mock
+@pytest.mark.parametrize("error, ambiguous", [
+    (httpx.ConnectError("refused"), False),        # never reached fal: safe to try again
+    (httpx.ConnectTimeout("slow dns"), False),
+    (httpx.ReadTimeout("t"), True),                # sent, no answer: fal may have queued it
+    (httpx.RemoteProtocolError("server disconnected"), True),
+    (httpx.ReadError("reset"), True),
+])
+async def test_a_dropped_submit_is_never_sent_twice(keys, error, ambiguous):
+    submit = respx.post(f"{FQ}/fal-ai/x").mock(side_effect=error)
+    with pytest.raises(AmbiguousSubmitError if ambiguous else ProviderError) as exc:
+        await FalAdapter().submit(route(), "fal-ai/x", {}, client_ref="c")
+    assert submit.call_count == 1  # one try, whatever happened (the fal SDK would have tried up to 10 times)
+    if not ambiguous:
+        assert exc.value.error_class == ErrorClass.transient
+    respx.post(f"{FQ}/fal-ai/y").respond(504)
+    with pytest.raises(AmbiguousSubmitError):  # the gateway gave up: the job may be queued
+        await FalAdapter().submit(route(), "fal-ai/y", {}, client_ref="c")
+
+
+@respx.mock
+async def test_every_adapter_parks_a_dropped_submit_as_unknown(keys):
+    respx.post(url__regex=r".*").mock(side_effect=httpx.RemoteProtocolError("server disconnected"))
+    for adapter, endpoint in ((ReplicateAdapter(), "o/m"), (RunwayAdapter(), "image_to_video")):
+        with pytest.raises(AmbiguousSubmitError):
+            await adapter.submit(route(), endpoint, {}, client_ref="c")
+
+
+async def test_fal_poll_errors():
     blocked = FakeFal([fal_client.Completed(logs=[], metrics={}, error="Content policy violation", error_type="content_policy_violation")])
     failed = await FalAdapter(client=blocked).poll(route(), "fal-ai/x::r")
     assert failed.status == "failed" and failed.error_class == ErrorClass.moderation

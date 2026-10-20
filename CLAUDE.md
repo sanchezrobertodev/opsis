@@ -31,7 +31,10 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   Mock / Mixed / Live, Claude: Mock / Live; `budget_policies.provider_mode` / `llm_mode`, `budget/modes.py`) picks that
   or safer and applies at once, with no restart. Read the mode in effect through `modes.current()` /
   `routing_env(session, reg, user_id)`, never `settings.provider_mode` directly.
-- **Never auto-resubmit an ambiguous paid submit.** It goes to `unknown`.
+- **Never auto-resubmit an ambiguous paid submit.** It goes to `unknown`. Adapters raise submit errors through
+  `providers/common.py:submit_failure` / `submit_error`: only a connection that never opened is retried; a dropped,
+  reset or timed-out exchange, or a 502/504, may have started paid work. fal submits are one plain POST (its SDK
+  retries submits). A status call that fails on an accepted job (401, 404) parks it in `unknown`, never failover.
 - **Ingest every provider output to disk immediately.** Veo deletes after 2 days, Replicate after 1 hour.
 - **Status changes go through `domain/fsm.transition()` only.** It writes the status, a `job_events` row and
   `pg_notify` in one transaction.
@@ -132,9 +135,11 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 - `studio/pipelines/`: a recipe is a **pure planner**. `plan(input, settled_outputs)` returns every step it can
   define now (`generate`, `local`, `llm`, `checkpoint`), keyed by stable keys like `shot[02]`. The engine
   (`engine.reconcile`) diffs that against stored `pipeline_steps` by input hash: new keys are added, changed
-  inputs are redone, finished work is kept. Editing a run (`POST /pipelines/{id}/revise`) reruns only what changed.
+  inputs are redone, finished work is kept. Editing a run (`POST /pipelines/{id}/revise`) reruns only what changed. A finished
+  step is redone only when the run's input changed since it was planned (`_run` in its input) or a step it depends
+  on was redone after it, so a deploy that changes the registry or a catalog never pays for finished work again.
 - Generate steps are normal Generations (`group_id` = run id, `pipeline_step_id` set), capped by the run's
-  `cap_usd`. When one finishes, `fsm.transition()` marks the run and `pipeline.advance` is deferred after commit
+  `cap_usd` (every take must fit in what's left, however cheap: `CreateRequest.max_cost_usd`). When one finishes, `fsm.transition()` marks the run and `pipeline.advance` is deferred after commit
   (`pipelines/hooks.py`); the reaper re-advances runs that look stuck. When a step fails the run ends, but takes
   still rendering finish and are folded into their steps (kept for a retry); the reaper wakes any it missed. Local ops live in `pipelines/ops.py`.
 - Add a recipe: subclass `Recipe` in `pipelines/recipes/`, register it in `recipes/__init__.py`, and test it with

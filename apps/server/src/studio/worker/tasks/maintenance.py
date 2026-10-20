@@ -21,14 +21,21 @@ from studio.db.session import session_scope
 from studio.domain import fsm
 from studio.domain.enums import AttemptStatus, ErrorClass, GenStatus
 from studio.worker.app import Q_MAINT, app
-from studio.worker.tasks.generation import defer_ingest, defer_poll, defer_submit
+from studio.worker.tasks.generation import (
+    PREPARE_TIMEOUT_S,
+    SUBMIT_TIMEOUT_S,
+    defer_ingest,
+    defer_poll,
+    defer_submit,
+)
 from studio.worker.tasks.pipeline import defer_advance
 
 log = logging.getLogger(__name__)
 
 STALE_QUEUED = timedelta(seconds=60)
 STALE_POLL = timedelta(minutes=2)
-STUCK_SUBMIT = timedelta(minutes=2)
+# longer than a submit can legitimately take, so a slow upload is never mistaken for a crashed worker
+STUCK_SUBMIT = timedelta(seconds=PREPARE_TIMEOUT_S + SUBMIT_TIMEOUT_S + 120)
 STALE_INGEST = timedelta(minutes=5)
 STALE_RUN = timedelta(minutes=2)
 EVENT_RETENTION = timedelta(days=7)

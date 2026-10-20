@@ -19,7 +19,6 @@ import httpx
 from studio.config import get_settings
 from studio.domain.enums import ErrorClass
 from studio.providers.base import (
-    AmbiguousSubmitError,
     PollResult,
     ProviderAdapter,
     ProviderError,
@@ -34,6 +33,8 @@ from studio.providers.common import (
     require_key,
     route_outputs,
     staged_ref,
+    submit_error,
+    submit_failure,
 )
 from studio.registry.schema import Route
 
@@ -99,12 +100,10 @@ class RunwayAdapter(ProviderAdapter):
         try:
             async with self._client() as c:
                 r = await c.post(f"/{endpoint.lstrip('/')}", json=payload)
-        except httpx.TimeoutException as exc:
-            raise AmbiguousSubmitError(f"Runway submit timed out: {exc!r}") from exc
         except httpx.HTTPError as exc:
-            raise ProviderError(ErrorClass.transient, f"Runway submit failed before sending: {exc!r}") from exc
+            raise submit_failure("Runway", exc) from exc
         if r.status_code not in (200, 201):
-            raise http_error("Runway", r)
+            raise submit_error("Runway", r)
         body = r.json()
         return SubmitResult(job_id=body["id"], raw={"endpoint": endpoint, "estimated_cost": body.get("estimatedCost")})
 

@@ -31,8 +31,8 @@ ALLOWED: dict[GenStatus, frozenset[GenStatus]] = {
     S.queued: frozenset({S.submitting, S.blocked_budget, S.failed, S.canceled}),
     # submitting -> queued: wait for a provider slot or fail over before the provider accepted the job
     S.submitting: frozenset({S.in_progress, S.queued, S.failed, S.unknown, S.canceled}),
-    # in_progress -> queued: post-acceptance failover (new attempt)
-    S.in_progress: frozenset({S.ingesting, S.queued, S.failed, S.canceled}),
+    # in_progress -> queued: post-acceptance failover (new attempt); -> unknown: its status can't be read
+    S.in_progress: frozenset({S.ingesting, S.queued, S.failed, S.canceled, S.unknown}),
     S.ingesting: frozenset({S.succeeded, S.failed}),
     # unknown is resolved by a human: mark failed, or attach the provider job id and keep polling
     S.unknown: frozenset({S.in_progress, S.failed, S.canceled}),
@@ -132,8 +132,8 @@ async def transition(
         gen.progress = 1.0
     if new.terminal:
         gen.finished_at = now
-        if gen.pipeline_step_id and gen.group_id:
-            mark_run(session.sync_session, gen.group_id)  # its run advances once this commits
+    if (new.terminal or new == S.blocked_budget) and gen.pipeline_step_id and gen.group_id:
+        mark_run(session.sync_session, gen.group_id)  # its run advances (or stops at the cap) once this commits
 
     await session.flush()
     await emit(

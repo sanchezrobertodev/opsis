@@ -57,7 +57,10 @@ log = logging.getLogger(__name__)
 INFLIGHT = (AttemptStatus.submitting, AttemptStatus.submitted, AttemptStatus.running)
 MAX_TRANSIENT_RETRIES = 3
 MAX_INGEST_TRIES = 5
-SUBMIT_TIMEOUT_S = 120
+# preparing (uploading inputs, re-timing a clip) and submitting each get a limit; a submit must be allowed as long as
+# the slowest adapter's own call (ElevenLabs renders a long song in one call of up to 300 s)
+PREPARE_TIMEOUT_S = 900
+SUBMIT_TIMEOUT_S = 330
 POLL_TIMEOUT_S = 60
 EXT = {"video/mp4": ".mp4", "video/webm": ".webm", "video/quicktime": ".mov", "image/png": ".png",
        "image/jpeg": ".jpg", "image/webp": ".webp", "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/flac": ".flac",
@@ -285,9 +288,11 @@ async def run_submit(gen_id: uuid.UUID) -> None:
     failure: tuple[ErrorClass, str] | None = None
     ambiguous: str | None = None
     try:
-        media = await _resolve_media(req)
-        staged = await adapter.stage_inputs(route, media)
-        endpoint, payload, warnings = build_payload(spec, route, req, staged)
+        async def prepare() -> tuple[str, dict[str, Any], list[str]]:
+            staged = await adapter.stage_inputs(route, await _resolve_media(req))
+            return build_payload(spec, route, req, staged)
+
+        endpoint, payload, warnings = await asyncio.wait_for(prepare(), PREPARE_TIMEOUT_S)
     except ProviderError as exc:
         failure = (exc.error_class, exc.message)
     except Exception as exc:  # staging/payload errors happen before the provider sees anything
@@ -317,7 +322,7 @@ async def run_submit(gen_id: uuid.UUID) -> None:
         attempt = await s.get(GenerationAttempt, attempt_id, with_for_update=True)
         assert gen is not None and attempt is not None
         attempt.payload = _scrub({"endpoint": endpoint, "body": payload})
-        if gen.status == GenStatus.canceled:
+        if gen.status in (GenStatus.canceled, GenStatus.failed):  # canceled, or marked failed while it was sending
             if result is not None:
                 attempt.provider_job_id = result.job_id
                 attempt.status = AttemptStatus.canceled
@@ -391,13 +396,14 @@ async def run_poll(attempt_id: uuid.UUID) -> None:
     adapter = get_adapter(provider.adapter)
     res: PollResult | None = None
     transient_error: str | None = None
+    unreadable: ProviderError | None = None
     try:
         res = await asyncio.wait_for(adapter.poll(route, job_id), POLL_TIMEOUT_S)
     except ProviderError as exc:
         if exc.error_class == ErrorClass.transient:
             transient_error = exc.message
-        else:
-            res = PollResult(status="failed", error_class=exc.error_class, error_message=exc.message)
+        else:  # the status call itself failed (a rotated key, a 404): the accepted job may still run and bill
+            unreadable = exc
     except Exception as exc:  # network hiccup while polling: try again later
         transient_error = repr(exc)
 
@@ -416,7 +422,13 @@ async def run_poll(attempt_id: uuid.UUID) -> None:
         elapsed = (now - (attempt.submitted_at or now)).total_seconds()
         timed_out = elapsed > route.timeout_s
 
-        if res is None or res.status in ("queued", "running"):
+        if unreadable is not None:
+            # never fail over (a second paid job) while the first may still be running: a human decides
+            attempt.status = AttemptStatus.unknown
+            attempt.error_message = unreadable.message
+            await fsm.transition(s, gen, GenStatus.unknown, reason="job status unreadable",
+                                 error=(unreadable.error_class, unreadable.message))
+        elif res is None or res.status in ("queued", "running"):
             if timed_out:
                 cancel_remote = True
                 resubmit = await _handle_failure(s, gen, attempt, route, ErrorClass.timeout,

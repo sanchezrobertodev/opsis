@@ -1,8 +1,11 @@
-"""fal.ai adapter (queue API via the official `fal-client` SDK).
+"""fal.ai adapter (queue API via the official `fal-client` SDK, except submit).
 
 Route endpoints are fal endpoint ids such as `fal-ai/veo3.1/image-to-video`. fal serves status/result
 under the base app id (`fal-ai/veo3.1`), which the SDK derives itself; job ids store `app::request_id`.
 Inputs are uploaded to fal storage once per asset and the URL is reused while fresh.
+
+Submit is one plain POST to the queue: the SDK retries a submit on any dropped connection, which can start the same
+paid job several times (fal-client 1.0.3), and a submit whose outcome is unknown must never be resent.
 """
 
 from __future__ import annotations
@@ -33,9 +36,13 @@ from studio.providers.common import (
     require_key,
     route_outputs,
     staged_ref,
+    submit_error,
+    submit_failure,
 )
 from studio.registry.schema import Route
 
+QUEUE_URL = "https://queue.fal.run/"
+SUBMIT_TIMEOUT = httpx.Timeout(60.0, connect=15.0)
 UPLOAD_TTL = timedelta(days=7)  # conservative; fal keeps uploads longer, but we re-upload rather than risk a 404
 
 
@@ -49,8 +56,9 @@ def app_base(endpoint: str) -> str:
 class FalAdapter(ProviderAdapter):
     key = "fal"
 
-    def __init__(self, client: Any | None = None) -> None:
+    def __init__(self, client: Any | None = None, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self._client = client
+        self._transport = transport
 
     @property
     def client(self) -> Any:
@@ -81,14 +89,19 @@ class FalAdapter(ProviderAdapter):
         return staged
 
     async def submit(self, route: Route, endpoint: str, payload: dict[str, Any], *, client_ref: str) -> SubmitResult:
+        key = require_key("fal.ai", get_settings().fal_key)
         try:
-            handle = await self.client.submit(endpoint, arguments=payload)
-        except (httpx.TimeoutException, TimeoutError) as exc:
-            raise AmbiguousSubmitError(f"fal.ai submit timed out: {exc!r}") from exc
-        except Exception as exc:
-            raise self._error(exc, "submit") from exc
-        return SubmitResult(job_id=f"{app_base(endpoint)}::{handle.request_id}",
-                            raw={"request_id": handle.request_id, "endpoint": endpoint})
+            async with httpx.AsyncClient(timeout=SUBMIT_TIMEOUT, transport=self._transport) as c:
+                r = await c.post(f"{QUEUE_URL}{endpoint}", json=payload, headers={"Authorization": f"Key {key}"})
+        except httpx.HTTPError as exc:
+            raise submit_failure("fal.ai", exc) from exc
+        if r.status_code not in (200, 201, 202):
+            raise submit_error("fal.ai", r)
+        request_id = r.json().get("request_id")
+        if not request_id:
+            raise AmbiguousSubmitError(f"fal.ai accepted the request but returned no request id: {r.text[:300]}")
+        return SubmitResult(job_id=f"{app_base(endpoint)}::{request_id}",
+                            raw={"request_id": request_id, "endpoint": endpoint})
 
     async def poll(self, route: Route, job_id: str) -> PollResult:
         app, _, request_id = job_id.partition("::")

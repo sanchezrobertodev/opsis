@@ -23,7 +23,6 @@ import httpx
 from studio.config import get_settings
 from studio.domain.enums import ErrorClass
 from studio.providers.base import (
-    AmbiguousSubmitError,
     PollResult,
     ProviderAdapter,
     ProviderError,
@@ -37,6 +36,8 @@ from studio.providers.common import (
     looks_like_moderation,
     require_key,
     route_outputs,
+    submit_error,
+    submit_failure,
 )
 from studio.registry.schema import Route
 
@@ -91,12 +92,10 @@ class WorldLabsAdapter(ProviderAdapter):
         try:
             async with self._client() as c:
                 r = await c.post(f"/{endpoint.lstrip('/')}", json=body)
-        except httpx.TimeoutException as exc:
-            raise AmbiguousSubmitError(f"World Labs submit timed out: {exc!r}") from exc
         except httpx.HTTPError as exc:
-            raise ProviderError(ErrorClass.transient, f"World Labs submit failed before sending: {exc!r}") from exc
+            raise submit_failure("World Labs", exc) from exc
         if r.status_code not in (200, 201, 202):
-            raise http_error("World Labs", r)
+            raise submit_error("World Labs", r)
         op = r.json()
         return SubmitResult(job_id=op["operation_id"], raw={"endpoint": endpoint, "model": body.get("model")})
 

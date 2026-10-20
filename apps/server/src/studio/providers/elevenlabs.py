@@ -32,7 +32,6 @@ from studio.config import get_settings
 from studio.domain.enums import ErrorClass
 from studio.media.speech import words_from_characters
 from studio.providers.base import (
-    AmbiguousSubmitError,
     PollResult,
     ProviderAdapter,
     ProviderError,
@@ -40,7 +39,15 @@ from studio.providers.base import (
     ResolvedMedia,
     SubmitResult,
 )
-from studio.providers.common import ResultStore, best_mime, download_url, http_error, require_key
+from studio.providers.common import (
+    ResultStore,
+    best_mime,
+    download_url,
+    http_error,
+    require_key,
+    submit_error,
+    submit_failure,
+)
 from studio.registry.schema import Route
 
 BASE_URL = "https://api.elevenlabs.io/v1"
@@ -121,12 +128,10 @@ class ElevenLabsAdapter(ProviderAdapter):
                         r = await c.post(f"/{endpoint}", params=params, data=data, files=files)
                     else:
                         r = await c.post(f"/{endpoint}", params={"output_format": OUTPUT_FORMAT}, json=payload)
-        except httpx.TimeoutException as exc:
-            raise AmbiguousSubmitError(f"ElevenLabs call timed out: {exc!r}") from exc
         except httpx.HTTPError as exc:
-            raise ProviderError(ErrorClass.transient, f"ElevenLabs call failed: {exc!r}") from exc
+            raise submit_failure("ElevenLabs", exc) from exc
         if r.status_code not in (200, 201):
-            raise http_error("ElevenLabs", r)
+            raise submit_error("ElevenLabs", r)
         if endpoint == DUB_ENDPOINT:
             project = r.json()
             return SubmitResult(job_id=f"{DUB_PREFIX}{project['project_id']}",

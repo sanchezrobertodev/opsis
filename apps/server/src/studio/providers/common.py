@@ -20,7 +20,7 @@ from studio.config import get_settings
 from studio.db.models import AssetProviderUpload
 from studio.db.session import session_scope
 from studio.domain.enums import ErrorClass
-from studio.providers.base import ProviderError, ProviderOutput, ResolvedMedia
+from studio.providers.base import AmbiguousSubmitError, ProviderError, ProviderOutput, ResolvedMedia
 from studio.registry.schema import OutputSpec
 
 MODERATION_HINTS = (
@@ -45,6 +45,21 @@ def classify_http(status: int, text: str = "") -> ErrorClass:
     if status in (408, 425, 429) or status >= 500:
         return ErrorClass.transient
     return ErrorClass.internal
+
+
+def submit_failure(provider: str, exc: httpx.HTTPError) -> Exception:
+    """A submit that failed in transit. Only a connection that never opened is safe to retry: a dropped, reset or
+    timed-out exchange may already have started paid work, so its outcome is unknown and it is never resent."""
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)):
+        return ProviderError(ErrorClass.transient, f"{provider} unreachable, nothing was sent: {exc!r}")
+    return AmbiguousSubmitError(f"{provider} submit may have gone through: {exc!r}")
+
+
+def submit_error(provider: str, r: httpx.Response) -> Exception:
+    """A submit answered with an error. A gateway that gave up (502, 504) may have passed the job on already."""
+    if r.status_code in (502, 504):
+        return AmbiguousSubmitError(f"{provider} gateway {r.status_code}: the request may have gone through")
+    return http_error(provider, r)
 
 
 def http_error(provider: str, r: httpx.Response) -> ProviderError:

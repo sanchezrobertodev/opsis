@@ -212,17 +212,22 @@ async def test_budget_reserve_caps_and_settle(db):
 
 
 async def test_reaper_marks_stuck_submit_unknown(db, in_memory_queue):
-    async with session_scope() as s:
-        gen = Generation(id=uuid7(), user_id=OWNER, model_id="veo-3.1", mode="t2v", output_type="video",
-                         status=GenStatus.submitting, request={}, routing={})
-        s.add(gen)
-        await s.flush()
-        s.add(GenerationAttempt(id=uuid7(), generation_id=gen.id, attempt_no=1, route_id="veo-3.1@mock",
-                                provider="mock", status=AttemptStatus.submitting,
-                                created_at=datetime.now(UTC) - timedelta(minutes=5)))
-    counts = await reap(datetime.now(UTC))
-    assert counts["unknown"] >= 1
-    assert (await status_of(gen.id)).status == GenStatus.unknown
+    async def sending_since(minutes: int) -> uuid.UUID:
+        async with session_scope() as s:
+            gen = Generation(id=uuid7(), user_id=OWNER, model_id="veo-3.1", mode="t2v", output_type="video",
+                             status=GenStatus.submitting, request={}, routing={})
+            s.add(gen)
+            await s.flush()
+            s.add(GenerationAttempt(id=uuid7(), generation_id=gen.id, attempt_no=1, route_id="veo-3.1@mock",
+                                    provider="mock", status=AttemptStatus.submitting,
+                                    created_at=datetime.now(UTC) - timedelta(minutes=minutes)))
+        return gen.id
+
+    uploading, crashed = await sending_since(5), await sending_since(40)
+    await reap(datetime.now(UTC))
+    # a slow upload is still a submit in progress; only one past every limit is a worker that stopped
+    assert (await status_of(uploading)).status == GenStatus.submitting
+    assert (await status_of(crashed)).status == GenStatus.unknown
 
 
 async def test_files_land_under_media_root(client):

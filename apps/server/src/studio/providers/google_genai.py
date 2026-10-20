@@ -9,10 +9,12 @@ Inputs are sent inline (bytes), so nothing is uploaded ahead of time.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
 import anyio
+import httpx
 from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
@@ -28,7 +30,13 @@ from studio.providers.base import (
     ResolvedMedia,
     SubmitResult,
 )
-from studio.providers.common import ResultStore, classify_http, looks_like_moderation, require_key
+from studio.providers.common import (
+    ResultStore,
+    classify_http,
+    looks_like_moderation,
+    require_key,
+    submit_failure,
+)
 from studio.registry.schema import Route
 
 VIDEO_CONFIG_KEYS = ("duration_seconds", "aspect_ratio", "resolution", "seed", "negative_prompt",
@@ -103,6 +111,8 @@ class GoogleGenAIAdapter(ProviderAdapter):
             )
         except TimeoutError as exc:
             raise AmbiguousSubmitError(f"Google submit timed out: {exc!r}") from exc
+        except httpx.HTTPError as exc:
+            raise submit_failure("Google", exc) from exc
         except Exception as exc:
             raise self._error(exc, "submit") from exc
         return SubmitResult(job_id=op.name, raw={"model": endpoint})
@@ -121,17 +131,14 @@ class GoogleGenAIAdapter(ProviderAdapter):
                                              image_config=types.ImageConfig(**image_config))
         job_id, folder = self.store.new_job()
         count = int(payload.get("num_images") or 1)
+        # all at once, so four pictures take as long as one (they used to queue up past the worker's submit limit)
+        calls = await asyncio.gather(*(self.client.aio.models.generate_content(model=model, contents=contents,
+                                                                               config=config) for _ in range(count)),
+                                     return_exceptions=True)
         written, blocked = 0, None
-        for i in range(count):
-            try:
-                resp = await self.client.aio.models.generate_content(model=model, contents=contents, config=config)
-            except TimeoutError as exc:
-                raise AmbiguousSubmitError(f"Google image call timed out: {exc!r}") from exc
-            except Exception as exc:
-                if written:  # keep what we already paid for
-                    break
-                self.store.discard(job_id)
-                raise self._error(exc, "image generation") from exc
+        for i, resp in enumerate(calls):
+            if isinstance(resp, BaseException):
+                continue
             image_part = None
             for cand in resp.candidates or []:
                 for part in (cand.content.parts if cand.content else None) or []:
@@ -151,6 +158,15 @@ class GoogleGenAIAdapter(ProviderAdapter):
             ext = ".jpg" if "jpeg" in mime else ".webp" if "webp" in mime else ".png"
             await anyio.Path(folder / f"{i:02d}{ext}").write_bytes(image_part.inline_data.data)
             written += 1
+        errors = [r for r in calls if isinstance(r, BaseException)]
+        if errors and not written:  # nothing paid for to keep: say why the first call failed
+            self.store.discard(job_id)
+            exc = errors[0]
+            if isinstance(exc, TimeoutError):
+                raise AmbiguousSubmitError(f"Google image call timed out: {exc!r}") from exc
+            if isinstance(exc, httpx.HTTPError):
+                raise submit_failure("Google", exc) from exc
+            raise self._error(exc, "image generation") from exc  # type: ignore[arg-type]
         self.store.write_meta(job_id, {"written": written, "blocked": blocked, "requested": count})
         return SubmitResult(job_id=f"{SYNC_PREFIX}{job_id}", raw={"model": model, "images": written})
 
