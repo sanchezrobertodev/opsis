@@ -126,7 +126,8 @@ CLIP_SOUND_PROMPT = "Natural sound of the scene only (the animals' calls and mov
 
 def named(visual: str, star_name: str | None) -> str:
     """A clip's shot with the star called by name: a video model sees the picture, but "the star" means nothing."""
-    return re.sub(r"\bthe star\b", star_name, visual, flags=re.IGNORECASE) if star_name else visual
+    # a callable, so the name goes in as written (a backslash in it is no group reference)
+    return re.sub(r"\bthe star\b", lambda _: star_name, visual, flags=re.IGNORECASE) if star_name else visual
 
 
 class FacelessRecipe(Recipe):
@@ -182,6 +183,9 @@ class FacelessRecipe(Recipe):
                 errors.append(f"unknown model {inp.video_model!r}")
             elif spec.output_type != "video" or start_frame_mode(spec) is None:
                 errors.append(f"{spec.name} can't animate a still")
+            elif inp.clip_sound and "generate_audio" not in {p.name for p in spec.params_for(start_frame_mode(spec).id)}:  # type: ignore[union-attr]
+                errors.append(f"{spec.name} makes clips without sound; turn clip sound off or pick a model with "
+                              "its own sound (Kling 3.0, Seedance 2.5, Veo 3.1)")
         # a star and clip sound apply where they can: a song draws no star (yet) and stills have no sound of their own
         if inp.character and inp.format != "song":
             image = reg.model(inp.image_model)

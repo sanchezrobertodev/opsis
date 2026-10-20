@@ -360,3 +360,14 @@ async def test_a_plan_with_a_star_always_shows_it_and_never_describes_it(client,
                                        title="Griffin", style=get_catalog().style("wildlife-documentary"),
                                        fmt="motion", star="Griffin")
     assert res.output.blocks[1].star  # a shot that names the star shows it
+
+
+def test_clip_sound_needs_a_model_that_makes_sound_and_a_star_name_is_kept_as_written():
+    from studio.pipelines.recipes.faceless import FacelessInput, FacelessRecipe, named
+    from studio.registry.loader import get_registry
+
+    reg = get_registry()
+    silent = FacelessInput(topic="a wendigo hunts", format="motion", clip_sound=True, video_model="runway-gen-4-turbo")
+    assert any("without sound" in e for e in FacelessRecipe().validate(silent, reg))
+    assert not any("without sound" in e for e in FacelessRecipe().validate(silent.model_copy(update={"clip_sound": False}), reg))
+    assert named("Close-up of the star waiting", "Creature \\1") == "Close-up of Creature \\1 waiting"
