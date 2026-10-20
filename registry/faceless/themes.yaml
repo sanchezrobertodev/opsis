@@ -36,3 +36,19 @@ themes:
       end. Vivid sensory detail, past tense, third person. Let the last line land quietly.
     voice_id: JBFqnCBsd6RMkjVDRZzb
     music: atmospheric emotive score with piano and gently swelling strings
+  - id: creature-documentary
+    label: Creature documentary
+    summary: A nature film about a creature of legend, shot like real wildlife footage.
+    script_guidance: >-
+      Imaginative natural history: a nature documentary about a creature of myth or legend, told as if it were a
+      real animal filmed in the wild. Open cold on the single most dramatic moment (the strike, the stand-off, the
+      ambush) in the first sentence, with no greeting or setup, then step back and follow it. Narrate in the present
+      tense, as an observer watching the scene unfold: what it does, why, and what it risks. Ground its habitat,
+      senses and behaviour in the creature's folklore, and invent plausible natural-history detail where the legends
+      are silent, stated plainly like a field biologist would; no hedging about whether it exists. Keep the tension
+      rising to a payoff, and end on a quiet, striking last line about its place in the wild. Calm, measured,
+      authoritative; short sentences when the action peaks.
+    voice_id: BNgbHR0DNeZixGQVzloa
+    music: >-
+      sweeping orchestral nature-documentary score, low strings and soft French horn, tense pizzicato building to
+      awe, spacious and cinematic, no vocals

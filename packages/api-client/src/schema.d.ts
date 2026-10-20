@@ -832,7 +832,8 @@ export interface paths {
         put?: never;
         /**
          * Resolve Unknown
-         * @description A submit whose outcome is unknown: the user checked the provider dashboard and marks it failed.
+         * @description A submit whose outcome is unknown: the user checked the provider dashboard and marks it failed. Also a take
+         *     canceled while it was being sent whose send ended with no answer: its held money is released.
          */
         post: operations["resolve_unknown_generations__generation_id__resolve_unknown_post"];
         delete?: never;
@@ -1495,7 +1496,7 @@ export interface components {
             notes: string;
             /**
              * Defaults
-             * @description Episode settings: aspect_ratio, captions, format, image_model, image_params, language, minutes, music, music_model, notes, resolution, review_script, thumbnail, video_model, video_params, voice, voice_model
+             * @description Episode settings: aspect_ratio, captions, character, clip_sound, format, image_model, image_params, language, minutes, music, music_model, notes, resolution, review_script, thumbnail, video_model, video_params, voice, voice_model
              */
             defaults?: {
                 [key: string]: unknown;
@@ -2385,6 +2386,8 @@ export interface components {
              * @default 1
              */
             max: number;
+            /** Min Duration S */
+            min_duration_s?: number | null;
             /** Max Duration S */
             max_duration_s?: number | null;
             /** Max Mb */
@@ -2415,7 +2418,7 @@ export interface components {
              * Ops
              * @default []
              */
-            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "song" | "segment" | "track" | "transcribe" | "voice_change" | "to_3d" | "panorama" | "world" | "depth_to_video" | "render_to_real" | "lora_train" | "rig")[];
+            ops: ("t2v" | "i2v" | "flf2v" | "multi_ref" | "multi_shot" | "extend" | "instruction_edit" | "restyle" | "reframe" | "upscale" | "interpolate" | "bg_remove" | "motion_transfer" | "object_replace" | "lipsync" | "avatar" | "t2i" | "i2i" | "relight" | "add_sound" | "trim" | "retime" | "reverse" | "loop" | "stabilize" | "tts" | "sfx" | "music" | "song" | "segment" | "track" | "transcribe" | "voice_change" | "dub" | "person_swap" | "to_3d" | "panorama" | "world" | "depth_to_video" | "render_to_real" | "lora_train" | "rig")[];
             /**
              * Prompt
              * @default required
@@ -3774,6 +3777,11 @@ export interface components {
              * @default false
              */
             alternative: boolean;
+            /**
+             * Optional
+             * @default false
+             */
+            optional: boolean;
         };
         /**
          * TemplateOut

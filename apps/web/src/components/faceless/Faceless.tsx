@@ -18,6 +18,7 @@ import {
   useSuggestTopics,
 } from "@/lib/faceless";
 import { useDebounced } from "@/lib/hooks";
+import { useElements } from "@/lib/elements";
 import { useRegistry } from "@/lib/queries";
 import { RUN_STATUS_TEXT, type RunCreate, useEstimateRun, useStartRun } from "@/lib/runs";
 import { AspectPicker, Button, Dialog, Field, Segmented, Select, Slider, Switch } from "@/components/ui/controls";
@@ -46,6 +47,7 @@ export function Faceless() {
   const [theme, setTheme] = useState("storytelling");
   const [style, setStyle] = useState("watercolor-chronicle");
   const [writeOwn, setWriteOwn] = useState(false);
+  const { data: characters } = useElements("character");
   const [topic, setTopic] = useState("");
   const [script, setScript] = useState("");
   const [title, setTitle] = useState("");
@@ -221,8 +223,27 @@ export function Faceless() {
                      render={(v) => (v === "standard" ? "v4" : "v4 Turbo, half price")}
                      onChange={(v) => patch({ voice: { ...s.voice, tier: v } })} />
         </Field>}
+        {!song && (
+          <Field label="Star" hint="A saved character, drawn from its pictures so it looks the same in every shot it's in.">
+            <Select
+              value={s.character ?? ""}
+              onChange={(v) => patch({ character: v || null })}
+              options={[
+                { value: "", label: characters?.length ? "None" : "No saved characters yet" },
+                ...(characters ?? []).map((c) => ({ value: c.slug, label: `${c.name} (@${c.slug})` })),
+                // a channel's saved star that was since deleted: shown, so it can be seen and cleared
+                ...(s.character && characters && !characters.some((c) => c.slug === s.character)
+                  ? [{ value: s.character, label: `@${s.character} (no longer saved)` }] : []),
+              ]}
+            />
+          </Field>
+        )}
         <div className="flex flex-col gap-3">
           {!song && <Toggle label="Music" hint="A score ducked under the voice." checked={s.music} onChange={(v) => patch({ music: v })} />}
+          {s.format === "motion" && (
+            <Toggle label="Clip sound" hint="Each clip made with its own sound (animals, weather, footsteps), kept under the voice. It can cost more."
+                    checked={s.clip_sound} onChange={(v) => patch({ clip_sound: v })} />
+          )}
           <Toggle label="Captions" hint={song ? "The lyrics, burned in line by line. An SRT is saved too."
                                               : "Burned in, with the spoken word highlighted. An SRT is saved too."}
                   checked={s.captions} onChange={(v) => patch({ captions: v })} />

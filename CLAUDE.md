@@ -308,6 +308,14 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   sings them with fixed section lengths (about 4 s a line plus a bar in, `section_seconds`), `split_audio` cuts the
   song at the sections, and `narrated_cut` plays each piece under its picture back to back (`gap_s: 0`). Captions
   spread each section's lines after its bar of lead-in (`lead_in`), a line per caption; no narration, no score.
+- Creature documentaries (the "Creature documentary" template; theme `creature-documentary`, style
+  `wildlife-documentary`, David's voice `BNgbHR0DNeZixGQVzloa`): a Faceless episode can star a saved `character`
+  (stills and motion; a song ignores it). Claude marks the shots it's in (`Block.star`; none marked means all), those
+  stills and the thumbnail use the image model's reference mode with `The star is @handle`, so its pictures attach;
+  the script and plan steps check it first (`llm_ops._star`). `clip_sound` (motion only) sets the video model's
+  `generate_audio`, asks for ambient sound only, and the cut keeps each clip's own sound (`assemble.clip_sound`:
+  slowed with its picture, silence under stills, a WAV of its own) mixed with the music and ducked with it under the
+  voice (`clip_sound_db`). Template inputs can be `optional: true`.
 - Object swap selects with SAM 3 on fal (`sam-3-image` clicks -> mask, `sam-3-video` tracks it); `media/swap.py`
   composites the edit over the original through the thresholded, grown and feathered matte.
 - Face swap (`face_swap` recipe; "Face swap a picture" and "Face swap a video" templates; consent required): a picture

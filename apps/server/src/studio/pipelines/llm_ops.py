@@ -3,6 +3,7 @@ their ledger charges commit with the step."""
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -43,8 +44,10 @@ async def faceless_script(session: AsyncSession, run: PipelineRun, step: Pipelin
     theme = get_catalog().theme(inp["theme"])
     if theme is None:
         raise StepFailed(f"unknown theme {inp['theme']!r}")
+    # a starring character is checked before the paid script, so a bad handle fails early
+    star = (await _star(session, run, inp["character"])).name if inp.get("character") else ""
     res = await write_script(session, run.user_id, topic=inp["topic"], theme=theme, minutes=inp["minutes"],
-                             language=inp.get("language", "English"), notes=inp.get("notes", ""))
+                             language=inp.get("language", "English"), notes=inp.get("notes", ""), star=star)
     return {"title": res.output.title, "script": res.output.narration, "model": res.model,
             "cost_usd": float(res.cost_usd)}
 
@@ -54,10 +57,11 @@ async def faceless_plan(session: AsyncSession, run: PipelineRun, step: PipelineS
     style = get_catalog().style(inp["style"])
     if style is None:
         raise StepFailed(f"unknown style {inp['style']!r}")
+    star = (await _star(session, run, inp["character"])).name if inp.get("character") else ""
     res = await plan_blocks(session, run.user_id, script=inp["script"], title=inp["title"], style=style,
-                            fmt=inp["format"])
+                            fmt=inp["format"], star=star)
     plan = res.output
-    return {"world": plan.world, "roster": [r.model_dump() for r in plan.roster],
+    return {"world": plan.world, "roster": [r.model_dump() for r in plan.roster], **({"star": star} if star else {}),
             "blocks": [b.model_dump() for b in plan.blocks], "model": res.model, "cost_usd": float(res.cost_usd)}
 
 
@@ -73,19 +77,28 @@ async def faceless_song(session: AsyncSession, run: PipelineRun, step: PipelineS
             "cost_usd": float(res.cost_usd)}
 
 
-async def _star(session: AsyncSession, run: PipelineRun, slug: str) -> Element:
-    """The saved character a run stars, checked before anything is drawn: it must exist and have a picture."""
+async def find_star(session: AsyncSession, user_id: uuid.UUID, slug: str) -> tuple[Element | None, str | None]:
+    """The saved character a run stars, and what's wrong with it if it can't star: it must exist and have a
+    picture."""
     element = (await session.execute(select(Element).where(
-        Element.user_id == run.user_id, Element.slug == slug, Element.kind == ElementKind.character,
+        Element.user_id == user_id, Element.slug == slug, Element.kind == ElementKind.character,
         Element.deleted_at.is_(None)))).scalar_one_or_none()
     if element is None:
-        raise StepFailed(f"there's no saved character called @{slug}")
+        return None, f"there's no saved character called @{slug}"
     pictures = (await session.execute(select(func.count()).select_from(ElementAsset).join(
         Asset, Asset.id == ElementAsset.asset_id).where(
         ElementAsset.element_id == element.id, Asset.kind == "image", Asset.status == AssetStatus.ready,
         Asset.deleted_at.is_(None)))).scalar_one()  # only ready pictures attach to a mention
     if not pictures:
-        raise StepFailed(f"@{slug} has no pictures yet; add one on the Characters page so their face carries through")
+        return None, f"@{slug} has no pictures yet; add one on the Characters page so their face carries through"
+    return element, None
+
+
+async def _star(session: AsyncSession, run: PipelineRun, slug: str) -> Element:
+    """The saved character a run stars, checked before anything is drawn."""
+    element, problem = await find_star(session, run.user_id, slug)
+    if element is None:
+        raise StepFailed(problem or f"@{slug} can't star")
     return element
 
 

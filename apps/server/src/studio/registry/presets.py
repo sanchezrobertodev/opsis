@@ -150,7 +150,7 @@ def _filled(value: Any, filled: dict[str, str]) -> Any:
 
 def render_template(template: TemplateSpec, values: dict[str, str], media: dict[str, str]) -> dict[str, Any]:
     """The run this template starts with these answers and inputs (media: input key -> asset id)."""
-    missing = [i.label for i in template.inputs if not i.alternative and not media.get(i.key)]
+    missing = [i.label for i in template.inputs if not i.alternative and not i.optional and not media.get(i.key)]
     if (either := [i for i in template.inputs if i.alternative]) and not any(media.get(i.key) for i in either):
         missing.append(" or ".join(i.label.lower().removeprefix("or ") for i in either))
     if missing:

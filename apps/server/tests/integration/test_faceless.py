@@ -126,7 +126,7 @@ async def test_estimate_counts_narration_and_validation_errors(client):
 
 async def test_catalog_topics_and_channels(client, in_memory_queue):
     cat = (await client.get("/faceless/catalog")).json()
-    assert len(cat["themes"]) == 4 and len(cat["styles"]) == 12
+    assert len(cat["themes"]) == 5 and len(cat["styles"]) == 13
     assert cat["voices"][0] == {"id": "JBFqnCBsd6RMkjVDRZzb", "label": "George: warm British storyteller"}
     assert cat["defaults"]["format"] == "stills" and "topic" not in cat["defaults"]
 
@@ -240,3 +240,136 @@ async def test_the_longest_song_stays_within_the_music_models_limits(client):
     fitted = fit_song([60.0] * 6, 300)
     assert sum(fitted) <= 300 and fitted == [50.0] * 6
     assert fit_song([10.0, 20.0], 300) == [10.0, 20.0]
+
+
+async def test_a_creature_documentary_stars_a_saved_creature_and_keeps_the_clips_sound(client, in_memory_queue):
+    """The creature template's run: a saved creature drawn from its pictures in the shots Claude marks, the
+    thumbnail too, and clips made with their own sound that the cut keeps under the narration."""
+    from test_elements import make_element
+
+    from studio.db.models import Generation
+    from studio.media.assemble import CLIP_SOUND_DB
+
+    griffin = await make_element(client, "Griffin")
+    rendered = await client.post("/templates/creature-documentary/render", json={
+        "fields": {"topic": "A griffin defends its cliff nest", "footage": "kling-3.0", "shape": "9:16"},
+        "media": {"character": griffin["slug"]}})
+    assert rendered.status_code == 200, rendered.text
+    inp = {**rendered.json()["input"], "music": False, "captions": False, "review_script": False, "minutes": 0.5}
+    assert inp["clip_sound"] and inp["format"] == "motion" and inp["character"] == griffin["slug"]
+    run = await start(client, "faceless", **inp)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    if done["status"] == "waiting":  # the thumbnail pick
+        await answer(client, run["id"], "thumb", steps_of(done)["thumb"]["options"][0]["value"])
+        await drain(in_memory_queue)
+        done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    steps = steps_of(done)
+    blocks = steps["plan"]["output"]["blocks"]
+    assert any(b["star"] for b in blocks) and not all(b["star"] for b in blocks)  # mock: every other shot
+
+    async def gen_of(step: dict) -> Generation:
+        async with session_scope() as s:
+            g = await s.get(Generation, uuid.UUID(step["generation_id"]))
+        assert g is not None
+        return g
+
+    picture = griffin["images"][0]["asset"]["id"]
+    for i, block in enumerate(blocks, 1):
+        still = await gen_of(steps[f"still[b{i:02d}]"])
+        if block["star"]:  # drawn from the griffin's own picture, named in words, no @ left
+            assert still.mode == "edit" and [m["asset_id"] for m in still.request["media"]] == [picture]
+            assert "Griffin" in still.request["compiled_prompt"] and "@" not in still.request["compiled_prompt"]
+        else:
+            assert still.mode == "t2i" and still.request["media"] == []
+        clip = await gen_of(steps[f"clip[b{i:02d}]"])
+        assert clip.request["params"]["generate_audio"] is True and "Natural sound of the scene" in clip.request["prompt"]
+        if block["star"]:  # the video model is told what it is by name, not "the star"
+            assert "Griffin" in clip.request["prompt"] and "the star" not in clip.request["prompt"]
+    thumbs = await gen_of(steps["thumbs"])
+    assert thumbs.mode == "edit" and picture in [m["asset_id"] for m in thumbs.request["media"]]
+    async with session_scope() as s:
+        from sqlalchemy import select
+
+        from studio.db.models import PipelineStep
+
+        cut = (await s.execute(select(PipelineStep).where(
+            PipelineStep.run_id == uuid.UUID(run["id"]), PipelineStep.key == "cut"))).scalar_one()
+    assert cut.input["clip_sound_db"] == CLIP_SOUND_DB
+
+
+async def test_a_star_needs_an_image_model_that_draws_from_pictures(client):
+    from test_elements import make_element
+
+    r = await client.post("/pipelines/estimate", json={"recipe": "faceless", "input": {
+        "topic": "a wendigo hunts", "character": "wendigo"}})
+    assert r.status_code == 422 and "no saved character called @wendigo" in r.text  # named, before anything is spent
+    wendigo = await make_element(client, "Wendigo")
+    r = await client.post("/pipelines/estimate", json={"recipe": "faceless", "input": {
+        "topic": "a wendigo hunts", "character": wendigo["slug"], "image_model": "flux-2-klein-4b"}})
+    assert r.status_code == 422 and "reference pictures" in r.text
+    # a song draws no star yet, and stills have no sound of their own: both are simply left out
+    r = await client.post("/pipelines/estimate", json={"recipe": "faceless", "input": {
+        "topic": "x", "theme": "kids", "format": "song", "character": "wendigo", "clip_sound": True}})
+    assert r.status_code == 200, r.text
+
+
+async def test_the_creature_template_runs_without_a_saved_creature(client):
+    r = await client.post("/templates/creature-documentary/render", json={"fields": {"topic": "Thunderbirds"}})
+    assert r.status_code == 200, r.text
+    inp = r.json()["input"]
+    assert "character" not in inp and inp["aspect_ratio"] == "9:16" and inp["video_model"] == "kling-3.0"
+    est = await client.post("/pipelines/estimate", json=r.json())
+    assert est.status_code == 200, est.text
+
+
+async def test_a_plan_with_a_star_always_shows_it_and_never_describes_it(client, monkeypatch):
+    """Claude forgetting to mark the star's shots (or listing its look) can't leave the creature out or fight its
+    pictures: every shot shows it, and its roster entry is dropped."""
+    from studio.config import get_settings
+    from studio.db.session import session_scope
+    from studio.faceless import writer
+    from studio.faceless.catalog import get_catalog
+
+    original = writer._mock_plan
+
+    def forgetful(script, fmt, star=""):
+        plan = original(script, fmt)  # no star flags at all
+        plan.roster += [writer.RosterItem(name="Griffin", kind="character", look="a lion with eagle wings")]
+        return plan
+
+    def half_flagged(script, fmt, star=""):
+        plan = original(script, fmt, star)
+        plan.blocks[1].visual = "Close-up of the star's talons gripping the rock"  # named, but not flagged
+        plan.blocks[1].star = False
+        return plan
+
+    monkeypatch.setattr(writer, "_mock_plan", forgetful)
+    async with session_scope() as s:
+        res = await writer.plan_blocks(s, get_settings().owner_user_id, script="It waits. It strikes. It eats.",
+                                       title="Griffin", style=get_catalog().style("wildlife-documentary"),
+                                       fmt="motion", star="Griffin")
+    assert res.output.blocks and all(b.star for b in res.output.blocks)
+    assert all(r.name != "Griffin" for r in res.output.roster) and any(r.name == "the keeper" for r in res.output.roster)
+
+    monkeypatch.setattr(writer, "_mock_plan", half_flagged)
+    async with session_scope() as s:
+        long = " ".join(f"At first light the griffin watches the valley from its ledge, still as stone {n}." for n in range(8))
+        res = await writer.plan_blocks(s, get_settings().owner_user_id, script=long,
+                                       title="Griffin", style=get_catalog().style("wildlife-documentary"),
+                                       fmt="motion", star="Griffin")
+    assert res.output.blocks[1].star  # a shot that names the star shows it
+
+
+def test_clip_sound_needs_a_model_that_makes_sound_and_a_star_name_is_kept_as_written():
+    from studio.pipelines.recipes.faceless import FacelessInput, FacelessRecipe, named
+    from studio.registry.loader import get_registry
+
+    reg = get_registry()
+    silent = FacelessInput(topic="a wendigo hunts", format="motion", clip_sound=True, video_model="runway-gen-4-turbo")
+    assert any("without sound" in e for e in FacelessRecipe().validate(silent, reg))
+    assert not any("without sound" in e for e in FacelessRecipe().validate(silent.model_copy(update={"clip_sound": False}), reg))
+    always = silent.model_copy(update={"video_model": "minimax-h3-max"})  # sound included, no switch
+    assert not any("without sound" in e for e in FacelessRecipe().validate(always, reg))
+    assert named("Close-up of the star waiting", "Creature \\1") == "Close-up of Creature \\1 waiting"

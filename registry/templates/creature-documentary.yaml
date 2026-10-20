@@ -1,0 +1,34 @@
+id: creature-documentary
+name: Creature documentary
+summary: A nature film about a creature of legend, shot like real wildlife footage and narrated by a deep British voice. It opens on the most dramatic moment and keeps the clips' own sound.
+recipe: faceless
+inputs:
+  - {key: character, kind: character, label: Your creature (a saved character keeps its look in every shot), optional: true}
+fields:
+  - key: topic
+    label: The creature and what we witness
+    placeholder: A griffin defends its cliff nest from raiders
+    max_chars: 300
+  - key: footage
+    label: Footage
+    default: kling-3.0
+    options: [kling-3.0, seedance-2.5, veo-3.1]
+    option_labels:
+      kling-3.0: "Kling 3.0: about $0.17/s with sound"
+      seedance-2.5: "Seedance 2.5: about $0.23/s at 720p, with sound"
+      veo-3.1: "Veo 3.1: best, about $0.40/s with sound"
+  - key: shape
+    label: Shape
+    default: "9:16"
+    options: ["9:16", "16:9"]
+    option_labels: {"9:16": "Vertical, for Shorts and Reels", "16:9": "Widescreen"}
+input:
+  topic: "{topic}"
+  theme: creature-documentary
+  style: wildlife-documentary
+  format: motion
+  clip_sound: true
+  minutes: 1
+  video_model: "{footage}"
+  aspect_ratio: "{shape}"
+tags: [character, story]

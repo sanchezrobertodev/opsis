@@ -12,11 +12,16 @@ instead, each with a picture; a music model sings them section by section (`song
 song is cut at the sections and each piece plays under its picture, with the lyrics as captions:
   script (Claude writes the song) -> review -> still[bNN] per section ; sing -> parts -> cut -> captions ; thumbs
 Models are chosen by what they do (tts, t2i, start frame, music, song), so any registry model with those modes works.
+
+A saved `character` (an @handle) can star: Claude marks the shots it appears in, and those stills (and the thumbnail)
+are drawn from its reference pictures, so it looks the same throughout. With `clip_sound` (motion), each clip is made
+with its own sound and the cut keeps it under the narration, ducked with the music (wildlife, weather, footsteps).
 """
 
 from __future__ import annotations
 
 import math
+import re
 import uuid
 from typing import Any, Literal
 
@@ -37,7 +42,7 @@ from studio.faceless.writer import (
     song_from_text,
     song_lines,
 )
-from studio.media.assemble import GAP_S
+from studio.media.assemble import CLIP_SOUND_DB, GAP_S
 from studio.media.speech import CHARS_PER_SECOND
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import (
@@ -48,7 +53,9 @@ from studio.pipelines.recipes.common import (
     text_mode,
     with_param,
 )
+from studio.pipelines.recipes.vlog import SLUG, frame_mode
 from studio.registry.loader import Registry
+from studio.registry.schema import Mode, ModelSpec
 
 
 class FacelessInput(BaseModel):
@@ -75,6 +82,10 @@ class FacelessInput(BaseModel):
     captions: bool = True
     thumbnail: bool = True
     review_script: bool = Field(True, description="Stop for approval once the script is written")
+    character: str | None = Field(None, pattern=SLUG, description="A saved character's @handle who stars: its "
+                                  "pictures keep its look in every shot it appears in")
+    clip_sound: bool = Field(False, description="Motion: make each clip with its own sound and keep it under the "
+                             "narration (ambience, animals, footsteps), ducked with the music")
 
 
 def voice_key(i: int) -> str:
@@ -97,9 +108,26 @@ def visual_prompt(visual: str, roster: list[dict[str, Any]], world: str, style: 
     return ". ".join(p for p in parts if p) + "."
 
 
-def thumbnail_prompt(title: str, world: str, style: str) -> str:
+def thumbnail_prompt(title: str, world: str, style: str, star: str | None = None) -> str:
+    subject = f" The subject is @{star}." if star else ""
     return (f'Eye-catching video thumbnail for "{title}". One bold focal subject, simple uncluttered composition, '
-            f"strong contrast, the title in large clean lettering. {world.strip().rstrip('.')}. {style.strip()}")
+            f"strong contrast, the title in large clean lettering.{subject} {world.strip().rstrip('.')}. "
+            f"{style.strip()}")
+
+
+def starring(visual: str, star: str) -> str:
+    """A shot the star is in: it's named by its @handle, so the mention attaches its pictures."""
+    return f"{visual.strip().rstrip('.')}. The star is @{star}"
+
+
+# the scene's own sound, the creature's calls and movement included; only a score and speech are kept out
+CLIP_SOUND_PROMPT = "Natural sound of the scene only (the animals' calls and movement, wind, water): no music, no speech"
+
+
+def named(visual: str, star_name: str | None) -> str:
+    """A clip's shot with the star called by name: a video model sees the picture, but "the star" means nothing."""
+    # a callable, so the name goes in as written (a backslash in it is no group reference)
+    return re.sub(r"\bthe star\b", lambda _: star_name, visual, flags=re.IGNORECASE) if star_name else visual
 
 
 class FacelessRecipe(Recipe):
@@ -112,6 +140,20 @@ class FacelessRecipe(Recipe):
         return f"Faceless: {(inp.title or inp.topic or (inp.script or '')[:60]).strip()[:100]}"
 
     # ---------------------------------------------------------------- checks and estimate
+
+    async def resolve(self, session: Any, user_id: uuid.UUID, inp: FacelessInput, reg: Registry) -> FacelessInput:
+        """A starring character must exist and have a picture: checked when a run starts or is edited, so a deleted
+        one is named as the problem instead of surfacing as a still's missing reference picture."""
+        if inp.character and inp.format != "song":
+            from studio.domain.generations import GenerationRequestError
+            from studio.pipelines.llm_ops import (
+                find_star,  # local: llm_ops imports the writer and the catalog
+            )
+
+            problem = (await find_star(session, user_id, inp.character))[1]
+            if problem is not None:
+                raise GenerationRequestError([problem])
+        return inp
 
     def validate(self, inp: FacelessInput, reg: Registry) -> list[str]:
         cat = get_catalog()
@@ -141,6 +183,16 @@ class FacelessRecipe(Recipe):
                 errors.append(f"unknown model {inp.video_model!r}")
             elif spec.output_type != "video" or start_frame_mode(spec) is None:
                 errors.append(f"{spec.name} can't animate a still")
+            # sound on a switch, or always (H3: tagged audio), like `llm/enhance.py`
+            elif inp.clip_sound and spec.param("generate_audio") is None and "audio" not in spec.tags:
+                errors.append(f"{spec.name} makes clips without sound; turn clip sound off or pick a model with "
+                              "its own sound (Kling 3.0, Seedance 2.5, Veo 3.1)")
+        # a star and clip sound apply where they can: a song draws no star (yet) and stills have no sound of their own
+        if inp.character and inp.format != "song":
+            image = reg.model(inp.image_model)
+            if image is not None and frame_mode(image) is None:
+                errors.append(f"{image.name} can't draw from reference pictures; pick an image model that can, "
+                              "so the star looks the same in every shot")
         return errors
 
     def _blocks_guess(self, inp: FacelessInput) -> tuple[int, int]:
@@ -157,19 +209,20 @@ class FacelessRecipe(Recipe):
         image = reg.models[inp.image_model]
         out = [PlannedJob(voice.id, mode_with_op(voice, "tts").id, inp.voice, prompt_chars=math.ceil(chars / n))
                for _ in range(n)]
-        out += [PlannedJob(image.id, text_mode(image).id, self._image_params(inp, reg)) for _ in range(n)]
+        pic, roles = self._picture_mode(inp, reg)  # priced as if every shot shows the star
+        out += [PlannedJob(image.id, pic.id, self._image_params(inp, reg, pic), roles) for _ in range(n)]
         if inp.format == "motion":
             video = reg.models[inp.video_model]
             mode = start_frame_mode(video)
             seconds = chars / CHARS_PER_SECOND / n + GAP_S
-            out += [PlannedJob(video.id, mode.id, clip_params(reg.models[inp.video_model], inp.aspect_ratio, seconds, inp.video_params), ("start_image",))
+            out += [PlannedJob(video.id, mode.id, self._clip_params(inp, reg, seconds), ("start_image",))
                     for _ in range(n)]
         if inp.music:
             music = reg.models[inp.music_model]
             out.append(PlannedJob(music.id, mode_with_op(music, "music").id,
                                   music_params(reg.models[inp.music_model], chars / CHARS_PER_SECOND + n * GAP_S)))
         if inp.thumbnail:
-            out.append(PlannedJob(image.id, text_mode(image).id, self._thumb_params(inp, reg)))
+            out.append(PlannedJob(image.id, pic.id, self._thumb_params(inp, reg, pic), roles))
         return out
 
     def _song_jobs(self, inp: FacelessInput, reg: Registry) -> list[PlannedJob]:
@@ -197,14 +250,29 @@ class FacelessRecipe(Recipe):
 
     # ---------------------------------------------------------------- params per model
 
-    def _image_params(self, inp: FacelessInput, reg: Registry) -> dict[str, Any]:
+    def _picture_mode(self, inp: FacelessInput, reg: Registry) -> tuple[Mode, tuple[str, ...]]:
+        """The image mode for a shot (and the input roles it fills): from the star's pictures when there is one."""
         spec = reg.models[inp.image_model]
-        mode = text_mode(spec).id
-        return with_param(spec, mode, dict(inp.image_params), "aspect_ratio", inp.aspect_ratio)
+        if inp.character and inp.format != "song" and (refs := frame_mode(spec)) is not None:
+            return refs, (_ref_role(spec),)
+        return text_mode(spec), ()  # type: ignore[return-value]
 
-    def _thumb_params(self, inp: FacelessInput, reg: Registry) -> dict[str, Any]:
+    def _image_params(self, inp: FacelessInput, reg: Registry, mode: Mode | None = None) -> dict[str, Any]:
         spec = reg.models[inp.image_model]
-        return with_param(spec, text_mode(spec).id, self._image_params(inp, reg), "num_images", 3)
+        mode_id = (mode or text_mode(spec)).id  # type: ignore[union-attr]
+        return with_param(spec, mode_id, dict(inp.image_params), "aspect_ratio", inp.aspect_ratio)
+
+    def _thumb_params(self, inp: FacelessInput, reg: Registry, mode: Mode | None = None) -> dict[str, Any]:
+        spec = reg.models[inp.image_model]
+        mode_id = (mode or text_mode(spec)).id  # type: ignore[union-attr]
+        return with_param(spec, mode_id, self._image_params(inp, reg, mode), "num_images", 3)
+
+    def _clip_params(self, inp: FacelessInput, reg: Registry, seconds: float) -> dict[str, Any]:
+        spec = reg.models[inp.video_model]
+        params = clip_params(spec, inp.aspect_ratio, seconds, inp.video_params)
+        if inp.clip_sound and inp.format == "motion":  # priced too: native audio costs more on some models (Kling)
+            params = with_param(spec, start_frame_mode(spec).id, params, "generate_audio", True)  # type: ignore[union-attr]
+        return params
 
     # ---------------------------------------------------------------- the plan
 
@@ -223,7 +291,8 @@ class FacelessRecipe(Recipe):
         if not (inp.script and inp.script.strip()):
             specs.append(StepSpec("script", StepKind.llm, "Write the song" if song else "Write the script", {
                 "op": "faceless_song" if song else "faceless_script", "topic": inp.topic, "theme": theme.id,
-                "minutes": inp.minutes, "language": inp.language, "notes": inp.notes}))
+                "minutes": inp.minutes, "language": inp.language, "notes": inp.notes,
+                **({"character": inp.character} if inp.character and not song else {})}))
         written = self._script(inp, settled)
         if written is None:
             return specs
@@ -241,8 +310,8 @@ class FacelessRecipe(Recipe):
             lyrics = self._song(inp, settled, title)
             return specs + (self._song_steps(inp, settled, reg, lyrics, title, before_plan) if lyrics else [])
         specs.append(StepSpec("plan", StepKind.llm, "Plan the visuals", {
-            "op": "faceless_plan", "script": script, "title": title, "style": style.id, "format": inp.format},
-            before_plan))
+            "op": "faceless_plan", "script": script, "title": title, "style": style.id, "format": inp.format,
+            **({"character": inp.character} if inp.character else {})}, before_plan))
         plan = ok(settled, "plan")
         if plan is None:
             return specs
@@ -258,9 +327,12 @@ class FacelessRecipe(Recipe):
             specs.append(StepSpec(voice_key(i), StepKind.generate, f"Narration {i}", {
                 "model_id": voice_spec.id, "mode": tts.id, "prompt": block["narration"], "params": voice_params,
                 "media": []}, ("plan",)))
+            stars = bool(inp.character and block.get("star"))
+            pic = self._picture_mode(inp, reg)[0] if stars else t2i
+            visual = starring(block["visual"], inp.character) if stars and inp.character else block["visual"]
             specs.append(StepSpec(still_key(i), StepKind.generate, f"Image {i}", {
-                "model_id": image_spec.id, "mode": t2i.id, "params": self._image_params(inp, reg), "media": [],
-                "prompt": visual_prompt(block["visual"], plan.get("roster", []), plan.get("world", ""), style.prompt),
+                "model_id": image_spec.id, "mode": pic.id, "params": self._image_params(inp, reg, pic), "media": [],
+                "prompt": visual_prompt(visual, plan.get("roster", []), plan.get("world", ""), style.prompt),
             }, ("plan",)))
             if inp.format == "motion":
                 still, voice = ok(settled, still_key(i)), ok(settled, voice_key(i))
@@ -268,14 +340,17 @@ class FacelessRecipe(Recipe):
                     video = reg.models[inp.video_model]
                     seconds = (voice.get("duration_ms") or 0) / 1000 + GAP_S
                     motion = block.get("motion") or "subtle natural motion, slow camera drift"
+                    sound = f". {CLIP_SOUND_PROMPT}" if inp.clip_sound else ""
+                    shot = named(block["visual"], plan.get("star")).strip().rstrip(".")
                     specs.append(StepSpec(clip_key(i), StepKind.generate, f"Clip {i}", {
                         "model_id": video.id, "mode": start_frame_mode(video).id,
-                        "prompt": f"{block['visual'].strip().rstrip('.')}. {motion}",
-                        "params": clip_params(reg.models[inp.video_model], inp.aspect_ratio, seconds, inp.video_params),
+                        "prompt": f"{shot}. {motion}{sound}",
+                        "params": self._clip_params(inp, reg, seconds),
                         "media": [{"role": "start_image", "asset_id": still["asset_id"]}],
                     }, (still_key(i), voice_key(i)), optional=True))  # a failed clip falls back to its still
 
-        specs += self._thumb_steps(inp, settled, reg, title, plan.get("world", ""), style.prompt, ("plan",))
+        specs += self._thumb_steps(inp, settled, reg, title, plan.get("world", ""), style.prompt, ("plan",),
+                                   star=inp.character)
 
         voices = [ok(settled, voice_key(i)) for i in range(1, len(blocks) + 1)]
         if not all(voices):
@@ -298,7 +373,8 @@ class FacelessRecipe(Recipe):
         specs.append(StepSpec("cut", StepKind.local, "Assemble the episode", {
             "op": "narrated_cut", "title": title, "aspect_ratio": inp.aspect_ratio, "resolution": inp.resolution,
             "blocks": [{"visual": vis, "voice": v["asset_id"]} for vis, v in zip(visuals, voices, strict=True) if v],
-            "music": music["asset_id"] if music else None}, deps))
+            "music": music["asset_id"] if music else None,
+            **({"clip_sound_db": CLIP_SOUND_DB} if inp.clip_sound and inp.format == "motion" else {})}, deps))
         cut = ok(settled, "cut")
         if inp.captions and cut:
             specs.append(StepSpec("captions", StepKind.local, "Burn in captions", {
@@ -359,13 +435,14 @@ class FacelessRecipe(Recipe):
         return specs
 
     def _thumb_steps(self, inp: FacelessInput, settled: Settled, reg: Registry, title: str, world: str, style: str,
-                     after: tuple[str, ...]) -> list[StepSpec]:
+                     after: tuple[str, ...], star: str | None = None) -> list[StepSpec]:
         if not inp.thumbnail:
             return []
         image_spec = reg.models[inp.image_model]
+        pic = self._picture_mode(inp, reg)[0] if star else text_mode(image_spec)
         specs = [StepSpec("thumbs", StepKind.generate, "Thumbnails", {
-            "model_id": image_spec.id, "mode": text_mode(image_spec).id, "params": self._thumb_params(inp, reg),
-            "media": [], "prompt": thumbnail_prompt(title, world, style)}, after, optional=True)]
+            "model_id": image_spec.id, "mode": pic.id, "params": self._thumb_params(inp, reg, pic),  # type: ignore[union-attr]
+            "media": [], "prompt": thumbnail_prompt(title, world, style, star)}, after, optional=True)]
         thumbs = ok(settled, "thumbs")
         if thumbs and len(thumbs.get("asset_ids", [])) > 1:
             specs.append(StepSpec("thumb", StepKind.checkpoint, "Pick a thumbnail", {
@@ -405,3 +482,7 @@ class FacelessRecipe(Recipe):
                 thumbnail = thumbs["asset_id"]
         return {"asset_id": final["asset_id"], "master_asset_id": cut["asset_id"],
                 "captions_asset_id": final.get("subtitle_asset_id"), "thumbnail_asset_id": thumbnail}
+
+
+def _ref_role(spec: ModelSpec) -> str:
+    return (spec.elements or {}).get("ref_role", "image_references")

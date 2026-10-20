@@ -86,3 +86,11 @@ styles:
       flat 2D illustration in soft pastel colors, simple rounded shapes, gentle gradients, friendly and calm,
       picture-book clarity
     caption: {font: Verdana, size: 56, bold: true, color: "#FFFFFF", outline: "#5E548E", highlight: "#FFC6FF"}
+  - id: wildlife-documentary
+    label: Wildlife Documentary
+    summary: Photoreal nature-film footage, shot up close with a long lens.
+    prompt: >-
+      photorealistic wildlife documentary footage, shot on a cinema camera with a long telephoto lens from a hidden
+      position, natural light, shallow depth of field, fine natural detail and texture, true-to-life colour,
+      observational nature film cinematography
+    caption: {font: Arial, size: 54, bold: true, color: "#FFFFFF", outline: "#14180F", highlight: "#E9C46A"}
