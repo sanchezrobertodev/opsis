@@ -1,0 +1,86 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Verified 2026-10-19: ElevenLabs Dubbing API (POST /v1/dubbing/project, multipart `file`, `target_language`, `model_id`
+# dubbing_v1 | dubbing_v2, optional `source_language`; the language target's `outputs.lossless_audio` is FLAC), the
+# supported-languages page (v1: base tags only) and the API pricing page (v2 $2.20/min; v1 $0.50/min without watermark,
+# per source minute and target language).
+id: eleven-dubbing
+name: ElevenLabs Dubbing
+family: elevenlabs
+vendor: elevenlabs
+description: >-
+  Translates speech into another language in the speakers' own voices, keeping timing, emotion and background sound.
+output_type: audio
+status: active
+license_tier: commercial_api
+tags: [voice, dubbing, translation]
+
+parameters:
+  - name: target_language
+    label: Dub into
+    type: enum
+    default: es
+    options: [es, es-MX, es-ES, en, en-US, en-GB, pt, pt-BR, fr, fr-CA, de, it, ja, ko, zh, hi, ar, ru, nl, pl, tr,
+              sv, id, fil, uk, vi]
+    labels: {es: Spanish, es-MX: Spanish (Mexico), es-ES: Spanish (Spain), en: English, en-US: English (US),
+             en-GB: English (UK), pt: Portuguese, pt-BR: Portuguese (Brazil), fr: French, fr-CA: French (Canada),
+             de: German, it: Italian, ja: Japanese, ko: Korean, zh: Chinese, hi: Hindi, ar: Arabic, ru: Russian,
+             nl: Dutch, pl: Polish, tr: Turkish, sv: Swedish, id: Indonesian, fil: Filipino, uk: Ukrainian,
+             vi: Vietnamese}
+  - name: source_language
+    label: Spoken in
+    type: enum
+    default: auto  # not sent: ElevenLabs detects it
+    options: [auto, en, es, pt, fr, de, it, ja, ko, zh, hi, ar, ru, nl, pl, tr, sv, id, fil, uk, vi]
+    labels: {auto: Detect it, en: English, es: Spanish, pt: Portuguese, fr: French, de: German, it: Italian,
+             ja: Japanese, ko: Korean, zh: Chinese, hi: Hindi, ar: Arabic, ru: Russian, nl: Dutch, pl: Polish,
+             tr: Turkish, sv: Swedish, id: Indonesian, fil: Filipino, uk: Ukrainian, vi: Vietnamese}
+  - name: quality
+    label: Model
+    type: enum
+    default: dubbing_v2
+    options: [dubbing_v2, dubbing_v1]
+    labels: {dubbing_v2: "Dubbing v2: best, regional accents ($2.20/min)", dubbing_v1: "Dubbing v1: cheaper ($0.50/min)"}
+
+rules:
+  - when: {quality: dubbing_v1}
+    require: {target_language: [es, en, pt, fr, de, it, ja, ko, zh, hi, ar, ru, nl, pl, tr, sv, id, fil, uk, vi]}
+    message: Dubbing v1 takes plain languages only; pick Dubbing v2 for a regional accent.
+
+modes:
+  - id: dub
+    label: Dub
+    ops: [dub]
+    prompt: none
+    medias:
+      - {role: input_audio, kinds: [audio], label: Recording, required: true, max_mb: 500}
+
+routes:
+  - id: eleven-dubbing@elevenlabs
+    provider: elevenlabs
+    modes:
+      dub: {endpoint: dubbing/project}
+    map:
+      params:
+        target_language: target_language
+        source_language: source_language
+        quality: model_id
+      media: {input_audio: file}
+    pricing:
+      basis: per_output_second
+      quantity: input_audio_seconds + input_video_seconds  # per source minute; a clip given for its sound counts too
+      rates:
+        - {usd: 0.036667}  # $2.20 a minute
+        - {when: {quality: dubbing_v1}, usd: 0.008333}  # $0.50 a minute
+      verified: 2026-10-19
+      source: https://elevenlabs.io/pricing/api
+    eta: "60 + 2 * (input_audio_seconds + input_video_seconds)"
+    timeout_s: 3600
+    output: {path: lossless_audio, kind: audio}
+
+examples:
+  - name: dub_smoke
+    mode: dub
+    params: {target_language: es, quality: dubbing_v1}
+    media: {input_audio: "fixture:audio/line.mp3"}
+    smoke: true
+    expect: {cost_usd_range: [0, 0.10]}

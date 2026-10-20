@@ -3,6 +3,7 @@ and re-voicing a clip or a recording in it."""
 
 from __future__ import annotations
 
+import math
 import uuid
 
 import httpx
@@ -123,3 +124,64 @@ async def test_clone_samples_are_size_capped(client, monkeypatch):
     monkeypatch.setattr(elements, "SAMPLE_MAX_BYTES", 10)
     r = await client.post("/elements/clone-voice", json={"name": "Big", "samples": [sample["id"]], "consent": True})
     assert r.status_code == 422 and "keep each sample under" in r.text
+
+
+async def _talking_clip(client, tmp_path) -> dict:
+    talking = tmp_path / "talking.mp4"
+    await ffmpeg("-i", str(CLIP), "-f", "lavfi", "-i", "sine=frequency=300:duration=3", "-map", "0:v", "-map", "1:a",
+                 "-c:v", "copy", "-c:a", "aac", "-shortest", str(talking))
+    return await upload(client, talking, "video/mp4")
+
+
+async def test_a_clip_is_dubbed_with_its_picture_kept(client, in_memory_queue, tmp_path):
+    clip = await _talking_clip(client, tmp_path)
+    seconds = clip["duration_ms"] / 1000
+    rendered = (await client.post("/templates/dub-a-video/render", json={
+        "fields": {"language": "es-MX", "quality": "dubbing_v2", "lip_sync": "false"},
+        "media": {"video_asset_id": clip["id"]}})).json()
+    est = (await client.post("/pipelines/estimate", json=rendered)).json()
+    assert est["live_estimate_usd"] == pytest.approx(seconds * 0.036667, abs=0.002)  # v2, priced by the clip
+    run = await start(client, "dub", **rendered["input"])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    assert [s["key"] for s in done["steps"]] == ["audio", "change", "mux"]
+    change = next(s for s in done["steps"] if s["key"] == "change")
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(change["generation_id"]))
+    assert gen and gen.model_id == "eleven-dubbing" and gen.request["params"]["target_language"] == "es-MX"
+    out = (await client.get(f"/assets/{done['output']['asset_id']}")).json()
+    assert out["kind"] == "video" and out["has_audio"] and abs(out["duration_ms"] - clip["duration_ms"]) < 200
+
+
+async def test_a_dub_can_be_lip_synced_and_v1_takes_plain_languages(client, in_memory_queue, tmp_path):
+    clip = await _talking_clip(client, tmp_path)
+    seconds = clip["duration_ms"] / 1000
+    body = {"video_asset_id": clip["id"], "target_language": "fr", "quality": "dubbing_v1", "lip_sync": True}
+    est = (await client.post("/pipelines/estimate", json={"recipe": "dub", "input": body})).json()
+    assert est["live_estimate_usd"] == pytest.approx(seconds * 0.008333 + math.ceil(seconds) * 0.1333, abs=0.01)
+    run = await start(client, "dub", **body)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    mux = next(s for s in done["steps"] if s["key"] == "mux")
+    assert mux["kind"] == "generate"  # the lip-sync model makes the clip
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(mux["generation_id"]))
+    assert gen and gen.model_id == "sync-lipsync-3"
+
+    accent = await client.post("/generations", json={"model_id": "eleven-dubbing", "mode": "dub", "prompt": "",
+                                                     "params": {"target_language": "es-MX", "quality": "dubbing_v1"},
+                                                     "media": [{"role": "input_audio", "asset_id": clip["id"]}]})
+    assert accent.status_code == 422 and "plain languages" in accent.text
+
+
+async def test_a_recording_is_dubbed_and_lip_sync_needs_a_clip(client, in_memory_queue):
+    rec = await upload(client, SPEECH, "audio/mpeg")
+    run = await start(client, "dub", audio_asset_id=rec["id"], target_language="de")
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded" and [s["key"] for s in done["steps"]] == ["change"]
+    r = await client.post("/pipelines", json={"recipe": "dub", "input": {
+        "audio_asset_id": rec["id"], "target_language": "de", "lip_sync": True}})
+    assert r.status_code == 422 and "needs a clip" in r.text
