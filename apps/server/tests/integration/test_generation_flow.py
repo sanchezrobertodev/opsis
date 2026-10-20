@@ -256,3 +256,15 @@ async def test_bad_direction_is_a_validation_error(client):
     r = await client.post("/generations", json={"model_id": "kling-3.0", "mode": "t2v", "prompt": "x",
                                                 "direction": {"camera_moves": [{"id": "a"}] * 4}})
     assert r.status_code == 422
+
+
+def test_a_reported_cost_is_read_the_same_way_everywhere():
+    from decimal import Decimal
+
+    from studio.worker.tasks.generation import _reported_cost
+
+    assert _reported_cost({"cost_usd": 0.42}) == Decimal("0.42")
+    assert _reported_cost({"cost_usd": 0}) is None  # a failed job saying $0 most likely didn't say
+    assert _reported_cost({"cost_usd": 0}, free_ok=True) == Decimal("0")  # a finished one may have been free
+    for bad in ("0.4", None, True, -1, {"usd": 1}):  # not a number: the estimate stands, nothing crashes
+        assert _reported_cost({"cost_usd": bad}, free_ok=True) is None

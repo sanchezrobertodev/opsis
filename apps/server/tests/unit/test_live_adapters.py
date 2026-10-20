@@ -48,6 +48,9 @@ def test_classify_http():
     assert classify_http(429) == ErrorClass.transient
     assert classify_http(503) == ErrorClass.transient
     assert classify_http(400, "Prompt rejected by content policy") == ErrorClass.moderation
+    # a permission error that happens to say "not allowed" is a route problem (fail over), not a prompt to reword
+    assert classify_http(403, "This API key is not allowed to use this model") == ErrorClass.route_unavailable
+    assert classify_http(403, "Request blocked by the safety system") == ErrorClass.moderation
 
 
 def test_extract_outputs_shapes():

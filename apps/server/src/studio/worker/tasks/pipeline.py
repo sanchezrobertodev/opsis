@@ -6,6 +6,7 @@ import logging
 import uuid
 
 from procrastinate.exceptions import AlreadyEnqueued
+from sqlalchemy.exc import DBAPIError
 
 from studio.db.models import PipelineRun, PipelineStep, StepStatus
 from studio.db.session import session_scope
@@ -53,12 +54,22 @@ async def pipeline_advance(run_id: str) -> None:
 
 async def advance(run_id: uuid.UUID) -> None:
     fx = Effects()
-    async with session_scope() as s:
-        run = await s.get(PipelineRun, run_id, with_for_update=True)
-        if run is None:
-            return
-        await reconcile(s, run, fx)
+    try:
+        async with session_scope() as s:
+            run = await s.get(PipelineRun, run_id, with_for_update=True)
+            if run is None:
+                return
+            await reconcile(s, run, fx)
+    except DBAPIError as exc:
+        if _lock_not_available(exc):
+            return  # one of its steps is running; that step advances the run when it finishes
+        raise
     await apply(fx, run_id)
+
+
+def _lock_not_available(exc: DBAPIError) -> bool:
+    code = getattr(exc.orig, "sqlstate", None) or getattr(exc.orig, "pgcode", None)
+    return code == "55P03" or "LockNotAvailable" in repr(exc.orig)
 
 
 @app.task(name="pipeline.step", queue=Q_CPU, retry=0)

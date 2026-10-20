@@ -34,9 +34,16 @@ def looks_like_moderation(text: str | None) -> bool:
     return any(h in t for h in MODERATION_HINTS)
 
 
+# words that also turn up in plain permission errors ("this key is not allowed to use the model")
+LOOSE_HINTS = ("not allowed", "blocked by")
+
+
 def classify_http(status: int, text: str = "") -> ErrorClass:
     """Map an HTTP failure to an error class (drives retry vs failover vs fail)."""
-    if looks_like_moderation(text) and status in (400, 403, 422, 451):
+    t = (text or "").lower()
+    # a 403 is a permission error unless it names the content; the loose words alone don't
+    strong = any(h in t for h in MODERATION_HINTS if h not in LOOSE_HINTS)
+    if (status in (400, 422, 451) and looks_like_moderation(text)) or (status == 403 and strong):
         return ErrorClass.moderation
     if status in (401, 402, 403, 404):
         return ErrorClass.route_unavailable  # bad/missing key, out of credits, endpoint gone

@@ -19,8 +19,17 @@ async def video_poster(src: Path, dest: Path, duration_ms: int | None) -> None:
     await ffmpeg("-ss", f"{at:.3f}", "-i", str(src), "-frames:v", "1", "-q:v", "3", str(dest))
 
 
+MAX_THUMB_SOURCE_PIXELS = 50_000_000  # about 150 MB once decoded; bigger pictures are refused, not decoded
+
+
 def image_thumb(src: Path, dest: Path, width: int = THUMB_WIDTH) -> None:
-    with Image.open(src) as im:
+    try:
+        opened = Image.open(src)  # reads only the header, so the size checks cost nothing
+    except Image.DecompressionBombError as exc:  # Pillow's own, larger limit: the same answer as ours
+        raise ValueError(f"picture too large to thumbnail ({exc})") from None
+    with opened as im:
+        if im.width * im.height > MAX_THUMB_SOURCE_PIXELS:
+            raise ValueError(f"picture too large to thumbnail ({im.width} x {im.height})")
         im = im.convert("RGB")
         ratio = width / im.width
         im = im.resize((width, max(1, round(im.height * ratio))), Image.Resampling.LANCZOS)

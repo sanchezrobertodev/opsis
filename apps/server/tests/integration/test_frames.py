@@ -162,3 +162,20 @@ async def test_abandoned_render_frames_are_swept(db, in_memory_queue):
     await reap(datetime.now(UTC))
     assert not old.exists() and fresh.exists()
     shutil.rmtree(fresh)
+
+
+def test_a_picture_too_large_to_thumbnail_is_refused_either_way(tmp_path, monkeypatch):
+    """Ours (50 MP) and Pillow's own limit (which it raises while opening) both come back as the same refusal."""
+    from PIL import Image
+
+    from studio.media import derive
+
+    src = tmp_path / "big.png"
+    Image.new("RGB", (400, 300)).save(src)
+    monkeypatch.setattr(derive, "MAX_THUMB_SOURCE_PIXELS", 100_000)  # ours trips
+    with pytest.raises(ValueError, match="too large"):
+        derive.image_thumb(src, tmp_path / "t.webp")
+    monkeypatch.setattr(derive, "MAX_THUMB_SOURCE_PIXELS", 50_000_000)
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 50_000)  # Pillow's trips first (it raises past twice this)
+    with pytest.raises(ValueError, match="too large"):
+        derive.image_thumb(src, tmp_path / "t.webp")

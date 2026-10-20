@@ -439,3 +439,95 @@ async def test_runs_that_used_to_hang_now_end_or_carry_on(client, in_memory_queu
     await advance(run_id=str(lost_id))
     gone = await get(client, str(lost_id))
     assert gone["status"] == "failed" and "couldn't plan" in gone["error"]
+
+
+async def test_canceling_a_failed_run_stops_takes_still_rendering(client, in_memory_queue):
+    from studio.config import get_settings
+    from studio.db.models import PipelineRun, PipelineStep, RunStatus, StepKind, StepStatus
+    from studio.domain.enums import GenStatus
+
+    user = get_settings().owner_user_id
+    async with session_scope() as s:
+        run = PipelineRun(user_id=user, recipe="sequence", title="half failed", status=RunStatus.failed,
+                          error="Shot 2: moderation", input={"model_id": "kling-3.0", "shots": [{"prompt": "a"}]})
+        s.add(run)
+        await s.flush()
+        g = Generation(user_id=user, model_id="kling-3.0", mode="t2v", output_type="video",
+                       status=GenStatus.queued, request={}, group_id=run.id)
+        s.add(g)
+        await s.flush()
+        s.add(PipelineStep(run_id=run.id, key="shot[01]", kind=StepKind.generate, input={}, input_hash="x",
+                           status=StepStatus.running, generation_id=g.id))
+        await s.commit()
+        run_id, gen_id = run.id, g.id
+    r = await client.post(f"/pipelines/{run_id}/cancel")
+    assert r.status_code == 200
+    out = r.json()
+    assert out["status"] == "failed" and out["error"] == "Shot 2: moderation"  # still says why it failed
+    assert out["steps"][0]["status"] == "canceled"
+    async with session_scope() as s:
+        assert (await s.get(Generation, gen_id)).status == GenStatus.canceled  # the paid take was stopped
+
+
+async def test_a_local_step_that_fails_leaves_nothing_behind(client, in_memory_queue, monkeypatch, tmp_path):
+    """A split that fails on its third piece used to keep the first two as stray library assets (and their files)."""
+    from types import SimpleNamespace
+
+    from studio.config import get_settings
+    from studio.db.models import PipelineRun, RunStatus, StepKind
+    from studio.domain.derived import save_derived
+    from studio.domain.enums import AssetKind, AssetSource
+    from studio.pipelines import engine
+    from studio.pipelines.ops import StepFailed
+
+    made: list[str] = []
+
+    async def split(session, run, step):
+        for i in range(2):
+            piece = tmp_path / f"piece{i}.wav"
+            piece.write_bytes(b"RIFF")
+            asset = await save_derived(session, run.user_id, piece, kind=AssetKind.archive,
+                                       source=AssetSource.pipeline, title=f"piece {i}", parents=[])
+            made.append(asset.storage_key)
+        raise StepFailed("the third piece couldn't be cut")
+
+    monkeypatch.setitem(engine.LOCAL_OPS, "test_split", split)
+    async with session_scope() as s:
+        run = PipelineRun(user_id=get_settings().owner_user_id, recipe="sequence", title="split",
+                          status=RunStatus.running, input={})
+        s.add(run)
+        await s.flush()
+        step = SimpleNamespace(kind=StepKind.local, input={"op": "test_split"}, key="parts", id=uuid.uuid4(),
+                               status=None, error=None, finished_at=None)
+        await engine.execute_step(s, step, run)
+        await s.commit()
+    assert step.status.value == "failed" and "third piece" in step.error and len(made) == 2
+    async with session_scope() as s:
+        left = (await s.execute(select(Asset).where(Asset.storage_key.in_(made)))).scalars().all()
+    assert left == [] and not any(get_storage().path_for(k).exists() for k in made)
+
+
+async def test_advancing_never_waits_behind_a_running_step(client, in_memory_queue):
+    """A long ffmpeg step holds its row; an advance meanwhile (the reaper's, a finished take's) used to wait for it while
+    holding the run, which kept Cancel, Revise and checkpoint answers waiting too."""
+    from studio.config import get_settings
+    from studio.db.models import PipelineRun, PipelineStep, RunStatus, StepKind, StepStatus
+    from studio.worker.tasks.pipeline import advance
+
+    async with session_scope() as s:
+        run = PipelineRun(user_id=get_settings().owner_user_id, recipe="sequence", title="assembling",
+                          status=RunStatus.running, input={"model_id": "kling-3.0", "shots": [{"prompt": "a"}]})
+        s.add(run)
+        await s.flush()
+        step = PipelineStep(run_id=run.id, key="join", kind=StepKind.local, input={"op": "concat"}, input_hash="x",
+                            status=StepStatus.running)
+        s.add(step)
+        await s.commit()
+        run_id, step_id = run.id, step.id
+
+    async with session_scope() as busy:  # the step's own job, mid-op
+        await busy.get(PipelineStep, step_id, with_for_update=True)
+        await asyncio.wait_for(advance(run_id), timeout=5)  # returns at once instead of waiting
+        async with session_scope() as s:  # and the run isn't held: an API call can lock it right away
+            await asyncio.wait_for(s.get(PipelineRun, run_id, with_for_update=True), timeout=5)
+        await busy.rollback()

@@ -23,7 +23,7 @@ def _live_price(reg: Registry, spec: ModelSpec, preset: PresetSpec) -> float | N
             continue
         try:
             prices.append(float(estimate(route.pricing, params, mode=preset.mode).usd))
-        except (ValueError, KeyError, TypeError):
+        except (ValueError, KeyError):
             continue  # priced by input length etc.; unknown until the user picks media
     return min(prices) if prices else None
 

@@ -165,7 +165,7 @@ async def set_thumbnail(asset_id: uuid.UUID, file: UploadFile, session: AsyncSes
         raise HTTPException(404, "asset not found")
     if (file.content_type or "") not in ("image/png", "image/jpeg", "image/webp"):
         raise HTTPException(415, "the thumbnail must be PNG, JPEG or WebP")
-    data = await file.read(10 * 1024 * 1024 + 1)
+    data = await file.read(10 * 1024 * 1024 + 1)  # a small file can still decode huge: image_thumb checks
     if len(data) > 10 * 1024 * 1024:
         raise HTTPException(413, "thumbnail too large")
     storage = get_storage()
@@ -176,6 +176,8 @@ async def set_thumbnail(asset_id: uuid.UUID, file: UploadFile, session: AsyncSes
     key = asset_key(user.id, asset.id, f"thumb-{uuid7().hex[-12:]}.webp")
     try:
         await anyio.to_thread.run_sync(image_thumb, tmp, storage.path_for(key))
+    except ValueError as exc:
+        raise HTTPException(413, str(exc)) from None
     finally:
         tmp.unlink(missing_ok=True)
     asset.derivatives = {**(asset.derivatives or {}), "thumb": key}

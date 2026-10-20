@@ -668,7 +668,7 @@ async def list_takes(project_id: uuid.UUID, shot_key: str | None = None, session
         q = q.where(Generation.shot_key == shot_key)
     gens = list((await session.execute(q.order_by(Generation.created_at.desc()).limit(TAKES_PAGE))).scalars().all())
     assets = (await session.execute(select(Asset).where(
-        Asset.generation_id.in_([g.id for g in gens]), Asset.deleted_at.is_(None))
+        Asset.generation_id.in_([g.id for g in gens]), Asset.user_id == user.id, Asset.deleted_at.is_(None))
         .order_by(Asset.output_index))).scalars().all() if gens else []
     by_gen: dict[uuid.UUID, list[Asset]] = {}
     for a in assets:
