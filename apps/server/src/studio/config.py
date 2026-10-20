@@ -18,9 +18,9 @@ DEFAULT_OWNER_ID = uuid.UUID("00000000-0000-7000-8000-000000000001")
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=REPO_ROOT / ".env", extra="ignore")
 
-    database_url: str = "postgresql+asyncpg://studio:studio@localhost:5433/studio"
+    database_url: str = "postgresql+asyncpg://studio:studio@127.0.0.1:5433/studio"
     # procrastinate uses psycopg 3, which wants a plain libpq URL
-    queue_database_url: str = "postgresql://studio:studio@localhost:5433/studio"
+    queue_database_url: str = "postgresql://studio:studio@127.0.0.1:5433/studio"
 
     provider_mode: Literal["mock", "mixed", "live"] = "mock"
     live_route_allowlist: str = ""

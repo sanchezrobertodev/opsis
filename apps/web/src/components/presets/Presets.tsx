@@ -312,7 +312,7 @@ function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) 
 }
 
 function TemplateCard({ template, onOpen }: { template: Template; onOpen: () => void }) {
-  const needs = template.inputs.filter((i) => !i.alternative).map((i) => i.label.toLowerCase());
+  const needs = template.inputs.filter((i) => !i.alternative && !i.optional).map((i) => i.label.toLowerCase());
   const either = template.inputs.filter((i) => i.alternative).map((i) => i.label.toLowerCase().replace(/^or /, ""));
   return (
     <button type="button" onClick={onOpen} className="group block w-full text-left">
@@ -370,7 +370,8 @@ function TemplateForm({ template }: { template: Template }) {
 
   const missing = [
     ...template.fields.filter((f) => f.required && !values[f.key]?.trim()).map((f) => f.label),
-    ...template.inputs.filter((i) => !i.alternative && !media[i.key]?.length && !picked[i.key]).map((i) => i.label),
+    ...template.inputs.filter((i) => !i.alternative && !i.optional && !media[i.key]?.length && !picked[i.key])
+      .map((i) => i.label),
     ...(either.length && !either.some((i) => media[i.key]?.length || picked[i.key])
       ? [either.map((i) => i.label.replace(/^Or /, "")).join(" or ")]
       : []),
@@ -415,7 +416,10 @@ function TemplateForm({ template }: { template: Template }) {
         {template.inputs.map((i) =>
           i.kind === "character" ? (
             <label key={i.key} className="flex flex-col gap-1.5 text-xs text-muted">
-              <span>{i.label}</span>
+              <span>
+                {i.label}
+                {i.optional && <span className="text-faint"> (optional)</span>}
+              </span>
               <Select
                 value={picked[i.key] ?? ""}
                 onChange={(v) => choose(i.key, v)}
@@ -428,7 +432,8 @@ function TemplateForm({ template }: { template: Template }) {
           ) : (
             <MediaSlotField
               key={i.key}
-              slot={{ role: ROLE_FOR_KIND[i.kind], kinds: [i.kind], label: i.label, required: !i.alternative, min: 1, max: 1, auto: false }}
+              slot={{ role: ROLE_FOR_KIND[i.kind], kinds: [i.kind], label: i.label, required: !i.alternative && !i.optional,
+                      min: 1, max: 1, auto: false }}
               value={media[i.key] ?? []}
               onAdd={(a) => choose(i.key, [a])}
               onRemove={() => choose(i.key, [])}

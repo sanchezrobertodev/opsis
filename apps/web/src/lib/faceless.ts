@@ -28,6 +28,10 @@ export type EpisodeSettings = {
   captions: boolean;
   thumbnail: boolean;
   review_script: boolean;
+  /** A saved character's @handle who stars: its pictures keep its look in the shots it's in. */
+  character: string | null;
+  /** Motion: each clip made with its own sound, kept under the narration. */
+  clip_sound: boolean;
 };
 
 export type CaptionLook = {

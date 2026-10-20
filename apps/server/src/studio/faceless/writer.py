@@ -48,6 +48,7 @@ class Block(BaseModel):
     narration: str = Field(description="The narration for this block, copied verbatim from the script")
     visual: str = Field(description="One concrete shot: subject, action, setting, composition. No art-style words")
     motion: str = Field("", description="How the shot moves, for animated clips (camera and subject motion)")
+    star: bool = Field(False, description="True when the star (shown from its reference pictures) is in this shot")
 
 
 class BlockPlan(BaseModel):
@@ -58,14 +59,15 @@ class BlockPlan(BaseModel):
 
 # ---------------------------------------------------------------- prompts
 
-TOPICS_SYSTEM = """You suggest topics for a faceless narrated video channel (illustrated visuals with a voiceover).
+TOPICS_SYSTEM = """You suggest topics for a faceless narrated video channel (visuals with a voiceover).
 Each idea must be specific enough to make a 1 to 5 minute video, accurate, and new to the viewer.
 Return exactly four distinct ideas that fit the channel's theme."""
 
-SCRIPT_SYSTEM = """You write narration scripts for faceless videos: a voice actor reads your words over illustrated
+SCRIPT_SYSTEM = """You write narration scripts for faceless videos: a voice actor reads your words over the
 visuals. Write only what the narrator says: no headings, scene labels, stage directions, sound cues, emojis or
 markdown. Plain paragraphs. Hit the target length closely, since the video's length follows the script.
-Be accurate; if the topic is factual and the record is uncertain, say so in the narration."""
+Be accurate, unless the theme guidance asks for invented detail; if the topic is factual and the record is
+uncertain, say so in the narration."""
 
 PLAN_SYSTEM = """You plan the visuals for a narrated faceless video.
 
@@ -110,10 +112,11 @@ async def suggest_topics(session: AsyncSession, user_id: uuid.UUID, *, theme: Th
 
 
 async def write_script(session: AsyncSession, user_id: uuid.UUID, *, topic: str, theme: Theme, minutes: float,
-                       language: str = "English", notes: str = "") -> LLMResult[Script]:
+                       language: str = "English", notes: str = "", star: str = "") -> LLMResult[Script]:
     words = _target_words(minutes)
     prompt = "\n".join(line for line in [
         f"Topic: {topic}",
+        f"The video stars {star}; call it by that name." if star else "",
         f"Theme guidance: {theme.script_guidance}",
         f"Length: about {words} words (it will be read at about {WORDS_PER_MINUTE} words a minute).",
         f"Language: {language}.",
@@ -129,10 +132,12 @@ async def write_script(session: AsyncSession, user_id: uuid.UUID, *, topic: str,
 
 
 async def plan_blocks(session: AsyncSession, user_id: uuid.UUID, *, script: str, title: str, style: Style,
-                      fmt: Format) -> LLMResult[BlockPlan]:
+                      fmt: Format, star: str = "") -> LLMResult[BlockPlan]:
     seconds = block_seconds(fmt)
     prompt = "\n".join([
         f"Title: {title}",
+        (f"The star: {star}. Its look comes from reference pictures, so write \"the star\" for it in `visual`, never "
+         f"describe its look, leave it out of `roster`, and set `star` on every block it appears in.") if star else "",
         f"Format: {'animated clips' if fmt == 'motion' else 'still images'}, about {seconds:.0f} seconds per block "
         f"(roughly {round(seconds * CHARS_PER_SECOND / 6)} words).",
         f"Art style, for your understanding only (don't repeat it): {style.label}: {style.summary}",
@@ -141,9 +146,18 @@ async def plan_blocks(session: AsyncSession, user_id: uuid.UUID, *, script: str,
     ])
     result = await structured(
         session, user_id, purpose="faceless.plan", model=get_settings().llm_smart_model, system=PLAN_SYSTEM,
-        prompt=prompt, output=BlockPlan, mock=lambda: _mock_plan(script, fmt), effort="medium", max_tokens=16000)
+        prompt=prompt, output=BlockPlan, mock=lambda: _mock_plan(script, fmt, star), effort="medium",
+        max_tokens=16000)
     plan = result.output
     plan.blocks = [b for b in plan.blocks if b.narration.strip()]
+    if star:
+        # its pictures carry its look: a written one would fight them. And an episode with a star shows it.
+        plan.roster = [r for r in plan.roster if r.name.strip().lower() not in ("the star", star.strip().lower())]
+        for b in plan.blocks:  # a shot that names it shows it, whatever the flag says
+            b.star = b.star or bool(re.search(r"\bthe star\b", b.visual, re.IGNORECASE))
+        if not any(b.star for b in plan.blocks):
+            for b in plan.blocks:
+                b.star = True
     texts = narration_from_script(script, [b.narration for b in plan.blocks])
     if texts is None:
         raise LLMError("Claude's block plan didn't keep the script word for word. Try again.", retryable=True)
@@ -229,6 +243,8 @@ _MOCK_TOPICS = {
              "How penguins keep their eggs warm"],
     "storytelling": ["The keeper of the last lighthouse", "A letter delivered fifty years late",
                      "The clockmaker's final commission", "The town where nobody could whistle"],
+    "creature-documentary": ["A griffin defends its cliff nest from raiders", "The wendigo's long winter hunt",
+                             "How a young kraken learns to ambush", "Thunderbirds riding the first storm of spring"],
 }
 
 _FILLER = [
@@ -259,12 +275,15 @@ def _mock_script(topic: str, words: int) -> Script:
     return Script(title=topic[:70], narration="\n\n".join(paragraphs))
 
 
-def _mock_plan(script: str, fmt: Format) -> BlockPlan:
+def _mock_plan(script: str, fmt: Format, star: str = "") -> BlockPlan:
     framings = ["Wide shot", "Medium shot", "Close-up", "Overhead view"]
     blocks = [
         Block(narration=text,
-              visual=f"{framings[i % 4]} of the narrator's subject: {' '.join(text.split()[:10]).rstrip('.,;')}",
-              motion="slow push in" if fmt == "motion" else "")
+              # the star in every other shot, so both kinds of block are planned
+              visual=f"{framings[i % 4]} of {'the star' if star and i % 2 == 0 else 'the scene'}: "
+                     f"{' '.join(text.split()[:10]).rstrip('.,;')}",
+              motion="slow push in" if fmt == "motion" else "",
+              star=bool(star) and i % 2 == 0)
         for i, text in enumerate(split_narration(script, block_seconds(fmt)))
     ]
     return BlockPlan(world="A quiet coastal town in the late 1800s, muted blues and warm lamplight.",

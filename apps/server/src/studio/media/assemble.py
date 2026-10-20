@@ -3,7 +3,9 @@
 Each block lasts as long as its narration plus a short breath. Stills get a slow Ken Burns move; clips are
 cropped to fill the frame and fitted to the block (trimmed, slowed by up to 1.5x, then held on the last
 frame). Segments are encoded with identical settings, so they join without re-encoding. The audio is the
-narration blocks laid end to end, music ducked under the voice, normalised to about -14 LUFS.
+narration blocks laid end to end, music ducked under the voice, normalised to about -14 LUFS. With
+`clip_sound_db`, each clip's own sound plays under its picture too (slowed with it, silence while its last frame
+holds and under stills), mixed with the music and ducked with it under the voice.
 
 Pure ffmpeg, no database. Every call runs through `media.ffmpeg` (threaded subprocess, Windows-safe).
 """
@@ -23,6 +25,7 @@ log = logging.getLogger(__name__)
 GAP_S = 0.35  # breath between blocks
 TAIL_S = 1.2  # room after the last line
 MAX_SLOWDOWN = 1.5
+CLIP_SOUND_DB = -8.0  # clips' own sound: above the score (-14 dB), ducked with it under the voice
 KEN_BURNS = ("in", "out", "left", "right")
 
 
@@ -90,6 +93,38 @@ async def _encode(args: list[str], dest: Path, fps: int) -> None:
         await ffmpeg(*args, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", *tail[len(encode):])
 
 
+def _slowdown(length: float, seconds: float, hold: bool) -> float:
+    """How much a clip shorter than its block is slowed (its sound is slowed the same)."""
+    return 1.0 if hold or length >= seconds else min(MAX_SLOWDOWN, seconds / length)
+
+
+async def clip_sound(blocks: list[Block], durations: list[float], workdir: Path) -> Path | None:
+    """Each clip's own sound laid end to end like the narration, fitted like its picture: slowed with it, silence
+    while its last frame holds, under stills and under lip-synced clips (their sound is the narration). Written to
+    a file, like the voice track, so the mix never splits a concat. None when no clip has sound."""
+    inputs, chains, heard = [], [], False
+    for i, (block, seconds) in enumerate(zip(blocks, durations, strict=True)):
+        info = await probe(block.visual) if block.kind == "video" and not block.hold else None
+        if info is not None and info.has_audio:
+            length = (info.duration_ms or 0) / 1000 or seconds
+            slow = _slowdown(length, seconds, False)
+            tempo = f"atempo={1 / slow:.4f}," if slow != 1.0 else ""
+            inputs += ["-i", str(block.visual)]
+            # aresample first_pts=0: sound that starts after its picture is padded from zero, not pulled early
+            chains.append(f"[{i}:a]aresample=async=1:first_pts=0,{tempo}aformat=sample_rates=48000:channel_layouts=stereo,"
+                          f"apad=whole_dur={seconds:.3f},atrim=0:{seconds:.3f}[s{i}]")
+            heard = True
+        else:
+            inputs += ["-f", "lavfi", "-t", f"{seconds:.3f}", "-i", "anullsrc=r=48000:cl=stereo"]
+            chains.append(f"[{i}:a]atrim=0:{seconds:.3f}[s{i}]")
+    if not heard:
+        return None
+    chains.append(f"{''.join(f'[s{i}]' for i in range(len(blocks)))}concat=n={len(blocks)}:v=0:a=1[sound]")
+    await ffmpeg(*inputs, "-filter_complex", ";".join(chains), "-map", "[sound]", "-c:a", "pcm_s16le", "sound.wav",
+                 cwd=workdir)
+    return workdir / "sound.wav"
+
+
 async def render_segment(block: Block, seconds: float, dest: Path, *, size: tuple[int, int], fps: int,
                          index: int = 0) -> None:
     w, h = size
@@ -102,7 +137,7 @@ async def render_segment(block: Block, seconds: float, dest: Path, *, size: tupl
     length = (info.duration_ms or 0) / 1000 or seconds
     chain = []
     if length < seconds:
-        slow = 1.0 if block.hold else min(MAX_SLOWDOWN, seconds / length)
+        slow = _slowdown(length, seconds, block.hold)
         chain.append(f"setpts={slow:.4f}*PTS")
         if length * slow < seconds:
             chain.append(f"tpad=stop_mode=clone:stop_duration={seconds - length * slow + 0.2:.3f}")
@@ -112,7 +147,7 @@ async def render_segment(block: Block, seconds: float, dest: Path, *, size: tupl
 
 async def assemble_episode(blocks: list[Block], dest: Path, workdir: Path, *, size: tuple[int, int],
                            fps: int = 24, music: Path | None = None, music_db: float = -14.0,
-                           gap_s: float = GAP_S, tail_s: float = TAIL_S) -> Timeline:
+                           gap_s: float = GAP_S, tail_s: float = TAIL_S, clip_sound_db: float | None = None) -> Timeline:
     """Write the clean master (no captions) to `dest` and return where each block starts. A song's pieces play
     back to back (`gap_s=0`), so the joins don't stutter."""
     if not blocks:
@@ -140,15 +175,33 @@ async def assemble_episode(blocks: list[Block], dest: Path, workdir: Path, *, si
     await ffmpeg(*inputs, "-filter_complex", ";".join(chains), "-map", "[voice]", "-c:a", "pcm_s16le", "voice.wav",
                  cwd=workdir)
 
+    ambient = await clip_sound(blocks, tl.durations, workdir) if clip_sound_db is not None else None
+
     loud = "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,aformat=channel_layouts=stereo"
+    # everything under the voice (the score, the clips' own sound) is one bed, ducked by the voice read a second time
+    beds: list[tuple[list[str], str]] = []
     if music:
         fade_at = max(0.0, tl.total - 3)
         # loop short scores, but stop reading at the episode's end (an endless input never lets ffmpeg finish)
-        inputs = ["-i", "voice.wav", "-i", "voice.wav", "-stream_loop", "-1", "-t", f"{tl.total:.3f}", "-i", str(music)]
+        beds.append((["-stream_loop", "-1", "-t", f"{tl.total:.3f}", "-i", str(music)],
+                     f"aformat=sample_rates=48000:channel_layouts=stereo,volume={music_db}dB,atrim=0:{tl.total:.3f},"
+                     f"afade=t=in:d=1.5,afade=t=out:st={fade_at:.3f}:d=3"))
+    if ambient is not None:
+        beds.append((["-i", ambient.name], f"volume={clip_sound_db}dB,atrim=0:{tl.total:.3f}"))
+    if beds:
+        inputs = ["-i", "voice.wav", "-i", "voice.wav"]
+        chains = []
+        for k, (args, chain) in enumerate(beds):
+            inputs += args
+            chains.append(f"[{3 + k}:a]{chain}[b{k}]")
+        bed = "[b0]" if len(beds) == 1 else ""
+        if len(beds) > 1:
+            chains.append(f"{''.join(f'[b{k}]' for k in range(len(beds)))}amix=inputs={len(beds)}:"
+                          "duration=longest:normalize=0[bed]")
+            bed = "[bed]"
         graph = ";".join([
-            f"[3:a]aformat=sample_rates=48000:channel_layouts=stereo,volume={music_db}dB,atrim=0:{tl.total:.3f},"
-            f"afade=t=in:d=1.5,afade=t=out:st={fade_at:.3f}:d=3[bed]",
-            "[bed][2:a]sidechaincompress=threshold=0.02:ratio=6:attack=15:release=350[ducked]",
+            *chains,
+            f"{bed}[2:a]sidechaincompress=threshold=0.02:ratio=6:attack=15:release=350[ducked]",
             f"[1:a][ducked]amix=inputs=2:duration=first:normalize=0,{loud}[out]",
         ])
     else:

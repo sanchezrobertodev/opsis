@@ -497,6 +497,8 @@ class TemplateInput(_Strict):
     label: str
     # one of a template's alternatives (a picture or a saved character): the user gives exactly one of them
     alternative: bool = False
+    # may be left out (a saved creature to star, or none)
+    optional: bool = False
 
 
 class TemplateSpec(_Strict):

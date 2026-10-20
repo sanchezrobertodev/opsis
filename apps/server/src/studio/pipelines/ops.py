@@ -182,14 +182,14 @@ async def narrated_cut(session: AsyncSession, run: PipelineRun, step: PipelineSt
             raise StepFailed(f"the narration {voice.id} has no length")
         kind = "video" if visual.kind == AssetKind.video else "image"
         blocks.append(Block(storage.path_for(visual.storage_key), kind, storage.path_for(voice.storage_key),
-                            _seconds(voice), hold=bool(b.get("hold"))))
+                            _seconds(voice), hold=bool(b.get("hold"))))  # a clip's own sound: see clip_sound_db
     work = storage.temp_dir() / f"episode-{uuid7().hex}"
     dest = work / "master.mp4"
     try:
         tl = await assemble_episode(
             blocks, dest, work, size=frame_size(inp["aspect_ratio"], inp.get("resolution", "1080p")),
             music=storage.path_for(assets[music_id].storage_key) if music_id else None,
-            **{k: float(inp[k]) for k in ("gap_s", "tail_s") if inp.get(k) is not None})
+            **{k: float(inp[k]) for k in ("gap_s", "tail_s", "clip_sound_db") if inp.get(k) is not None})
         parents = [(assets[b["visual"]].id, f"block_{i:02d}") for i, b in enumerate(blocks_in, 1)]
         parents += [(assets[b["voice"]].id, f"narration_{i:02d}") for i, b in enumerate(blocks_in, 1)]
         if music_id:

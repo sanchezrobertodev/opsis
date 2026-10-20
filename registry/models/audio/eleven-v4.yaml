@@ -20,7 +20,8 @@ parameters:
     default: JBFqnCBsd6RMkjVDRZzb
     options: [JBFqnCBsd6RMkjVDRZzb, nPczCjzI2devNBz1zQrb, onwK4e9ZLuTAKqWW03F9, pqHfZKP75CvOlQylNhV4,
               TX3LPaxmHKxFdv7VOQHJ, IKne3meq5aSn9XLyUdCD, 21m00Tcm4TlvDq8ikWAM, pFZP5JQG7iQjIQuC4Bku,
-              XrExE9yKIg1WjnnlVkGX, Xb7hH8MSUJpSbSDYk0k2, EXAVITQu4vr4xnSDxMaL, cgSgspJ2msm6clMCkdW9]
+              XrExE9yKIg1WjnnlVkGX, Xb7hH8MSUJpSbSDYk0k2, EXAVITQu4vr4xnSDxMaL, cgSgspJ2msm6clMCkdW9,
+              BNgbHR0DNeZixGQVzloa]
     labels:
       JBFqnCBsd6RMkjVDRZzb: "George: warm British storyteller"
       nPczCjzI2devNBz1zQrb: "Brian: deep American narrator"
@@ -34,6 +35,7 @@ parameters:
       Xb7hH8MSUJpSbSDYk0k2: "Alice: confident British"
       EXAVITQu4vr4xnSDxMaL: "Sarah: soft American"
       cgSgspJ2msm6clMCkdW9: "Jessica: bright, expressive American"
+      BNgbHR0DNeZixGQVzloa: "David: deep, older British storyteller"
   - name: tier
     type: enum
     options: [standard, turbo]

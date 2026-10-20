@@ -179,3 +179,53 @@ def test_a_picture_too_large_to_thumbnail_is_refused_either_way(tmp_path, monkey
     monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 50_000)  # Pillow's trips first (it raises past twice this)
     with pytest.raises(ValueError, match="too large"):
         derive.image_thumb(src, tmp_path / "t.webp")
+
+
+async def _loudness(path: Path, start: float, seconds: float) -> float:
+    """Mean volume (dB) of a stretch of a file's sound."""
+    import re
+
+    from studio.media.ffmpeg import FFMPEG, run
+
+    proc = await run([FFMPEG, "-hide_banner", "-ss", f"{start}", "-t", f"{seconds}", "-i", str(path), "-af",
+                      "volumedetect", "-f", "null", "-"])
+    found = re.search(rb"mean_volume: (-?[\d.]+|-inf) dB", proc.stderr)
+    assert found, proc.stderr[-500:]
+    return float(found.group(1))
+
+
+async def test_clip_sound_plays_under_the_narration_only_when_asked(tmp_path):
+    """A nature clip's own sound (a tone here) under a silent narration: kept with clip_sound_db, slowed with its
+    picture, silent under a still, and gone without it."""
+    from studio.media.assemble import CLIP_SOUND_DB, Block, assemble_episode
+    from studio.media.ffmpeg import ffmpeg
+
+    clip, quiet, still = tmp_path / "clip.mp4", tmp_path / "quiet.wav", tmp_path / "still.png"
+    await ffmpeg("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24:duration=1", "-f", "lavfi", "-i",
+                 "sine=frequency=440:sample_rate=48000:duration=1", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                 "-c:a", "aac", "-shortest", str(clip))
+    await ffmpeg("-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", "1.4", str(quiet))
+    await ffmpeg("-f", "lavfi", "-i", "color=c=gray:s=320x180", "-frames:v", "1", str(still))
+    # a 1 s clip under 1.4 s of narration (slowed to fit), then a still under the same
+    blocks = [Block(clip, "video", quiet, 1.4), Block(still, "image", quiet, 1.4)]
+
+    kept = tmp_path / "kept.mp4"
+    tl = await assemble_episode(blocks, kept, tmp_path / "w1", size=(320, 180), clip_sound_db=CLIP_SOUND_DB)
+    assert await _loudness(kept, 0.2, 1.0) > -40  # the clip's own sound, slowed with its picture
+    assert await _loudness(kept, tl.starts[1] + 0.3, 1.0) < -70  # silence under the still
+
+    plain = tmp_path / "plain.mp4"
+    await assemble_episode(blocks, plain, tmp_path / "w2", size=(320, 180))
+    assert await _loudness(plain, 0.2, 1.0) < -70  # without it, the clip is silent as before
+
+    # a clip whose sound starts a little after its picture keeps the episode's sound the episode's length
+    from studio.media.assemble import clip_sound
+    from studio.media.ffmpeg import probe
+
+    late = tmp_path / "late.mp4"
+    await ffmpeg("-i", str(clip), "-itsoffset", "0.25", "-i", str(clip), "-map", "0:v", "-map", "1:a", "-c", "copy",
+                 str(late))
+    work = tmp_path / "w3"
+    work.mkdir()
+    wav = await clip_sound([Block(late, "video", quiet, 1.4), Block(clip, "video", quiet, 1.4)], [1.75, 1.75], work)
+    assert wav is not None and abs((await probe(wav)).duration_ms - 3500) < 30

@@ -23,10 +23,11 @@ from studio.registry.loader import load_registry
 REG = load_registry(get_settings().resolve_registry_dir())
 
 
-def test_catalog_has_four_themes_twelve_styles_and_real_voices():
+def test_catalog_themes_styles_and_real_voices():
     cat = get_catalog()
-    assert [t.id for t in cat.themes] == ["education", "history", "kids", "storytelling"]
-    assert len(cat.styles) == 12
+    assert [t.id for t in cat.themes] == ["education", "history", "kids", "storytelling", "creature-documentary"]
+    assert len(cat.styles) == 13 and cat.style("wildlife-documentary") is not None
+    assert cat.theme("creature-documentary").voice_id == "BNgbHR0DNeZixGQVzloa"  # David, deep British narrator
     voices = set(REG.model("eleven-v4").param("voice_id").options)
     assert all(t.voice_id in voices for t in cat.themes)
 
