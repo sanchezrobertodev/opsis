@@ -35,6 +35,9 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+STORED_KEYS = "stored_media_keys"  # session.info: media files written in this session, newest last
+
+
 async def save_derived(
     session: AsyncSession,
     user_id: uuid.UUID,
@@ -54,6 +57,7 @@ async def save_derived(
     asset_id = uuid7()
     key = asset_key(user_id, asset_id, f"original{src.suffix}")
     size = get_storage().put_file(key, src, move=True)
+    session.info.setdefault(STORED_KEYS, []).append(key)  # so a failed step can take its files back
     asset = Asset(
         id=asset_id, user_id=user_id, kind=kind, status=AssetStatus.ready, source=source, mime=mime,
         storage_key=key, size_bytes=size, content_hash=digest, width=info.width, height=info.height,

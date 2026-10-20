@@ -44,7 +44,8 @@ async def _with_assets(session: AsyncSession, gens: list[Generation]) -> list[Ge
     if not gens:
         return []
     rows = (await session.execute(select(Asset).where(
-        Asset.generation_id.in_([g.id for g in gens]), Asset.deleted_at.is_(None)))).scalars().all()
+        Asset.generation_id.in_([g.id for g in gens]), Asset.user_id.in_({g.user_id for g in gens}),
+        Asset.deleted_at.is_(None)))).scalars().all()
     by_gen: dict[uuid.UUID, list[Asset]] = {}
     for a in rows:
         by_gen.setdefault(a.generation_id, []).append(a)

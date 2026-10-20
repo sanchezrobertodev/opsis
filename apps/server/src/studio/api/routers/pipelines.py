@@ -158,16 +158,16 @@ async def list_runs(limit: int = Query(30, ge=1, le=100), recipe: str | None = N
                func.count().filter(PipelineStep.status.in_([StepStatus.succeeded, StepStatus.skipped])),
                func.count().filter(PipelineStep.status != StepStatus.skipped))
         .where(PipelineStep.run_id.in_([r.id for r in runs])).group_by(PipelineStep.run_id))).all()}
-    outputs = await _assets(session, [r.output.get("asset_id") for r in runs])
+    outputs = await _assets(session, user.id, [r.output.get("asset_id") for r in runs])
     return [_summary(r, outputs, counts.get(r.id, (0, 0))) for r in runs]
 
 
-async def _assets(session: AsyncSession, ids: list[str | None]) -> dict[str, Asset]:
+async def _assets(session: AsyncSession, user_id: uuid.UUID, ids: list[str | None]) -> dict[str, Asset]:
     wanted = {uuid.UUID(i) for i in ids if i}
     if not wanted:
         return {}
-    return {str(a.id): a for a in (await session.execute(
-        select(Asset).where(Asset.id.in_(wanted), Asset.deleted_at.is_(None)))).scalars()}
+    return {str(a.id): a for a in (await session.execute(select(Asset).where(
+        Asset.id.in_(wanted), Asset.user_id == user_id, Asset.deleted_at.is_(None)))).scalars()}
 
 
 def _summary(run: PipelineRun, assets: dict[str, Asset], counts: tuple[int, int]) -> RunSummary:
@@ -201,7 +201,7 @@ async def run_out(session: AsyncSession, run: PipelineRun) -> RunOut:
         ids += [st.output.get("asset_id"), *st.output.get("asset_ids", [])]
         if st.kind == StepKind.checkpoint:  # pick options are asset ids; approve options are plain words
             ids += [v for o in st.input.get("options", []) if _is_uuid(v := str(o.get("value")))]
-    assets = await _assets(session, ids)
+    assets = await _assets(session, run.user_id, ids)
 
     def step_out(st: PipelineStep) -> StepOut:
         gen = gens.get(st.generation_id) if st.generation_id else None
@@ -241,7 +241,8 @@ async def cancel(run_id: uuid.UUID, session: AsyncSession = Depends(get_session)
                  user: User = Depends(current_user)) -> RunOut:
     run = await _owned(session, user, run_id, lock=True)
     fx = Effects()
-    if run.status not in RUN_DONE:
+    # a failed run can still have takes rendering (they're kept for a retry): canceling stops them too
+    if run.status not in (RunStatus.succeeded, RunStatus.canceled):
         await cancel_run(session, run, fx)
     await session.commit()
     await apply(fx, run.id)

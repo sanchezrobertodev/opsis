@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 
 import anyio
 from procrastinate.exceptions import AlreadyEnqueued
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 
 from studio.budget import guard
@@ -141,14 +141,14 @@ def _poll_delay(attempt: GenerationAttempt, output_type: str, floor: float | Non
     return max(delay, floor or 0.0)  # some providers (Runway: 5 s) ask not to be polled faster
 
 
-async def _resolve_media(req: NormalizedRequest) -> list[ResolvedMedia]:
+async def _resolve_media(req: NormalizedRequest, user_id: uuid.UUID) -> list[ResolvedMedia]:
     if not req.media:
         return []
     storage = get_storage()
     async with session_scope() as s:
         rows = {
             str(a.id): a for a in (await s.execute(
-                select(Asset).where(Asset.id.in_([uuid.UUID(m.asset_id) for m in req.media]))
+                select(Asset).where(Asset.id.in_([uuid.UUID(m.asset_id) for m in req.media]), Asset.user_id == user_id)
             )).scalars()
         }
     out = []
@@ -161,9 +161,13 @@ async def _resolve_media(req: NormalizedRequest) -> list[ResolvedMedia]:
     return out
 
 
-def _reported_cost(usage: dict[str, Any]) -> Decimal | None:
+def _reported_cost(usage: dict[str, Any], *, free_ok: bool = False) -> Decimal | None:
+    """What the provider said the run cost, if it said so with a number. A finished job may have been free ($0);
+    a failed one reporting $0 more likely didn't say, so the estimate stands there."""
     cost = (usage or {}).get("cost_usd")
-    return Decimal(str(cost)) if isinstance(cost, int | float) and cost > 0 else None
+    if isinstance(cost, bool) or not isinstance(cost, int | float) or cost < 0 or (cost == 0 and not free_ok):
+        return None
+    return Decimal(str(cost))
 
 
 async def _handle_failure(
@@ -239,7 +243,9 @@ async def run_submit(gen_id: uuid.UUID) -> None:
             affordable = [c for c in eligible if (c.estimate.usd if c.estimate else Decimal("0")) <= Decimal(str(limit))]
             if not affordable:
                 await fsm.transition(s, gen, GenStatus.failed, error=(
-                    ErrorClass.invalid_request, f"every route left costs more than the ${limit:.2f} left in the run's cap"))
+                    ErrorClass.invalid_request,
+                    f"every route left costs more than the ${limit:.2f} this take was approved for "
+                    "(what was left of its run's cap, or the price you confirmed); start it again to see the new price"))
                 return
             eligible = affordable
         if not eligible:
@@ -251,6 +257,8 @@ async def run_submit(gen_id: uuid.UUID) -> None:
         route = chosen.route
         provider = reg.providers[route.provider]
 
+        # one submit per provider counts its slots at a time, so two can't both take the last one
+        await s.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"submit:{route.provider}"})
         inflight = (await s.execute(
             select(func.count()).select_from(GenerationAttempt).where(
                 GenerationAttempt.provider == route.provider, GenerationAttempt.status.in_(INFLIGHT))
@@ -281,7 +289,7 @@ async def run_submit(gen_id: uuid.UUID) -> None:
             routing = {**gen.routing, "chosen": route.id, "candidates": [c.as_dict() for c in cands]}
             await fsm.transition(s, gen, GenStatus.submitting, routing=routing,
                                  estimated_cost_usd=estimate)
-            attempt_id = attempt.id
+            attempt_id, owner = attempt.id, gen.user_id
 
     if requeue_in is not None:
         await defer_submit(gen_id, requeue_in)
@@ -297,7 +305,7 @@ async def run_submit(gen_id: uuid.UUID) -> None:
     ambiguous: str | None = None
     try:
         async def prepare() -> tuple[str, dict[str, Any], list[str]]:
-            staged = await adapter.stage_inputs(route, await _resolve_media(req))
+            staged = await adapter.stage_inputs(route, await _resolve_media(req, owner))
             return build_payload(spec, route, req, staged)
 
         endpoint, payload, warnings = await asyncio.wait_for(prepare(), PREPARE_TIMEOUT_S)
@@ -532,7 +540,9 @@ async def _ingest_failed(attempt_id: uuid.UUID, exc: Exception) -> None:
             retry_in = float(3 * tries)
         else:
             # Output exists at the provider but we couldn't save it. Charge stands; regenerating would pay twice.
-            await guard.settle(s, gen.user_id, attempt, attempt.estimated_cost_usd, estimated=True)
+            reported = _reported_cost((attempt.last_response or {}).get("usage") or {}, free_ok=True)
+            await guard.settle(s, gen.user_id, attempt, reported if reported is not None else attempt.estimated_cost_usd,
+                               estimated=reported is None)
             await fsm.transition(s, gen, GenStatus.failed,
                                  error=(ErrorClass.ingest_error, f"could not save output: {exc!r}"))
     if retry_in is not None:
@@ -628,8 +638,8 @@ async def run_ingest(attempt_id: uuid.UUID) -> None:
         # rest the estimate from the registry price is the charge.
         # Our own RunPod endpoints price their run time themselves but mark it `cost_estimated`.
         usage = (attempt.last_response or {}).get("usage") or {}
-        reported = usage.get("cost_usd")
-        cost = Decimal(str(reported)) if reported is not None else attempt.estimated_cost_usd or Decimal("0")
+        reported = _reported_cost(usage, free_ok=True)  # a reply that isn't a number falls back to the estimate
+        cost = reported if reported is not None else attempt.estimated_cost_usd or Decimal("0")
         attempt.actual_cost_usd = cost
         await guard.settle(s, gen.user_id, attempt, cost, estimated=reported is None or bool(usage.get("cost_estimated")),
                            basis=attempt.cost_basis)

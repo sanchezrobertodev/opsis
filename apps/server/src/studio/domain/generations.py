@@ -328,8 +328,10 @@ async def create_generation(session: AsyncSession, user_id: uuid.UUID, body: Cre
             "planned": p.chosen.route.id,
             # the mode it was estimated (and confirmed) in; the worker never routes it in a more paid one
             "provider_mode": p.provider_mode,
-            # a hard limit (what was left of its run's cap): the worker never picks a route that costs more
-            "max_cost_usd": body.max_cost_usd,
+            # what it was approved for (what was left of its run's cap, or the estimate or amount the user confirmed,
+            # and anything under the confirmation threshold): a failover never picks a route that costs more
+            "max_cost_usd": body.max_cost_usd if body.max_cost_usd is not None else float(max(
+                estimate, Decimal(str(body.confirm_cost_usd or 0)), policy.confirm_over_usd)),
             "candidates": [c.as_dict() for c in p.candidates],
             "live_reference": p.live_reference.as_dict() if p.live_reference else None,
             "tried": [],

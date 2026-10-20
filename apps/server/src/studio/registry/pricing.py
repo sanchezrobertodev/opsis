@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from simpleeval import EvalWithCompoundTypes, NameNotDefined
+from simpleeval import EvalWithCompoundTypes, InvalidExpression, NameNotDefined
 
 from studio.registry.schema import Multiplier, Pricing, Rate, Scalar
 
@@ -144,7 +144,10 @@ def _evaluate(expr: str, names: dict[str, Any]) -> float:
             return 0.0  # an input that wasn't given, or whose length isn't known yet
         raise NameNotDefined(node.id, expr)
 
-    return float(EvalWithCompoundTypes(names=lookup, functions=FUNCTIONS).eval(expr))
+    try:
+        return float(EvalWithCompoundTypes(names=lookup, functions=FUNCTIONS).eval(expr))
+    except (InvalidExpression, ArithmeticError, TypeError) as exc:  # one error type for every caller to catch
+        raise ValueError(f"price expression {expr!r} failed: {exc}") from exc
 
 
 def estimate(pricing: Pricing, params: dict[str, Any], prompt: str = "",

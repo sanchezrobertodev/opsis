@@ -41,6 +41,7 @@ from studio.db.models import (
     StepStatus,
 )
 from studio.domain import fsm
+from studio.domain.derived import STORED_KEYS
 from studio.domain.enums import ACTIVE_STATUSES, SPENT, ErrorClass, GenStatus
 from studio.domain.generations import (
     ConfirmationRequired,
@@ -55,6 +56,7 @@ from studio.pipelines.ops import LOCAL_OPS, StepFailed
 from studio.pipelines.recipe import Settled, StepSpec
 from studio.pipelines.recipes import get_recipe
 from studio.registry.loader import get_registry
+from studio.storage.local import get_storage
 
 log = logging.getLogger(__name__)
 
@@ -184,10 +186,14 @@ async def _sync_generation(session: AsyncSession, step: PipelineStep, *, may_rew
     return False
 
 
-async def _start_generate(session: AsyncSession, run: PipelineRun, step: PipelineStep, fx: Effects) -> None:
-    policy = await guard.get_policy(session, run.user_id)
-    cap = run.cap_usd if run.cap_usd is not None else policy.default_run_cap_usd
-    remaining = max(Decimal("0"), cap - await run_spent(session, run))
+async def _start_generate(session: AsyncSession, run: PipelineRun, step: PipelineStep, fx: Effects,
+                          room: dict[str, Decimal]) -> None:
+    """`room`: the run's cap and what's left of it, read once per pass and drawn down by each take started."""
+    if not room:
+        policy = await guard.get_policy(session, run.user_id)
+        room["cap"] = run.cap_usd if run.cap_usd is not None else policy.default_run_cap_usd
+        room["left"] = max(Decimal("0"), room["cap"] - await run_spent(session, run))
+    cap, remaining = room["cap"], room["left"]
     body = CreateRequest(
         model_id=step.input["model_id"], mode=step.input["mode"], prompt=step.input.get("prompt", ""),
         params=step.input.get("params") or {}, media=step.input.get("media") or [],
@@ -210,7 +216,8 @@ async def _start_generate(session: AsyncSession, run: PipelineRun, step: Pipelin
         step.status, step.error, step.finished_at = StepStatus.failed, "; ".join(exc.errors)[:2000], _now()
         return
     step.status, step.generation_id, step.started_at = StepStatus.running, gen.id, _now()
-    if created:
+    if created:  # one that already existed (the same take asked for again) was counted when the pass began
+        room["left"] = max(Decimal("0"), remaining - (gen.estimated_cost_usd or Decimal("0")))
         fx.submit.append(gen.id)
 
 
@@ -261,10 +268,15 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
         await emit_run(session, run)
         return
     reg = get_registry()
+    # never wait for a step that's being run (an ffmpeg op holds its row for minutes) while holding the run: that
+    # left Cancel, Revise and checkpoint answers waiting too. The step advances its run itself when it's done.
     rows = (await session.execute(select(PipelineStep).where(PipelineStep.run_id == run.id)
-                                  .with_for_update())).scalars().all()
+                                  .with_for_update(nowait=True))).scalars().all()
     steps = {st.key: st for st in rows}
 
+    takes = [st.generation_id for st in steps.values() if st.status == StepStatus.running and st.generation_id]
+    if takes:  # one query for all of them, not one per step (each step's lookup then finds it loaded)
+        await session.execute(select(Generation).where(Generation.id.in_(takes)))
     for st in steps.values():
         if st.kind == StepKind.generate and st.status == StepStatus.running and st.generation_id:
             # a refused take waiting for its rewording is (re)queued: the step task locks it and runs it once
@@ -320,6 +332,7 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
         return
 
     settled = settled_outputs(steps)
+    room: dict[str, Decimal] = {}
     for st in sorted(live, key=lambda s: s.sort):
         if st.status != StepStatus.pending:
             continue
@@ -327,7 +340,7 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
             continue
         st.attempts += 1
         if st.kind == StepKind.generate:
-            await _start_generate(session, run, st, fx)
+            await _start_generate(session, run, st, fx, room)
         elif st.kind == StepKind.checkpoint:
             st.status, st.started_at = StepStatus.waiting, _now()
         else:
@@ -372,16 +385,30 @@ async def _execute_step(session: AsyncSession, step: PipelineStep, run: Pipeline
         return []
     ops = {StepKind.local: LOCAL_OPS, StepKind.llm: LLM_OPS}.get(step.kind, {})
     op = ops.get(step.input.get("op", ""))
+    key, step_id = step.key, step.id
+    # a local op that fails takes back what it made (pieces of a split, their files); a Claude step keeps its rows,
+    # since its charge was billed either way
+    undo = await session.begin_nested() if step.kind == StepKind.local else None
+    stored: list[str] = session.info.setdefault(STORED_KEYS, []) if undo is not None else []
+    mark = len(stored)
     try:
         if op is None:
             raise StepFailed(f"no runner for {step.kind.value} step op {step.input.get('op')!r}")
         output = await op(session, run, step)
-    except StepFailed as exc:
-        step.status, step.error = StepStatus.failed, str(exc)
-    except Exception as exc:  # ffmpeg and friends: record it on the step rather than retrying forever
-        log.exception("pipeline step %s (%s) failed", step.key, step.id)
-        step.status, step.error = StepStatus.failed, f"{type(exc).__name__}: {str(exc)[-500:]}"
+    except Exception as exc:
+        if undo is not None:
+            await undo.rollback()
+            for k in stored[mark:]:  # each made asset's own folder (u/<user>/a/<asset>/)
+                get_storage().delete_prefix(k.rsplit("/", 1)[0])
+            del stored[mark:]
+        if isinstance(exc, StepFailed):
+            step.status, step.error = StepStatus.failed, str(exc)
+        else:  # ffmpeg and friends: record it on the step rather than retrying forever
+            log.exception("pipeline step %s (%s) failed", key, step_id)
+            step.status, step.error = StepStatus.failed, f"{type(exc).__name__}: {str(exc)[-500:]}"
     else:
+        if undo is not None:
+            await undo.commit()
         derive = [uuid.UUID(a) for a in output.pop("derive", [])]
         step.status, step.output = StepStatus.succeeded, output
         step.finished_at = _now()
@@ -421,7 +448,8 @@ async def cancel_run(session: AsyncSession, run: PipelineRun, fx: Effects) -> No
                 if remote:
                     fx.cancel_remote.append(remote.id)
         st.status, st.finished_at = StepStatus.canceled, _now()
-    run.status, run.finished_at = RunStatus.canceled, _now()
+    if run.status not in RUN_DONE:  # a failed run stays failed, with its reason; only its takes stop
+        run.status, run.finished_at = RunStatus.canceled, _now()
     await emit_run(session, run)
 
 

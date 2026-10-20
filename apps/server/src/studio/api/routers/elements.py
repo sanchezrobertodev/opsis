@@ -249,6 +249,7 @@ async def patch_element(element_id: uuid.UUID, body: ElementPatch, session: Asyn
     if body.attributes is not None:
         e.attributes = body.attributes
     if body.cover_asset_id is not None:
+        await _owned_assets(session, user, [body.cover_asset_id])  # only a picture of yours can be the cover
         e.cover_asset_id = body.cover_asset_id
     if body.voice is not None:
         e.voice = _check_voice(body.voice)

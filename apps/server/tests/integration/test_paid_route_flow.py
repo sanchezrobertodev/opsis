@@ -247,7 +247,7 @@ async def test_a_reroute_never_goes_over_what_is_left_of_the_runs_cap(client, ht
         g.routing = {**g.routing, "max_cost_usd": 0.10}
     await run_submit(uuid.UUID(gen["id"]))
     done = (await client.get(f"/generations/{gen['id']}")).json()
-    assert done["status"] == "failed" and "left in the run's cap" in done["error_message"]
+    assert done["status"] == "failed" and "approved for" in done["error_message"]
     assert routes["predict"].call_count == 0  # nothing sent
 
 
@@ -306,3 +306,12 @@ async def test_a_take_canceled_while_sending_that_was_taken_is_canceled_there(cl
     assert attempt.status.value == "canceled" and attempt.provider_job_id == "p-taken"
     assert kinds == {"reservation", "release"}
     assert cancel_generation  # the cancel itself left the attempt to the send
+
+
+async def test_a_take_carries_the_most_it_was_approved_for(client, http, mp4_bytes):
+    """Without a run, the limit is what the user saw: the estimate, a confirmed amount, or the no-confirmation line."""
+    mock_replicate(http, mp4_bytes)
+    cheap = (await client.post("/generations", json={"model_id": "seedance-2.5", "mode": "t2v", "prompt": "a calm sea",
+                                                     "params": {"duration": 4}})).json()
+    policy = (await client.get("/budget")).json()
+    assert cheap["routing"]["max_cost_usd"] == pytest.approx(max(cheap["estimated_cost_usd"], policy["confirm_over_usd"]))
