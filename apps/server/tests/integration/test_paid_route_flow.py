@@ -232,3 +232,20 @@ async def test_an_unreadable_status_parks_the_take_instead_of_paying_again(clien
     assert routes["predict"].call_count == 1  # never sent again
     budget = (await client.get("/budget")).json()
     assert budget["reserved_usd"] > 0  # its money stays held until someone checks the provider
+
+
+async def test_a_reroute_never_goes_over_what_is_left_of_the_runs_cap(client, http, mp4_bytes):
+    """The take was affordable when made; by the time the worker routes it (a failover, a cheaper route gone) the
+    route it picks must still fit the limit the take carries."""
+    from studio.db.models import Generation
+
+    routes = mock_replicate(http, mp4_bytes)
+    gen = (await client.post("/generations", json={"model_id": "seedance-2.5", "mode": "t2v", "prompt": "a calm sea",
+                                                   "params": {"duration": 4}})).json()
+    async with session_scope() as s:  # as if made by a run with $0.10 left
+        g = await s.get(Generation, uuid.UUID(gen["id"]))
+        g.routing = {**g.routing, "max_cost_usd": 0.10}
+    await run_submit(uuid.UUID(gen["id"]))
+    done = (await client.get(f"/generations/{gen['id']}")).json()
+    assert done["status"] == "failed" and "left in the run's cap" in done["error_message"]
+    assert routes["predict"].call_count == 0  # nothing sent

@@ -298,6 +298,9 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
             st.started_at = st.finished_at = None
         else:
             st.sort, st.label = i, spec.label
+            if st.input_hash == spec.digest() and st.input.get("_run") != run_digest:
+                # unchanged by a revision of the run: it was planned from the new input too
+                st.input = {**st.input, "_run": run_digest}
     for key, st in steps.items():
         if key not in wanted and st.status in (StepStatus.pending, StepStatus.waiting):
             st.status, st.finished_at = StepStatus.skipped, _now()

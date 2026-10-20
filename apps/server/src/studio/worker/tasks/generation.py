@@ -234,6 +234,14 @@ async def run_submit(gen_id: uuid.UUID) -> None:
         cands = candidates(reg, spec, req, env, gen.routing.get("policy", "cheapest_healthy"))
         tried = set(gen.routing.get("tried", []))
         eligible = [c for c in cands if c.eligible and c.route.id not in tried]
+        limit = gen.routing.get("max_cost_usd")
+        if limit is not None and eligible:  # a failover or reroute must still fit in what's left of the run's cap
+            affordable = [c for c in eligible if (c.estimate.usd if c.estimate else Decimal("0")) <= Decimal(str(limit))]
+            if not affordable:
+                await fsm.transition(s, gen, GenStatus.failed, error=(
+                    ErrorClass.invalid_request, f"every route left costs more than the ${limit:.2f} left in the run's cap"))
+                return
+            eligible = affordable
         if not eligible:
             why = "; ".join(f"{c.route.id}: {c.reason or 'already tried'}" for c in cands)
             await fsm.transition(s, gen, GenStatus.failed,

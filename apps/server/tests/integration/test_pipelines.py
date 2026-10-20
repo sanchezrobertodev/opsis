@@ -336,6 +336,26 @@ async def test_a_deploy_never_redoes_finished_takes_but_an_edit_does(client, in_
     await drain(in_memory_queue)
     assert await takes() == before + 2  # an edit to the run itself is redone
 
+    # a revision that leaves two takes as they were, then another deploy: those two are still kept
+    r = await client.post(f"/pipelines/{run['id']}/revise", json={"input": {
+        "prompt": "a paper boat at night", "entries": [{"model_id": "kling-3.0"}, {"model_id": "seedance-2.5"},
+                                                       {"model_id": "veo-3.1", "params": {"duration": 4}}]}})
+    assert r.status_code == 200, r.text
+    await drain(in_memory_queue)
+    assert await takes() == before + 3  # only the new entry's take
+
+    def deployed_again(self, inp, settled, reg):
+        specs = deployed(self, inp, settled, reg)
+        for sp in specs:
+            if sp.kind.value == "generate":
+                sp.input["params"] = {**sp.input["params"], "another_default": 2}
+        return specs
+
+    monkeypatch.setattr(type(recipe), "plan", deployed_again)
+    await defer_advance(uuid.UUID(run["id"]))
+    await drain(in_memory_queue)
+    assert await takes() == before + 3
+
 
 async def test_runs_that_used_to_hang_now_end_or_carry_on(client, in_memory_queue, monkeypatch):
     """Ways a run sat at "running" forever: a take blocked by the budget cap, a local step whose job was lost in a
