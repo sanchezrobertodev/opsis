@@ -42,7 +42,7 @@ from studio.faceless.writer import (
     song_from_text,
     song_lines,
 )
-from studio.media.assemble import CLIP_SOUND_DB, GAP_S
+from studio.media.assemble import CLIP_SOUND_DB, GAP_S, timeline
 from studio.media.speech import CHARS_PER_SECOND
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import (
@@ -84,6 +84,8 @@ class FacelessInput(BaseModel):
     review_script: bool = Field(True, description="Stop for approval once the script is written")
     character: str | None = Field(None, pattern=SLUG, description="A saved character's @handle who stars: its "
                                   "pictures keep its look in every shot it appears in")
+    max_seconds: float | None = Field(None, ge=10, le=600, description="Stops before the clips and the cut when "
+                                      "the voiced narration makes the episode longer than this (not for songs)")
     clip_sound: bool = Field(False, description="Motion: make each clip with its own sound and keep it under the "
                              "narration (ambience, animals, footsteps), ducked with the music")
 
@@ -124,10 +126,19 @@ def starring(visual: str, star: str) -> str:
 CLIP_SOUND_PROMPT = "Natural sound of the scene only (the animals' calls and movement, wind, water): no music, no speech"
 
 
-def named(visual: str, star_name: str | None) -> str:
-    """A clip's shot with the star called by name: a video model sees the picture, but "the star" means nothing."""
-    # a callable, so the name goes in as written (a backslash in it is no group reference)
-    return re.sub(r"\bthe star\b", lambda _: star_name, visual, flags=re.IGNORECASE) if star_name else visual
+def named(visual: str, star_name: str | None, look: str = "") -> str:
+    """A clip's shot with the star called by name, described the first time: a video model sees only the start
+    frame, so "the star", or a name alone, lets it drift (a griffin's name alone becomes a bird)."""
+    if not star_name:
+        return visual
+    first = f"{star_name} ({look.strip().rstrip('.')})" if look.strip() else star_name
+    said: list[bool] = []
+
+    def name(_: re.Match[str]) -> str:  # a callable, so the name goes in as written (a backslash is no group reference)
+        said.append(True)
+        return first if len(said) == 1 else star_name
+
+    return re.sub(r"\bthe star\b", name, visual, flags=re.IGNORECASE)
 
 
 class FacelessRecipe(Recipe):
@@ -292,7 +303,10 @@ class FacelessRecipe(Recipe):
             specs.append(StepSpec("script", StepKind.llm, "Write the song" if song else "Write the script", {
                 "op": "faceless_song" if song else "faceless_script", "topic": inp.topic, "theme": theme.id,
                 "minutes": inp.minutes, "language": inp.language, "notes": inp.notes,
-                **({"character": inp.character} if inp.character and not song else {})}))
+                **({"character": inp.character} if inp.character and not song else {}),
+                # the voice's own pace and the cut's pauses size the script
+                **({} if song else {"format": inp.format, "voice_model": inp.voice_model,
+                                    "voice_id": self._voice_params(inp, reg, theme).get("voice_id", "")})}))
         written = self._script(inp, settled)
         if written is None:
             return specs
@@ -320,9 +334,10 @@ class FacelessRecipe(Recipe):
         voice_spec, image_spec = reg.models[inp.voice_model], reg.models[inp.image_model]
         tts, t2i = mode_with_op(voice_spec, "tts"), text_mode(image_spec)
         assert tts is not None and t2i is not None
-        voice_params = dict(inp.voice)
-        if "voice_id" not in voice_params and voice_spec.param("voice_id") is not None:
-            voice_params["voice_id"] = theme.voice_id
+        voice_params = self._voice_params(inp, reg, theme)
+        voice_keys = tuple(voice_key(i) for i in range(1, len(blocks) + 1))
+        voices = [ok(settled, k) for k in voice_keys]
+        length, held = self._length(inp, voices, voice_keys, settled)
         for i, block in enumerate(blocks, 1):
             specs.append(StepSpec(voice_key(i), StepKind.generate, f"Narration {i}", {
                 "model_id": voice_spec.id, "mode": tts.id, "prompt": block["narration"], "params": voice_params,
@@ -334,14 +349,14 @@ class FacelessRecipe(Recipe):
                 "model_id": image_spec.id, "mode": pic.id, "params": self._image_params(inp, reg, pic), "media": [],
                 "prompt": visual_prompt(visual, plan.get("roster", []), plan.get("world", ""), style.prompt),
             }, ("plan",)))
-            if inp.format == "motion":
+            if inp.format == "motion" and not held:
                 still, voice = ok(settled, still_key(i)), ok(settled, voice_key(i))
                 if still and voice:
                     video = reg.models[inp.video_model]
                     seconds = (voice.get("duration_ms") or 0) / 1000 + GAP_S
                     motion = block.get("motion") or "subtle natural motion, slow camera drift"
                     sound = f". {CLIP_SOUND_PROMPT}" if inp.clip_sound else ""
-                    shot = named(block["visual"], plan.get("star")).strip().rstrip(".")
+                    shot = named(block["visual"], plan.get("star"), plan.get("star_look", "")).strip().rstrip(".")
                     specs.append(StepSpec(clip_key(i), StepKind.generate, f"Clip {i}", {
                         "model_id": video.id, "mode": start_frame_mode(video).id,
                         "prompt": f"{shot}. {motion}{sound}",
@@ -352,10 +367,9 @@ class FacelessRecipe(Recipe):
         specs += self._thumb_steps(inp, settled, reg, title, plan.get("world", ""), style.prompt, ("plan",),
                                    star=inp.character)
 
-        voices = [ok(settled, voice_key(i)) for i in range(1, len(blocks) + 1)]
-        if not all(voices):
+        specs += length
+        if not all(voices) or held:
             return specs
-        voice_keys = tuple(voice_key(i) for i in range(1, len(blocks) + 1))
         if inp.music:
             total = sum((v.get("duration_ms") or 0) / 1000 + GAP_S for v in voices if v)
             music_spec = reg.models[inp.music_model]
@@ -382,6 +396,27 @@ class FacelessRecipe(Recipe):
                 "narrations": [b["narration"] for b in blocks], "starts": cut["starts"], "style": style.id,
                 "title": title}, ("cut",)))
         return specs
+
+    def _voice_params(self, inp: FacelessInput, reg: Registry, theme: Any) -> dict[str, Any]:
+        params = dict(inp.voice)
+        if "voice_id" not in params and reg.models[inp.voice_model].param("voice_id") is not None:
+            params["voice_id"] = theme.voice_id
+        return params
+
+    def _length(self, inp: FacelessInput, voices: list[dict[str, Any] | None], voice_keys: tuple[str, ...],
+                settled: Settled) -> tuple[list[StepSpec], bool]:
+        """With a longest length set, the clips and the cut wait for every narration: then the episode's length is
+        exact (`assemble.timeline`), and a longer one stops for a call (shorten the script, or make it anyway)."""
+        if not inp.max_seconds:
+            return [], False
+        if not all(voices):
+            return [], True
+        seconds = timeline([(v.get("duration_ms") or 0) / 1000 for v in voices if v]).total
+        if seconds <= inp.max_seconds:
+            return [], False
+        return [StepSpec("length", StepKind.checkpoint, f"It runs {seconds:.1f} s, over your {inp.max_seconds:g} s", {
+            "type": "approve", "options": [{"value": "approve", "label": "Make it anyway"}],
+            "seconds": seconds, "max_seconds": inp.max_seconds}, voice_keys)], ok(settled, "length") is None
 
     # ---------------------------------------------------------------- the song format
 

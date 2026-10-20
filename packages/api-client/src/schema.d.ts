@@ -1496,7 +1496,7 @@ export interface components {
             notes: string;
             /**
              * Defaults
-             * @description Episode settings: aspect_ratio, captions, character, clip_sound, format, image_model, image_params, language, minutes, music, music_model, notes, resolution, review_script, thumbnail, video_model, video_params, voice, voice_model
+             * @description Episode settings: aspect_ratio, captions, character, clip_sound, format, image_model, image_params, language, max_seconds, minutes, music, music_model, notes, resolution, review_script, thumbnail, video_model, video_params, voice, voice_model
              */
             defaults?: {
                 [key: string]: unknown;

@@ -216,7 +216,7 @@ function ElementDialog({ element, onClose }: { element: Element | "new" | null; 
 
 function ElementForm({ existing, onDone }: { existing: Element | null; onDone: () => void }) {
   const router = useRouter();
-  const setDraft = useDraft((s) => s.set);
+  const startSheet = useStartRun();
   const create = useCreateElement();
   const patch = usePatchElement();
   const remove = useDeleteElement();
@@ -261,18 +261,23 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
     }
   }
 
-  function characterSheet() {
+  /** Draws it from every side on one picture, kept right after its main picture so prompts that mention it attach both. */
+  async function characterSheet(confirmCost?: number) {
     if (!existing) return;
-    setDraft("image", {
-      modelId: "nano-banana-2",
-      mode: "edit",
-      prompt:
-        `Character reference sheet of @${existing.slug}: front, three-quarter, side and back views plus a close-up of ` +
-        "the face, full body, neutral standing pose, plain light grey studio background, same outfit and features in every view",
-      takes: 1,
-    });
-    onDone();
-    router.push("/create/image");
+    try {
+      const run = await startSheet.mutateAsync({
+        recipe: "character_sheet", input: { element_id: existing.id, slug: existing.slug }, confirm_cost_usd: confirmCost ?? null,
+      });
+      toast.success(`Drawing ${existing.handle} from every side. The sheet becomes their second picture.`);
+      router.push(`/runs/${run.id}`);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const cost = (err.body as { estimate_usd: number }).estimate_usd;
+        toast(`A reference sheet costs about ${usd(cost)}.`, { action: { label: "Make it", onClick: () => void characterSheet(cost) } });
+        return;
+      }
+      toast.error(err instanceof Error ? err.message : "Could not start the reference sheet");
+    }
   }
 
   return (
@@ -342,8 +347,9 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
 
       <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-4 md:col-span-2">
         {existing && existing.kind === "character" && (
-          <Button type="button" size="sm" onClick={characterSheet} disabled={!existing.images.length}>
-            Make a character sheet
+          <Button type="button" size="sm" onClick={() => void characterSheet()} disabled={!existing.images.length || startSheet.isPending}
+                  title="Draws it from every side on one picture and keeps it as its second reference">
+            Make a reference sheet
           </Button>
         )}
         {existing && (

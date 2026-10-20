@@ -13,18 +13,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.budget.guard import BudgetBlocked
 from studio.config import get_settings
-from studio.db.models import Asset, Element, ElementAsset, ElementKind, PipelineRun, PipelineStep
+from studio.db.models import Asset, Element, ElementAsset, ElementKind, Generation, PipelineRun, PipelineStep
 from studio.director.elements import mentions
 from studio.domain.enums import AssetStatus
 from studio.faceless.catalog import get_catalog
-from studio.faceless.writer import plan_blocks, song_text, write_script, write_song
+from studio.faceless.writer import (
+    WORDS_PER_MINUTE,
+    block_seconds,
+    plan_blocks,
+    song_text,
+    write_script,
+    write_song,
+)
 from studio.llm.client import LLMError, structured
+from studio.media.assemble import GAP_S, TAIL_S
 from studio.pipelines.ops import StepFailed
 from studio.pipelines.recipes.music_video import plan_shots, write_lyrics
 from studio.pipelines.recipes.vlog import write_vlog
 from studio.providers.mock import strip_tags
 
 LLMOp = Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitable[dict[str, Any]]]
+PACE_SAMPLES = 30  # a voice's latest narrations that measure its pace
+MIN_PACE_WORDS = 60  # fewer words heard than this, and the usual pace is used
 
 
 def _guarded(fn: LLMOp) -> LLMOp:
@@ -46,10 +56,34 @@ async def faceless_script(session: AsyncSession, run: PipelineRun, step: Pipelin
         raise StepFailed(f"unknown theme {inp['theme']!r}")
     # a starring character is checked before the paid script, so a bad handle fails early
     star = (await _star(session, run, inp["character"])).name if inp.get("character") else ""
+    wpm = await voice_pace(session, run.user_id, inp.get("voice_model", ""), inp.get("voice_id", ""))
+    fmt = inp.get("format", "motion")
     res = await write_script(session, run.user_id, topic=inp["topic"], theme=theme, minutes=inp["minutes"],
-                             language=inp.get("language", "English"), notes=inp.get("notes", ""), star=star)
+                             language=inp.get("language", "English"), notes=inp.get("notes", ""), star=star,
+                             fmt=fmt, wpm=wpm)
     return {"title": res.output.title, "script": res.output.narration, "model": res.model,
-            "cost_usd": float(res.cost_usd)}
+            "cost_usd": float(res.cost_usd), "pace": pace(wpm, fmt)}
+
+
+def pace(wpm: float, fmt: str) -> dict[str, float]:
+    """What the script review needs to tell how long a script runs: the voice's pace and the cut's pauses."""
+    return {"wpm": round(wpm, 1), "block_s": block_seconds(fmt), "gap_s": GAP_S, "tail_s": TAIL_S}  # type: ignore[arg-type]
+
+
+async def voice_pace(session: AsyncSession, user_id: uuid.UUID, model_id: str, voice_id: str) -> float:
+    """Words a minute this voice really reads at, from its latest narrations (silences included, as the cut plays
+    them); the usual pace until there are a few."""
+    if not (model_id and voice_id):
+        return WORDS_PER_MINUTE
+    rows = (await session.execute(
+        select(Asset.duration_ms, Asset.metadata_).join(Generation, Generation.id == Asset.generation_id).where(
+            Generation.user_id == user_id, Generation.model_id == model_id,
+            Generation.request["params"]["voice_id"].astext == voice_id, Asset.kind == "audio",
+            Asset.status == AssetStatus.ready, Asset.duration_ms > 2000)
+        .order_by(Asset.created_at.desc()).limit(PACE_SAMPLES))).all()
+    words = sum(len((meta or {}).get("alignment", {}).get("words") or []) for _, meta in rows)
+    seconds = sum(ms for ms, meta in rows if (meta or {}).get("alignment", {}).get("words")) / 1000
+    return round(words / seconds * 60, 1) if words >= MIN_PACE_WORDS and seconds else WORDS_PER_MINUTE
 
 
 async def faceless_plan(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
@@ -57,11 +91,13 @@ async def faceless_plan(session: AsyncSession, run: PipelineRun, step: PipelineS
     style = get_catalog().style(inp["style"])
     if style is None:
         raise StepFailed(f"unknown style {inp['style']!r}")
-    star = (await _star(session, run, inp["character"])).name if inp.get("character") else ""
+    element = await _star(session, run, inp["character"]) if inp.get("character") else None
+    star, look = (element.name, (element.description or "").strip()) if element else ("", "")
     res = await plan_blocks(session, run.user_id, script=inp["script"], title=inp["title"], style=style,
-                            fmt=inp["format"], star=star)
+                            fmt=inp["format"], star=star, star_look=look)
     plan = res.output
-    return {"world": plan.world, "roster": [r.model_dump() for r in plan.roster], **({"star": star} if star else {}),
+    return {"world": plan.world, "roster": [r.model_dump() for r in plan.roster],
+            **({"star": star, "star_look": look} if star else {}),
             "blocks": [b.model_dump() for b in plan.blocks], "model": res.model, "cost_usd": float(res.cost_usd)}
 
 

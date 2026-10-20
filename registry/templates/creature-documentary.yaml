@@ -29,6 +29,7 @@ input:
   format: motion
   clip_sound: true
   minutes: 1
+  max_seconds: 60
   video_model: "{footage}"
   aspect_ratio: "{shape}"
 tags: [character, story]

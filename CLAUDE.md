@@ -315,7 +315,17 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   the script and plan steps check it first (`llm_ops._star`). `clip_sound` (motion only) sets the video model's
   `generate_audio`, asks for ambient sound only, and the cut keeps each clip's own sound (`assemble.clip_sound`:
   slowed with its picture, silence under stills, a WAV of its own) mixed with the music and ducked with it under the
-  voice (`clip_sound_db`). Template inputs can be `optional: true`.
+  voice (`clip_sound_db`). Template inputs can be `optional: true`. Clip prompts describe the star the first time
+  (`named`: "Griffin (its description)"), since a video model sees only the start frame, and the plan is told its look
+  so its shots keep what sets it apart in frame.
+- Reference sheets (`character_sheet` recipe, the character editor's "Make a reference sheet"): the image model's
+  reference mode draws the character from several sides on one picture, kept right after its main picture
+  (`add_element_image` `first`), since a mention attaches a character's first two pictures.
+- Episode length: the script aims at the words that fill `minutes` at the voice's measured pace (`llm_ops.voice_pace`,
+  from its latest narrations' word timings; 150 a minute until there are some) after the cut's pauses
+  (`writer.target_words`), and is shortened once when it comes out over. The script's `pace` lets the review show the
+  length. `max_seconds` holds the clips and the cut until every narration is voiced; past it, a `length` checkpoint
+  shows the exact length (`assemble.timeline`) before any clip is paid for.
 - Object swap selects with SAM 3 on fal (`sam-3-image` clicks -> mask, `sam-3-video` tracks it); `media/swap.py`
   composites the edit over the original through the thresholded, grown and feathered matte.
 - Face swap (`face_swap` recipe; "Face swap a picture" and "Face swap a video" templates; consent required): a picture

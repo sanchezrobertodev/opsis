@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from studio.pipelines.recipe import Recipe
+from studio.pipelines.recipes.character_sheet import CharacterSheetRecipe
 from studio.pipelines.recipes.cinema import (
     CinemaEditRecipe,
     CinemaExportRecipe,
@@ -30,6 +31,7 @@ RECIPES: dict[str, Recipe] = {r.id: r for r in (
     SequenceRecipe(), CompareRecipe(), KeyframeRecipe(), FacelessRecipe(), ObjectSwapRecipe(), TalkingShotRecipe(),
     CinemaFramesRecipe(), CinemaTakesRecipe(), CinemaSceneRecipe(), CinemaExtendRecipe(), CinemaEditRecipe(),
     CinemaExportRecipe(), CinemaCastRecipe(), Jutsu3dRecipe(), LoraTrainRecipe(), VlogRecipe(), MusicVideoRecipe(), RevoiceRecipe(), DubRecipe(), FaceSwapRecipe(),
+    CharacterSheetRecipe(),
 )}
 
 

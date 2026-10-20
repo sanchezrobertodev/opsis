@@ -14,7 +14,9 @@ export function ScriptReview({ run, step }: { run: Run; step: Step }) {
   const revise = useReviseRun();
   const answer = useAnswerCheckpoint();
   const input = run.input as FacelessRunInput;
-  const written = run.steps.find((s) => s.key === "script")?.output as { script?: string; title?: string } | undefined;
+  const written = run.steps.find((s) => s.key === "script")?.output as
+    { script?: string; title?: string; pace?: Pace } | undefined;
+  const over = step.key === "length";
   const current = input.script ?? written?.script ?? "";
   const currentTitle = input.title ?? written?.title ?? "";
   // unsaved edits; null shows the run's current script
@@ -40,7 +42,9 @@ export function ScriptReview({ run, step }: { run: Run; step: Step }) {
   return (
     <div className="mt-3 flex flex-col gap-3 pl-6">
       <p className="text-xs text-muted">
-        Read it through. Nothing is narrated or illustrated until you approve it.
+        {over
+          ? `${step.label}. Shorten the script and save it to voice it again (its pictures are drawn again too), or make it anyway.`
+          : "Read it through. Nothing is narrated or illustrated until you approve it."}
       </p>
       <input
         value={title}
@@ -57,7 +61,8 @@ export function ScriptReview({ run, step }: { run: Run; step: Step }) {
       />
       <div className="flex flex-wrap items-center gap-3">
         <span className="tabular text-2xs text-faint">
-          {words} words, about {(words / WORDS_PER_MINUTE).toFixed(1)} min
+          {words} words, {written?.pace ? `about ${duration(runtime(words, written.pace))} at the narrator's pace`
+                                        : `about ${(words / WORDS_PER_MINUTE).toFixed(1)} min`}
         </span>
         <div className="ml-auto flex gap-2">
           {dirty && (
@@ -72,12 +77,25 @@ export function ScriptReview({ run, step }: { run: Run; step: Step }) {
             disabled={dirty || answer.isPending}
             title={dirty ? "Save your changes first" : undefined}
           >
-            Use this script
+            {over ? "Make it anyway" : "Use this script"}
           </Button>
         </div>
       </div>
     </div>
   );
+}
+
+/** The narrator's measured pace and the pauses the cut adds (the script step's `pace`). */
+type Pace = { wpm: number; block_s: number; gap_s: number; tail_s: number };
+
+/** How long an episode of this many words runs, like the server's `writer.episode_seconds`. */
+function runtime(words: number, pace: Pace): number {
+  const speech = (words / pace.wpm) * 60;
+  return speech + pace.gap_s * (Math.max(1, Math.ceil(speech / pace.block_s)) - 1) + pace.tail_s;
+}
+
+function duration(seconds: number): string {
+  return seconds < 120 ? `${Math.round(seconds)} s` : `${(seconds / 60).toFixed(1)} min`;
 }
 
 type PlanBlock = { narration: string; visual: string; motion?: string };

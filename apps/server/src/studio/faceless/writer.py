@@ -7,6 +7,7 @@ and captions match it word for word. Every call goes through `llm.client.structu
 
 from __future__ import annotations
 
+import math
 import re
 import uuid
 from typing import Literal
@@ -17,9 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from studio.config import get_settings
 from studio.faceless.catalog import Style, Theme
 from studio.llm.client import LLMError, LLMResult, structured
+from studio.media.assemble import GAP_S, TAIL_S
 from studio.media.speech import CHARS_PER_SECOND
 
-WORDS_PER_MINUTE = 150
+WORDS_PER_MINUTE = 150  # a voice's pace until its own narrations measure it (`llm_ops.voice_pace`)
+OVER_BY = 1.1  # a script this much over its words is shortened once
 BLOCK_SECONDS = {"motion": 8.0, "stills": 6.0}
 Format = Literal["motion", "stills"]
 
@@ -69,6 +72,10 @@ markdown. Plain paragraphs. Hit the target length closely, since the video's len
 Be accurate, unless the theme guidance asks for invented detail; if the topic is factual and the record is
 uncertain, say so in the narration."""
 
+SHORTEN_SYSTEM = """You shorten narration scripts for faceless videos to a word limit. Keep the opening hook, the
+ending, the facts and the voice; cut repetition and the weakest lines first. Return the title unchanged and only the
+words the narrator says, as plain paragraphs."""
+
 PLAN_SYSTEM = """You plan the visuals for a narrated faceless video.
 
 Split the narration into consecutive blocks, cutting only at sentence ends. Copy the narration verbatim: the
@@ -86,8 +93,18 @@ List the recurring characters, places and props in `roster` with one fixed visua
 `world` one sentence that pins the look of this episode's world (era, place, palette, light)."""
 
 
-def _target_words(minutes: float) -> int:
-    return round(minutes * WORDS_PER_MINUTE)
+def episode_seconds(speech_s: float, fmt: Format) -> float:
+    """About how long an episode runs for this much narration: the breath between blocks and the room after the
+    last line come on top (exact once the narration is voiced: `assemble.timeline`)."""
+    blocks = max(1, math.ceil(speech_s / block_seconds(fmt)))
+    return speech_s + GAP_S * (blocks - 1) + TAIL_S
+
+
+def target_words(minutes: float, fmt: Format, wpm: float = WORDS_PER_MINUTE) -> int:
+    """The words that fill `minutes` at the voice's pace, once the pauses the cut adds are taken off."""
+    total = minutes * 60
+    speech = total - (episode_seconds(total, fmt) - total)
+    return max(10, round(speech * wpm / 60))
 
 
 def block_seconds(fmt: Format) -> float:
@@ -112,13 +129,15 @@ async def suggest_topics(session: AsyncSession, user_id: uuid.UUID, *, theme: Th
 
 
 async def write_script(session: AsyncSession, user_id: uuid.UUID, *, topic: str, theme: Theme, minutes: float,
-                       language: str = "English", notes: str = "", star: str = "") -> LLMResult[Script]:
-    words = _target_words(minutes)
+                       language: str = "English", notes: str = "", star: str = "", fmt: Format = "motion",
+                       wpm: float = WORDS_PER_MINUTE) -> LLMResult[Script]:
+    words = target_words(minutes, fmt, wpm)
     prompt = "\n".join(line for line in [
         f"Topic: {topic}",
         f"The video stars {star}; call it by that name." if star else "",
         f"Theme guidance: {theme.script_guidance}",
-        f"Length: about {words} words (it will be read at about {WORDS_PER_MINUTE} words a minute).",
+        f"Length: {words} words at most, and not much fewer (it is read at about {round(wpm)} words a minute, and "
+        f"the video must not run past {_duration(minutes)}).",
         f"Language: {language}.",
         f"Extra notes from the creator: {notes}" if notes else "",
     ] if line)
@@ -128,16 +147,32 @@ async def write_script(session: AsyncSession, user_id: uuid.UUID, *, topic: str,
     result.output.narration = tidy_narration(result.output.narration)
     if not result.output.narration:
         raise LLMError("Claude returned an empty script. Try again.", retryable=True)
+    if _words(result.output.narration) > words * OVER_BY:  # writers overshoot; the video's length follows the words
+        shorter = await structured(
+            session, user_id, purpose="faceless.script", model=get_settings().llm_smart_model, system=SHORTEN_SYSTEM,
+            prompt=f"At most {words} words.\n\nScript:\n{result.output.narration}", output=Script,
+            mock=lambda: _mock_script(topic, words), effort="low", max_tokens=8000)
+        if text := tidy_narration(shorter.output.narration):
+            result.output.narration = text
+            result.cost_usd += shorter.cost_usd
     return result
 
 
+def _duration(minutes: float) -> str:
+    seconds = round(minutes * 60)
+    return f"{seconds} seconds" if seconds < 120 else f"{minutes:g} minutes"
+
+
 async def plan_blocks(session: AsyncSession, user_id: uuid.UUID, *, script: str, title: str, style: Style,
-                      fmt: Format, star: str = "") -> LLMResult[BlockPlan]:
+                      fmt: Format, star: str = "", star_look: str = "") -> LLMResult[BlockPlan]:
     seconds = block_seconds(fmt)
     prompt = "\n".join([
         f"Title: {title}",
         (f"The star: {star}. Its look comes from reference pictures, so write \"the star\" for it in `visual`, never "
          f"describe its look, leave it out of `roster`, and set `star` on every block it appears in.") if star else "",
+        # a close-up of the part it shares with an ordinary animal (a griffin's eagle head) loses what makes it itself
+        (f"What it looks like, so you can frame it: {star_look}. In its shots keep in frame what sets it apart (most of "
+         f"its body), not only a part an ordinary animal or person also has.") if star and star_look else "",
         f"Format: {'animated clips' if fmt == 'motion' else 'still images'}, about {seconds:.0f} seconds per block "
         f"(roughly {round(seconds * CHARS_PER_SECOND / 6)} words).",
         f"Art style, for your understanding only (don't repeat it): {style.label}: {style.summary}",
@@ -268,7 +303,7 @@ def _mock_topics(theme: Theme) -> TopicIdeas:
 def _mock_script(topic: str, words: int) -> Script:
     out = [f"This is the story of {topic.rstrip('.').lower()}."]
     i = 0
-    while _words(" ".join(out)) < words:
+    while _words(" ".join([*out, _FILLER[i % len(_FILLER)]])) <= words:  # within the limit, like a good writer
         out.append(_FILLER[i % len(_FILLER)])
         i += 1
     paragraphs = [" ".join(out[j:j + 4]) for j in range(0, len(out), 4)]
