@@ -18,6 +18,7 @@ Voice cloning (`clone_voice`, `delete_voice`) isn't a generation: it makes a voi
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import mimetypes
 import uuid
@@ -107,18 +108,19 @@ class ElevenLabsAdapter(ProviderAdapter):
             uploads = {k: path for k, v in payload.items() if (path := self._staged_path(v))}
             if endpoint == DUB_ENDPOINT and payload.get("source_language") == "auto":
                 payload = {k: v for k, v in payload.items() if k != "source_language"}  # left out, it's detected
-            async with self._client() as c:
-                if uploads:  # a recording goes up as a file, the other fields as form values
-                    files = {k: (p.name, await anyio.Path(p).read_bytes(),
-                                 mimetypes.guess_type(p.name)[0] or "application/octet-stream")
-                             for k, p in uploads.items()}
-                    data = {k: v if isinstance(v, str) else json.dumps(v) if isinstance(v, (dict, list))
-                            else str(v).lower() if isinstance(v, bool) else str(v)
-                            for k, v in payload.items() if k not in uploads}
-                    params = {} if endpoint == DUB_ENDPOINT else {"output_format": OUTPUT_FORMAT}
-                    r = await c.post(f"/{endpoint}", params=params, data=data, files=files)
-                else:
-                    r = await c.post(f"/{endpoint}", params={"output_format": OUTPUT_FORMAT}, json=payload)
+            with contextlib.ExitStack() as opened:
+                async with self._client() as c:
+                    if uploads:  # a recording goes up as a file streamed from disk, the other fields as form values
+                        files = {k: (p.name, opened.enter_context(p.open("rb")),
+                                     mimetypes.guess_type(p.name)[0] or "application/octet-stream")
+                                 for k, p in uploads.items()}
+                        data = {k: v if isinstance(v, str) else json.dumps(v) if isinstance(v, (dict, list))
+                                else str(v).lower() if isinstance(v, bool) else str(v)
+                                for k, v in payload.items() if k not in uploads}
+                        params = {} if endpoint == DUB_ENDPOINT else {"output_format": OUTPUT_FORMAT}
+                        r = await c.post(f"/{endpoint}", params=params, data=data, files=files)
+                    else:
+                        r = await c.post(f"/{endpoint}", params={"output_format": OUTPUT_FORMAT}, json=payload)
         except httpx.TimeoutException as exc:
             raise AmbiguousSubmitError(f"ElevenLabs call timed out: {exc!r}") from exc
         except httpx.HTTPError as exc:

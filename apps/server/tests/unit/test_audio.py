@@ -252,3 +252,21 @@ async def test_a_failed_dub_says_why(adapter):
         "status": "failed", "language_ids": [], "error": {"message_type": "error", "error": "no speech found"}})
     r = await adapter.poll(dub_route(), "dub:proj_2")
     assert r.status == "failed" and "no speech found" in (r.error_message or "")
+
+
+@respx.mock
+async def test_uploads_are_streamed_not_read_whole(adapter, tmp_path, monkeypatch):
+    import anyio
+
+    rec = tmp_path / "long.mp3"
+    rec.write_bytes(b"ID3" + b"x" * 300_000)
+
+    async def no_whole_reads(self):
+        raise AssertionError("an upload was read into memory whole")
+
+    monkeypatch.setattr(anyio.Path, "read_bytes", no_whole_reads)
+    staged = await adapter.stage_inputs(dub_route(), [ResolvedMedia("input_audio", "a", rec, "audio/mpeg", "audio")])
+    create = respx.post(f"{BASE_URL}/dubbing/project").respond(201, json={"project_id": "proj_3"})
+    await adapter.submit(dub_route(), "dubbing/project", {"file": staged["input_audio"][0], "target_language": "es"},
+                         client_ref="c")
+    assert len(create.calls.last.request.content) > 300_000  # the whole file still went up
