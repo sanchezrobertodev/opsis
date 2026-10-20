@@ -16,11 +16,13 @@ from studio.pipelines.recipes.common import with_param
 from studio.pipelines.recipes.vlog import SLUG, frame_mode
 from studio.registry.loader import Registry
 
-SHEET = ("Character reference sheet of @{slug} on one plain light grey canvas, no text or labels: the same character "
-         "five times at the same scale, side by side: full body in side profile, full body from the front, full body "
-         "from behind at three-quarters, full body with everything it has spread out (wings, tail, limbs), and a "
-         "close-up of the head. Identical anatomy, proportions, colours and markings in every view, in the style of "
-         "its reference picture; soft even light, sharp focus.")
+# every full-body view shows the whole body: a "wings spread" view once came back as a plain eagle, no lion half
+SHEET = ("Character reference sheet of @{slug}: one plain light grey canvas showing the same character five times at "
+         "the same scale, no text or labels. Four full-body views, each showing its whole body from head to tail and "
+         "feet: side profile; front; three-quarter from behind; side profile with its wings, arms or other limbs raised "
+         "wide. Then a close-up of its head. Every view has exactly the anatomy, proportions, colours and markings of "
+         "its reference picture, and its medium: a photograph stays a photograph, with real texture and soft studio "
+         "light.")
 
 
 class CharacterSheetInput(BaseModel):
