@@ -152,10 +152,11 @@ def _rewordable(step: PipelineStep, gen: Generation) -> bool:
             and "_reword" not in step.input and "_reworded" not in step.input)
 
 
-async def _sync_generation(session: AsyncSession, step: PipelineStep, *, may_reword: bool = False) -> bool:
+async def _sync_generation(session: AsyncSession, step: PipelineStep, *, may_reword: bool = False,
+                           gen: Generation | None = None) -> bool:
     """Fold a finished generation into its step. True when, instead, the step should reword its refused prompt
     (it stays running; the caller runs it like a local step)."""
-    gen = await session.get(Generation, step.generation_id)
+    gen = gen or await session.get(Generation, step.generation_id)
     if gen is None:
         step.status, step.error = StepStatus.failed, "its generation is missing"
     elif gen.status == GenStatus.succeeded:
@@ -275,12 +276,13 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
     steps = {st.key: st for st in rows}
 
     takes = [st.generation_id for st in steps.values() if st.status == StepStatus.running and st.generation_id]
-    if takes:  # one query for all of them, not one per step (each step's lookup then finds it loaded)
-        await session.execute(select(Generation).where(Generation.id.in_(takes)))
+    loaded = {g.id: g for g in (await session.execute(  # one query for all of them, not one per step
+        select(Generation).where(Generation.id.in_(takes)))).scalars()} if takes else {}
     for st in steps.values():
         if st.kind == StepKind.generate and st.status == StepStatus.running and st.generation_id:
             # a refused take waiting for its rewording is (re)queued: the step task locks it and runs it once
-            if "_reword" in st.input or await _sync_generation(session, st, may_reword=True):
+            if "_reword" in st.input or await _sync_generation(session, st, may_reword=True,
+                                                               gen=loaded.get(st.generation_id)):
                 fx.steps.append(st.id)
         elif st.kind in (StepKind.local, StepKind.llm) and st.status == StepStatus.running:
             # its job was lost (a restart mid-op): queue it again. One still being run holds this row's lock, so

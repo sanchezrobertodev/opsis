@@ -23,7 +23,11 @@ MAX_THUMB_SOURCE_PIXELS = 50_000_000  # about 150 MB once decoded; bigger pictur
 
 
 def image_thumb(src: Path, dest: Path, width: int = THUMB_WIDTH) -> None:
-    with Image.open(src) as im:  # opening reads only the header, so the size check costs nothing
+    try:
+        opened = Image.open(src)  # reads only the header, so the size checks cost nothing
+    except Image.DecompressionBombError as exc:  # Pillow's own, larger limit: the same answer as ours
+        raise ValueError(f"picture too large to thumbnail ({exc})") from None
+    with opened as im:
         if im.width * im.height > MAX_THUMB_SOURCE_PIXELS:
             raise ValueError(f"picture too large to thumbnail ({im.width} x {im.height})")
         im = im.convert("RGB")
