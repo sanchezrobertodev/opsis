@@ -279,7 +279,12 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   id works anywhere; the web's `useVoices` and template voice fields list your cloned voices first.
 - `revoice` recipe ("Change the voice" template): a clip's sound (`extract_audio`) or a recording -> the voice changer
   -> for a clip, `replace_audio` puts the new voice under its picture. `Recipe.resolve()` (async, before the estimate
-  and storing a run's input) measures the clip so the estimate prices it. TTS word timings land on the asset
+  and storing a run's input) measures the clip so the estimate prices it.
+- Dubbing (`eleven-dubbing`, op `dub`, "Dub a video" template, `dub` recipe = revoice's steps with the dubbing model):
+  ElevenLabs' projects API (`dubbing/project`), the adapter's one async call: submit starts a project with its target
+  language, poll follows that language until its FLAC is ready, download re-reads it for a fresh link (signed for an
+  hour). Dubbing v2 $2.20/min (regional accents like `es-MX`), v1 $0.50/min (plain languages only, a rule); a project is
+  charged when made and can't be canceled. `lip_sync: true` re-times the clip's mouths to the dub (`sync-lipsync-3`). TTS word timings land on the asset
   as `metadata.alignment.words` (`[{text, start, end}]`); the mock times words at a reading pace instead.
 
 ## Faceless Studio and Object Swap

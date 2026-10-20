@@ -1,0 +1,25 @@
+id: dub-a-video
+name: Dub a video
+summary: Translate a clip or a recording into another language in the speakers' own voices, keeping the timing and background sound.
+recipe: dub
+inputs:
+  - {key: video_asset_id, kind: video, label: A clip with speech, alternative: true}
+  - {key: audio_asset_id, kind: audio, label: Or a recording, alternative: true}
+fields:
+  - key: language
+    label: Dub into
+    choices: eleven-dubbing.target_language
+  - key: quality
+    label: Model
+    choices: eleven-dubbing.quality
+    default: dubbing_v2
+  - key: lip_sync
+    label: Lip sync
+    default: "false"
+    options: ["false", "true"]
+    option_labels: {"false": "No: just the new voice", "true": "Re-time the mouths to the dub (a clip only, +$8/min)"}
+input:
+  target_language: "{language}"
+  quality: "{quality}"
+  lip_sync: "{lip_sync}"
+tags: [voice]

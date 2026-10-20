@@ -207,3 +207,48 @@ async def test_a_prompt_that_looks_like_a_path_is_never_read(adapter, tmp_path):
         await adapter.submit(route(), f"text-to-speech/{GEORGE}/with-timestamps", {"text": text}, client_ref="c")
         sent = call.calls.last.request
         assert sent.headers["content-type"] == "application/json" and b"do not send" not in sent.content
+
+
+def dub_route() -> Route:
+    return REG.models["eleven-dubbing"].routes[0]
+
+
+@respx.mock
+async def test_a_dub_is_started_followed_and_fetched_with_a_fresh_link(adapter, tmp_path):
+    rec = tmp_path / "line.mp3"
+    rec.write_bytes(b"ID3 speech")
+    staged = await adapter.stage_inputs(dub_route(), [ResolvedMedia("input_audio", "a", rec, "audio/mpeg", "audio")])
+    create = respx.post(f"{BASE_URL}/dubbing/project").respond(201, json={"project_id": "proj_1", "status": "queued"})
+    sub = await adapter.submit(dub_route(), "dubbing/project", {"file": staged["input_audio"][0], "target_language": "es",
+                                                                "source_language": "auto", "model_id": "dubbing_v2"},
+                               client_ref="c")
+    sent = create.calls.last.request
+    assert sub.job_id == "dub:proj_1" and b"ID3 speech" in sent.content and b"target_language" in sent.content
+    assert b"source_language" not in sent.content and "output_format" not in str(sent.url)  # auto is left out
+
+    project = respx.get(f"{BASE_URL}/dubbing/project/proj_1")
+    language = respx.get(f"{BASE_URL}/dubbing/project/proj_1/language/lang_1")
+    project.respond(200, json={"project_id": "proj_1", "status": "preparing", "language_ids": []})
+    assert (await adapter.poll(dub_route(), sub.job_id)).status == "running"
+    project.respond(200, json={"project_id": "proj_1", "status": "ready", "language_ids": ["lang_1"],
+                               "source_language": "en", "media": {"duration": 3.0}})
+    language.respond(200, json={"status": "processing", "target_language": "es"})
+    assert (await adapter.poll(dub_route(), sub.job_id)).status == "running"
+    language.respond(200, json={"status": "completed", "target_language": "es",
+                                "outputs": {"lossless_audio": "https://files.test/old.flac"}})
+    done = await adapter.poll(dub_route(), sub.job_id)
+    assert done.status == "succeeded" and done.outputs[0].meta["language"] == "es" and done.usage == {"seconds": 3.0}
+
+    language.respond(200, json={"status": "completed", "outputs": {"lossless_audio": "https://files.test/new.flac"}})
+    respx.get("https://files.test/new.flac").respond(200, content=b"fLaC", headers={"content-type": "audio/flac"})
+    dest = tmp_path / "out.flac"
+    assert await adapter.download(dub_route(), done.outputs[0], dest, tmp_path) == "audio/flac"
+    assert dest.read_bytes() == b"fLaC"
+
+
+@respx.mock
+async def test_a_failed_dub_says_why(adapter):
+    respx.get(f"{BASE_URL}/dubbing/project/proj_2").respond(200, json={
+        "status": "failed", "language_ids": [], "error": {"message_type": "error", "error": "no speech found"}})
+    r = await adapter.poll(dub_route(), "dub:proj_2")
+    assert r.status == "failed" and "no speech found" in (r.error_message or "")

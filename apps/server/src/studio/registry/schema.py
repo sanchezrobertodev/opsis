@@ -41,7 +41,7 @@ OpTag = Literal[
     "t2v", "i2v", "flf2v", "multi_ref", "multi_shot", "extend", "instruction_edit", "restyle", "reframe",
     "upscale", "interpolate", "bg_remove", "motion_transfer", "object_replace", "lipsync", "avatar",
     "t2i", "i2i", "relight", "add_sound", "trim", "retime", "reverse", "loop", "stabilize",
-    "tts", "sfx", "music", "song", "segment", "track", "transcribe", "voice_change",
+    "tts", "sfx", "music", "song", "segment", "track", "transcribe", "voice_change", "dub",
     "to_3d", "panorama", "world", "depth_to_video", "render_to_real", "lora_train", "rig",
 ]
 OutputType = Literal["video", "image", "audio", "3d", "lora", "mask", "text"]

@@ -1,0 +1,40 @@
+{
+ "endpoint": "dubbing/project",
+ "variant": null,
+ "input": {
+  "file": {
+   "type": "null|string"
+  },
+  "keyterms": {
+   "type": "array<string>"
+  },
+  "model_id": {
+   "type": "null|string",
+   "enum": [
+    "dubbing_v1",
+    "dubbing_v2"
+   ]
+  },
+  "reference": {
+   "type": "null|string"
+  },
+  "source_language": {
+   "type": "null|string"
+  },
+  "source_url": {
+   "type": "null|string"
+  },
+  "target_language": {
+   "type": "null|string"
+  },
+  "transcript": {
+   "type": "null|string"
+  },
+  "webhook_ids": {
+   "type": "array<string>"
+  }
+ },
+ "required": [],
+ "output": [],
+ "deprecated": false
+}

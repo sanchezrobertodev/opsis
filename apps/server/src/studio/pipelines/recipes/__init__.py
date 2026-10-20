@@ -13,6 +13,7 @@ from studio.pipelines.recipes.cinema import (
 )
 from studio.pipelines.recipes.cinema_cast import CinemaCastRecipe
 from studio.pipelines.recipes.compare import CompareRecipe
+from studio.pipelines.recipes.dub import DubRecipe
 from studio.pipelines.recipes.faceless import FacelessRecipe
 from studio.pipelines.recipes.jutsu3d import Jutsu3dRecipe
 from studio.pipelines.recipes.keyframe import KeyframeRecipe
@@ -27,7 +28,7 @@ from studio.pipelines.recipes.vlog import VlogRecipe
 RECIPES: dict[str, Recipe] = {r.id: r for r in (
     SequenceRecipe(), CompareRecipe(), KeyframeRecipe(), FacelessRecipe(), ObjectSwapRecipe(), TalkingShotRecipe(),
     CinemaFramesRecipe(), CinemaTakesRecipe(), CinemaSceneRecipe(), CinemaExtendRecipe(), CinemaEditRecipe(),
-    CinemaExportRecipe(), CinemaCastRecipe(), Jutsu3dRecipe(), LoraTrainRecipe(), VlogRecipe(), MusicVideoRecipe(), RevoiceRecipe(),
+    CinemaExportRecipe(), CinemaCastRecipe(), Jutsu3dRecipe(), LoraTrainRecipe(), VlogRecipe(), MusicVideoRecipe(), RevoiceRecipe(), DubRecipe(),
 )}
 
 
