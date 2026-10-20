@@ -302,8 +302,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 - Object swap selects with SAM 3 on fal (`sam-3-image` clicks -> mask, `sam-3-video` tracks it); `media/swap.py`
   composites the edit over the original through the thresholded, grown and feathered matte.
 - Face swap (`face_swap` recipe; "Face swap a picture" and "Face swap a video" templates; consent required): a picture
-  goes to a reference-editing image model (`multi_ref`, Nano Banana Pro by default: the picture then the face, with an
-  instruction), a clip to a `person_swap` mode (PixVerse Swap, cheap; H3 Max Recast, best, clips of 5-30 s; Wan 2.2
+  goes to a reference-editing image model (`multi_ref`, Nano Banana Pro by default: the picture then the face; it swaps the head,
+  face and hair, since a face-only edit barely shows), a clip to a `person_swap` mode (PixVerse Swap, cheap; H3 Max Recast, best, clips of 5-30 s; Wan 2.2
   Animate replace, the whole person), its clip and photo slots found by kind. A saved `character` stands in with their
   main picture, filled in by `resolve()`, which now runs before `validate()`. Slots can set `min_duration_s`.
 - The registry holder notices edited YAML in every process (stamps checked at most once a second), so the worker

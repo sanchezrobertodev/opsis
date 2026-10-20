@@ -25,9 +25,11 @@ from studio.registry.loader import Registry
 from studio.registry.schema import Mode, ModelSpec
 
 PICTURE_PROMPT = (
-    "Replace the face of the person in Image 1 with the face of the person in Image 2. Keep everything else in Image 1 "
-    "exactly as it is: the pose, expression, hair, clothes, lighting, colors and background. The new face should match "
-    "Image 2's identity and blend naturally into Image 1's light and skin tone."
+    # the head, not just the face: hair is much of how a person reads, and a face-only edit barely shows (live check)
+    "Put the person from Image 2 into Image 1: replace the head of the person in Image 1, their face, facial features, "
+    "skin tone, eye color, hairstyle and hair color, with the person in Image 2's, so they are clearly recognizable as "
+    "the person in Image 2. Keep Image 1's body, pose, clothes, framing, lighting, colors and background exactly as they "
+    "are, and match the new head to Image 1's light, angle and expression."
 )
 
 
