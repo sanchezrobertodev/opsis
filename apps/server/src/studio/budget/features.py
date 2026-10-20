@@ -7,7 +7,7 @@ from studio.registry.schema import ModelSpec
 
 LABELS = {
     "create_video": "Create video", "create_image": "Create image", "edit": "Edit video", "motion": "Motion transfer",
-    "swap": "Object swap", "lipsync": "Lipsync", "audio": "Voice, music and sound", "faceless": "Faceless studio",
+    "swap": "Object and face swap", "lipsync": "Lipsync", "audio": "Voice, music and sound", "faceless": "Faceless studio",
     "cinema": "Cinema studio", "jutsu3d": "3D blocking", "worlds": "Worlds", "characters": "Characters",
     "templates": "Templates", "claude": "Claude", "other": "Other",
 }
@@ -16,10 +16,10 @@ LABELS = {
 # classified by the mode each generation ran
 RECIPES = {"faceless": "faceless", "object_swap": "swap", "talking_shot": "lipsync", "jutsu3d": "jutsu3d",
            "sequence": "create_video", "keyframe": "create_video", "lora_train": "characters",
-           "vlog": "templates", "music_video": "templates", "revoice": "audio", "dub": "audio"}
+           "vlog": "templates", "music_video": "templates", "revoice": "audio", "dub": "audio", "face_swap": "swap"}
 PROJECTS = {"cinema": "cinema", "jutsu3d": "jutsu3d"}
 # first match wins, so a lipsync or tracking mode isn't counted as plain video
-OPS = [({"lora_train"}, "characters"), ({"lipsync"}, "lipsync"), ({"motion_transfer"}, "motion"), ({"segment", "track"}, "swap"),
+OPS = [({"lora_train"}, "characters"), ({"lipsync"}, "lipsync"), ({"person_swap"}, "swap"), ({"motion_transfer"}, "motion"), ({"segment", "track"}, "swap"),
        ({"tts", "sfx", "music", "song", "transcribe", "voice_change", "dub"}, "audio"), ({"world", "panorama"}, "worlds"), ({"to_3d", "depth_to_video", "render_to_real", "rig"}, "jutsu3d"),
        ({"t2i", "i2i"}, "create_image"),
        ({"instruction_edit", "restyle", "relight", "extend", "reframe", "upscale", "interpolate", "bg_remove",

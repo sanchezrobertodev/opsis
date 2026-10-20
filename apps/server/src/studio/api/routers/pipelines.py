@@ -77,9 +77,9 @@ async def _estimate(session: AsyncSession, user: User, body: RunCreate) -> tuple
         raise GenerationRequestError(
             [f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors()]) from None
     reg = get_registry()
+    inp = await recipe.resolve(session, user.id, inp, reg)  # first, so validate sees what it filled in
     if errors := recipe.validate(inp, reg):
         raise GenerationRequestError(errors)
-    inp = await recipe.resolve(session, user.id, inp, reg)
     total, live, live_known = Decimal("0"), Decimal("0"), True
     by_key: dict[str, Decimal] = {}
     live_by_key: dict[str, Decimal] = {}
@@ -273,9 +273,9 @@ async def revise(run_id: uuid.UUID, body: RunRevise, session: AsyncSession = Dep
     except ValidationError as exc:
         raise GenerationRequestError(
             [f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors()]) from None
+    inp = await recipe.resolve(session, user.id, inp, get_registry())
     if errors := recipe.validate(inp, get_registry()):
         raise GenerationRequestError(errors)
-    inp = await recipe.resolve(session, user.id, inp, get_registry())
     if run.status == RunStatus.canceled:
         raise HTTPException(409, "a canceled run can't be revised; start a new one")
     run.input = inp.model_dump(mode="json")

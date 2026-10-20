@@ -30,7 +30,7 @@ modes:
       - {role: driving_video, kinds: [video], label: Movement to copy, required: true}
   - id: replace
     label: Put my character in the clip
-    ops: [motion_transfer, object_replace]
+    ops: [motion_transfer, object_replace, person_swap]
     prompt: none
     medias:
       - {role: character_image, kinds: [image], label: Character, required: true}

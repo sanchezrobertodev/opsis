@@ -1,0 +1,54 @@
+{
+ "endpoint": "fal-ai/pixverse/swap",
+ "variant": null,
+ "input": {
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
+  "image_url": {
+   "type": "string"
+  },
+  "keyframe_id": {
+   "type": "integer",
+   "default": 1,
+   "minimum": 1
+  },
+  "mode": {
+   "type": "string",
+   "enum": [
+    "person",
+    "object",
+    "background"
+   ],
+   "default": "person"
+  },
+  "original_sound_switch": {
+   "type": "boolean",
+   "default": true
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "360p",
+    "540p",
+    "720p"
+   ],
+   "default": "720p"
+  },
+  "seed": {
+   "type": "integer|null"
+  },
+  "video_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "image_url",
+  "video_url"
+ ],
+ "output": [
+  "video"
+ ],
+ "deprecated": false
+}

@@ -41,7 +41,7 @@ OpTag = Literal[
     "t2v", "i2v", "flf2v", "multi_ref", "multi_shot", "extend", "instruction_edit", "restyle", "reframe",
     "upscale", "interpolate", "bg_remove", "motion_transfer", "object_replace", "lipsync", "avatar",
     "t2i", "i2i", "relight", "add_sound", "trim", "retime", "reverse", "loop", "stabilize",
-    "tts", "sfx", "music", "song", "segment", "track", "transcribe", "voice_change", "dub",
+    "tts", "sfx", "music", "song", "segment", "track", "transcribe", "voice_change", "dub", "person_swap",
     "to_3d", "panorama", "world", "depth_to_video", "render_to_real", "lora_train", "rig",
 ]
 OutputType = Literal["video", "image", "audio", "3d", "lora", "mask", "text"]
@@ -178,6 +178,7 @@ class MediaSlot(_Strict):
     required: bool = False
     min: int = 0
     max: int = 1
+    min_duration_s: float | None = None  # for clips and recordings (H3 Recast takes 5-30 s)
     max_duration_s: float | None = None
     max_mb: float | None = None
     min_side: int | None = None  # pixels, both sides of a picture or clip ("720p and up", portrait too)

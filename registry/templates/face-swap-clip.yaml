@@ -1,0 +1,25 @@
+id: face-swap-clip
+name: Face swap a video
+summary: Put someone else in a clip in place of the person filmed, keeping the motion, camera, light and sound. Only swap people who agreed.
+recipe: face_swap
+inputs:
+  - {key: video_asset_id, kind: video, label: A clip with a person}
+  - {key: face_asset_id, kind: image, label: Photo of the new face, alternative: true}
+  - {key: character, kind: character, label: Or one of your characters, alternative: true}
+fields:
+  - key: model
+    label: Model
+    default: pixverse-swap
+    options: [pixverse-swap, minimax-h3-max-recast, wan-2.2-animate]
+    option_labels:
+      pixverse-swap: "PixVerse Swap: fast, about $0.20 per 5 s"
+      minimax-h3-max-recast: "H3 Max Recast: best, $0.30/s (clips of 5-30 s)"
+      wan-2.2-animate: "Wan Animate: the whole person, from about $0.04/s"
+  - key: consent
+    label: Consent
+    options: ["true"]
+    option_labels: {"true": "The people in it, and the person whose face goes in, agreed to this swap"}
+input:
+  swap_model: "{model}"
+  consent: "{consent}"
+tags: [character]
