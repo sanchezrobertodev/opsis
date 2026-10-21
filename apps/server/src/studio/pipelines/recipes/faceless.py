@@ -25,7 +25,7 @@ import re
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from studio.db.models import StepKind
 from studio.faceless.catalog import get_catalog
@@ -88,6 +88,13 @@ class FacelessInput(BaseModel):
                                       "the voiced narration makes the episode longer than this (not for songs)")
     clip_sound: bool = Field(False, description="Motion: make each clip with its own sound and keep it under the "
                              "narration (ambience, animals, footsteps), ducked with the music")
+
+    @model_validator(mode="after")
+    def _length_from_limit(self) -> FacelessInput:
+        """A longest length given without a length (a template's "30 seconds") is what the script is written for."""
+        if self.max_seconds and "minutes" not in self.model_fields_set:
+            self.minutes = min(5.0, max(0.5, self.max_seconds / 60))
+        return self
 
 
 def voice_key(i: int) -> str:

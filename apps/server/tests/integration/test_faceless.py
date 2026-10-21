@@ -325,6 +325,22 @@ async def test_the_creature_template_runs_without_a_saved_creature(client):
     assert est.status_code == 200, est.text
 
 
+async def test_the_creature_template_asks_for_its_length_and_narrator(client):
+    """A length is held to (and the script written for it); the narrator defaults to David and can be any voice."""
+    from studio.pipelines.recipes.faceless import FacelessInput
+
+    default = (await client.post("/templates/creature-documentary/render", json={"fields": {"topic": "Kraken"}})).json()
+    inp = FacelessInput.model_validate(default["input"])
+    assert (inp.max_seconds, inp.minutes, inp.voice["voice_id"]) == (60, 1.0, "BNgbHR0DNeZixGQVzloa")
+    short = (await client.post("/templates/creature-documentary/render", json={"fields": {
+        "topic": "Kraken", "length": "30", "narrator": "JBFqnCBsd6RMkjVDRZzb"}})).json()
+    inp = FacelessInput.model_validate(short["input"])
+    assert (inp.max_seconds, inp.minutes, inp.voice["voice_id"]) == (30, 0.5, "JBFqnCBsd6RMkjVDRZzb")
+    assert FacelessInput(topic="x", minutes=2, max_seconds=30).minutes == 2  # a length given is kept
+    est = await client.post("/pipelines/estimate", json=short)
+    assert est.status_code == 200, est.text
+
+
 async def test_a_plan_with_a_star_always_shows_it_and_never_describes_it(client, monkeypatch):
     """Claude forgetting to mark the star's shots (or listing its look) can't leave the creature out or fight its
     pictures: every shot shows it, and its roster entry is dropped."""
