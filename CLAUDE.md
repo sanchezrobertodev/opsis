@@ -255,6 +255,12 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 - The server's caption fonts are open stand-ins (`infra/server/fonts.conf`).
 
 ## Providers without a model
+- `codex` (GPT Image 2.5 `@codex`, `CODEX_BIN`): `codex exec --json -s read-only` signed in with a ChatGPT plan, so
+  pictures come from the plan's allowance ($0, about 90 s each). The agent never writes: Codex keeps what its image
+  tool draws in `$CODEX_HOME/generated_images/<session id>/` (the `thread.started` event), which the adapter crops to
+  the asked shape and clears. No picture (a refusal, the usage limit) fails as `route_unavailable`, so fal takes over.
+  Kind `direct`, so it follows the mock/mixed/live switch. The server's worker mounts the host's `~/.codex`.
+  `local_tools` and `codex` share `local_tools.BackgroundJobAdapter` (a background task, heartbeat and cancel files).
 - `local_tools`: the `video-tools` model's modes (reframe, trim, retime, reverse, loop, interpolate, upscale,
   stabilize) run on this machine's ffmpeg (`studio/media/tools.py`). Free; local routes check
   `adapter.reachable()`.

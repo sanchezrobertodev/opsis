@@ -296,7 +296,7 @@ def openapi_in_markdown(page: str) -> dict[str, Any] | None:
 
 SOURCES: dict[str, Source] = {"fal": FalSource(), "runway": RunwaySource(), "elevenlabs": ElevenLabsSource(),
                               "replicate": ReplicateSource(), "worldlabs": WorldLabsSource()}
-OWN = {"mock", "comfy_local", "local_tools", "runpod_comfy"}  # adapters running our own code or workflows
+OWN = {"mock", "comfy_local", "local_tools", "runpod_comfy", "codex"}  # adapters running our own code or workflows
 
 
 # ---------------------------------------------------------------- what a route sends

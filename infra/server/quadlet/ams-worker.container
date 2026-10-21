@@ -18,6 +18,10 @@ Environment=QUEUE_DATABASE_URL=postgresql://studio:studio@127.0.0.1:5432/studio
 Environment=WEB_ORIGIN=@WEB_ORIGIN@
 Environment=PGHOST=127.0.0.1 PGPASSWORD=studio DB_EXEC=
 Volume=@APP_DIR@/data:/app/data:z
+# The host's Codex CLI and its ChatGPT sign-in (GPT Image through the plan, providers/codex.py). It runs read-only
+# here; set CODEX_BIN in .env to %h/.codex/packages/standalone/current/bin/codex to turn the route on.
+Volume=%h/.codex:%h/.codex:z
+Environment=CODEX_HOME=%h/.codex
 # ffmpeg assembly is the peak; the cap keeps a runaway render from taking the laptop down
 PodmanArgs=--memory=1536m
 StopTimeout=30

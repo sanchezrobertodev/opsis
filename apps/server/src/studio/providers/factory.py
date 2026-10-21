@@ -12,6 +12,7 @@ _ADAPTERS = {
     "mock": "studio.providers.mock:MockAdapter",
     "comfy_local": "studio.providers.comfy_local:ComfyLocalAdapter",
     "local_tools": "studio.providers.local_tools:LocalToolsAdapter",
+    "codex": "studio.providers.codex:CodexAdapter",
     "fal": "studio.providers.fal:FalAdapter",
     "google_genai": "studio.providers.google_genai:GoogleGenAIAdapter",
     "replicate": "studio.providers.replicate:ReplicateAdapter",
