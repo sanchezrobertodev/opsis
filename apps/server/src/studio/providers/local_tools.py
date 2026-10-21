@@ -51,21 +51,19 @@ OPS: dict[str, Op] = {
 }
 
 
-class LocalToolsAdapter(ProviderAdapter):
-    key = "local_tools"
+class BackgroundJobAdapter(ProviderAdapter):
+    """Jobs this machine runs itself (ffmpeg, the Codex CLI): submit starts `work` as a background task in the worker
+    and parks its files in a ResultStore; a `running` heartbeat file and a `cancel` file let any worker process poll
+    or stop it. `work` writes its results as files named `output*` in the job's folder."""
+
+    output_suffixes: tuple[str, ...] = ()  # result files kept as outputs (all `output*` files when empty)
 
     def __init__(self) -> None:
-        self.store = ResultStore("local_tools")
+        self.store = ResultStore(self.key)
         self._tasks: dict[str, asyncio.Task[None]] = {}
 
-    async def reachable(self) -> bool:
-        return shutil.which(FFMPEG) is not None
-
-    async def stage_inputs(self, route: Route, media: list[ResolvedMedia]) -> dict[str, Any]:
-        staged: dict[str, Any] = {}
-        for m in media:
-            staged.setdefault(m.role, []).append(str(m.path))
-        return staged
+    async def work(self, job_id: str, workdir: Path, payload: dict[str, Any]) -> None:
+        raise NotImplementedError
 
     def _flag(self, job_id: str, name: str) -> Path:
         return self.store.root / job_id / name
@@ -81,17 +79,16 @@ class LocalToolsAdapter(ProviderAdapter):
                 return
             running.touch()
 
-    async def _run(self, op: Op, job_id: str, src: Path, params: dict[str, Any]) -> None:
-        workdir = self.store.root / job_id
+    async def _run(self, job_id: str, payload: dict[str, Any]) -> None:
         beat = asyncio.create_task(self._heartbeat(job_id))
         try:
-            await op(src, workdir / "output.mp4", params)
-        except (ValueError, FFmpegError) as exc:
-            msg = str(exc) if isinstance(exc, ValueError) else f"ffmpeg failed: {str(exc)[-400:]}"
-            self.store.write_meta(job_id, {"status": "failed", "error": msg,
-                                           "class": "invalid_request" if isinstance(exc, ValueError) else "internal"})
+            await self.work(job_id, self.store.root / job_id, payload)
+        except ProviderError as exc:
+            self.store.write_meta(job_id, {"status": "failed", "error": exc.message, "class": exc.error_class.value})
+        except ValueError as exc:
+            self.store.write_meta(job_id, {"status": "failed", "error": str(exc), "class": "invalid_request"})
         except Exception as exc:
-            log.exception("local tool job %s crashed", job_id)
+            log.exception("%s job %s crashed", self.key, job_id)
             self.store.write_meta(job_id, {"status": "failed", "error": f"{type(exc).__name__}: {exc}", "class": "internal"})
         else:
             self.store.write_meta(job_id, {"status": "succeeded"})
@@ -101,32 +98,27 @@ class LocalToolsAdapter(ProviderAdapter):
             if self._flag(job_id, "cancel").exists():
                 self.store.discard(job_id)
 
-    async def submit(self, route: Route, endpoint: str, payload: dict[str, Any], *, client_ref: str) -> SubmitResult:
-        op = OPS.get(endpoint)
-        if op is None:
-            raise ProviderError(ErrorClass.invalid_request, f"no local tool called {endpoint!r}")
-        src = payload.get("input_video")
-        if isinstance(src, list):
-            src = src[0] if src else None
-        if not src or not Path(src).exists():
-            raise ProviderError(ErrorClass.invalid_request, "this tool needs a video")
-        params = {k: v for k, v in payload.items() if k != "input_video"}
+    def start(self, payload: dict[str, Any], raw: dict[str, Any]) -> SubmitResult:
         job_id, _ = self.store.new_job()
         self._flag(job_id, "running").touch()  # before returning, so the first poll already sees it
-        task = asyncio.get_running_loop().create_task(self._run(op, job_id, Path(src), params))
+        task = asyncio.get_running_loop().create_task(self._run(job_id, payload))
         self._tasks[job_id] = task
         task.add_done_callback(lambda _t, j=job_id: self._tasks.pop(j, None))
-        return SubmitResult(job_id=job_id, raw={"op": endpoint})
+        return SubmitResult(job_id=job_id, raw=raw)
 
     def _finished(self, route: Route, job_id: str) -> PollResult | None:
         meta = self.store.meta(job_id)
         status = meta.get("status")
         if status == "succeeded":
-            outputs = [o for o in self.store.outputs(job_id, route.output.kind) if o.ref and o.ref.endswith(".mp4")]
+            outputs = [o for o in self.store.outputs(job_id, route.output.kind)
+                       if o.ref and Path(o.ref).name.startswith("output")
+                       and (not self.output_suffixes or o.ref.endswith(self.output_suffixes))]
+            for i, o in enumerate(outputs):
+                o.index = i
             return PollResult(status="succeeded", progress=1.0, outputs=outputs)
         if status == "failed":
             return PollResult(status="failed", error_class=ErrorClass(meta.get("class", "internal")),
-                              error_message=meta.get("error", "the local tool failed"))
+                              error_message=meta.get("error", f"the {self.key} job failed"))
         return None
 
     async def poll(self, route: Route, job_id: str) -> PollResult:
@@ -142,7 +134,7 @@ class LocalToolsAdapter(ProviderAdapter):
         # The job may have finished between the two reads (it writes meta, then drops the running file).
         return self._finished(route, job_id) or PollResult(
             status="failed", error_class=ErrorClass.transient,
-            error_message="the worker running this tool stopped; trying again")
+            error_message="the worker running this job stopped; trying again")
 
     async def cancel(self, route: Route, job_id: str) -> bool:
         task = self._tasks.pop(job_id, None)
@@ -157,3 +149,34 @@ class LocalToolsAdapter(ProviderAdapter):
 
     async def download(self, route: Route, output: ProviderOutput, dest: Path, workdir: Path) -> str:
         return self.store.copy_out(output, dest)
+
+
+class LocalToolsAdapter(BackgroundJobAdapter):
+    key = "local_tools"
+    output_suffixes = (".mp4",)
+
+    async def reachable(self) -> bool:
+        return shutil.which(FFMPEG) is not None
+
+    async def stage_inputs(self, route: Route, media: list[ResolvedMedia]) -> dict[str, Any]:
+        staged: dict[str, Any] = {}
+        for m in media:
+            staged.setdefault(m.role, []).append(str(m.path))
+        return staged
+
+    async def work(self, job_id: str, workdir: Path, payload: dict[str, Any]) -> None:
+        params = {k: v for k, v in payload.items() if k not in ("input_video", "_op")}
+        try:
+            await OPS[payload["_op"]](Path(payload["input_video"]), workdir / "output.mp4", params)
+        except FFmpegError as exc:
+            raise ProviderError(ErrorClass.internal, f"ffmpeg failed: {str(exc)[-400:]}") from exc
+
+    async def submit(self, route: Route, endpoint: str, payload: dict[str, Any], *, client_ref: str) -> SubmitResult:
+        if endpoint not in OPS:
+            raise ProviderError(ErrorClass.invalid_request, f"no local tool called {endpoint!r}")
+        src = payload.get("input_video")
+        if isinstance(src, list):
+            src = src[0] if src else None
+        if not src or not Path(src).exists():
+            raise ProviderError(ErrorClass.invalid_request, "this tool needs a video")
+        return self.start({**payload, "input_video": src, "_op": endpoint}, {"op": endpoint})

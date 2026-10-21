@@ -103,6 +103,23 @@ routes:
       verified: 2026-10-19
       source: "https://fal.ai/models/openai/gpt-image-2.5/flare/edit (per-image table incl. one input image; image input $8/M tokens)"
     output: {path: images, kind: image, multiple: true}
+  # The ChatGPT plan's allowance through the Codex CLI: free per picture but slow; anything it can't draw goes to fal.
+  - id: gpt-image-2.5@codex
+    provider: codex
+    modes:
+      t2i: {endpoint: t2i}
+      edit: {endpoint: edit}
+    map:
+      params: {variant: {to: null}, quality: quality, aspect_ratio: aspect_ratio, num_images: num_images}
+      media: {image_references: "images[]"}
+    pricing:
+      basis: per_image
+      rates: [{usd: 0}]
+      verified: 2026-10-20
+      source: "ChatGPT plan allowance via the Codex CLI (no per-image charge)"
+    eta: "90 * num_images"
+    timeout_s: 1200
+    output: {path: images, kind: image, multiple: true}
 
 examples:
   - name: t2i_smoke

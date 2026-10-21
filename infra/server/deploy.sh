@@ -22,7 +22,7 @@ if [ ! -f .env ]; then
   echo "no .env in $APP_DIR: copy the studio's .env here (chmod 600) and run again"; exit 1
 fi
 chmod 600 .env
-mkdir -p data/media data/backups data/logs data/reports
+mkdir -p data/media data/backups data/logs data/reports "$HOME/.codex"  # the worker mounts ~/.codex
 
 if [ "${NO_PULL:-0}" != 1 ] && [ -d .git ]; then
   before="$(git rev-parse HEAD)"

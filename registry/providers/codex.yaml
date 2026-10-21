@@ -1,0 +1,11 @@
+id: codex
+name: Codex (your ChatGPT plan)
+kind: direct               # not `local`: it spends the plan's allowance, so it follows the mock/mixed/live switch
+adapter: codex
+key_setting: codex_bin     # the `codex` binary, signed in with ChatGPT; empty turns the route off
+concurrency: 2             # agent runs, about a minute or two a picture; easy on the plan's limits
+docs: https://developers.openai.com/codex/cli
+notes: >-
+  GPT Image drawn by the Codex CLI's image tool, from the ChatGPT plan's allowance instead of per-image billing.
+  Slow, and Codex picks the size (pictures are cropped to the asked shape). A run that saves no picture (the plan's
+  usage limit, a refusal) moves on to the next route. Check OpenAI's terms for this use of a plan.
