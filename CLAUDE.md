@@ -321,7 +321,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   the script and plan steps check it first (`llm_ops._star`). `clip_sound` (motion only) sets the video model's
   `generate_audio`, asks for ambient sound only, and the cut keeps each clip's own sound (`assemble.clip_sound`:
   slowed with its picture, silence under stills, a WAV of its own) mixed with the music and ducked with it under the
-  voice (`clip_sound_db`). Template inputs can be `optional: true`. Clip prompts describe the star the first time
+  voice (`clip_sound_db`). Template inputs can be `optional: true`. The template asks for a length (30 s, 1 or 2 min, as
+  `max_seconds`; a `max_seconds` given without `minutes` sets the script's length too) and a narrator (David by default). Clip prompts describe the star the first time
   (`named`: "Griffin (its description)"), since a video model sees only the start frame, and the plan is told its look
   so its shots keep what sets it apart in frame.
 - Reference sheets (`character_sheet` recipe, the character editor's "Make a reference sheet"): the image model's

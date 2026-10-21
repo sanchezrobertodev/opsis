@@ -17,6 +17,15 @@ fields:
       kling-3.0: "Kling 3.0: about $0.17/s with sound"
       seedance-2.5: "Seedance 2.5: about $0.23/s at 720p, with sound"
       veo-3.1: "Veo 3.1: best, about $0.40/s with sound"
+  - key: length
+    label: Length
+    default: "60"
+    options: ["30", "60", "120"]
+    option_labels: {"30": "30 seconds", "60": "1 minute", "120": "2 minutes"}
+  - key: narrator
+    label: Narrator
+    default: BNgbHR0DNeZixGQVzloa
+    choices: eleven-v4.voice_id
   - key: shape
     label: Shape
     default: "9:16"
@@ -28,8 +37,8 @@ input:
   style: wildlife-documentary
   format: motion
   clip_sound: true
-  minutes: 1
-  max_seconds: 60
+  max_seconds: "{length}"  # held to it; the script is written for it too
+  voice: {voice_id: "{narrator}"}
   video_model: "{footage}"
   aspect_ratio: "{shape}"
 tags: [character, story]
