@@ -48,6 +48,26 @@ def test_repeat_save_does_not_duplicate_libraries(configured, tmp_path):
     assert model_storage.save_directory(configured, path)["libraries"] == first["libraries"]
 
 
+@pytest.mark.parametrize("suffix", ["", "/"])
+def test_same_directory_preserves_custom_mappings(configured, suffix):
+    path = configured.comfyui_model_paths_config
+    config = yaml.safe_load(path.read_text())
+    previous = config["studio_models"]
+    previous.update(checkpoints="custom-checkpoints\narchive", custom_node_models="custom-node-models")
+    path.write_text(yaml.safe_dump(config))
+    directory = previous["base_path"] + suffix
+
+    model_storage.save_directory(configured, directory)
+    saved = yaml.safe_load(path.read_text())
+    preserved = [group for key, group in saved.items() if key != "studio_models"]
+    assert {**previous, "is_default": False} in preserved
+    assert saved["studio_models"]["checkpoints"] == "checkpoints"
+    assert list(saved)[-1] == "studio_models"
+
+    model_storage.save_directory(configured, directory)
+    assert yaml.safe_load(path.read_text()) == saved
+
+
 @pytest.mark.parametrize("path", ["", "relative/models", "../models", "\\\\server\\share", "//server/share", "bad\x00path"])
 def test_invalid_path_leaves_configuration_intact(configured, path):
     before = configured.comfyui_model_paths_config.read_bytes()

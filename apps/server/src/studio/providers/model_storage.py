@@ -79,8 +79,9 @@ def save_directory(settings: Settings, value: str) -> dict:
         config = read_config(settings)
         previous = config.pop(DEFAULT_GROUP)
         old_path = Path(previous["base_path"]).resolve()
-        if old_path != directory:
-            # Keep each previous library searchable; never move or delete its contents.
+        previous_mappings = {key: value for key, value in previous.items() if key not in {"base_path", "is_default"}}
+        if old_path != directory or previous_mappings != MODEL_FOLDERS:
+            # Preserve custom search paths even when the base directory is unchanged.
             key = "studio_library_" + str(len(config))
             while key in config:
                 key += "_old"
