@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: fast-h3-omni
+name: FastH3-Omni
+family: minimax
+vendor: reactor
+description: >-
+  Reactor's distilled H3 audio-video model, saved as an MP4 with sound. Optional Reactor API key and SDK.
+  Billed at $0.75 per GPU session minute, not per output minute. The estimate reserves the entire
+  session cap; uploads, generation, playback and saving all count. Experimental, pending a live smoke test.
+output_type: video
+status: preview
+license_tier: commercial_api
+tags: [audio, references, first-last-frame, realtime]
+prompt: {max_chars: 5000, dialect: default, dialogue: true}
+aspect_ratios: ["16:9", "1:1", "9:16", "4:3"]
+duration: {min: 5.875, max: 14.375, default: 5.875}
+parameters:
+  - {name: duration, label: Duration (s), type: enum, options: ["5.875", "8", "10.125", "12.25", "14.375"], default: "5.875"}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "1:1", "9:16", "4:3"], default: "16:9", ui: aspect}
+  - {name: session_seconds, label: Session spending cap (seconds), type: enum, options: [30, 60, 120], default: 60,
+     help: "30s = $0.375, 60s = $0.75, 120s = $1.50 maximum session charge at the verified rate. Short caps can expire before saving. Failed sessions can still cost money."}
+  - {name: seed, type: seed, group: advanced}
+modes:
+  - {id: t2v, label: Text to video, ops: [t2v]}
+  - id: reference
+    label: Image and audio references
+    ops: [multi_ref]
+    medias:
+      - {role: image_references, kinds: [image], label: "Image refs (up to 9; 3 recommended for speed)", required: true, min: 1, max: 9}
+      - {role: audio_references, kinds: [audio], label: "Audio refs (2–15s each)", max: 3, min_duration_s: 2, max_duration_s: 15}
+  - id: i2v
+    label: Start frame with reference
+    ops: [i2v]
+    medias:
+      - {role: image_references, kinds: [image], label: Appearance reference, required: true, min: 1, max: 9}
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+      - {role: audio_references, kinds: [audio], label: "Audio refs (2–15s each)", max: 3, min_duration_s: 2, max_duration_s: 15}
+  - id: flf2v
+    label: First and last frame with reference
+    ops: [flf2v]
+    medias:
+      - {role: image_references, kinds: [image], label: Appearance reference, required: true, min: 1, max: 9}
+      - {role: start_image, kinds: [image], label: First frame, required: true}
+      - {role: end_image, kinds: [image], label: Last frame, required: true}
+      - {role: audio_references, kinds: [audio], label: "Audio refs (2–15s each)", max: 3, min_duration_s: 2, max_duration_s: 15}
+elements: {strategy: refs_native, ref_role: image_references, max_refs: 9, token: "<Picture {n}>"}
+routes:
+  - id: fast-h3-omni@reactor
+    provider: reactor
+    modes:
+      t2v: {endpoint: reactor/fast-h3-omni}
+      reference: {endpoint: reactor/fast-h3-omni}
+      i2v: {endpoint: reactor/fast-h3-omni}
+      flf2v: {endpoint: reactor/fast-h3-omni}
+    map:
+      negative_prompt: null
+      params:
+        duration: {to: seconds, transform: float}
+      media: {image_references: reference_images, audio_references: reference_audios, start_image: first_frame_image, end_image: last_frame_image}
+    pricing:
+      basis: per_gpu_second
+      quantity: session_seconds
+      rates: [{usd: 0.0125}]
+      verified: 2026-10-24
+      source: https://api.reactor.inc/pricing
+    charges_on_failure: true
+    timeout_s: 330
+    output: {path: recording, kind: video}
+    notes: >-
+      One independent clip per bounded session. Session time is billable even if saving fails.
+      The adapter checks the live rate before connecting, downloads both tracks, terminates the session,
+      then remuxes locally. Usage is a local estimate, not a billing receipt. No cross-job continuation.
+examples:
+  - name: t2v_smoke
+    mode: t2v
+    prompt: A blue bowl turns on a pottery wheel. The wheel hums softly. No music.
+    params: {duration: "5.875", session_seconds: 30}
+    smoke: true
+    expect: {cost_usd_range: [0.375, 0.375]}
+  - name: reference_audio
+    mode: reference
+    prompt: "<Picture 1> shows a musician playing in a quiet studio. Match the sound reference."
+    params: {duration: "8", session_seconds: 60}
+    media: {image_references: ["fixture:images/keyframe.png"], audio_references: ["fixture:audio/reference.wav"]}
+    expect: {cost_usd_range: [0.75, 0.75]}

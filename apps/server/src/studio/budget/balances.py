@@ -39,6 +39,8 @@ PROVIDERS: dict[str, tuple[str, str, str]] = {
     "runpod": ("RunPod", "https://console.runpod.io/user/billing", "runpod_api_key"),
     "runway": ("Runway", "https://dev.runwayml.com/", "runway_api_key"),
     "elevenlabs": ("ElevenLabs", "https://elevenlabs.io/app/subscription", "elevenlabs_api_key"),
+    "reactor": ("Reactor", "https://reactor.inc/dashboard", "reactor_api_key"),
+    "pika": ("Pika", "https://dev.pika.art/billing", "pika_api_key"),
     "anthropic": ("Anthropic (Claude)", "https://platform.claude.com/settings/billing", "anthropic_api_key"),
     "google": ("Google (Gemini, Veo)", "https://console.cloud.google.com/billing", "gemini_api_key"),
     "replicate": ("Replicate", "https://replicate.com/account/billing", "replicate_api_token"),
@@ -91,7 +93,18 @@ async def _elevenlabs(c: httpx.AsyncClient, key: str) -> dict[str, Any]:
     return {"amount": max(0, limit - used), "unit": "credits", "detail": detail}
 
 
-READERS = {"fal": _fal, "runpod": _runpod, "runway": _runway, "elevenlabs": _elevenlabs}
+async def _pika(c: httpx.AsyncClient, key: str) -> dict[str, Any]:
+    from studio.providers.pika import spending_capacity
+
+    r = await c.get("https://api.dev.pika.art/billing/balance", headers={"X-API-Key": key})
+    r.raise_for_status()
+    amount, invoiced = spending_capacity(r.json())
+    usd = amount / 1_000_000
+    return {"amount": usd, "unit": "usd", "usd": usd,
+            "detail": "remaining invoice-cycle allowance" if invoiced else "prepaid balance including credits"}
+
+
+READERS = {"fal": _fal, "runpod": _runpod, "runway": _runway, "elevenlabs": _elevenlabs, "pika": _pika}
 
 
 async def _read(provider: str, key: str, transport: httpx.AsyncBaseTransport | None) -> Balance:

@@ -27,6 +27,11 @@ dependencies = [
     "anthropic>=1.11.0",
 ]
 
+[project.optional-dependencies]
+reactor = [
+    "reactor-sdk==1.13.0",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.3",

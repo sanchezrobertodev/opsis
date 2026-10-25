@@ -1,0 +1,11 @@
+id: reactor
+name: Reactor
+kind: direct
+adapter: reactor
+key_setting: reactor_api_key
+concurrency: 1
+docs: https://docs.reactor.inc/
+notes: >-
+  Optional reactor-sdk extra required. Billed by GPU session time, including uploads, generation,
+  playback and recording download. Each job has a server-enforced lifetime and ends its session.
+  Account balance and final charges are available in Reactor's dashboard, not through an API.

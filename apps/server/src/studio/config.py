@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="", repr=False)
     runpod_api_key: str = Field(default="", repr=False)
     elevenlabs_api_key: str = Field(default="", repr=False)
+    reactor_api_key: str = Field(default="", repr=False)
+    pika_api_key: str = Field(default="", repr=False)
     worldlabs_api_key: str = Field(default="", repr=False)
     # Our own RunPod serverless endpoint running infra/runpod/wan-core (empty turns its routes off)
     runpod_wan_core_endpoint: str = ""
