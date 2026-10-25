@@ -18,6 +18,7 @@ from studio.api.routers import (
     generations,
     llm,
     misc,
+    model_storage,
     pipelines,
     presets,
     projects,
@@ -128,3 +129,4 @@ app.include_router(renders.router)
 app.include_router(generations.router)
 app.include_router(assets.router)
 app.include_router(misc.router)
+app.include_router(model_storage.router)

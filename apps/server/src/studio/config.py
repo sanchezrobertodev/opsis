@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     # Local ComfyUI (C:/Dev/AI/VideoStudio). Empty disables the local route.
     comfyui_url: str = ""
     comfyui_workflows_dir: Path = REPO_ROOT / "workflows" / "comfy"
+    # Optional shared YAML read by the local ComfyUI launcher; enables Settings > Model storage.
+    comfyui_model_paths_config: Path | None = None
 
     @property
     def live_routes(self) -> set[str]:
