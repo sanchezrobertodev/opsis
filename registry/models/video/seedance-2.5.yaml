@@ -125,7 +125,46 @@ routes:
       verified: 2026-10-06
       source: https://fal.ai/models/bytedance/seedance-2.5/reference-to-video
     output: {path: video.url, kind: video}
-    notes: About 2x Replicate for t2v/i2v, but the only route here for omni references.
+    notes: About 2x Replicate for t2v/i2v. Pika is an optional lower-cost route for omni references.
+
+  - id: seedance-2.5@pika
+    provider: pika
+    modes:
+      t2v: {endpoint: bytedance/seedance-2.5/text-to-video, drop: [seed]}
+      i2v: {endpoint: bytedance/seedance-2.5/image-to-video, drop: [seed], fixed: {ratio: adaptive}}
+      multi_shot: {endpoint: bytedance/seedance-2.5/text-to-video, drop: [seed]}
+      multi_shot_frame: {endpoint: bytedance/seedance-2.5/image-to-video, drop: [seed], fixed: {ratio: adaptive}}
+      omni_reference: {endpoint: bytedance/seedance-2.5/reference-to-video, drop: [seed],
+                       fixed: {omni_reference_task_type: reference}}
+      video_edit: {endpoint: bytedance/seedance-2.5/reference-to-video, drop: [seed, aspect_ratio],
+                   fixed: {omni_reference_task_type: edit, duration: auto, ratio: adaptive},
+                   media: {input_video: "video_urls[]"}}
+      extend: {endpoint: bytedance/seedance-2.5/reference-to-video, drop: [seed, aspect_ratio],
+               fixed: {omni_reference_task_type: extend, ratio: adaptive}, media: {input_video: "video_urls[]"}}
+    map:
+      negative_prompt: null
+      params:
+        aspect_ratio: ratio
+        shots: {to: prompt, transform: timed_prompt}
+      media: {start_image: image_url, end_image: end_image_url, image_references: image_urls,
+              video_references: video_urls, audio_references: audio_urls}
+    transform: studio.providers.transforms.pika:seedance
+    pricing:
+      basis: formula
+      # Nominal area, with 12% reservation headroom. Pika's free quote currently reserves ~10% above
+      # nominal output cost. Reject quotes above this ceiling; reconcile to settled micro-USD, not tokens.
+      formula: >-
+        ceil((10044 if resolution == '480p' else 21600) * 1.12 *
+        (input_video_seconds * 2 if mode == 'video_edit' else duration + input_video_seconds))
+        * (6.72 if input_video_seconds > 0 else 11.235) / 1000000
+      verified: 2026-10-25
+      source: https://dev.pika.art/models/bytedance/seedance-2.5/reference-to-video/pricing
+    output: {path: output.video, kind: video}
+    notes: >-
+      Optional Pika API Club key and membership required. $11.235/M tokens without video inputs,
+      $6.72/M with video inputs; input plus output duration is billed.
+      Includes a quote buffer, excludes $10/month membership.
+      Only settled job charges enter actual spend. No seed control or remote cancellation.
 
 examples:
   - name: t2v_smoke

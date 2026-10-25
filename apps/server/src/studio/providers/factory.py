@@ -18,6 +18,7 @@ _ADAPTERS = {
     "replicate": "studio.providers.replicate:ReplicateAdapter",
     "runway": "studio.providers.runway:RunwayAdapter",
     "elevenlabs": "studio.providers.elevenlabs:ElevenLabsAdapter",
+    "pika": "studio.providers.pika:PikaAdapter",
     "worldlabs": "studio.providers.worldlabs:WorldLabsAdapter",
     "runpod": "studio.providers.runpod:RunPodAdapter",
     "runpod_comfy": "studio.providers.runpod_comfy:RunPodComfyAdapter",

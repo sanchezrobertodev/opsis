@@ -1,0 +1,11 @@
+id: pika
+name: Pika
+kind: aggregator
+adapter: pika
+key_setting: pika_api_key
+concurrency: 3
+poll_min_seconds: 5
+docs: https://dev.pika.art/llms.txt
+notes: >-
+  Optional API Club membership ($10/month) plus usage. Estimates exclude membership.
+  Uses Pika-hosted uploads, free pre-submit quotes, and settled job charges. No remote cancellation API.
