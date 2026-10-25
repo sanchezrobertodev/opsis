@@ -1092,6 +1092,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/local-engine/model-storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Model Storage */
+        get: operations["get_model_storage_local_engine_model_storage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Model Storage */
+        patch: operations["update_model_storage_local_engine_model_storage_patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2480,6 +2498,28 @@ export interface components {
             routes: components["schemas"]["RouteSummary"][];
             /** @description Engines a virtual model runs on, and its director params */
             virtual?: components["schemas"]["VirtualSpec"] | null;
+        };
+        /** ModelStorageOut */
+        ModelStorageOut: {
+            /** Available */
+            available: boolean;
+            /** Message */
+            message?: string | null;
+            /** Directory */
+            directory?: string | null;
+            /** Active Directory */
+            active_directory?: string | null;
+            /** Libraries */
+            libraries?: string[];
+            /** Free Bytes */
+            free_bytes?: number | null;
+            /** Restart Required */
+            restart_required?: boolean | null;
+        };
+        /** ModelStorageUpdate */
+        ModelStorageUpdate: {
+            /** Directory */
+            directory: string;
         };
         /** ModelSummary */
         ModelSummary: {
@@ -6318,6 +6358,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthOut"];
+                };
+            };
+        };
+    };
+    get_model_storage_local_engine_model_storage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelStorageOut"];
+                };
+            };
+        };
+    };
+    update_model_storage_local_engine_model_storage_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelStorageUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelStorageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -8,6 +8,7 @@ import { api, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { useBudget, useHealth, useRegistry, useUpdateBudget } from "@/lib/queries";
 import { Button, Field, Segmented, Switch } from "@/components/ui/controls";
+import { ModelStorage } from "@/components/shell/ModelStorage";
 
 const MODE_TEXT: Record<string, string> = {
   mock: "Every generation runs on the mock provider. Nothing is sent to a provider and nothing is billed.",
@@ -151,6 +152,7 @@ export function Settings() {
           )}
         </section>
 
+        <ModelStorage />
         <Balances />
         <WhereItWent />
         <SpendHistory />
