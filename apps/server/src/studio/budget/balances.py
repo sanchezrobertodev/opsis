@@ -39,6 +39,7 @@ PROVIDERS: dict[str, tuple[str, str, str]] = {
     "runpod": ("RunPod", "https://console.runpod.io/user/billing", "runpod_api_key"),
     "runway": ("Runway", "https://dev.runwayml.com/", "runway_api_key"),
     "elevenlabs": ("ElevenLabs", "https://elevenlabs.io/app/subscription", "elevenlabs_api_key"),
+    "reactor": ("Reactor", "https://reactor.inc/dashboard", "reactor_api_key"),
     "pika": ("Pika", "https://dev.pika.art/billing", "pika_api_key"),
     "anthropic": ("Anthropic (Claude)", "https://platform.claude.com/settings/billing", "anthropic_api_key"),
     "google": ("Google (Gemini, Veo)", "https://console.cloud.google.com/billing", "gemini_api_key"),

@@ -61,7 +61,7 @@ def keys(monkeypatch):
     for attr, value in (("fal_key", "fal-secret"), ("runpod_api_key", "rp-secret"), ("runway_api_key", "rw-secret"),
                         ("elevenlabs_api_key", "el-secret"), ("anthropic_api_key", "sk-secret"),
                         ("gemini_api_key", ""), ("replicate_api_token", ""), ("worldlabs_api_key", ""),
-                        ("pika_api_key", "")):
+                        ("reactor_api_key", ""), ("pika_api_key", "")):
         monkeypatch.setattr(s, attr, value)
     b.clear_cache()
     yield

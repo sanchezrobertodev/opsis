@@ -30,6 +30,7 @@ generations are labelled test clips and nothing is billed.
 | Doc | What's inside |
 |---|---|
 | [docs/PLAN.md](docs/PLAN.md) | Approved plan: feature-to-model matrix, architecture, phases, verification |
+| [docs/reactor.md](docs/reactor.md) | Optional FastH3-Omni: session billing, spending caps, recording downloads and setup |
 | [docs/pika.md](docs/pika.md) | Optional Pika route for Seedance 2.5: setup, quotes, billing and saved output |
 | [docs/research/06-architecture-blueprint.md](docs/research/06-architecture-blueprint.md) | Detailed design: data model, registry schema, job lifecycle, pipeline engine, director, frontend |
 | [docs/research/](docs/research/) | Research reports (Higgsfield features, commercial APIs, open models and RunPod, Higgsfield live catalog) |
