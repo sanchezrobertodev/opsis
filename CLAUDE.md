@@ -240,7 +240,7 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 ## Running on the home server
 - The studio you use runs on the Fedora home server (`infra/server/`, README there; plan in `docs/home-server-move.md`):
   - **Containers:** rootless Podman with Quadlet runs the pod `ams` with Postgres 18, the API, the worker and the web app.
-  - **Addresses:** web `https://fedora.tail36d2f8.ts.net:19443/`, API `:19444`, tailnet only.
+  - **Addresses:** web `https://<server>.<tailnet>.ts.net:19443/`, API `:19444`, tailnet only.
   - **Files:** the checkout is `~/Development/repos/ai-media-studio`, with its `.env` and `data/`.
 - The PC is for development: mock mode against its own database, tests and Playwright.
 - **Deploying:** merge, then press Deploy on the Hub (`infra/server/deploy.sh`). It pulls, builds both images (the API

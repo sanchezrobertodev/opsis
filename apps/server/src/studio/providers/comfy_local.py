@@ -1,4 +1,4 @@
-"""Local ComfyUI adapter (the VideoStudio install at C:/Dev/AI/VideoStudio).
+"""Local ComfyUI adapter (a ComfyUI on this machine or the tailnet, at COMFYUI_URL).
 
 Route endpoints name a workflow template in workflows/comfy. The canonical payload (built by
 registry/mapping.py) is injected into the template; inputs are uploaded through /upload/image.
@@ -56,7 +56,7 @@ class ComfyLocalAdapter(ProviderAdapter):
     def _offline(self) -> ProviderError:
         return ProviderError(
             ErrorClass.route_unavailable,
-            f"ComfyUI isn't running at {self.base}. Start Local Video Studio, then try again.",
+            f"ComfyUI isn't running at {self.base}. Start ComfyUI, then try again.",
         )
 
     async def _get(self, path: str, **kwargs: Any) -> httpx.Response:

@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     # The Codex CLI, signed in with a ChatGPT plan: GPT Image from the plan's allowance. Empty turns the route off.
     codex_bin: str = ""
 
-    # Local ComfyUI (C:/Dev/AI/VideoStudio). Empty disables the local route.
+    # Local ComfyUI. Empty disables the local route.
     comfyui_url: str = ""
     comfyui_workflows_dir: Path = REPO_ROOT / "workflows" / "comfy"
     # Optional shared YAML read by the local ComfyUI launcher; enables Settings > Model storage.

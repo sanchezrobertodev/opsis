@@ -124,7 +124,7 @@ export function Settings() {
                     ? `Running${health.local_engine.gpu ? ` on ${health.local_engine.gpu.replace(/^cuda:\d+\s*/, "").split(" : ")[0]}` : ""}${
                         health.local_engine.vram_free_gb != null ? `, ${health.local_engine.vram_free_gb} GB free` : ""
                       }`
-                    : "Not running. Start Local Video Studio to use the local models."}
+                    : "Not running. Start ComfyUI to use the local models."}
               </dd>
               <dt className="text-muted">Claude</dt>
               <dd>

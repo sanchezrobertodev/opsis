@@ -20,7 +20,7 @@ export function ModelStorage() {
     onSuccess: (data) => {
       qc.setQueryData(["model-storage"], data);
       setDraft(null);
-      toast.success("Model folder saved. Restart Local Video Studio to apply it.");
+      toast.success("Model folder saved. Restart ComfyUI to apply it.");
     },
   });
   const data = query.data;
@@ -64,10 +64,10 @@ export function ModelStorage() {
             {save.error && <p role="alert" className="text-sm text-fault">{save.error.message}</p>}
             <p role="status" className="text-xs leading-relaxed text-muted">
               {data.restart_required === true
-                ? "Saved. Restart Local Video Studio to use this folder. Running jobs are unaffected."
+                ? "Saved. Restart ComfyUI to use this folder. Running jobs are unaffected."
                 : data.restart_required === false
                   ? "ComfyUI is using this folder."
-                  : "The active folder could not be checked. This setting applies when Local Video Studio starts."}
+                  : "The active folder could not be checked. This setting applies when ComfyUI starts."}
             </p>
             {data.active_directory && data.restart_required && <p className="break-all text-xs text-muted">
               Currently active: {data.active_directory}

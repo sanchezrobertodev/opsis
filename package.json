@@ -1,6 +1,7 @@
 {
   "name": "ai-media-studio",
   "private": true,
+  "license": "Apache-2.0",
   "packageManager": "pnpm@9.14.4",
   "scripts": {
     "dev": "concurrently -k -n api,worker,web -c blue,magenta,green \"pnpm dev:api\" \"pnpm dev:worker\" \"pnpm dev:web\"",

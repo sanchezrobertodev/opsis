@@ -209,7 +209,7 @@ async def test_offline_engine_is_route_unavailable_with_instructions(monkeypatch
     with pytest.raises(ProviderError) as exc:
         await a.submit(ROUTE, "wan22_ti2v_5b", {"prompt": "x"}, client_ref="r")
     assert exc.value.error_class == ErrorClass.route_unavailable
-    assert "Start Local Video Studio" in exc.value.message
+    assert "Start ComfyUI" in exc.value.message
 
 
 async def test_download_rejects_missing_file(monkeypatch, tmp_path):

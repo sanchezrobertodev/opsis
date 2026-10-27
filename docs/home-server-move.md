@@ -33,7 +33,7 @@ All four run in one Podman pod (`ams`, Quadlet units like the server's ai-trader
 - **Total ceiling about 3.3 GB**, so the server keeps room for Ollama and the rest.
 - **Why a container rather than the host's ffmpeg:** Fedora's `ffmpeg-free` has no x264 encoder, and the studio's assembly
   and captions need x264 and libass.
-- **Addresses:** the web app is `https://fedora.tail36d2f8.ts.net:19443/` and the API is `:19444`. `NEXT_PUBLIC_API_URL`
+- **Addresses:** the web app is `https://<server>.<tailnet>.ts.net:19443/` and the API is `:19444`. `NEXT_PUBLIC_API_URL`
   is baked in at build time; the API's `WEB_ORIGIN` is set to the web address for CORS. Both stay tailnet-only.
 - **Secrets:** `.env` is copied once over SSH to the checkout (`~/Development/repos/ai-media-studio/.env`, mode 600)
   and passed with `--env-file`. It is never committed or put into an image.

@@ -7,9 +7,9 @@ Tailscale (`COMFYUI_URL`). The plan and the reasons behind it are in `docs/home-
 | Piece | Container | Where | Memory cap |
 |---|---|---|---|
 | Database | `ams-postgres` (Postgres 18, volume `ams-pgdata`) | inside the pod only | 512 MB |
-| API | `ams-api` (image `ams-server`) | 127.0.0.1:8097 -> https://fedora.tail36d2f8.ts.net:19444 | 768 MB |
+| API | `ams-api` (image `ams-server`) | 127.0.0.1:8097 -> https://<server>.<tailnet>.ts.net:19444 | 768 MB |
 | Worker | `ams-worker` (image `ams-server`) | none | 1.5 GB |
-| Web app | `ams-web` (image `ams-web`, standalone Next.js) | 127.0.0.1:8096 -> https://fedora.tail36d2f8.ts.net:19443 | 512 MB |
+| Web app | `ams-web` (image `ams-web`, standalone Next.js) | 127.0.0.1:8096 -> https://<server>.<tailnet>.ts.net:19443 | 512 MB |
 
 - **Pod:** all four containers run in the pod `ams`, so they reach each other on localhost.
 - **Files:** the checkout is `~/Development/repos/ai-media-studio`. Its `.env` (mode 600, never committed) holds the

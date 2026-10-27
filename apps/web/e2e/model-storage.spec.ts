@@ -35,7 +35,7 @@ test("Model storage: save, restart notice, persistence and validation", async ({
   await expect(section.getByRole("alert")).toHaveText("Choose an absolute folder path.");
   await input.fill("J:\\AI\\Models");
   await section.getByRole("button", { name: "Save model folder" }).click();
-  await expect(section.getByText(/Saved\. Restart Local Video Studio/)).toBeVisible();
+  await expect(section.getByText(/Saved\. Restart ComfyUI/)).toBeVisible();
   await page.reload();
   await expect(input).toHaveValue("J:\\AI\\Models");
   await expect(section.getByText("G:\\AI\\Models\\VideoStudio", { exact: true })).toBeVisible();
