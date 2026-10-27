@@ -30,7 +30,10 @@ os.environ.update({
     "COMFYUI_URL": "",
     # Claude is mocked; live-mode tests swap in a fake client explicitly.
     "LLM_MODE": "mock",
-    "ANTHROPIC_API_KEY": "",
+    # No real credentials from the developer's .env: routing must not depend on which keys this machine has.
+    **{k: "" for k in ("ANTHROPIC_API_KEY", "FAL_KEY", "GEMINI_API_KEY", "RUNWAY_API_KEY", "REPLICATE_API_TOKEN",
+                       "RUNPOD_API_KEY", "RUNPOD_WAN_CORE_ENDPOINT", "ELEVENLABS_API_KEY", "REACTOR_API_KEY",
+                       "PIKA_API_KEY", "WORLDLABS_API_KEY", "CODEX_BIN")},
 })
 
 import pytest  # noqa: E402
