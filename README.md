@@ -86,7 +86,7 @@ uses a tiled VAE decode to fit in 12 GB.
 Sample prompt: *A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.*
 
 Draft quality (768×448, 3 s) takes about 70 seconds on the tested GPU; standard (1280×704, 5 s) takes about
-seven minutes. Progress shows in the form and on the job card; the clip lands in the **Library**, where it
+seven minutes. The first job after ComfyUI starts also loads the model (about 40 seconds more). Progress shows in the form and on the job card; the clip lands in the **Library**, where it
 plays and downloads. A queued or running job can be canceled from its card.
 
 What happens: the worker fills [`workflows/comfy/wan22_ti2v_5b.json`](workflows/comfy/wan22_ti2v_5b.json)
