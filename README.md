@@ -5,6 +5,8 @@ meaningful controls, watch the job progress, and get the clip in your library, w
 hand. Behind the forms, the studio runs real ComfyUI graphs on your own GPU (or on RunPod) and, when you add
 keys, hosted models from fal.ai, Google, Runway, ElevenLabs and others.
 
+![Create video with Wan 2.2 5B running on a local GPU: the finished clip next to the form](docs/screenshots/finished.png)
+
 ```mermaid
 flowchart LR
   UI["Web app<br/>Next.js"] -->|REST + live events| API["API<br/>FastAPI"]
@@ -29,6 +31,8 @@ flowchart LR
 | **3D blocking and Worlds** | Block a scene with 3D models and Gaussian-splat worlds, render passes, re-render them as live action |
 | **Lipsync, voices, music, dubbing** | Talking shots, cloned voices, songs, dubbing in other languages |
 | **Templates** | One-form recipes: music videos, character vlogs, creature documentaries, effects |
+
+![Templates: guided recipes such as a bedtime story, a creature documentary or a dubbed video](docs/screenshots/templates.png)
 
 Every model is a YAML file in [`registry/`](registry/): its modes, parameters, prices and routes (which provider
 runs it). Adding a model, a preset or a template is mostly writing YAML. See [CLAUDE.md](CLAUDE.md) for the
@@ -86,8 +90,13 @@ uses a tiled VAE decode to fit in 12 GB.
 Sample prompt: *A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.*
 
 Draft quality (768×448, 3 s) takes about 70 seconds on the tested GPU; standard (1280×704, 5 s) takes about
-seven minutes. The first job after ComfyUI starts also loads the model (about 40 seconds more). Progress shows in the form and on the job card; the clip lands in the **Library**, where it
-plays and downloads. A queued or running job can be canceled from its card.
+seven minutes. The first job after ComfyUI starts also loads the model (about 40 seconds more). Progress shows in
+the form and on the job card; the clip lands in the **Library**, where it plays and downloads. A queued or running
+job can be canceled from its card.
+
+| Rendering on your GPU | In the library |
+|---|---|
+| ![A take rendering locally, 16% done](docs/screenshots/progress.png) | ![The library with local Wan 2.2 5B clips](docs/screenshots/library.png) |
 
 What happens: the worker fills [`workflows/comfy/wan22_ti2v_5b.json`](workflows/comfy/wan22_ti2v_5b.json)
 using its injection map ([`.map.yaml`](workflows/comfy/wan22_ti2v_5b.map.yaml): prompt, seed, size, length,
