@@ -46,12 +46,11 @@ function RailItem({ studio, active, wide }: { studio: Studio; active: boolean; w
       title={soon ? `${studio.name} arrives in ${studio.phase}` : studio.name}
       className={cn(
         "group relative flex h-9 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm transition-colors",
-        active ? "bg-raised text-chalk" : "text-muted hover:bg-panel hover:text-chalk",
+        active ? "lumen-selected bg-select text-chalk" : "text-muted hover:bg-chalk/5 hover:text-chalk",
         soon && !active && "text-faint",
       )}
     >
-      {active && <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-tungsten" aria-hidden />}
-      <Icon className="size-4 shrink-0" strokeWidth={1.75} aria-hidden />
+      <Icon className={cn("size-4 shrink-0", active && "text-tungsten")} strokeWidth={1.75} aria-hidden />
       <span className={cn("hidden truncate", wide && "lg:inline")}>{studio.name}</span>
       {soon && <span className={cn("ml-auto hidden text-2xs text-faint tabular", wide && "lg:inline")}>{studio.phase}</span>}
     </Link>
@@ -70,18 +69,14 @@ export function Rail() {
     <nav
       aria-label="Studios"
       className={cn(
-        "flex w-14 shrink-0 flex-col overflow-x-hidden overflow-y-auto border-r border-line-soft bg-bay px-2 py-4 scrollbar-quiet",
+        "flex w-14 shrink-0 flex-col overflow-x-hidden overflow-y-auto glass border-r border-line-soft px-2 py-4 scrollbar-quiet",
         wide && "lg:w-56 lg:px-3",
       )}
     >
-      <Link href="/create/video" className={cn("mb-6 flex h-8 items-center gap-2 px-1", wide && "lg:px-3")}>
-        <span
-          aria-hidden
-          className="grid size-6 place-items-center rounded-[4px] bg-tungsten text-[11px] font-bold text-bay"
-        >
-          M
-        </span>
-        <span className={cn("type-title hidden text-[15px]", wide && "lg:inline")}>Media Studio</span>
+      <Link href="/create/video" aria-label="Opsis" className={cn("mb-6 flex h-8 items-center gap-2.5 px-1", wide && "lg:px-2.5")}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/opsis.webp" alt="" width={26} height={26} className="size-[26px] shrink-0" />
+        <span className={cn("type-title hidden text-lg", wide && "lg:inline")}>Opsis</span>
       </Link>
 
       <div className="flex flex-col gap-0.5">
@@ -107,7 +102,7 @@ export function Rail() {
           onClick={() => setCollapsed(wide)}
           aria-label={wide ? "Collapse the sidebar" : "Expand the sidebar"}
           title={wide ? "Collapse the sidebar" : "Expand the sidebar"}
-          className="hidden h-9 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-faint transition-colors hover:bg-panel hover:text-chalk lg:flex"
+          className="hidden h-9 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm text-faint transition-colors hover:bg-chalk/5 hover:text-chalk lg:flex"
         >
           <Toggle className="size-4 shrink-0" strokeWidth={1.75} aria-hidden />
           {wide && <span className="truncate">Collapse</span>}

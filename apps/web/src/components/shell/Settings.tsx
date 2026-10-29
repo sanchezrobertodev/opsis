@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, LoaderCircle, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { api, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
@@ -152,12 +152,48 @@ export function Settings() {
           )}
         </section>
 
+        <Appearance />
         <ModelStorage />
         <Balances />
         <WhereItWent />
         <SpendHistory />
       </div>
     </div>
+  );
+}
+
+// Animations are on unless turned off in this browser: html[data-motion="off"], set before the first paint by the
+// root layout's script from localStorage "motion" (see the .aura and .ring-halo rules in globals.css)
+const motionListeners = new Set<() => void>();
+const subscribeMotion = (l: () => void) => {
+  motionListeners.add(l);
+  return () => void motionListeners.delete(l);
+};
+
+function setMotion(on: boolean) {
+  document.documentElement.dataset.motion = on ? "on" : "off";
+  try {
+    localStorage.setItem("motion", on ? "on" : "off");
+  } catch {}
+  motionListeners.forEach((l) => l());
+}
+
+function Appearance() {
+  const motion = useSyncExternalStore(subscribeMotion, () => document.documentElement.dataset.motion !== "off", () => true);
+  return (
+    <section className="space-y-5 lg:col-span-2">
+      <h2 className="type-title text-xl">Appearance</h2>
+      <div className="flex items-center justify-between gap-4 rounded-[var(--radius-panel)] bg-panel p-4">
+        <div>
+          <p className="text-sm">Animations</p>
+          <p className="mt-0.5 text-xs text-muted">
+            The lights behind the studio drift and the ring on Generate turns. Off keeps them still; your system&apos;s
+            reduce-motion setting stills them too. Saved in this browser.
+          </p>
+        </div>
+        <Switch label="Animations" checked={motion} onChange={setMotion} />
+      </div>
+    </section>
   );
 }
 

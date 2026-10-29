@@ -74,20 +74,26 @@ export function TakeCard({
   const now = useNow(active);
   const assets = gen.assets ?? [];
   const prompt = String(gen.request.prompt ?? "");
+  // the take's own picture, blurred under it as its light (a video's poster; none until it has one)
+  const picture = assets[0] && (assets[0].kind === "image" ? assets[0].thumb_url ?? assets[0].url : assets[0].poster_url);
 
   return (
     <article
-      className="flex flex-col gap-2"
+      className="glass flex flex-col gap-2.5 overflow-hidden rounded-2xl border border-line-soft p-2.5 pb-3"
       aria-label={`Take ${takeNumber}, ${modelName}, ${gen.status.replace("_", " ")}`}
     >
       {gen.status === "succeeded" && assets.length > 0 ? (
-        <div className={cn("grid gap-1", assets.length > 1 && "grid-cols-2")}>
+        <div className={cn("lumen grid gap-1", assets.length > 1 && "grid-cols-2")}>
+          {picture && <div aria-hidden className="lumen-glow" style={{ backgroundImage: `url("${mediaUrl(picture)}")` }} />}
           {assets.map((a) => (
             <Frame key={a.id} asset={a} aspect={aspectOf(gen, a)} onOpen={onOpen} />
           ))}
         </div>
       ) : active ? (
-        <Slate gen={gen} takeNumber={takeNumber} modelName={modelName} aspect={aspectOf(gen)} now={now} />
+        <div className="lumen">
+          <div aria-hidden className="lumen-glow lumen-glow-ring" />
+          <Slate gen={gen} takeNumber={takeNumber} modelName={modelName} aspect={aspectOf(gen)} now={now} />
+        </div>
       ) : (
         <Fault gen={gen} aspect={aspectOf(gen)} />
       )}
@@ -143,7 +149,7 @@ function Slate({
       <div aria-hidden className="absolute inset-x-0 top-0 h-2.5 bg-[repeating-linear-gradient(115deg,var(--color-chalk)_0_14px,var(--color-bay)_14px_28px)] opacity-80" />
       <div className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
         <span className="text-faint">Take</span>
-        <span className="type-title tabular text-chalk">{String(takeNumber).padStart(2, "0")}</span>
+        <span className="readout text-chalk">{String(takeNumber).padStart(2, "0")}</span>
         <span className="text-faint">Model</span>
         <span className="type-title truncate text-chalk">{modelName}</span>
         <span className="text-faint">Mode</span>
@@ -155,7 +161,7 @@ function Slate({
           <p className="truncate text-xs text-muted" aria-live="polite">
             {statusText}
           </p>
-          <p className="type-title tabular text-3xl leading-none text-chalk">{timecode(gen.created_at, now)}</p>
+          <p className="readout text-3xl leading-none tracking-tight text-chalk">{timecode(gen.created_at, now)}</p>
         </div>
         {gen.status === "unknown" ? (
           <button
@@ -357,7 +363,7 @@ function TakeFooter({
       <dl className="flex flex-wrap items-center gap-1.5 text-2xs">
         <div className="mr-0.5 text-muted">
           <dt className="sr-only">Take</dt>
-          <dd className="tabular">Take {String(takeNumber).padStart(2, "0")}</dd>
+          <dd className="readout">Take {String(takeNumber).padStart(2, "0")}</dd>
         </div>
         <div className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border px-2 py-1 font-medium", modelChipTone(modelFamily))}>
           <dt className="sr-only">Model</dt>
@@ -369,7 +375,7 @@ function TakeFooter({
         {duration && (
           <div className="inline-flex items-center gap-1 rounded-full border border-line bg-panel px-2 py-1 text-chalk">
             <dt className="sr-only">Duration</dt>
-            <dd className="tabular flex items-center gap-1">
+            <dd className="readout flex items-center gap-1">
               <Clock3 className="size-3 shrink-0 text-muted" aria-hidden />
               {duration}
             </dd>
@@ -378,7 +384,7 @@ function TakeFooter({
         {cost != null && gen.status !== "canceled" && (
           <div className="inline-flex items-center gap-1 rounded-full border border-done/25 bg-done/10 px-2 py-1 text-done">
             <dt className="sr-only">{gen.actual_cost_usd != null ? "Cost" : "Estimated cost"}</dt>
-            <dd className="tabular flex items-center gap-1">
+            <dd className="readout flex items-center gap-1">
               <Coins className="size-3 shrink-0" aria-hidden />
               {gen.actual_cost_usd == null && <span>Est.</span>}
               {usd(cost, { free: "free" })}

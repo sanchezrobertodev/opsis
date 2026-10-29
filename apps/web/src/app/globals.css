@@ -1,25 +1,33 @@
 @import "tailwindcss";
 
 /*
-  Grading-suite palette: neutral graphite surfaces so the footage carries the color.
-  Tungsten (the colour of practical film lights) is the only accent, kept for the primary action
-  and progress. Muted red is reserved for failures.
+  Opsis palette, "Graphite glass": graphite panes, partly see-through, over a room lit in the icon's colors (see
+  .aura), so the footage carries the color. Orange (tungsten) is the only accent, kept for the primary action and
+  progress; a blue-gray tint marks what's selected (the cool side of the icon's ring, against the orange of the
+  action); blue-gray text is for links and free things. Dark red is too dark for text: fills and borders only.
+  Panel, line and select are translucent; anything that floats over content (dialogs, menus) uses the solid sheet.
 */
 @theme {
-  --color-bay: #222326;
-  --color-panel: #2d2e32;
-  --color-raised: #37383d;
-  --color-line: #45464c;
-  --color-line-soft: #36373c;
-  --color-chalk: #ecebe7;
-  --color-muted: #a3a39e;
-  --color-faint: #76767a;
-  --color-tungsten: #f0a93b;
-  --color-tungsten-dim: #8a6a33;
+  --color-bay: #121111;
+  --color-panel: rgb(26 25 24 / 0.6);
+  --color-sheet: #1a1918;
+  --color-raised: #262321;
+  --color-line: rgb(255 253 248 / 0.12);
+  --color-line-soft: rgb(255 253 248 / 0.07);
+  --color-chalk: #fffdf8;
+  --color-muted: #9f9c97;
+  --color-faint: #85807b;
+  --color-tungsten: #f09e2e;
+  --color-tungsten-dim: #8a5a1f;
+  --color-beige: #fedfb0;
+  --color-select: rgb(105 139 148 / 0.32);
+  --color-ember: #7c1c04;
+  --color-steel: #698b94;
   --color-fault: #e5484d;
-  --color-done: #8fbfa8;
+  --color-done: #8fb3bc;
 
-  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
   --radius-frame: 3px;
   --radius-control: 6px;
@@ -37,7 +45,6 @@
     background: var(--color-bay);
     color: var(--color-chalk);
     font-family: var(--font-sans);
-    font-variation-settings: "wdth" 100;
     -webkit-font-smoothing: antialiased;
   }
   /* Tailwind v4 dropped the pointer on buttons; anything clickable should say so */
@@ -57,17 +64,27 @@
   }
 }
 
-@layer utilities {
-  /* Archivo's width axis: credits-style titles without a second typeface */
-  .type-title {
-    font-variation-settings: "wdth" 118;
-    font-weight: 600;
-    letter-spacing: -0.01em;
+@layer components {
+  /* a frosted pane: what's behind it shows through, blurred and a little richer */
+  .glass {
+    background-color: rgb(22 20 19 / 0.55);
+    -webkit-backdrop-filter: blur(28px) saturate(150%);
+    backdrop-filter: blur(28px) saturate(150%);
+    box-shadow: inset 0 1px 0 rgb(255 253 248 / 0.08), 0 24px 48px -28px rgb(0 0 0 / 0.85);
   }
-  .type-condensed {
-    font-variation-settings: "wdth" 82;
+}
+
+@layer utilities {
+  .type-title {
+    font-weight: 500;
+    letter-spacing: -0.02em;
   }
   .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  /* standalone figures (take numbers, timecodes, prices, counters) read like a camera's readout */
+  .readout {
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
   .scrollbar-quiet {
@@ -163,11 +180,141 @@
 .group:hover .glyph-fisheye { animation: glyph-fisheye 1.6s ease-in-out infinite; }
 .group:hover .glyph-dutch { animation: glyph-dutch 1.6s ease-in-out infinite; }
 
+/*
+  Lumen: the footage lights its glass. A take casts a soft glow of its own picture (a blurred copy under it), a
+  rendering take breathes the icon's ring instead, and Generate wears the ring, turning while anything renders.
+*/
+@property --ring-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: -30deg;
+}
+:root {
+  /* the icon's ring, read clockwise from the top */
+  --ring-stops: #0c0403, #698b94 14%, #9f9c97 28%, #fedfb0 44%, #f09e2e 60%, #7c1c04 76%, #0c0403 92%;
+}
+@keyframes ring-turn { to { --ring-angle: 330deg; } }
+@keyframes glow-breathe { 50% { opacity: 0.2; } }
+.lumen { position: relative; isolation: isolate; }
+.lumen-glow {
+  position: absolute;
+  inset: 4% -3% -6%;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: var(--radius-frame);
+  background-position: center;
+  background-size: cover;
+  filter: blur(32px) saturate(1.7);
+  opacity: 0.8;
+  transform: translateY(10px);
+}
+.lumen-glow-sm { inset: 0; filter: blur(14px) saturate(1.7); transform: translateY(6px); }
+.lumen-glow-ring {
+  background-image: conic-gradient(from var(--ring-angle), var(--ring-stops));
+  opacity: 0.45;
+  animation: glow-breathe 3s ease-in-out infinite, ring-turn 8s linear infinite;
+}
+.ring-button {
+  --ring-fill: var(--color-raised);
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--ring-fill), var(--ring-fill)) padding-box,
+    conic-gradient(from var(--ring-angle), var(--ring-stops)) border-box;
+  box-shadow: 0 0 26px -8px rgb(240 158 46 / 0.5);
+}
+/* solid: a see-through fill would show the ring's gradient through the button */
+.ring-button:hover:not(:disabled) { --ring-fill: #322d2a; }
+.ring-button[data-busy] { animation: ring-turn 6s linear infinite; }
+/* the page you're on, the chosen option: lit from inside */
+.lumen-selected { box-shadow: inset 0 1px 0 rgb(255 253 248 / 0.12), 0 0 20px -6px rgb(105 139 148 / 0.55); }
+
+/*
+  The room behind the glass, lit like a set in the icon's colors: a cool fill from the top right, a warm key low on
+  the left, an ember bounce under the takes, a faint beige spill from the top. Each light is a soft disc of its own,
+  so with animations on (Settings > Appearance; html[data-motion="off"] turns them off) they drift and swell and their
+  colors flow into each other; at rest they make the still version. A fine grain keeps the dark gradients from banding.
+*/
+.aura {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: #0c0b0b;
+}
+/* each light: a disc centered where the light comes from, as wide and tall as its reach */
+.aura-light { position: absolute; }
+.aura-beige {
+  left: -10%; top: -43%; width: 100%; height: 70%;
+  background: radial-gradient(closest-side, rgb(254 223 176 / 0.1), rgb(254 223 176 / 0.03) 50%, transparent 80%);
+}
+.aura-ember {
+  left: 13%; top: 57%; width: 130%; height: 110%;
+  background: radial-gradient(closest-side, rgb(124 28 4 / 0.6), rgb(124 28 4 / 0.24) 45%, rgb(124 28 4 / 0.06) 70%, transparent 90%);
+}
+.aura-warm {
+  left: -60%; top: 40%; width: 120%; height: 130%;
+  background: radial-gradient(closest-side, rgb(240 158 46 / 0.32), rgb(240 158 46 / 0.12) 40%, rgb(240 158 46 / 0.03) 65%, transparent 85%);
+}
+.aura-cool {
+  left: 15%; top: -80%; width: 150%; height: 140%;
+  background: radial-gradient(closest-side, rgb(105 139 148 / 0.42), rgb(105 139 148 / 0.16) 40%, rgb(105 139 148 / 0.05) 65%, transparent 85%);
+}
+.aura::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+}
+@keyframes aura-cool {
+  33% { transform: translate(-18vw, 12vh) scale(1.1); }
+  66% { transform: translate(-6vw, 24vh) scale(0.92); opacity: 0.75; }
+}
+@keyframes aura-warm {
+  40% { transform: translate(16vw, -20vh) scale(1.15); }
+  70% { transform: translate(28vw, -6vh) scale(0.95); opacity: 0.8; }
+}
+@keyframes aura-ember {
+  50% { transform: translate(-30vw, -10vh) scale(1.15); opacity: 0.8; }
+}
+@keyframes aura-beige {
+  50% { transform: translate(32vw, 8vh) scale(1.35); }
+}
+:root:not([data-motion="off"]) .aura-cool { animation: aura-cool 36s ease-in-out infinite; }
+:root:not([data-motion="off"]) .aura-warm { animation: aura-warm 30s ease-in-out infinite; }
+:root:not([data-motion="off"]) .aura-ember { animation: aura-ember 42s ease-in-out infinite; }
+:root:not([data-motion="off"]) .aura-beige { animation: aura-beige 48s ease-in-out infinite; }
+
+/*
+  With animations on, Generate's ring turns all the time and lights the panel under it (a blurred copy of the ring,
+  turning with it); the glow breathes while anything renders. Off, the ring turns only while something renders.
+*/
+@keyframes halo-breathe { 50% { opacity: 0.7; } }
+.ring-halo { display: none; }
+:root:not([data-motion="off"]) .ring-button { animation: ring-turn 6s linear infinite; }
+:root:not([data-motion="off"]) .ring-halo {
+  display: block;
+  inset: 8px 3% -2px;
+  border-radius: var(--radius-control);
+  background-image: conic-gradient(from var(--ring-angle), var(--ring-stops));
+  filter: blur(16px) saturate(1.4);
+  opacity: 0.35;
+  transform: none;
+  animation: ring-turn 6s linear infinite;
+}
+:root:not([data-motion="off"]) .lumen:has(> [data-busy]) > .ring-halo {
+  animation: ring-turn 6s linear infinite, halo-breathe 2.4s ease-in-out infinite;
+}
+.lumen:has(> :disabled) > .ring-halo { opacity: 0.12; }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

@@ -55,7 +55,7 @@ export function AssetViewer({ asset: initial, onClose }: { asset: Asset | null; 
       onClose={(e) => e.target === e.currentTarget && onClose()}
       onClick={(e) => e.target === ref.current && onClose()}
       aria-label={asset?.title ?? "Asset"}
-      className="m-auto h-[min(90dvh,860px)] w-[min(96vw,1280px)] max-w-none overflow-hidden rounded-[var(--radius-panel)] border border-line bg-panel p-0 text-chalk backdrop:bg-black/70"
+      className="m-auto h-[min(90dvh,860px)] w-[min(96vw,1280px)] max-w-none overflow-hidden rounded-[var(--radius-panel)] border border-line bg-sheet p-0 text-chalk backdrop:bg-black/70"
     >
       {asset && (
         <div className="grid h-full grid-cols-1 md:grid-cols-[1fr_340px]">

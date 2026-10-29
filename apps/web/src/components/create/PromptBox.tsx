@@ -109,7 +109,7 @@ export function PromptBox({
             )}
             {enhance.isPending ? "Enhancing" : "Enhance"}
           </button>
-          <span className={cn("tabular text-2xs", near ? "text-tungsten" : "text-faint")}>
+          <span className={cn("readout text-2xs", near ? "text-tungsten" : "text-faint")}>
             {value.length} / {max}
           </span>
         </span>
@@ -161,7 +161,7 @@ export function PromptBox({
           id={`${id}-mentions`}
           role="listbox"
           aria-label="Characters, locations and props"
-          className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-[var(--radius-control)] border border-line bg-panel py-1 shadow-lg shadow-black/40"
+          className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-[var(--radius-control)] border border-line bg-sheet py-1 shadow-lg shadow-black/40"
         >
           {matches.map((e, i) => (
             <li

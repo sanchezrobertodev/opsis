@@ -24,7 +24,7 @@ export function TopBar() {
 
       <div className="ml-auto flex items-center gap-2 text-xs text-muted">
         {running > 0 && (
-          <span className="tabular rounded-full bg-panel px-3 py-1 text-chalk">
+          <span className="tabular rounded-full border border-line-soft px-3 py-1 text-chalk">
             {running} rendering
           </span>
         )}
@@ -32,8 +32,10 @@ export function TopBar() {
           <Link
             href="/settings"
             className={cn(
-              "rounded-full px-3 py-1 transition-colors",
-              mode === "mock" ? "bg-panel hover:bg-raised" : "bg-tungsten/15 text-tungsten hover:bg-tungsten/25",
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 transition-colors",
+              mode === "mock"
+                ? "border-line-soft hover:bg-chalk/5 hover:text-chalk"
+                : "border-tungsten/30 bg-tungsten/10 text-tungsten hover:bg-tungsten/20",
             )}
             title={
               mode === "mock"
@@ -41,11 +43,12 @@ export function TopBar() {
                 : "Generations call real providers and are billed."
             }
           >
+            {mode === "mock" && <span className="size-1.5 rounded-full bg-steel" aria-hidden />}
             {mode === "mock" ? "Mock mode, nothing is billed" : mode === "mixed" ? "Mixed mode" : "Live"}
           </Link>
         )}
         {budget && (
-          <Link href="/settings" className="tabular rounded-full bg-panel px-3 py-1 hover:bg-raised">
+          <Link href="/settings" className="readout rounded-full border border-line-soft px-3 py-1 transition-colors hover:bg-chalk/5 hover:text-chalk">
             {usd(budget.today_usd)} today
           </Link>
         )}

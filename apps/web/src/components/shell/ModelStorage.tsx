@@ -37,7 +37,7 @@ export function ModelStorage() {
       </div>
       <div className="space-y-4 rounded-[var(--radius-panel)] bg-panel p-4">
         <p className="text-xs leading-relaxed text-muted">
-          Choose where ComfyUI stores new models on the computer running AI Media Studio’s server.
+          Choose where ComfyUI stores new models on the computer running the Opsis server.
           Existing model libraries remain available when you change this folder.
         </p>
         {query.isPending && <p className="text-sm text-muted">Loading model storage…</p>}

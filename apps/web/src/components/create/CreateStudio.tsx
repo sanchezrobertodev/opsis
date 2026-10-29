@@ -42,7 +42,7 @@ export function CreateStudio({
 
   return (
     <div className="flex h-full min-h-0">
-      <aside className="flex w-full max-w-[400px] shrink-0 flex-col border-r border-line-soft bg-panel/40">
+      <aside className="m-3 mr-0 flex w-[min(400px,calc(100%-1.5rem))] shrink-0 flex-col overflow-hidden glass rounded-2xl border border-line-soft">
         {header}
         <div className="min-h-0 flex-1">
           {error ? (
@@ -64,7 +64,7 @@ export function CreateStudio({
             <p className="mt-2 text-sm leading-relaxed text-muted">{EMPTY[studio]}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] items-start gap-x-5 gap-y-8">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] items-start gap-4">
             {items.map((g, i) => (
               <TakeCard
                 key={g.id}

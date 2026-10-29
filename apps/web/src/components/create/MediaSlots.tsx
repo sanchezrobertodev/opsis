@@ -32,22 +32,26 @@ function Chosen({ asset: a, label, onRemove }: { asset: SlotAsset; label: string
     onRemove(a.id);
     toast(`${a.title ?? "A file"} was deleted, so it was taken out of ${label}.`);
   }, [gone, a.id, a.title, label, onRemove]);
+  const picture = a.kind === "image" || a.thumb ? mediaUrl(a.thumb ?? a.url) : undefined;
   return (
-    <div className="group relative size-20 overflow-hidden rounded-[var(--radius-frame)] bg-raised">
-      {a.kind === "image" || a.thumb ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={mediaUrl(a.thumb ?? a.url)} alt={a.title ?? label} className="size-full object-cover" />
-      ) : (
-        <span className="grid size-full place-items-center text-2xs text-muted">{a.kind}</span>
-      )}
-      <button
-        type="button"
-        onClick={() => onRemove(a.id)}
-        aria-label={`Remove ${a.title ?? "media"}`}
-        className="absolute top-1 right-1 grid size-6 place-items-center rounded-full bg-bay/85 text-chalk opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-      >
-        <X className="size-3.5" aria-hidden />
-      </button>
+    <div className="lumen">
+      {picture && <div aria-hidden className="lumen-glow lumen-glow-sm" style={{ backgroundImage: `url("${picture}")` }} />}
+      <div className="group relative size-20 overflow-hidden rounded-[var(--radius-frame)] bg-raised">
+        {picture ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={picture} alt={a.title ?? label} className="size-full object-cover" />
+        ) : (
+          <span className="grid size-full place-items-center text-2xs text-muted">{a.kind}</span>
+        )}
+        <button
+          type="button"
+          onClick={() => onRemove(a.id)}
+          aria-label={`Remove ${a.title ?? "media"}`}
+          className="absolute top-1 right-1 grid size-6 place-items-center rounded-full bg-bay/85 text-chalk opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+        >
+          <X className="size-3.5" aria-hidden />
+        </button>
+      </div>
     </div>
   );
 }

@@ -5,11 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { api, ApiError, type ModelSummary, unwrap } from "@/lib/api";
+import { api, ApiError, isActive, type ModelSummary, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { useDraft } from "@/lib/draft";
 import { useDebounced } from "@/lib/hooks";
-import { type CreateBody, useCreateGeneration, useModel } from "@/lib/queries";
+import { type CreateBody, useCreateGeneration, useGenerations, useModel } from "@/lib/queries";
 import { KINDS, modeMatches, type StudioKind } from "@/lib/studioKinds";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 import { CompareDialog } from "./CompareDialog";
@@ -48,6 +48,9 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
       ? draft.modelId
       : (models.find((m) => m.id === preferred) ?? models[0])?.id;
   const { data: model } = useModel(modelId);
+  // the ring on Generate turns while anything renders (same query as the top bar's count)
+  const { data: gens } = useGenerations();
+  const rendering = gens?.items.some((g) => isActive(g.status)) ?? false;
 
   const modes = model ? (model.modes.filter((m) => modeMatches(m, ops)).length
     ? model.modes.filter((m) => modeMatches(m, ops))
@@ -350,15 +353,19 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
           </ul>
         )}
 
-        <Button
-          type="submit"
-          tone="primary"
-          size="lg"
-          className="w-full"
-          disabled={blockers.length > 0 || create.isPending}
-        >
-          {create.isPending ? "Starting…" : draft.takes > 1 ? `Generate ${draft.takes} takes` : "Generate"}
-        </Button>
+        <div className="lumen">
+          <div aria-hidden className="lumen-glow ring-halo" />
+          <Button
+            type="submit"
+            tone="ring"
+            size="lg"
+            className="w-full"
+            data-busy={rendering || undefined}
+            disabled={blockers.length > 0 || create.isPending}
+          >
+            {create.isPending ? "Starting…" : draft.takes > 1 ? `Generate ${draft.takes} takes` : "Generate"}
+          </Button>
+        </div>
         <button
           type="button"
           onClick={() => setComparing(true)}

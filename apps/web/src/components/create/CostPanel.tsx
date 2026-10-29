@@ -53,7 +53,7 @@ export function CostPanel({ cost, takes, chosen }: { cost: number | null; takes:
   return (
     <section aria-label="Cost" className="space-y-3 rounded-[var(--radius-panel)] bg-bay p-3">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="tabular text-2xl leading-none text-chalk">{usd(total)}</p>
+        <p className="readout text-2xl leading-none text-chalk">{usd(total)}</p>
         <p className="truncate text-xs text-muted">on {provider}</p>
       </div>
       {n > 1 && cost != null && (
