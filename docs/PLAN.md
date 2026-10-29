@@ -1,19 +1,18 @@
-# AI Media Studio — a Higgsfield-class AI video studio
+# Opsis — a Higgsfield-class AI video studio
 
 ## Context
-`C:\Dev\AI\AI-Media Studio` is empty (greenfield, no git). Goal: a personal AI video studio with Higgsfield's video
+The project started greenfield. Goal: a self-hosted AI video studio with Higgsfield's video
 feature set — Create Video, Edit Video, Motion Control, Motion Transfer, Object Swap, Character Creation, World
 Creation, Faceless Studio, Cinema Studio, 3D Jutsu (+ lipsync, effects, upscale…) — with access to the same model
 families. Video features first; image/audio only where the video features need them.
 
-Decisions made with the user:
-- **Audience:** personal studio first; every row carries `user_id` and auth/credits/billing hooks exist for later.
+Founding decisions:
+- **Audience:** a single-user studio first; every row carries `user_id` and auth/credits/billing hooks exist for later.
 - **Stack:** Next.js (TypeScript) web app + Python FastAPI API + Python worker.
-- **Local GPU:** RTX 5070 12GB + 64GB RAM → local runs light helpers only; heavy open models → RunPod.
-  The existing ComfyUI v0.34 portable in `C:\Dev\AI\VideoStudio` (Wan 2.2 TI2V-5B installed) becomes the
-  opt-in local route. No new local model installs in this plan.
+- **Local GPU:** a 12 GB consumer GPU runs light helpers only; heavy open models → RunPod.
+  A separately installed ComfyUI (v0.34, with Wan 2.2 TI2V-5B) is the opt-in local route. No other local model
+  installs in this plan.
 - **Model mix:** API-first (fal.ai aggregator + selected direct providers); open models on RunPod fill gaps.
-- **Folder:** rename to `C:\Dev\AI\ai-media-studio` (no spaces) before implementation starts.
 - **Storage:** local disk + per-provider uploads (no cloud bucket), behind a storage interface so R2 can be added later.
 
 ## Research findings that shape the design (Oct 2026)
@@ -217,16 +216,13 @@ CLAUDE.md                         conventions + "how to add a model" checklist
 - **Columns vs JSONB:** anything filtered, joined, unique or state-driving is a column. Anything whose shape varies
   per model, provider or recipe is versioned JSONB with a Pydantic model.
 
-### Reuse from existing folders
-- `C:\Dev\AI\RunpodVideos\runpod_video_client.py`: RunPod `/run` and status polling, terminal states,
-  base64-video handling → port into the `runpod` adapter.
-- `C:\Dev\AI\VideoStudio\workflows\*.app.json` + `setup\api\`: Wan 2.2 / FLUX.2 workflows tuned for the 5070 →
-  first `workflows/comfy` templates (convert to API format). Its ComfyUI at `127.0.0.1:8188` is the `comfy_local`
-  target.
-- `C:\Dev\AI\Videos\cryptid-video-production.md`: verified Seedance 2.5 per-route price notes → first pricing
-  entries.
-- `C:\Dev\AI\OpenMontage` (AGPL-3.0) and `MoneyPrinterTurbo`: ideas only (staged pipelines, shot prompt
-  layering). Copy no code.
+### Prior work it builds on
+- An earlier RunPod client (`/run` and status polling, terminal states, base64-video handling) → ported into the
+  `runpod` adapter.
+- Wan 2.2 / FLUX.2 ComfyUI workflows tuned for a 12 GB GPU → the first `workflows/comfy` templates (converted to API
+  format). A ComfyUI at `127.0.0.1:8188` is the `comfy_local` target.
+- Verified Seedance 2.5 per-route price notes → the first pricing entries.
+- OpenMontage (AGPL-3.0) and MoneyPrinterTurbo: ideas only (staged pipelines, shot prompt layering). Copy no code.
 
 ## Phased roadmap (video-first; each phase ships something usable)
 
@@ -236,7 +232,7 @@ history, last-frame continue, compare-across-models. The pipeline engine (planne
 sequence, compare and keyframe recipes plus ffmpeg assembly. P2 done except the Cinema Studio virtual model
 (folded into P5): director and camera moves, Motion control page, Elements/characters with @mentions,
 presets gallery, Claude enhance (mock until a key is added). The opt-in local ComfyUI route (Wan 2.2 5B,
-FLUX.2 klein) runs on the RTX 5070.
+FLUX.2 klein) runs on a 12 GB local GPU.
 P3 done (merged 2026-10-07, PR #1): Edit video studio (instruction edits on Aleph 2, Kling O3 Edit, Luma Ray 3.2 Modify,
 FLUX 3, Seedance 2.5 edit/extend, P-Video-Edit; Topaz and ByteDance upscalers; Topaz interpolation; Bria
 background removal; Kling video-to-audio; free local ffmpeg tools), Motion transfer studio (Kling 3.0 and 2.6
@@ -245,37 +241,37 @@ adapter on Public Endpoints (Wan 2.2 14B, P-Video-Edit, Kling 2.6 MC). Contracts
 published schemas; nothing has run live yet. The custom `wan-core` endpoint (infra/runpod/wan-core) is built:
 worker-comfyui 5.10.0 + our handler, a 118 GB model manifest for a network volume, and validated graphs for Wan 2.2
 14B t2v/i2v (Lightning), Fun Camera and Wan-Move, routed by the `runpod_comfy` adapter; camera moves with a native
-Fun Camera value now set its camera control. Deployed 2026-10-06 (endpoint ovktgiubxwld1j). All four workflows ran live through the studio ($0.09
+Fun Camera value now set its camera control. Deployed 2026-10-06. All four workflows ran live through the studio ($0.09
 each on an RTX PRO 6000). Wan-Move has a motion-path editor in the Create form (`type: paths` params: drag to draw,
-tap to pin). VACE (masked edit, the Object swap route), Uni3C (camera copied from a reference clip) and Animate-2 (motion transfer) followed on 2026-10-08 (AMS-11, AMS-32), each rendered live. Results over 5 MB now go to a fal storage slot made per job instead of the job's base64 result (AMS-14; handler 0.2.0).
+tap to pin). VACE (masked edit, the Object swap route), Uni3C (camera copied from a reference clip) and Animate-2 (motion transfer) followed on 2026-10-08, each rendered live. Results over 5 MB now go to a fal storage slot made per job instead of the job's base64 result (handler 0.2.0).
 P4 done (merged 2026-10-07, PR #2; mock-tested, nothing live yet): ElevenLabs TTS with word timings,
 SFX and music; Claude steps in the pipeline engine; the Faceless studio (4 themes, 12 styles with caption looks,
 channels, topic ideas, script approval and editing, narrated stills or animated clips, ducked music, burned-in
 captions plus SRT, thumbnail pick); and the Object swap studio (click to select on a frame with SAM 3, tracking, 1-3
 edit models compared, a composite that keeps every pixel outside the mask, removal). The Kids song mode and prompt rephrasing for refused
-takes (every recipe) landed 2026-10-09. Not done: the VACE swap route (AMS-32, blocked on the VACE weights on
-wan-core, AMS-11). Remaining work is tracked in Jira project AMS.
+takes (every recipe) landed 2026-10-09. Not done: the VACE swap route (blocked on the VACE weights on
+wan-core).
 P5 merged (PR #3, mock-tested): versioned film projects with revisions, Claude shot
 plans, a storyboard with per-shot direction, hero-frame grids, batch takes with last-frame continuity (an edit redoes
 only that shot and the shots chained after it), take picking, and a cut with trims and fades exported by ffmpeg.
-Also built: the Cinema Studio virtual model over Seedance 2.5 / Kling 3.0 / Veo 3.1 (AMS-38; the default film model),
+Also built: the Cinema Studio virtual model over Seedance 2.5 / Kling 3.0 / Veo 3.1 (the default film model),
 multi-shot scenes (Kling multi_prompt, Seedance timed prompt) cut back into per-shot takes, and per-shot extend
-after/before plus whole-take and region edits, each a new take linked to its parent (AMS-41), and the director's
+after/before plus whole-take and region edits, each a new take linked to its parent, and the director's
 Cinema Studio 4.0 vocabulary: 58 grades, eras by decade, focal lengths, a two-light console and an emotion wheel per
-cast member, with golden snapshots per dialect (AMS-37). The storyboard's cards drag between places and scenes (by
+cast member, with golden snapshots per dialect. The storyboard's cards drag between places and scenes (by
 keyboard too), shots duplicate and split (a filmed shot splits its take: each part plays its stretch), and each card
-shows its length, its status and what it cost or would cost to film (AMS-36). Hero frames come in 2×2 or 3×3 grids, and a shot can also pick a closing
-frame that its takes end on (AMS-39). The AI Director chat revises the storyboard in words and shows each answer
-as a diff to apply or discard (AMS-35). Checked live on 2026-10-09 (shot plan, AI Director chat, hero frames, a Kling multi-shot scene split into takes, a take, export), alongside a Faceless episode and a talking shot. The cut's Remotion preview,
-reordering, title cards and dialogue, music and SFX tracks followed later (AMS-42), timed in frames so the export
+shows its length, its status and what it cost or would cost to film. Hero frames come in 2×2 or 3×3 grids, and a shot can also pick a closing
+frame that its takes end on. The AI Director chat revises the storyboard in words and shows each answer
+as a diff to apply or discard. Checked live on 2026-10-09 (shot plan, AI Director chat, hero frames, a Kling multi-shot scene split into takes, a take, export), alongside a Faceless episode and a talking shot. The cut's Remotion preview,
+reordering, title cards and dialogue, music and SFX tracks followed later, timed in frames so the export
 matches the preview.
 P6 merged (PR #4, mock-tested): lipsync and talking-portrait models (Sync lipsync-3, Kling
 Avatar 2.0, OmniHuman 1.5 and VEED Fabric 1.0 on fal; InfiniteTalk on RunPod's public endpoint, flat $0.25/$0.50 a
 clip, so no wan-core volume growth), a `talking_shot` recipe (script -> TTS -> lipsync, optional compare and pick),
 the /lipsync studio with an A/B view, voices on characters, and dialogue lines on Cinema shots: models that voice
 dialogue (Veo 3.1, Seedance 2.5, Kling 3.0) get the lines in their prompt; others get each line voiced and the take
-lip-synced as a new take; a shot's speech can sit on the cut's dialogue track (AMS-42). Not yet: live takes on the
-new routes (AMS-8).
+lip-synced as a new take; a shot's speech can sit on the cut's dialogue track. Not yet: live takes on the
+new routes.
 P7 merged (PR #5, mock-tested): 3D blocking (/jutsu3d) with versioned scene
 documents; an R3F editor with primitives, a posable figure with pose presets, GLB import (thumbnails drawn in the
 browser), image-to-3D (TRELLIS.2, Hunyuan3D 3.1, Meshy 7.1 with rigging, Tripo P2), lights, cameras with focal
@@ -292,11 +288,10 @@ landed 2026-10-09. A normals-guided route was dropped: no hosted video model tak
 IC-LoRA and Cosmos Transfer take depth, edges, pose or segmentation), so the normals pass stays an export.
 P8 started: nightly database backups (pg_dump in the container, 14 days kept, restores that never drop anything;
 media needs its own copy) and a weekly provider schema check against saved baselines, which the contract tests also
-use offline (AMS-56, AMS-59). Character identities (AMS-55): a `lora_train` recipe trains a Wan 2.2 LoRA from a character's photos on fal and stores it on the Element; Wan 2.2 stills and video on fal load it when the character is mentioned. Still to come: the local gpu-worker (when asked), auth and R2.
-- **Step 0 — Handoff (this session, after approval):**
+use offline. Character identities: a `lora_train` recipe trains a Wan 2.2 LoRA from a character's photos on fal and stores it on the Element; Wan 2.2 stills and video on fal load it when the character is mentioned. Still to come: the local gpu-worker (optional), auth and R2.
+- **Step 0 — Handoff:**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.
-  3. The user renames the folder to `C:\Dev\AI\ai-media-studio` and reopens Claude Code there.
 - **P0 — Foundations:**
   - Scope: docker-compose Postgres; uv + pnpm workspace; Alembic baseline; local disk storage + streaming upload
     endpoint + Range media serving; registry schema/loader/lint with 3 models + mock routes; mock adapter; procrastinate
@@ -337,7 +332,7 @@ use offline (AMS-56, AMS-59). Character identities (AMS-55): a `lora_train` reci
   - Scope: R3F editor (primitives, mannequins, GLB import, image→3D, lights, keyframed camera), render passes →
     angles → animate, or depth video → VACE.
   - Scope: panoramas, Marble API splat worlds + Spark viewer + camera-path renders shared with 3D Jutsu.
-- **P8 — Local GPU, Soul ID, hardening (when the user is ready):**
+- **P8 — Local GPU, Soul ID, hardening (later):**
   - Scope: install the gpu-worker (SAM 2, DWPose, depth, WhisperX, Kokoro/Chatterbox, RIFE); LoRA training; nightly
     `pg_dump`; auth hook; R2 storage option.
 
@@ -356,10 +351,10 @@ use offline (AMS-56, AMS-59). Character identities (AMS-55): a `lora_train` reci
   enabled route, stops at the cap, and writes a report. Run it at the end of every phase.
 - **Manual:** run web + API + worker locally (browser pane preview) and exercise each studio end to end.
 
-## Accounts and keys (user supplies them when a phase needs them)
+## Accounts and keys (added when a phase needs them)
 - P1: fal.ai, Google Gemini API, Anthropic, Runway (and optionally Replicate).
 - P4: ElevenLabs.
-- P3: RunPod (already connected via MCP).
+- P3: RunPod.
 - Optional: OpenRouter, Higgsfield API (DoP, Genjutsu, Soul), World Labs (Marble), Kling direct, BytePlus.
 
 ## Risks and mitigations

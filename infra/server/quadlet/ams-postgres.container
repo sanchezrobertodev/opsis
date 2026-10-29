@@ -1,5 +1,5 @@
 [Unit]
-Description=AI Media Studio database (Postgres 18)
+Description=Opsis database (Postgres 18)
 Wants=network-online.target
 After=network-online.target
 

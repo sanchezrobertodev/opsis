@@ -1,4 +1,4 @@
-"""The registry follows its YAML in every process, so the worker never misses a model the API accepts (AMS-10)."""
+"""The registry follows its YAML in every process, so the worker never misses a model the API accepts."""
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Hourly AI Media Studio off-site copy
+Description=Hourly Opsis off-site copy
 
 [Timer]
 OnCalendar=hourly

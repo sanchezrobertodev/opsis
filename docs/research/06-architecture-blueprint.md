@@ -282,7 +282,7 @@ class ProviderAdapter(Protocol):
 | replicate | predictions | outputs deleted after 1 h; predict_time → actual cost |
 | runpod (custom endpoints) | httpx /run, /status, /cancel | workflow template + `.map.yaml` injection; patched handler (inputs by URL, VHS `gifs` outputs); cost = executionTime × GPU rate |
 | runpod (public endpoints) | same class, `public: true` routes | fixed schemas, per-run pricing |
-| comfy_local | /prompt, ws, /history, /view, /upload/image | same templates as RunPod; vram_gb gate 12; concurrency 1; disabled until `COMFYUI_URL` is set (target: `C:\Dev\AI\VideoStudio` ComfyUI) |
+| comfy_local | /prompt, ws, /history, /view, /upload/image | same templates as RunPod; vram_gb gate 12; concurrency 1; disabled until `COMFYUI_URL` is set (your own ComfyUI) |
 | local_tools | in-process ffmpeg (trim, concat, frame extract, crop-reframe, speed) | same job tray and lineage as everything else |
 | higgsfield, kling, byteplus, openrouter | declarative | alternate routes; Higgsfield-only features |
 | mock | ffmpeg + Pillow | see below |

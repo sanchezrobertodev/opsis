@@ -202,7 +202,7 @@
   "16": {
     "class_type": "SaveImage",
     "inputs": {
-      "filename_prefix": "ai-media-studio/flux2",
+      "filename_prefix": "opsis/flux2",
       "images": [
         "15",
         0

@@ -52,7 +52,7 @@ class Database:
 
 def _prefix() -> list[str]:
     """What runs the Postgres tools: `docker compose exec` into the dev container by default, nothing when they're
-    installed alongside (DB_EXEC empty, as in the home server's pod), or any command prefix DB_EXEC gives."""
+    installed alongside (DB_EXEC empty, as in infra/server's pod), or any command prefix DB_EXEC gives."""
     raw = get_settings().db_exec
     if raw is None:
         return ["docker", "compose", "-f", str(COMPOSE), "exec", "-T", "postgres"]

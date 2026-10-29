@@ -5,7 +5,7 @@ id: cinema-studio
 name: Cinema Studio
 kind: virtual
 family: cinema
-vendor: ai-media-studio
+vendor: opsis
 description: >-
   A director's camera over Seedance 2.5 (the engine behind Higgsfield Cinema Studio 4.0), Kling 3.0 and Veo 3.1.
   Era, camera, lens, aperture, tempo, genre, lighting and grade compile into the engine's own prompt style.

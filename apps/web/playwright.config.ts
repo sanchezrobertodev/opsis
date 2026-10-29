@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * End-to-end tests run against the mock provider only (PROVIDER_MODE=mock), so they cost nothing.
  * `pnpm e2e` reuses a running `pnpm dev`, or starts API + worker + web itself. To check another studio in mock mode
- * (the home server before it gets its keys), set E2E_BASE_URL to its web app and NEXT_PUBLIC_API_URL to its API.
+ * (a server deployment before it gets its keys), set E2E_BASE_URL to its web app and NEXT_PUBLIC_API_URL to its API.
  */
 const remote = process.env.E2E_BASE_URL;
 

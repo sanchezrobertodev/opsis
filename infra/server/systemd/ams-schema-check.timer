@@ -1,5 +1,5 @@
 [Unit]
-Description=Weekly AI Media Studio provider schema check
+Description=Weekly Opsis provider schema check
 
 [Timer]
 OnCalendar=Mon *-*-* 09:00

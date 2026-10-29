@@ -1,4 +1,4 @@
-"""AI Media Studio server package."""
+"""Opsis server package."""
 
 import mimetypes
 

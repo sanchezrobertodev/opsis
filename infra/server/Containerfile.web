@@ -1,4 +1,4 @@
-# The studio's web app for the home server: a standalone Next.js server (see infra/server/README.md).
+# The studio's web app for a Linux server: a standalone Next.js server (see infra/server/README.md).
 # Build from the repo root:
 #   podman build -f infra/server/Containerfile.web --ignorefile infra/server/.containerignore \
 #     --build-arg NEXT_PUBLIC_API_URL=https://<host>:19444 .

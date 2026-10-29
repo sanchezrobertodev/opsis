@@ -136,7 +136,7 @@ class RunPodComfyAdapter(RunPodAdapter):
         template = load_template(self.workflows_dir, endpoint)
         inputs: list[dict[str, str]] = []
         values = {k: _to_file(v, inputs) for k, v in payload.items()}
-        values["filename_prefix"] = f"ai-media-studio/{time.strftime('%Y-%m-%d')}/{client_ref[:8]}"
+        values["filename_prefix"] = f"opsis/{time.strftime('%Y-%m-%d')}/{client_ref[:8]}"
         if "seed" in template.map.inputs and values.get("seed") is None:
             values["seed"] = secrets.randbelow(2**32)  # a fresh take each time unless the user pinned a seed
         graph, warnings = template.render(values)

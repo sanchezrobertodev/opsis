@@ -60,7 +60,7 @@ routes:
     pricing:
       # Upscales: per second, assuming up to 1080p output at 30 fps (4x lands near 4K), at least 5 s a job. fal bills
       # per 10 s of output by resolution, "rounded once per job": a 3 s precision upscale of an 854x480 clip was billed
-      # $0.10 at 2x (1708x960) and $0.10 at 4x (3416x1920) (2026-10-08, AMS-9). Short clips cost $0.10 whatever the
+      # $0.10 at 2x (1708x960) and $0.10 at 4x (3416x1920) (2026-10-08). Short clips cost $0.10 whatever the
       # factor; the 4x rate below is a ceiling from the page's 4K price until a clip over 10 s shows the real one.
       # Interpolation: per new frame, i.e. frames added beyond what the clip already has.
       basis: per_request

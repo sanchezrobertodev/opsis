@@ -1,4 +1,4 @@
-# AI Media Studio on the home server: one pod, so the containers share localhost (Postgres on 5432 stays inside).
+# Opsis on a Linux server: one pod, so the containers share localhost (Postgres on 5432 stays inside).
 # deploy.sh fills in the @...@ values and installs this into ~/.config/containers/systemd/.
 [Pod]
 PodName=ams

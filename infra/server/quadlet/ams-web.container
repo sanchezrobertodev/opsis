@@ -1,5 +1,5 @@
 [Unit]
-Description=AI Media Studio web app
+Description=Opsis web app
 Wants=ams-api.service
 After=ams-api.service
 

@@ -1,4 +1,4 @@
-# AI Media Studio
+# Opsis
 
 An open-source, self-hosted AI video studio in the spirit of Higgsfield. Write a prompt, pick a model and a few
 meaningful controls, watch the job progress, and get the clip in your library, without wiring a node graph by
@@ -70,8 +70,7 @@ Open http://localhost:3000. The API runs on :8400 and the worker beside it. With
 
 This is the fully open path: Wan 2.2 TI2V 5B (Apache-2.0) in your own ComfyUI. It is free and works offline.
 
-**Hardware:** an NVIDIA GPU with 12 GB of VRAM (tested on an RTX 5070 12 GB with 64 GB of RAM). The workflow
-uses a tiled VAE decode to fit in 12 GB.
+**Hardware:** an NVIDIA GPU with 12 GB of VRAM or more. The workflow uses a tiled VAE decode to fit in 12 GB.
 
 1. Install [ComfyUI](https://github.com/comfyanonymous/ComfyUI) (portable or manual install; tested with
    ComfyUI 0.34). The workflow uses only built-in nodes, so no custom nodes are needed.
@@ -89,7 +88,7 @@ uses a tiled VAE decode to fit in 12 GB.
 
 Sample prompt: *A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.*
 
-Draft quality (768×448, 3 s) takes about 70 seconds on the tested GPU; standard (1280×704, 5 s) takes about
+Draft quality (768×448, 3 s) takes about 70 seconds on a recent 12 GB card; standard (1280×704, 5 s) takes about
 seven minutes. The first job after ComfyUI starts also loads the model (about 40 seconds more). Progress shows in
 the form and on the job card; the clip lands in the **Library**, where it plays and downloads. A queued or running
 job can be canceled from its card.
@@ -145,7 +144,7 @@ pnpm e2e
 `studio_test` database). `pnpm e2e` runs Playwright against the mock provider. After changing the API, run
 `pnpm gen` to refresh the TypeScript client. [`docs/PLAN.md`](docs/PLAN.md) is the roadmap and
 [`docs/research/06-architecture-blueprint.md`](docs/research/06-architecture-blueprint.md) the detailed design.
-[`infra/server/`](infra/server/) is an example home-server deployment (rootless Podman, systemd timers,
+[`infra/server/`](infra/server/) is an example deployment on a Linux server (rootless Podman, systemd timers,
 nightly backups).
 
 ## License
