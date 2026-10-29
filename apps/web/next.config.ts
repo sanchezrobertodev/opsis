@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { NextConfig } from "next";
 
-// The home server's image builds a standalone server (NEXT_OUTPUT=standalone, infra/server/Containerfile.web);
+// infra/server's web image builds a standalone server (NEXT_OUTPUT=standalone, infra/server/Containerfile.web);
 // it traces from the repo root so the workspace's api-client comes along.
 const standalone = process.env.NEXT_OUTPUT === "standalone";
 

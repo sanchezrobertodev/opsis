@@ -41,7 +41,7 @@ routes:
         steps: num_inference_steps
         guidance: guidance
         seed: seed
-        # 1280*720 is the documented default; 720*1280 for vertical gave a 720x1280 clip (2026-10-08, AMS-9)
+        # 1280*720 is the documented default; 720*1280 for vertical gave a 720x1280 clip (2026-10-08)
         aspect_ratio: {to: size, transform: enum_map, args: {values: {"16:9": "1280*720", "9:16": "720*1280"}}}
       media: {start_image: image}
     pricing:

@@ -22,20 +22,22 @@ reference clip, on the Wan 2.2 experts). The studio reaches it through the
   US-NE-1 has the RTX PRO 6000 plus standard volumes. A volume pins the endpoint to its data center.
 - **Endpoint** `wan-core`: queue-based, workers 0 to 2, GPU pool `BLACKWELL_96` (RTX PRO 6000, $3.49/h), idle
   timeout 60 s, execution timeout 3600 s, FlashBoot on. The `ADA_80_PRO` pool (H100, $4.79/h) was dropped on
-  2026-10-08 (AMS-13): every H100 job was slower and dearer, so a take now waits for a PRO 6000 instead.
+  2026-10-08: every H100 job was slower and dearer, so a take now waits for a PRO 6000 instead.
 - Costs: the volume is $0.07/GB/month ($14.00/month for 200 GB, grown from 130 GB on 2026-10-08 and 180 GB on 2026-10-11) whether or not you
   use it. Workers
   bill per second only while running, plus the 60 s idle tail. The first take after a pause also loads about
   35 GB of weights from the volume.
 
-## Deployed (2026-10-06)
+## Reference deployment (2026-10-06)
 
-| Resource | Id | Notes |
+What the endpoint was first set up with; create your own resources with the same settings.
+
+| Resource | Name | Notes |
 |---|---|---|
-| Image | `sanchezrobertodev/wan-core:0.4.0` | Docker Hub, public; 0.4.0 (2026-10-11) maps `latent_upscale_models` for LTX-2.5, 0.3.0 (2026-10-08) runs torch on CUDA 13, 0.2.0 puts big results in upload slots; older tags still there |
-| Network volume | `w5wwmiagkn` (`wan-core-models`) | 200 GB STANDARD, US-NE-1; the first 15 files fetched 2026-10-06 (14 min on a CPU pod), the VACE, Animate-2 and Uni3C groups 2026-10-08; the Wan t2v group swapped for the LTX group 2026-10-11 |
-| Template | `yjkg0eh9ka` (`wan-core-0.4.0`) | serverless, 30 GB container disk; `1nphescjl4` (0.3.0), `2gfqvv1ajl` (0.2.0) and `hgugk70qn7` (0.1.0) are the previous ones |
-| Endpoint | `ovktgiubxwld1j` (`wan-core`) | pool BLACKWELL_96 (ADA_80_PRO dropped 2026-10-08), workers 0 to 2, idle 60 s, timeout 3600 s |
+| Image | `sanchezrobertodev/wan-core:0.4.0` | the published image on Docker Hub (or build your own, below); 0.4.0 (2026-10-11) maps `latent_upscale_models` for LTX-2.5, 0.3.0 (2026-10-08) runs torch on CUDA 13, 0.2.0 puts big results in upload slots; older tags still there |
+| Network volume | `wan-core-models` | 200 GB STANDARD, US-NE-1; the first 15 files fetched 2026-10-06 (14 min on a CPU pod), the VACE, Animate-2 and Uni3C groups 2026-10-08; the Wan t2v group swapped for the LTX group 2026-10-11 |
+| Template | `wan-core-0.4.0` | serverless, 30 GB container disk; one template per image tag |
+| Endpoint | `wan-core` | pool BLACKWELL_96 (ADA_80_PRO dropped 2026-10-08), workers 0 to 2, idle 60 s, timeout 3600 s |
 
 First live take through the studio: Wan 2.2 14B Fast, text-to-video, 480p, 3 s. It took 92.7 s on an RTX PRO 6000
 from a cold worker, including loading the text encoder and both experts from the volume. Cost: $0.090, against a
@@ -53,13 +55,13 @@ All four workflows have now rendered through the studio (480p, 3 s, start frame 
 Every run was a cold load of that workflow's weights. On this job the H100 was about twice as slow and 2.6 times
 the price, and a 720p take on 0.2.0 landed there too (192 s, $0.336), so the `ADA_80_PRO` pool was dropped.
 
-Wan-Move pins (AMS-16, 2026-10-08): the "one path plus one pin" take, re-run twice with the same frame, paths and
+Wan-Move pins (2026-10-08): the "one path plus one pin" take, re-run twice with the same frame, paths and
 seed ($0.147 each), measured by phase correlation and frame differences. None of the takes moved the camera (0 px
 shift), and the pinned spot changed 3.1-3.2 / 255 between its first and last frame, the same as untouched background.
 Packing the pin with a disc of still tracks made it worse: Wan-Move drew the patch on as a visible ring (9.4 / 255).
 Asking for a locked-off camera in the prompt changed nothing measurable here, so neither change shipped.
 
-CUDA 13 (0.3.0, AMS-12, 2026-10-08): the base image's torch is cu128, and ComfyUI only turns on comfy-kitchen's CUDA
+CUDA 13 (0.3.0, 2026-10-08): the base image's torch is cu128, and ComfyUI only turns on comfy-kitchen's CUDA
 kernels (fused rope/norm, int8 and quantized-weight ops) with a cu130 torch, so 0.3.0 reinstalls the same torch 2.11 for
 CUDA 13 and the endpoint asks for hosts with CUDA 13 drivers (`minCudaVersion` 13.0; the PRO 6000 hosts report 13.2).
 Same takes and seeds on an RTX PRO 6000, one after another on one worker (cost includes the 60 s idle tail):
@@ -73,7 +75,7 @@ Same takes and seeds on an RTX PRO 6000, one after another on one worker (cost i
 The same seed twice is served from ComfyUI's cache (1.2 s), so warm runs need a new seed. Pictures from the same seeds
 look the same (small shifts from the different kernels). Cold times include reading weights from the volume, which varies.
 
-### VACE, Animate-2 and Uni3C (2026-10-08, AMS-11)
+### VACE, Animate-2 and Uni3C (2026-10-08)
 
 The three workflows use only nodes built into ComfyUI 0.34 (`WanVaceToVideo`, `WanAnimate2ToVideo` + `WanAnimate2Cache`,
 `ModelPatchLoader` + `WanUni3CControlnetApply`), so the image didn't change: the graphs travel with each request and
@@ -130,8 +132,6 @@ Rolled out 2026-10-11:
   against the $0.163 estimate. The clip is 1280x704, 24 fps, 49 frames, with an AAC stereo track (quiet lake ambience,
   -50 dB mean). The first try landed on a 0.3.0 worker before the rollout finished and failed at validation for $0.08.
 
-Left: deploy the studio (merge, then Deploy on the Hub).
-
 ## Big results (0.2.0)
 
 RunPod refuses very large job results, so the handler returns each output inline as base64 only while it is small.
@@ -164,7 +164,7 @@ what this image adds (the CUDA 13 torch layer, a few GB, from 0.3.0).
 
 ```bash
 docker run --rm --gpus all \
-  -v C:/Dev/AI/VideoStudio/models:/runpod-volume/models:ro \
+  -v <your ComfyUI folder>/models:/runpod-volume/models:ro \
   -v ./test_input.json:/test_input.json wan-core:local
 ```
 

@@ -1,7 +1,7 @@
 """wan-core RunPod worker: run one ComfyUI API workflow and return what it saved.
 
 Replaces worker-comfyui's /handler.py (its start.sh still launches ComfyUI first, then this file). Written for
-ai-media-studio's `runpod_comfy` adapter; the contract is plain JSON so anything else can call it too.
+Opsis's `runpod_comfy` adapter; the contract is plain JSON so anything else can call it too.
 
 Input (job["input"]):
   action:   "run" (default) | "check" | "fetch_models"

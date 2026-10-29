@@ -1,4 +1,4 @@
-"""Local ComfyUI adapter (a ComfyUI on this machine or the tailnet, at COMFYUI_URL).
+"""Local ComfyUI adapter (your ComfyUI at COMFYUI_URL, on this machine or another one the API can reach).
 
 Route endpoints name a workflow template in workflows/comfy. The canonical payload (built by
 registry/mapping.py) is injected into the template; inputs are uploaded through /upload/image.
@@ -30,8 +30,8 @@ from studio.providers.base import (
 from studio.providers.comfy_workflows import load_template
 from studio.registry.schema import Route
 
-CLIENT_ID = "ai-media-studio"
-INPUT_SUBFOLDER = "ai-media-studio"
+CLIENT_ID = "opsis"
+INPUT_SUBFOLDER = "opsis"
 OUTPUT_KEYS = ("images", "gifs", "videos", "video", "audio")
 
 
@@ -98,7 +98,7 @@ class ComfyLocalAdapter(ProviderAdapter):
 
     async def submit(self, route: Route, endpoint: str, payload: dict[str, Any], *, client_ref: str) -> SubmitResult:
         template = load_template(self.workflows_dir, endpoint)
-        values = {**payload, "filename_prefix": f"ai-media-studio/{time.strftime('%Y-%m-%d')}/{client_ref[:8]}"}
+        values = {**payload, "filename_prefix": f"opsis/{time.strftime('%Y-%m-%d')}/{client_ref[:8]}"}
         graph, warnings = template.render(values)
         try:
             async with self._client(timeout=30) as c:

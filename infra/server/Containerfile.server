@@ -1,4 +1,4 @@
-# The studio's API and worker for the home server (one image, two containers; see infra/server/README.md).
+# The studio's API and worker for a Linux server (one image, two containers; see infra/server/README.md).
 # Build from the repo root: podman build -f infra/server/Containerfile.server --ignorefile infra/server/.containerignore .
 FROM docker.io/library/python:3.12-slim-trixie
 

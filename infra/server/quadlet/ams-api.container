@@ -1,5 +1,5 @@
 [Unit]
-Description=AI Media Studio API
+Description=Opsis API
 Requires=ams-postgres.service
 After=ams-postgres.service
 

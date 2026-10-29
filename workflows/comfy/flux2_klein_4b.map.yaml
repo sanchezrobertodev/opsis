@@ -1,5 +1,5 @@
 # FLUX.2 klein base 4B (fp8) with a 4x Siax upscale scaled back to 1.5x.
-# Based on ComfyUI's FLUX.2 klein template (validated on an RTX 5070 12 GB).
+# Based on ComfyUI's FLUX.2 klein template (validated on a 12 GB GPU).
 description: FLUX.2 klein 4B text-to-image, upscaled 1.5x
 inputs:
   prompt: [{node: "4", input: text}]

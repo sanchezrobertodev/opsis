@@ -1,7 +1,7 @@
 """What runs for real: the provider mode (mock / mixed / live) and Claude's (mock / live).
 
 `.env` sets the most a studio may do (PROVIDER_MODE, LLM_MODE). The Settings switch stores a choice on the user's
-budget policy that can only be that or safer, and takes effect at once in the API and the worker, with no restart. A PC
+budget policy that can only be that or safer, and takes effect at once in the API and the worker, with no restart. A machine
 whose .env says mock can never be switched live from the app; with nothing chosen, .env applies.
 """
 

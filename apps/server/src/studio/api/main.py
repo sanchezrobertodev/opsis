@@ -67,7 +67,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="AI Media Studio API",
+    title="Opsis API",
     version="0.1.0",
     lifespan=lifespan,
     description="Personal AI video studio: model registry, generations, assets and live events.",

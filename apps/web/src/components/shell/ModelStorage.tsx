@@ -48,7 +48,7 @@ export function ModelStorage() {
             <Field label="Model download folder" htmlFor="model-download-folder"
               hint="Enter a full folder path. Model-type subfolders are created automatically. Existing files are not moved.">
               <input id="model-download-folder" type="text" value={directory} spellCheck={false}
-                autoComplete="off" placeholder="G:\AI\Models\ComfyUI" disabled={save.isPending}
+                autoComplete="off" placeholder="D:\Models\ComfyUI" disabled={save.isPending}
                 onChange={(event) => { setDraft(event.target.value); save.reset(); }}
                 className="h-10 w-full rounded-[var(--radius-control)] border border-line bg-bay px-3 text-sm outline-none focus:border-tungsten" />
             </Field>

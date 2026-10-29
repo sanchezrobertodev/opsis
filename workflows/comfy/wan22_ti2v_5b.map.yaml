@@ -1,5 +1,5 @@
 # Wan 2.2 TI2V 5B, one graph for text-to-video and image-to-video.
-# Based on ComfyUI's Wan 2.2 5B template (validated 2026-09-07 on an RTX 5070:
+# Based on ComfyUI's Wan 2.2 5B template (validated 2026-09-07 on a 12 GB GPU:
 # draft 768x448/73f ~66-71 s, standard 1280x704/121f ~400-461 s). Uses tiled VAE decode so 12 GB doesn't run out.
 description: Wan 2.2 TI2V 5B (fp16) with tiled decode
 inputs:

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Off-site copy of the studio's media and database dumps, run hourly by ams-offsite.timer (see README.md).
 # Media added or changed since the last run goes out as one tar (paths start with media/), new dumps as they are,
-# both with Taildrop to AMS_OFFSITE_TARGET (a device on the tailnet, set in .env; empty turns this off). On the
+# both with Taildrop to AMS_OFFSITE_TARGET (a device on the tailnet, set in .env; empty turns this off). On a
 # Windows PC, windows/collect-backups.ps1 files them away. A send that fails waits in data/offsite/outbox/ and is
-# tried again next hour; once anything has waited OFFSITE_STALE_HOURS (48) the unit fails, so the Hub shows it.
+# tried again next hour; once anything has waited OFFSITE_STALE_HOURS (48) the unit fails, so a failed-unit monitor shows it.
 set -euo pipefail
 shopt -s nullglob
 APP_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"

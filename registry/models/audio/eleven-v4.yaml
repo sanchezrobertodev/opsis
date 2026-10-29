@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=../../schema/model.schema.json
 # Prices from ElevenLabs' API pricing page, 2026-10-06. Voice ids are ElevenLabs' premade voices (stable for years);
-# the API model ids eleven_v4 / eleven_v4_turbo are unconfirmed until the first live run (AMS-8).
+# the API model ids eleven_v4 / eleven_v4_turbo are unconfirmed until the first live run.
 id: eleven-v4
 name: Eleven v4
 family: elevenlabs

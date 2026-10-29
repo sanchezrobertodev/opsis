@@ -68,7 +68,7 @@ def storage_info(settings: Settings) -> dict:
 def save_directory(settings: Settings, value: str) -> dict:
     raw = value.strip()
     if not raw or "\x00" in raw or raw.startswith(("\\\\", "//")):
-        raise ValueError("Enter an absolute folder path on this server, such as G:\\AI\\Models\\ComfyUI.")
+        raise ValueError("Enter an absolute folder path on this server, such as D:\\Models\\ComfyUI.")
     directory = Path(raw).expanduser()
     if not directory.is_absolute() or directory == Path(directory.anchor):
         raise ValueError("Choose an absolute folder path, not a drive root or a relative path.")

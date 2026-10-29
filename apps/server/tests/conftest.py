@@ -15,7 +15,7 @@ from pathlib import Path
 
 # Must be set before any studio import reads settings.
 _MEDIA = Path(tempfile.mkdtemp(prefix="studio-test-media-"))
-# The compose Postgres on the PC; STUDIO_TEST_PG points elsewhere (the home server's pod: 127.0.0.1:5432)
+# The compose Postgres (:5433); STUDIO_TEST_PG points elsewhere (infra/server's pod: 127.0.0.1:5432)
 PG_HOST, PG_PORT = os.environ.get("STUDIO_TEST_PG", "127.0.0.1:5433").rsplit(":", 1)
 os.environ.update({
     "DATABASE_URL": f"postgresql+asyncpg://studio:studio@{PG_HOST}:{PG_PORT}/studio_test",

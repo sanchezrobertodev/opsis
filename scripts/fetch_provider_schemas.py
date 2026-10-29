@@ -68,7 +68,7 @@ async def main() -> int:
     settings = get_settings()
     reg = load_registry(settings.resolve_registry_dir())
     async with httpx.AsyncClient(timeout=60, follow_redirects=True,
-                                 headers={"User-Agent": "ai-media-studio schema check"}) as client:
+                                 headers={"User-Agent": "opsis schema check"}) as client:
         report = await drift.run(reg, fetcher(client, asyncio.Semaphore(6)), settings, BASELINES,
                                  providers=set(args.provider or []) or None, update=args.update)
     day = date.today().isoformat()

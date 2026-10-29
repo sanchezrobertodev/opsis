@@ -65,7 +65,7 @@
   "58": {
     "class_type": "SaveVideo",
     "inputs": {
-      "filename_prefix": "ai-media-studio/wan22",
+      "filename_prefix": "opsis/wan22",
       "format": "mp4",
       "codec": "h264",
       "video": [
