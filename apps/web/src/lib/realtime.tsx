@@ -53,8 +53,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (msg.type === "generation.deleted") {
-        // removed from history (maybe from another tab): its outputs left the library too
-        invalidate("generations", "assets", "run");
+        // removed from history (maybe from another tab): its outputs left the library and a film's takes too
+        invalidate("generations", "assets", "run", "takes");
       } else if (msg.topic === "generation" && msg.subject_id) {
         const p = msg.payload as Partial<Generation> & { generation_id?: string };
         const patch: Partial<Generation> = {

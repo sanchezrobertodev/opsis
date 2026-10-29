@@ -113,9 +113,10 @@ async def list_generations(
                           next_cursor=_cursor(page[-1].created_at, page[-1].id) if more else None)
 
 
-async def _get_owned(session: AsyncSession, user: User, gid: uuid.UUID, *, lock: bool = False) -> Generation:
+async def _get_owned(session: AsyncSession, user: User, gid: uuid.UUID, *, lock: bool = False,
+                     deleted_ok: bool = False) -> Generation:
     gen = await session.get(Generation, gid, with_for_update=lock)
-    if gen is None or gen.user_id != user.id or gen.deleted_at is not None:
+    if gen is None or gen.user_id != user.id or (gen.deleted_at is not None and not deleted_ok):
         raise HTTPException(404, "generation not found")
     return gen
 
@@ -124,7 +125,8 @@ async def _get_owned(session: AsyncSession, user: User, gid: uuid.UUID, *, lock:
 async def get_generation(
     generation_id: uuid.UUID, session: AsyncSession = Depends(get_session), user: User = Depends(current_user)
 ) -> GenerationOut:
-    gen = await _get_owned(session, user, generation_id)
+    # still readable once deleted: outputs kept for a character or a project point back at it (a world's collider)
+    gen = await _get_owned(session, user, generation_id, deleted_ok=True)
     return (await _with_assets(session, [gen]))[0]
 
 

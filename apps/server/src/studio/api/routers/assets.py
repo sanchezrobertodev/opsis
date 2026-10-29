@@ -268,7 +268,7 @@ async def delete_asset(asset_id: uuid.UUID, session: AsyncSession = Depends(get_
     asset = await _owned(session, user, asset_id, lock=True)
     removed, kept = await remove_assets(session, user.id, [asset])
     if kept:
-        raise HTTPException(409, f"{kept[asset.id][0].upper()}{kept[asset.id][1:]} uses this. Remove it there first.")
+        raise HTTPException(409, f"{kept[asset.id][0].upper()}{kept[asset.id][1:]} uses this, so it can't be deleted yet.")
     await fsm.emit(session, user_id=user.id, topic="asset", type="asset.deleted", subject_id=asset_id,
                    payload={"asset_id": str(asset_id)})
     await session.commit()

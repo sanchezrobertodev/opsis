@@ -293,11 +293,25 @@ async def test_deleting_a_take_removes_its_files_and_keeps_what_others_use(clien
     storage = get_storage()
     assert not storage.path_for(loose.storage_key).exists()
     assert storage.path_for(used.storage_key).is_file()
-    assert (await client.get(f"/generations/{out['id']}")).status_code == 404
+    detail = await client.get(f"/generations/{out['id']}")  # still readable: the kept output points back at it
+    assert detail.status_code == 200 and [a["id"] for a in detail.json()["assets"]] == [str(used.id)]
     listed = (await client.get("/generations")).json()
     assert out["id"] not in [g["id"] for g in listed["items"]]
     async with session_scope() as s:
         assert len((await s.execute(ledger)).all()) == spent  # what it cost stays on the books
+
+
+async def test_files_a_take_still_rendering_needs_are_kept(client):
+    buf = io.BytesIO()
+    Image.new("RGB", (640, 360), (90, 60, 30)).save(buf, "PNG")
+    image = (await client.post("/uploads", files={"file": ("frame.png", buf.getvalue(), "image/png")})).json()
+    out = await create(client, model_id="veo-3.1", mode="i2v", prompt="animate",
+                       media=[{"role": "start_image", "asset_id": image["id"]}], params={"duration": 4})
+    r = await client.delete(f"/assets/{image['id']}")
+    assert r.status_code == 409 and "a take still rendering" in r.json()["detail"].lower()
+    gen = await drive(uuid.UUID(out["id"]))
+    assert gen.status == GenStatus.succeeded, gen.error_message
+    assert (await client.delete(f"/assets/{image['id']}")).status_code == 204
 
 
 async def test_show_in_folder_only_for_a_browser_on_this_machine(client, monkeypatch):
