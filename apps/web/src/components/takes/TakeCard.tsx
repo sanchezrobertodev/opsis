@@ -18,6 +18,7 @@ import {
 } from "@/lib/queries";
 import { SaveAsElement } from "@/components/characters/SaveAsElement";
 import { Button, Dialog } from "@/components/ui/controls";
+import { SelectMark } from "@/components/ui/Selection";
 
 const STATUS_TEXT: Record<string, string> = {
   queued: "Waiting for a worker",
@@ -67,12 +68,19 @@ export function TakeCard({
   modelName,
   modelFamily,
   onOpen,
+  selecting,
+  selected = false,
+  onToggle,
 }: {
   gen: Generation;
   takeNumber: number;
   modelName: string;
   modelFamily?: string;
   onOpen?: (asset: Asset) => void;
+  /** picking takes to delete together: the whole card toggles it (a take still rendering can't be picked) */
+  selecting?: boolean;
+  selected?: boolean;
+  onToggle?: () => void;
 }) {
   const active = isActive(gen.status);
   const now = useNow(active);
@@ -83,9 +91,26 @@ export function TakeCard({
 
   return (
     <article
-      className="glass flex flex-col gap-2.5 overflow-hidden rounded-2xl border border-line-soft p-2.5 pb-3"
+      className={cn(
+        "glass relative flex flex-col gap-2.5 overflow-hidden rounded-2xl border border-line-soft p-2.5 pb-3",
+        selected && "ring-2 ring-tungsten",
+      )}
       aria-label={`Take ${takeNumber}, ${modelName}, ${gen.status.replace("_", " ")}`}
     >
+      {selecting && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selected}
+          aria-label={`Select take ${takeNumber}`}
+          title={active ? "Still rendering" : undefined}
+          disabled={active}
+          onClick={onToggle}
+          className="absolute inset-0 z-10 flex items-start p-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-tungsten disabled:cursor-not-allowed"
+        >
+          {!active && <SelectMark selected={selected} />}
+        </button>
+      )}
       {gen.status === "succeeded" && assets.length > 0 ? (
         <div className={cn("lumen grid gap-1", assets.length > 1 && "grid-cols-2")}>
           {picture && <div aria-hidden className="lumen-glow" style={{ backgroundImage: `url("${mediaUrl(picture)}")` }} />}

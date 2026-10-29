@@ -153,6 +153,52 @@ export function useDeleteGeneration() {
   });
 }
 
+/** What deleting several at once did: how many went, what was kept and why, and what failed. */
+export type Removal = { deleted: number; kept: string[]; failed: string[] };
+
+function settle(results: PromiseSettledResult<string[]>[], keptOn409: boolean): Removal {
+  const out: Removal = { deleted: 0, kept: [], failed: [] };
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      out.deleted += 1;
+      out.kept.push(...r.value);
+    } else if (keptOn409 && r.reason instanceof ApiError && r.reason.status === 409) {
+      out.kept.push(r.reason.message);
+    } else {
+      out.failed.push(r.reason instanceof Error ? r.reason.message : String(r.reason));
+    }
+  }
+  return { ...out, kept: [...new Set(out.kept)] };
+}
+
+/** Deletes several takes; `kept` names what still uses outputs that stayed. */
+export function useDeleteGenerations() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) =>
+      settle(await Promise.allSettled(ids.map((id) =>
+        unwrap(api.DELETE("/generations/{generation_id}", { params: { path: { generation_id: id } } })).then((r) => r.kept),
+      )), false),
+    onSettled: () => {
+      for (const key of ["generations", "assets", "takes"]) void qc.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
+/** Deletes several library files; `kept` has the reason for each one something still uses. */
+export function useDeleteAssets() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) =>
+      settle(await Promise.allSettled(ids.map((id) =>
+        unwrap(api.DELETE("/assets/{asset_id}", { params: { path: { asset_id: id } } })).then(() => []),
+      )), true),
+    onSettled: () => {
+      for (const key of ["generations", "assets", "takes"]) void qc.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
 export function useResolveUnknown() {
   const qc = useQueryClient();
   return useMutation({

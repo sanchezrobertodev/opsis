@@ -3,10 +3,24 @@
 import { Star } from "lucide-react";
 import { useState } from "react";
 import { type Asset, mediaUrl } from "@/lib/api";
-import { seconds } from "@/lib/cn";
+import { cn, seconds } from "@/lib/cn";
+import { SelectMark } from "@/components/ui/Selection";
 
-/** Library tile. Videos scrub through their filmstrip sprite as the pointer moves across them. */
-export function AssetTile({ asset, onOpen }: { asset: Asset; onOpen: (a: Asset) => void }) {
+/** Library tile. Videos scrub through their filmstrip sprite as the pointer moves across them. While selecting,
+ * a press picks the tile instead of opening it. */
+export function AssetTile({
+  asset,
+  onOpen,
+  selecting,
+  selected = false,
+  onToggle,
+}: {
+  asset: Asset;
+  onOpen: (a: Asset) => void;
+  selecting?: boolean;
+  selected?: boolean;
+  onToggle?: () => void;
+}) {
   const [frame, setFrame] = useState<number | null>(null);
   const frames = asset.filmstrip_frames ?? 0;
   const canScrub = asset.kind === "video" && asset.filmstrip_url && frames > 1;
@@ -15,14 +29,19 @@ export function AssetTile({ asset, onOpen }: { asset: Asset; onOpen: (a: Asset) 
   return (
     <button
       type="button"
-      onClick={() => onOpen(asset)}
+      onClick={() => (selecting ? onToggle?.() : onOpen(asset))}
+      role={selecting ? "checkbox" : undefined}
+      aria-checked={selecting ? selected : undefined}
       onPointerMove={(e) => {
         if (!canScrub) return;
         const r = e.currentTarget.getBoundingClientRect();
         setFrame(Math.min(frames - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * frames))));
       }}
       onPointerLeave={() => setFrame(null)}
-      className="group relative block w-full overflow-hidden rounded-[var(--radius-frame)] bg-raised text-left"
+      className={cn(
+        "group relative block w-full overflow-hidden rounded-[var(--radius-frame)] bg-raised text-left",
+        selected && "ring-2 ring-tungsten ring-offset-2 ring-offset-bay",
+      )}
       style={{ aspectRatio: aspect }}
       aria-label={`${asset.kind} ${asset.title ?? ""}`.trim()}
     >
@@ -57,6 +76,11 @@ export function AssetTile({ asset, onOpen }: { asset: Asset; onOpen: (a: Asset) 
         <span className="truncate">{asset.title}</span>
         {asset.duration_ms ? <span className="tabular shrink-0">{seconds(asset.duration_ms)}</span> : null}
       </span>
+      {selecting && (
+        <span className="absolute top-2 left-2">
+          <SelectMark selected={selected} />
+        </span>
+      )}
       {asset.favorite && (
         <Star className="absolute top-2 right-2 size-3.5 fill-tungsten text-tungsten" aria-label="Favorite" />
       )}
