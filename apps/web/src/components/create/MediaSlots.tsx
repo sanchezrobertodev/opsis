@@ -3,10 +3,10 @@
 import { AudioLines, Film, ImagePlus, LoaderCircle, Library, Upload, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { type MediaSlot, mediaUrl } from "@/lib/api";
+import { ApiError, type MediaSlot, mediaUrl } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { SlotAsset } from "@/lib/draft";
-import { uploadFile, useAssets, usePatchAsset } from "@/lib/queries";
+import { uploadFile, useAsset, useAssets, usePatchAsset } from "@/lib/queries";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 
 const ACCEPT: Record<string, string> = { image: "image/*", video: "video/*", audio: "audio/*" };
@@ -19,6 +19,37 @@ function UploadIcon({ kinds }: { kinds: string[] }) {
   if (only === "video") return <Film className="size-4" aria-hidden />;
   if (only === "audio") return <AudioLines className="size-4" aria-hidden />;
   return <Upload className="size-4" aria-hidden />;
+}
+
+/** A file picked for a slot. One deleted since (a saved draft outlives it) leaves the slot, so it can't block a run. */
+function Chosen({ asset: a, label, onRemove }: { asset: SlotAsset; label: string; onRemove: (id: string) => void }) {
+  const { error } = useAsset(a.id);
+  const gone = error instanceof ApiError && error.status === 404;
+  const dropped = useRef(false);
+  useEffect(() => {
+    if (!gone || dropped.current) return;
+    dropped.current = true;
+    onRemove(a.id);
+    toast(`${a.title ?? "A file"} was deleted, so it was taken out of ${label}.`);
+  }, [gone, a.id, a.title, label, onRemove]);
+  return (
+    <div className="group relative size-20 overflow-hidden rounded-[var(--radius-frame)] bg-raised">
+      {a.kind === "image" || a.thumb ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={mediaUrl(a.thumb ?? a.url)} alt={a.title ?? label} className="size-full object-cover" />
+      ) : (
+        <span className="grid size-full place-items-center text-2xs text-muted">{a.kind}</span>
+      )}
+      <button
+        type="button"
+        onClick={() => onRemove(a.id)}
+        aria-label={`Remove ${a.title ?? "media"}`}
+        className="absolute top-1 right-1 grid size-6 place-items-center rounded-full bg-bay/85 text-chalk opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+      >
+        <X className="size-3.5" aria-hidden />
+      </button>
+    </div>
+  );
 }
 
 /**
@@ -112,22 +143,7 @@ export function MediaSlotField({
       </div>
       <div className="flex flex-wrap gap-2">
         {value.map((a) => (
-          <div key={a.id} className="group relative size-20 overflow-hidden rounded-[var(--radius-frame)] bg-raised">
-            {a.kind === "image" || a.thumb ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={mediaUrl(a.thumb ?? a.url)} alt={a.title ?? label} className="size-full object-cover" />
-            ) : (
-              <span className="grid size-full place-items-center text-2xs text-muted">{a.kind}</span>
-            )}
-            <button
-              type="button"
-              onClick={() => onRemove(a.id)}
-              aria-label={`Remove ${a.title ?? "media"}`}
-              className="absolute top-1 right-1 grid size-6 place-items-center rounded-full bg-bay/85 text-chalk opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-            >
-              <X className="size-3.5" aria-hidden />
-            </button>
-          </div>
+          <Chosen key={a.id} asset={a} label={label} onRemove={onRemove} />
         ))}
         {!full && (
           <div
