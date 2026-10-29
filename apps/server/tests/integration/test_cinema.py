@@ -333,6 +333,10 @@ async def test_restoring_a_version_unpicks_what_was_deleted_since(client, in_mem
         {"id": "sone", "action": "Waves", "take_asset_id": old},
         {"id": "stwo", "action": "Gulls", "take_asset_id": new}]}]}
     assert (await client.put(f"/projects/{pid}", json={"version": 1, "document": doc})).status_code == 200
+    r = await client.delete(f"/assets/{old}")
+    assert r.status_code == 409 and "the film" in r.json()["detail"].lower()  # the film still plays it
+    doc["scenes"][0]["shots"][0]["take_asset_id"] = None
+    assert (await client.put(f"/projects/{pid}", json={"version": 2, "document": doc})).status_code == 200
     assert (await client.delete(f"/assets/{old}")).status_code == 204
 
     r = await client.post(f"/projects/{pid}/revisions/2/restore")
@@ -342,7 +346,7 @@ async def test_restoring_a_version_unpicks_what_was_deleted_since(client, in_mem
     revisions = (await client.get(f"/projects/{pid}/revisions")).json()
     assert revisions[0]["note"] == "Restored version 2; 1 pick deleted since was cleared"
     # and the restored document saves like any other
-    assert (await client.put(f"/projects/{pid}", json={"version": 3, "document": r.json()["document"]})).status_code == 200
+    assert (await client.put(f"/projects/{pid}", json={"version": 4, "document": r.json()["document"]})).status_code == 200
 
 
 DIALOGUE = [{"who": "Nova", "text": "It goes dark tonight.", "voice_id": "XrExE9yKIg1WjnnlVkGX"},

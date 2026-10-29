@@ -268,3 +268,58 @@ def test_a_reported_cost_is_read_the_same_way_everywhere():
     assert _reported_cost({"cost_usd": 0}, free_ok=True) == Decimal("0")  # a finished one may have been free
     for bad in ("0.4", None, True, -1, {"usd": 1}):  # not a number: the estimate stands, nothing crashes
         assert _reported_cost({"cost_usd": bad}, free_ok=True) is None
+
+
+async def test_deleting_a_take_removes_its_files_and_keeps_what_others_use(client):
+    out = await create(client, model_id="nano-banana-2", mode="t2i", prompt="tidy up", params={"num_images": 2})
+    gen_id = uuid.UUID(out["id"])
+    assert (await client.delete(f"/generations/{out['id']}")).status_code == 409  # still queued
+    await drive(gen_id)
+    async with session_scope() as s:
+        assets = (await s.execute(select(Asset).where(Asset.generation_id == gen_id)
+                                  .order_by(Asset.output_index))).scalars().all()
+        ledger = select(SpendLedger.id).join(GenerationAttempt, SpendLedger.generation_attempt_id == GenerationAttempt.id
+                                             ).where(GenerationAttempt.generation_id == gen_id)
+        spent = len((await s.execute(ledger)).all())
+    used, loose = assets
+    r = await client.post("/elements", json={"kind": "character", "name": "Mara Vale",
+                                             "images": [{"asset_id": str(used.id), "view": "front"}]})
+    assert r.status_code == 201, r.text
+    assert (await client.delete(f"/assets/{used.id}")).status_code == 409
+
+    r = await client.delete(f"/generations/{out['id']}")
+    assert r.status_code == 200, r.text
+    assert r.json() == {"files_removed": 1, "kept": ["the character Mara Vale"]}
+    storage = get_storage()
+    assert not storage.path_for(loose.storage_key).exists()
+    assert storage.path_for(used.storage_key).is_file()
+    assert (await client.get(f"/generations/{out['id']}")).status_code == 404
+    listed = (await client.get("/generations")).json()
+    assert out["id"] not in [g["id"] for g in listed["items"]]
+    async with session_scope() as s:
+        assert len((await s.execute(ledger)).all()) == spent  # what it cost stays on the books
+
+
+async def test_show_in_folder_only_for_a_browser_on_this_machine(client, monkeypatch):
+    from studio.media import reveal
+
+    shown: list = []
+    monkeypatch.setattr(reveal, "in_container", lambda: False)
+    monkeypatch.setattr(reveal, "opener", lambda path: ["file-manager", str(path)])
+    monkeypatch.setattr(reveal, "reveal", shown.append)
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), (20, 120, 200)).save(buf, "PNG")
+    image = (await client.post("/uploads", files={"file": ("pic.png", buf.getvalue(), "image/png")})).json()
+
+    assert (await client.get("/health")).json()["reveal_files"] is True
+    assert (await client.post(f"/assets/{image['id']}/reveal")).status_code == 204
+    async with session_scope() as s:
+        asset = await s.get(Asset, uuid.UUID(image["id"]))
+    assert shown == [get_storage().path_for(asset.storage_key)]
+
+    proxied = {"X-Forwarded-For": "100.64.0.7"}  # e.g. a tailnet proxy in front of the API
+    assert (await client.get("/health", headers=proxied)).json()["reveal_files"] is False
+    assert (await client.post(f"/assets/{image['id']}/reveal", headers=proxied)).status_code == 403
+    monkeypatch.setattr(reveal, "in_container", lambda: True)
+    assert (await client.post(f"/assets/{image['id']}/reveal")).status_code == 403
+    assert shown == [get_storage().path_for(asset.storage_key)]

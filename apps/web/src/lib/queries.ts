@@ -133,6 +133,26 @@ export function useCancelGeneration() {
   });
 }
 
+/** Shows the file in this computer's file manager (only when `/health` says `reveal_files`). */
+export function useRevealAsset() {
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.POST("/assets/{asset_id}/reveal", { params: { path: { asset_id: id } } })),
+  });
+}
+
+/** Removes a take from history and its files from disk; the answer lists outputs kept because something uses them. */
+export function useDeleteGeneration() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.DELETE("/generations/{generation_id}", { params: { path: { generation_id: id } } })),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["generations"] });
+      qc.invalidateQueries({ queryKey: ["assets"] });
+    },
+  });
+}
+
 export function useResolveUnknown() {
   const qc = useQueryClient();
   return useMutation({

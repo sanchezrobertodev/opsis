@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock3, Coins, Download, ImageUp, RotateCcw, Star, StepForward, UserRoundPlus, X } from "lucide-react";
+import { Clock3, Coins, Download, FolderOpen, ImageUp, RotateCcw, Star, StepForward, Trash2, UserRoundPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { type Asset, type Generation, isActive, mediaUrl, viaOf } from "@/lib/api";
@@ -10,10 +10,14 @@ import {
   useCancelGeneration,
   useContinueFromLastFrame,
   useCreateGeneration,
+  useDeleteGeneration,
+  useHealth,
   usePatchAsset,
   useResolveUnknown,
+  useRevealAsset,
 } from "@/lib/queries";
 import { SaveAsElement } from "@/components/characters/SaveAsElement";
+import { Button, Dialog } from "@/components/ui/controls";
 
 const STATUS_TEXT: Record<string, string> = {
   queued: "Waiting for a worker",
@@ -266,6 +270,10 @@ function TakeFooter({
   const create = useCreateGeneration();
   const patch = usePatchAsset();
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const removal = useDeleteGeneration();
+  const reveal = useRevealAsset();
+  const { data: health } = useHealth();
   const continueShot = useContinueFromLastFrame();
   const first = assets[0];
   const cost = gen.actual_cost_usd ?? gen.estimated_cost_usd;
@@ -289,77 +297,93 @@ function TakeFooter({
     );
   }
 
+  function remove() {
+    removal.mutate(gen.id, {
+      onSuccess: (r) => {
+        setDeleting(false);
+        toast(r.kept.length ? `Take deleted. Kept what ${r.kept.join(", ")} uses.` : "Take deleted");
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete the take"),
+    });
+  }
+
   return (
     <div className="flex flex-col gap-2 px-0.5">
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
-        <div className="min-w-0 flex-1">
-          <p className="line-clamp-2 text-xs leading-relaxed text-chalk" title={prompt}>
-            {prompt || <span className="text-faint">No prompt</span>}
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-0.5">
-          {gen.status === "succeeded" && first && (
-            <>
-              <IconButton
-                label={first.favorite ? "Remove from favorites" : "Add to favorites"}
-                onClick={() => patch.mutate({ id: first.id, favorite: !first.favorite })}
-              >
-                <Star className={cn("size-4", first.favorite && "fill-tungsten text-tungsten")} aria-hidden />
-              </IconButton>
-              {first.kind === "image" && (
-                <IconButton
-                  label="Use as start frame for a video"
-                  onClick={() => {
-                    addMedia("video", "start_image", { id: first.id, kind: "image", thumb: first.thumb_url, url: first.url, title: first.title }, 1);
-                    setDraft("video", { mode: "i2v" });
-                    toast("Added as the start frame in Create video");
-                  }}
-                >
-                  <ImageUp className="size-4" aria-hidden />
-                </IconButton>
-              )}
-              {first.kind === "video" && (
-                <IconButton
-                  label="Continue from the last frame"
-                  onClick={() =>
-                    void continueShot
-                      .run(first.id)
-                      .then(() => toast("Last frame set as the start frame. Describe what happens next."))
-                      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "Could not grab the frame"))
-                  }
-                >
-                  <StepForward className="size-4" aria-hidden />
-                </IconButton>
-              )}
-              {first.kind === "image" && (
-                <IconButton label="Save as character" onClick={() => setSaving(true)}>
-                  <UserRoundPlus className="size-4" aria-hidden />
-                </IconButton>
-              )}
-              <a
-                href={mediaUrl(first.url)}
-                download
-                aria-label="Download"
-                title="Download"
-                className="grid size-8 place-items-center rounded-full text-muted hover:bg-raised hover:text-chalk"
-              >
-                <Download className="size-4" aria-hidden />
-              </a>
-            </>
-          )}
-          {!isActive(gen.status) && (
-            <IconButton label="Generate another take with the same settings" onClick={retry}>
-              <RotateCcw className="size-4" aria-hidden />
+      <div className="flex flex-wrap gap-0.5">
+        {gen.status === "succeeded" && first && (
+          <>
+            <IconButton
+              label={first.favorite ? "Remove from favorites" : "Add to favorites"}
+              onClick={() => patch.mutate({ id: first.id, favorite: !first.favorite })}
+            >
+              <Star className={cn("size-4", first.favorite && "fill-tungsten text-tungsten")} aria-hidden />
             </IconButton>
-          )}
-          <IconButton
-            label="Reuse this prompt"
-            onClick={() => setDraft(studio, { prompt, modelId: viaOf(gen)?.model_id ?? gen.model_id, mode: viaOf(gen)?.mode ?? gen.mode })}
-          >
-            <span className="text-2xs">Aa</span>
+            {first.kind === "image" && (
+              <IconButton
+                label="Use as start frame for a video"
+                onClick={() => {
+                  addMedia("video", "start_image", { id: first.id, kind: "image", thumb: first.thumb_url, url: first.url, title: first.title }, 1);
+                  setDraft("video", { mode: "i2v" });
+                  toast("Added as the start frame in Create video");
+                }}
+              >
+                <ImageUp className="size-4" aria-hidden />
+              </IconButton>
+            )}
+            {first.kind === "video" && (
+              <IconButton
+                label="Continue from the last frame"
+                onClick={() =>
+                  void continueShot
+                    .run(first.id)
+                    .then(() => toast("Last frame set as the start frame. Describe what happens next."))
+                    .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "Could not grab the frame"))
+                }
+              >
+                <StepForward className="size-4" aria-hidden />
+              </IconButton>
+            )}
+            {first.kind === "image" && (
+              <IconButton label="Save as character" onClick={() => setSaving(true)}>
+                <UserRoundPlus className="size-4" aria-hidden />
+              </IconButton>
+            )}
+            <a
+              href={mediaUrl(first.url)}
+              download
+              aria-label="Download"
+              title="Download"
+              className="grid size-8 place-items-center rounded-full text-muted hover:bg-raised hover:text-chalk"
+            >
+              <Download className="size-4" aria-hidden />
+            </a>
+            {health?.reveal_files && (
+              <IconButton label="Show in folder" onClick={() => reveal.mutate(first.id, { onError: (e) => toast.error(e instanceof Error ? e.message : "Could not show the file") })}>
+                <FolderOpen className="size-4" aria-hidden />
+              </IconButton>
+            )}
+          </>
+        )}
+        {!isActive(gen.status) && (
+          <IconButton label="Generate another take with the same settings" onClick={retry}>
+            <RotateCcw className="size-4" aria-hidden />
           </IconButton>
-        </div>
+        )}
+        <IconButton
+          label="Reuse this prompt"
+          onClick={() => setDraft(studio, { prompt, modelId: viaOf(gen)?.model_id ?? gen.model_id, mode: viaOf(gen)?.mode ?? gen.mode })}
+        >
+          <span className="text-2xs">Aa</span>
+        </IconButton>
+        {!isActive(gen.status) && (
+          <IconButton label="Delete this take" onClick={() => setDeleting(true)}>
+            <Trash2 className="size-4" aria-hidden />
+          </IconButton>
+        )}
       </div>
+      <p className="line-clamp-2 text-xs leading-relaxed text-chalk" title={prompt}>
+        {prompt || <span className="text-faint">No prompt</span>}
+      </p>
       <dl className="flex flex-wrap items-center gap-1.5 text-2xs">
         <div className="mr-0.5 text-muted">
           <dt className="sr-only">Take</dt>
@@ -395,6 +419,25 @@ function TakeFooter({
       {first?.kind === "image" && (
         <SaveAsElement asset={first} prompt={prompt} open={saving} onClose={() => setSaving(false)} />
       )}
+      <Dialog
+        open={deleting}
+        onClose={() => setDeleting(false)}
+        title={`Delete take ${String(takeNumber).padStart(2, "0")}?`}
+        footer={
+          <>
+            <Button tone="ghost" onClick={() => setDeleting(false)}>
+              Keep it
+            </Button>
+            <Button tone="danger" onClick={remove} disabled={removal.isPending}>
+              {removal.isPending ? "Deleting…" : "Delete"}
+            </Button>
+          </>
+        }
+      >
+        {assets.length > 0
+          ? "It leaves your history and its files are deleted from disk. This can't be undone. What it cost stays in your spending records."
+          : "It leaves your history. What it cost stays in your spending records."}
+      </Dialog>
     </div>
   );
 }

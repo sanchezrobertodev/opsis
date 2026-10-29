@@ -4,12 +4,12 @@ import base64
 import hashlib
 import mimetypes
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 import anyio
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +21,8 @@ from studio.db.models import Asset, AssetLineage, User
 from studio.domain import fsm
 from studio.domain.derived import frame_of
 from studio.domain.enums import AssetKind, AssetSource, AssetStatus
+from studio.domain.removal import delete_files, remove_assets
+from studio.media import reveal
 from studio.media.derive import image_thumb
 from studio.media.ffmpeg import FFmpegError, Probe, probe
 from studio.storage.base import asset_key
@@ -262,12 +264,29 @@ async def patch_asset(asset_id: uuid.UUID, body: AssetPatch, session: AsyncSessi
 @router.delete("/assets/{asset_id}", status_code=204)
 async def delete_asset(asset_id: uuid.UUID, session: AsyncSession = Depends(get_session),
                        user: User = Depends(current_user)) -> None:
-    """Soft delete: hidden from the library; files stay until a purge job (later) removes them."""
+    """Remove from the library and delete its files from disk. Refused while a character or a project uses it."""
     asset = await _owned(session, user, asset_id, lock=True)
-    asset.deleted_at = datetime.now(UTC)
+    removed, kept = await remove_assets(session, user.id, [asset])
+    if kept:
+        raise HTTPException(409, f"{kept[asset.id][0].upper()}{kept[asset.id][1:]} uses this. Remove it there first.")
     await fsm.emit(session, user_id=user.id, topic="asset", type="asset.deleted", subject_id=asset_id,
                    payload={"asset_id": str(asset_id)})
     await session.commit()
+    await delete_files(user.id, removed)
+
+
+@router.post("/assets/{asset_id}/reveal", status_code=204)
+async def reveal_asset(asset_id: uuid.UUID, request: Request, session: AsyncSession = Depends(get_session),
+                       user: User = Depends(current_user)) -> None:
+    """Show the file in this computer's file manager. Only for a browser on the machine the API runs on."""
+    if not reveal.can_reveal(request):
+        raise HTTPException(403, "Show in folder works only when the studio runs on this computer")
+    asset = await _owned(session, user, asset_id)
+    storage = get_storage()
+    path = storage.path_for(asset.storage_key)
+    if (storage.root / "u" / str(user.id)) not in path.parents or not path.is_file():
+        raise HTTPException(404, "file not found")
+    reveal.reveal(path)
 
 
 @router.get("/assets/{asset_id}/lineage", response_model=AssetLineageOut)

@@ -798,7 +798,12 @@ export interface paths {
         get: operations["get_generation_generations__generation_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Generation
+         * @description Remove a take from history and its files from disk. Spending records stay, and outputs a saved character or a
+         *     project still uses are kept (the answer says which).
+         */
+        delete: operations["delete_generation_generations__generation_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -909,13 +914,33 @@ export interface paths {
         post?: never;
         /**
          * Delete Asset
-         * @description Soft delete: hidden from the library; files stay until a purge job (later) removes them.
+         * @description Remove from the library and delete its files from disk. Refused while a character or a project uses it.
          */
         delete: operations["delete_asset_assets__asset_id__delete"];
         options?: never;
         head?: never;
         /** Patch Asset */
         patch: operations["patch_asset_assets__asset_id__patch"];
+        trace?: never;
+    };
+    "/assets/{asset_id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal Asset
+         * @description Show the file in this computer's file manager. Only for a browser on the machine the API runs on.
+         */
+        post: operations["reveal_asset_assets__asset_id__reveal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/assets/{asset_id}/lineage": {
@@ -2206,6 +2231,19 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** GenerationRemoved */
+        GenerationRemoved: {
+            /**
+             * Files Removed
+             * @description Outputs whose files were deleted from disk
+             */
+            files_removed: number;
+            /**
+             * Kept
+             * @description What still uses the outputs that were kept, e.g. 'the character Mara'
+             */
+            kept: string[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2244,6 +2282,12 @@ export interface components {
              * @default false
              */
             reloads_on_change: boolean;
+            /**
+             * Reveal Files
+             * @description This browser runs on the API's machine, so files can be shown in its file manager (POST /assets/{id}/reveal)
+             * @default false
+             */
+            reveal_files: boolean;
         };
         /** IntParam */
         IntParam: {
@@ -5827,6 +5871,37 @@ export interface operations {
             };
         };
     };
+    delete_generation_generations__generation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationRemoved"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cancel_generations__generation_id__cancel_post: {
         parameters: {
             query?: never;
@@ -6079,6 +6154,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AssetOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reveal_asset_assets__asset_id__reveal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

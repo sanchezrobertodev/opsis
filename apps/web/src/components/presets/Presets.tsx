@@ -27,8 +27,9 @@ import { Button, Dialog, Segmented, Select } from "@/components/ui/controls";
 
 const FILTERS = ["all", "guided", "camera", "effects", "look", "character", "product", "social", "edit"] as const;
 type Filter = (typeof FILTERS)[number];
-type Shelf = "video" | "image";
-const SHELVES: readonly Shelf[] = ["video", "image"];
+type Shelf = "all" | "video" | "image";
+const SHELVES: readonly Shelf[] = ["all", "video", "image"];
+const SHELF_LABEL: Record<Shelf, string> = { all: "All", video: "Video", image: "Image" };
 
 // every card's picture frame: an amber edge and a slight zoom say it opens
 const FRAME =
@@ -56,14 +57,14 @@ function priceText(p: Preset) {
 }
 
 export function Presets() {
-  const [shelf, setShelf] = useState<Shelf>("video");
+  const [shelf, setShelf] = useState<Shelf>("all");
   const [chosen, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<Preset | null>(null);
   const [openTemplate, setOpenTemplate] = useState<Template | null>(null);
   const { data, isLoading } = usePresets();
   const { data: templates } = useTemplates();
-  const onShelf = (data ?? []).filter((p) => (p.output_type === "image" ? "image" : "video") === shelf);
-  const stories = (templates ?? []).filter((t) => t.makes === shelf);
+  const onShelf = (data ?? []).filter((p) => shelf === "all" || (p.output_type === "image" ? "image" : "video") === shelf);
+  const stories = (templates ?? []).filter((t) => shelf === "all" || t.makes === shelf);
   // only the categories this shelf has; a choice the other shelf lacks falls back to everything
   const filters = FILTERS.filter(
     (f) => f === "all" || (f === "guided" ? stories.length > 0 : onShelf.some((p) => p.category === f)),
@@ -79,7 +80,7 @@ export function Presets() {
           label="Makes"
           value={shelf}
           options={SHELVES}
-          render={(s) => (s === "video" ? "Video" : "Image")}
+          render={(s) => SHELF_LABEL[s]}
           onChange={setShelf}
         />
         <Segmented

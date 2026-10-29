@@ -663,7 +663,7 @@ async def list_takes(project_id: uuid.UUID, shot_key: str | None = None, session
     has picked are always listed, however old, so the storyboard and the cut can show and export them."""
     p = await _project(session, user, project_id)
     q = select(Generation).where(Generation.project_id == p.id, Generation.user_id == user.id,
-                                 Generation.shot_key.is_not(None))
+                                 Generation.shot_key.is_not(None), Generation.deleted_at.is_(None))
     if shot_key:
         q = q.where(Generation.shot_key == shot_key)
     gens = list((await session.execute(q.order_by(Generation.created_at.desc()).limit(TAKES_PAGE))).scalars().all())

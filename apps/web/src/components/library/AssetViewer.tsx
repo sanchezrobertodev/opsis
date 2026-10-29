@@ -1,13 +1,21 @@
 "use client";
 
-import { Download, ImageUp, PersonStanding, Star, StepForward, Trash2, UserRoundPlus, X } from "lucide-react";
+import { Download, FolderOpen, ImageUp, PersonStanding, Star, StepForward, Trash2, UserRoundPlus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type Asset, mediaUrl } from "@/lib/api";
 import { cn, seconds } from "@/lib/cn";
 import { useDraft } from "@/lib/draft";
-import { useAsset, useContinueFromLastFrame, useDeleteAsset, useLineage, usePatchAsset } from "@/lib/queries";
+import {
+  useAsset,
+  useContinueFromLastFrame,
+  useDeleteAsset,
+  useHealth,
+  useLineage,
+  usePatchAsset,
+  useRevealAsset,
+} from "@/lib/queries";
 import { Button } from "@/components/ui/controls";
 import { SaveAsElement } from "@/components/characters/SaveAsElement";
 
@@ -28,10 +36,15 @@ export function AssetViewer({ asset: initial, onClose }: { asset: Asset | null; 
   const { data: lineage } = useLineage(asset?.id);
   const patch = usePatchAsset();
   const remove = useDeleteAsset();
+  const reveal = useRevealAsset();
+  const { data: health } = useHealth();
   const addMedia = useDraft((s) => s.addMedia);
   const setDraft = useDraft((s) => s.set);
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  // deleting removes the file from disk, so the first press only asks
+  const [confirmFor, setConfirmFor] = useState<string | null>(null);
+  const confirming = !!asset && confirmFor === asset.id;
   const continueShot = useContinueFromLastFrame();
 
   useEffect(() => {
@@ -228,21 +241,39 @@ export function AssetViewer({ asset: initial, onClose }: { asset: Asset | null; 
                 <Download className="size-4" aria-hidden />
                 Download
               </a>
+              {health?.reveal_files && (
+                <Button size="sm" onClick={() => reveal.mutate(asset.id, { onError: (e) => toast.error(e instanceof Error ? e.message : "Could not show the file") })}>
+                  <FolderOpen className="size-4" aria-hidden />
+                  Show in folder
+                </Button>
+              )}
+              {confirming && (
+                <Button size="sm" tone="ghost" className="ml-auto" onClick={() => setConfirmFor(null)}>
+                  Keep it
+                </Button>
+              )}
               <Button
                 size="sm"
                 tone="danger"
-                className="ml-auto"
+                className={confirming ? undefined : "ml-auto"}
+                disabled={remove.isPending}
                 onClick={() =>
-                  remove.mutate(asset.id, {
-                    onSuccess: () => {
-                      toast("Removed from your library");
-                      onClose();
-                    },
-                  })
+                  confirming
+                    ? remove.mutate(asset.id, {
+                        onSuccess: () => {
+                          toast("Deleted from your library and disk");
+                          onClose();
+                        },
+                        onError: (e) => {
+                          setConfirmFor(null);
+                          toast.error(e instanceof Error ? e.message : "Could not delete it");
+                        },
+                      })
+                    : setConfirmFor(asset.id)
                 }
               >
                 <Trash2 className="size-4" aria-hidden />
-                Remove
+                {confirming ? "Delete from disk" : "Delete"}
               </Button>
             </div>
           </aside>
