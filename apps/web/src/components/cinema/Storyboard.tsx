@@ -177,7 +177,9 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
   };
 
   const noFrames = shots.filter((x) => x.shot.action.trim() && !x.shot.hero_asset_id && x.shot.continuity === "cut");
-  const unfilmed = shots.filter((x) => x.shot.action.trim() && !x.shot.take_asset_id);
+  // a shot with finished takes waits for a pick, not for more filming
+  const unfilmed = shots.filter((x) => x.shot.action.trim() && !x.shot.take_asset_id
+    && !byShot(x.shot.id).some((t) => t.output_type === "video" && t.asset));
   const framesFor = (ids: string[], which: "start" | "end" = "start") => launch({ recipe: "cinema_frames", input: {
     project_id: projectId, image_model_id: doc.settings.image_model_id, aspect_ratio: doc.settings.aspect_ratio,
     count: doc.settings.hero_frames, which,
@@ -225,10 +227,10 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
               <div className="flex flex-wrap items-baseline gap-3">
                 <input value={scene.heading} onChange={(e) => patchScene(scene.id, { heading: e.target.value })}
                        placeholder="INT. / EXT. PLACE - TIME" aria-label="Scene heading"
-                       className="type-title min-w-56 bg-transparent text-base outline-none placeholder:text-faint" />
+                       className="type-title min-w-56 flex-1 bg-transparent text-base outline-none placeholder:text-faint" />
                 <input value={scene.summary} onChange={(e) => patchScene(scene.id, { summary: e.target.value })}
                        placeholder="What this scene is for" aria-label="Scene summary"
-                       className="min-w-0 flex-1 bg-transparent text-xs text-muted outline-none placeholder:text-faint" />
+                       className="min-w-56 flex-[2] bg-transparent text-xs text-muted outline-none placeholder:text-faint" />
                 {multiShot && sceneShots(scene).length >= 2 && (
                   <Button size="sm" tone="ghost" onClick={() => void filmScene(scene)}
                           title="Renders the scene's shots in one call, then gives each shot its piece as a take">
@@ -287,6 +289,8 @@ function shotStatus(shot: Shot, takes: Take[]): { label: string; tone: string; i
     return { label: "Rendering", tone: "text-tungsten", icon: <LoaderCircle className="size-3 animate-spin" aria-hidden /> };
   }
   if (shot.take_asset_id) return { label: "Filmed", tone: "text-done", icon: <Check className="size-3" aria-hidden /> };
+  const ready = takes.filter((t) => t.output_type === "video" && t.asset).length;
+  if (ready) return { label: `${ready} take${ready === 1 ? "" : "s"}, pick one`, tone: "text-tungsten" };
   if (!shot.action.trim()) return { label: "No description", tone: "text-faint" };
   const newest = takes.find((t) => t.output_type === "video");
   if (newest && newest.status !== "succeeded" && !takes.some((t) => t.output_type === "video" && t.asset)) {

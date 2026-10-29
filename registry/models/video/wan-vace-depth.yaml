@@ -24,8 +24,8 @@ modes:
     ops: [depth_to_video]
     medias:
       - {role: control_video, kinds: [video], label: Depth video, required: true, max_duration_s: 10}
-      - {role: image_references, kinds: [image], label: Reference pictures (optional), max: 3}
-      - {role: start_image, kinds: [image], label: First frame (optional)}
+      - {role: image_references, kinds: [image], label: Reference pictures, max: 3}
+      - {role: start_image, kinds: [image], label: First frame}
 
 elements: {strategy: refs_native, ref_role: image_references}
 

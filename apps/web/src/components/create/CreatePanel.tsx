@@ -333,6 +333,7 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
           liveProvider={liveRef?.provider_name ?? liveRef?.provider}
           takes={draft.takes}
           chosen={chosen}
+          pending={estimate.isFetching}
         />
 
         {blockers.length > 0 && (
@@ -416,8 +417,10 @@ function CostLine({
   liveProvider,
   takes,
   chosen,
+  pending,
 }: {
   chosen?: Schemas["CandidateOut"];
+  pending: boolean;
   chosenUsd: number | null;
   isMock: boolean;
   isLocal: boolean;
@@ -427,6 +430,13 @@ function CostLine({
   takes: number;
 }) {
   const n = Math.max(1, takes);
+  if (!chosen) {
+    return (
+      <p className="text-xs text-faint" aria-live="polite">
+        {pending ? "Working out the cost…" : "The cost shows here once the required inputs are in."}
+      </p>
+    );
+  }
   if (isLocal) {
     return (
       <p className="tabular text-xs text-muted">

@@ -98,7 +98,7 @@ modes:
     ops: [instruction_edit, restyle, relight]
     medias:
       - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 30, max_mb: 200}
-      - {role: image_references, kinds: [image], label: Reference images (optional), max: 9}
+      - {role: image_references, kinds: [image], label: Reference images, max: 9}
   - id: video_extension
     label: Extend
     ops: [extend]

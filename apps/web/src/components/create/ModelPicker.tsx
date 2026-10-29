@@ -73,6 +73,7 @@ export function ModelPicker({
                   setOpen(false);
                 }}
                 aria-pressed={m.id === value}
+                data-autofocus={m.id === value || undefined}
                 className={cn(
                   "flex h-full w-full flex-col gap-2 rounded-[var(--radius-control)] border p-4 text-left transition-colors",
                   m.id === value ? "border-tungsten/60 bg-raised" : "border-line-soft hover:border-line hover:bg-raised/60",

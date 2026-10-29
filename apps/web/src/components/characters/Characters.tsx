@@ -480,7 +480,7 @@ function IdentityPanel({ element }: { element: Element }) {
 
 const TRAITS: { key: string; label: string; options: string[] }[] = [
   { key: "style", label: "Style", options: ["photoreal", "cinematic film still", "anime", "stylized 3D animation", "graphic novel"] },
-  { key: "age", label: "Age", options: ["child", "teenager", "in their twenties", "in their thirties", "middle-aged", "elderly"] },
+  { key: "age", label: "Age", options: ["young", "teenage", "twenty-something", "thirty-something", "middle-aged", "elderly"] },
   { key: "presentation", label: "Presentation", options: ["woman", "man", "androgynous person", "non-human creature"] },
   { key: "build", label: "Build", options: ["slight", "athletic", "average", "broad", "heavyset", "very tall"] },
   { key: "hair", label: "Hair", options: ["short curly", "long straight", "shaved", "braided", "messy shoulder-length", "slicked back", "bald"] },
@@ -491,16 +491,20 @@ const TRAITS: { key: string; label: string; options: string[] }[] = [
   { key: "archetype", label: "Archetype", options: ["hero", "rebel", "mentor", "trickster", "villain", "everyday person"] },
 ];
 
+const withArticle = (phrase: string) => `${/^[aeiou]/i.test(phrase) ? "an" : "a"} ${phrase}`;
+
 function describe(traits: Record<string, string>, heritage: string): string {
-  const who = [traits.age && `${traits.age}`, heritage, traits.presentation].filter(Boolean).join(" ");
+  const who = traits.age || heritage || traits.presentation
+    ? [traits.age, heritage, traits.presentation || "person"].filter(Boolean).join(" ")
+    : "";
   const parts = [
-    who && `a ${who}`,
+    who && withArticle(who),
     traits.build && `${traits.build} build`,
     (traits.hair || traits.hair_color) && `${[traits.hair, traits.hair_color].filter(Boolean).join(" ")} hair`,
     traits.eyes && `${traits.eyes} eyes`,
-    traits.outfit && `wearing a ${traits.outfit}`,
+    traits.outfit && `wearing ${withArticle(traits.outfit)}`,
     traits.detail,
-    traits.archetype && `the look of a ${traits.archetype}`,
+    traits.archetype && `the look of ${withArticle(traits.archetype)}`,
   ].filter(Boolean);
   return parts.join(", ");
 }

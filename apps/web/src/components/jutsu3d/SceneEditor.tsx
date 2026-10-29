@@ -142,7 +142,7 @@ export function SceneEditor({ id }: { id: string }) {
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-3 border-b border-line-soft px-5 py-2.5">
         <input value={title ?? project.title} onChange={(e) => setTitle(e.target.value)} aria-label="Scene title"
-               className="type-title min-w-0 flex-1 bg-transparent text-lg outline-none" />
+               className="type-title min-w-64 flex-1 bg-transparent text-lg outline-none" />
         <span className={cn("tabular text-2xs", dirty ? "text-tungsten" : "text-faint")} aria-live="polite">{status}</span>
         <Button size="sm" tone="ghost" aria-label="Undo" onClick={undo} disabled={!canUndo}><Undo2 className="size-4" aria-hidden /></Button>
         <Button size="sm" tone="ghost" aria-label="Redo" onClick={redo} disabled={!canRedo}><Redo2 className="size-4" aria-hidden /></Button>

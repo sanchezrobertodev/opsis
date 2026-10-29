@@ -15,7 +15,8 @@ prompt: {max_chars: 5000, dialect: default, dialogue: true}
 aspect_ratios: ["16:9", "1:1", "9:16", "4:3"]
 duration: {min: 5.875, max: 14.375, default: 5.875}
 parameters:
-  - {name: duration, label: Duration (s), type: enum, options: ["5.875", "8", "10.125", "12.25", "14.375"], default: "5.875"}
+  - {name: duration, label: Duration, type: enum, options: ["5.875", "8", "10.125", "12.25", "14.375"], default: "5.875",
+     labels: {"5.875": "About 6 s", "8": "8 s", "10.125": "About 10 s", "12.25": "About 12 s", "14.375": "About 14 s"}}
   - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "1:1", "9:16", "4:3"], default: "16:9", ui: aspect}
   - {name: session_seconds, label: Session spending cap (seconds), type: enum, options: [30, 60, 120], default: 60,
      help: "30s = $0.375, 60s = $0.75, 120s = $1.50 maximum session charge at the verified rate. Short caps can expire before saving. Failed sessions can still cost money."}

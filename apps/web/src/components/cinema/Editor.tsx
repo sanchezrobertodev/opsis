@@ -91,7 +91,7 @@ export function CinemaEditor({ id }: { id: string }) {
           value={title}
           onChange={(e) => setEdited({ doc: edited?.doc ?? doc, title: e.target.value })}
           aria-label="Film title"
-          className="type-title min-w-0 flex-1 bg-transparent text-lg outline-none focus:text-chalk"
+          className="type-title min-w-64 flex-1 bg-transparent text-lg outline-none focus:text-chalk"
         />
         <span className={cn("tabular text-2xs", edited ? "text-tungsten" : "text-faint")} aria-live="polite">{status}</span>
         {active && <span className="text-2xs text-tungsten">Rendering…</span>}

@@ -490,11 +490,16 @@ function TemplateForm({ template }: { template: Template }) {
                 )}
                 <span className="text-faint">, capped at {usd(est.cap_usd)}</span>
               </>
+            ) : missing.length > 0 ? (
+              <span className="text-faint">Shown once the form is filled in</span>
+            ) : run && estimate.isError ? (
+              <span className="text-faint">Couldn&rsquo;t work it out</span>
+            ) : run || busy ? (
+              <span className="text-faint">Working it out&hellip;</span>
             ) : (
               <button
                 type="button"
-                className="text-muted underline-offset-2 hover:underline disabled:opacity-50"
-                disabled={busy || missing.length > 0}
+                className="text-muted underline-offset-2 hover:underline"
                 onClick={() => void rendered().catch(() => undefined)}
               >
                 Check the cost

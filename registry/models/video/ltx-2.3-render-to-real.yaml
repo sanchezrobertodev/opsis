@@ -42,7 +42,7 @@ modes:
     prompt: optional
     medias:
       - {role: input_video, kinds: [video], label: 3D render, required: true, max_duration_s: 20}
-      - {role: start_image, kinds: [image], label: First frame (optional)}
+      - {role: start_image, kinds: [image], label: First frame}
 
 routes:
   - id: ltx-2.3-render-to-real@fal

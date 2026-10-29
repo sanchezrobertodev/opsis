@@ -26,7 +26,7 @@ modes:
     medias:
       - {role: input_video, kinds: [video], label: Clip, required: true, max_duration_s: 5}
       - {role: mask, kinds: [mask_video], label: Mask (white = change), required: true}
-      - {role: image_references, kinds: [image], label: Looks like (optional), max: 1}
+      - {role: image_references, kinds: [image], label: Looks like, max: 1}
 
 routes:
   - id: wan-vace@wan_core

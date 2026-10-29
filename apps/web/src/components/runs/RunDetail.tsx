@@ -121,9 +121,32 @@ function Media({ asset, className }: { asset: Asset; className?: string }) {
       playsInline
       className={cn("bg-black", className)}
     />
+  ) : asset.kind === "audio" ? (
+    <audio src={mediaUrl(asset.url)} controls className={cn("w-full", className)} />
   ) : (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={mediaUrl(asset.url)} alt={asset.title ?? ""} className={className} />
+  );
+}
+
+/** A step's result, small: a picture where there is one, a player for sound, else its name. */
+function StepAsset({ asset }: { asset: Asset }) {
+  const picture = asset.thumb_url ?? asset.poster_url ?? (asset.kind === "image" || asset.kind === "mask" ? asset.url : null);
+  if (picture) {
+    return (
+      <span className="h-16 w-28 overflow-hidden rounded-[var(--radius-frame)] bg-bay">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={mediaUrl(picture)} alt={asset.title ?? ""} className="size-full object-cover" />
+      </span>
+    );
+  }
+  if (asset.kind === "audio") {
+    return <audio src={mediaUrl(asset.url)} controls aria-label={asset.title ?? "Sound"} className="h-10 w-64" />;
+  }
+  return (
+    <span className="flex h-16 w-28 items-center justify-center rounded-[var(--radius-frame)] bg-bay px-2 text-center text-2xs text-muted">
+      {asset.title ?? asset.kind}
+    </span>
   );
 }
 
@@ -177,12 +200,9 @@ function StepRow({ run, step }: { run: Run; step: Step }) {
       </div>
       {step.error && <p className="mt-2 pl-6 text-xs leading-relaxed text-fault">{step.error}</p>}
       {step.assets.length > 0 && (
-        <div className="mt-3 flex gap-2 pl-6">
+        <div className="mt-3 flex flex-wrap items-center gap-2 pl-6">
           {step.assets.slice(0, 4).map((a) => (
-            <span key={a.id} className="h-16 w-28 overflow-hidden rounded-[var(--radius-frame)] bg-bay">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={mediaUrl(a.thumb_url ?? a.poster_url ?? a.url)} alt={a.title ?? ""} className="size-full object-cover" />
-            </span>
+            <StepAsset key={a.id} asset={a} />
           ))}
         </div>
       )}

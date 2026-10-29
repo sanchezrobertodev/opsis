@@ -35,7 +35,7 @@ modes:
     ops: [i2v, flf2v]
     medias:
       - {role: start_image, kinds: [image], label: Start frame, required: true}
-      - {role: end_image, kinds: [image], label: End frame (optional)}
+      - {role: end_image, kinds: [image], label: End frame}
   - id: multi_shot
     label: Multi-shot
     ops: [multi_shot]
@@ -58,7 +58,7 @@ modes:
     ops: [instruction_edit, restyle, relight, object_replace]
     medias:
       - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 30, max_mb: 200}
-      - {role: image_references, kinds: [image], label: Reference images (optional), max: 9}
+      - {role: image_references, kinds: [image], label: Reference images, max: 9}
   - id: extend
     label: Extend
     ops: [extend]

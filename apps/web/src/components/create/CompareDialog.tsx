@@ -87,7 +87,7 @@ export function CompareDialog({
               Cancel
             </Button>
             <Button type="button" tone="primary" onClick={() => void go()} disabled={picked.length < 2 || start.isPending}>
-              Compare {picked.length} models
+              {picked.length < 2 ? "Pick at least 2 models" : `Compare ${picked.length} models`}
             </Button>
           </>
         )

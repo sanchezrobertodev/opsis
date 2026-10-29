@@ -29,7 +29,7 @@ modes:
     ops: [restyle, relight, instruction_edit]
     medias:
       - {role: input_video, kinds: [video], label: Clip to change, required: true}
-      - {role: start_image, kinds: [image], label: Styled first frame (optional)}
+      - {role: start_image, kinds: [image], label: Styled first frame}
   - id: reframe
     label: Reframe
     ops: [reframe]
