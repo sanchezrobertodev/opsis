@@ -56,7 +56,8 @@ export function QuickGenerate({ op, media: initialMedia = {}, promptPlaceholder,
     media: mode.medias.filter((s) => !s.auto).flatMap((s) => (media[s.role] ?? []).map((a) => ({ role: s.role, asset_id: a.id }))),
   } : null;
 
-  const wanted = body ? { ...body, prompt: body.prompt ? "x" : "" } : null;
+  const missing = mode?.medias.find((s) => s.required && !(media[s.role]?.length));
+  const wanted = body && !missing ? { ...body, prompt: body.prompt ? "x" : "" } : null;
   const estimateBody = useDebounced(wanted, 300);
   // an error about inputs the form has since changed doesn't count (the new estimate is on its way)
   const settled = JSON.stringify(estimateBody) === JSON.stringify(wanted);
@@ -66,7 +67,6 @@ export function QuickGenerate({ op, media: initialMedia = {}, promptPlaceholder,
     enabled: Boolean(estimateBody), placeholderData: (prev) => prev, retry: false,
   });
   const create = useCreateGeneration();
-  const missing = mode?.medias.find((s) => s.required && !(media[s.role]?.length));
   const problem = !settled || estimate.isFetching ? null : estimate.error instanceof ApiError
     ? ((estimate.error.body as { errors?: string[] })?.errors ?? [estimate.error.message]).join(" ")
     : estimate.data && !estimate.data.chosen_route_id ? "No provider can run this right now." : null;

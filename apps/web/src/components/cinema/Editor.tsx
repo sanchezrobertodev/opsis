@@ -108,7 +108,7 @@ export function CinemaEditor({ id }: { id: string }) {
                      onChange={setTab} />
         </div>
       </div>
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         <div className="min-h-0 min-w-0 flex-1">
           {tab === "script" && <ScriptTab projectId={id} doc={doc} update={update} onPlanned={() => setTab("storyboard")} launch={launch} />}
           {tab === "storyboard" && (
@@ -117,8 +117,10 @@ export function CinemaEditor({ id }: { id: string }) {
           {tab === "cut" && <CutTab projectId={id} title={title} doc={doc} update={update} takes={takes.data ?? []}
                                     launch={launch} runs={runs} />}
         </div>
-        {/* kept mounted while closed, so the conversation survives */}
-        <div className={cn("shrink-0 max-lg:fixed max-lg:inset-0 max-lg:z-40 lg:w-[400px]", !director && "hidden")}>
+        {/* kept mounted while closed, so the conversation survives; a drawer over the shot panel until the screen
+            has room for a third column, so the storyboard keeps its width */}
+        <div className={cn("w-[400px] max-w-full shrink-0 max-2xl:absolute max-2xl:inset-y-0 max-2xl:right-0 max-2xl:z-40 max-2xl:shadow-2xl",
+                           !director && "hidden")}>
           <DirectorChat projectId={id} doc={doc} update={update} onClose={() => setDirector(false)} />
         </div>
       </div>

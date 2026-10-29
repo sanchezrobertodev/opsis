@@ -91,13 +91,18 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
         }
       : null;
 
-  const estimateBody = useDebounced(body ? { ...body, prompt: body.prompt ? "x" : "" } : null, 300);
+  // say what's missing here rather than asking the server to refuse it
+  const missingMedia = (mode?.medias ?? [])
+    .filter((slot) => slot.required && !slot.auto && !draft.media[slot.role]?.length)
+    .map((slot) => `${slot.label ?? slot.role} is required`);
+  const estimateBody = useDebounced(body && !missingMedia.length ? { ...body, prompt: body.prompt ? "x" : "" } : null, 300);
   const estimate = useQuery({
     queryKey: ["estimate", estimateBody],
     queryFn: () =>
       unwrap(api.POST("/registry/estimate", { body: { route_policy: "cheapest_healthy", ...estimateBody! } })),
     enabled: Boolean(estimateBody),
-    placeholderData: (prev) => prev,
+    // keep the last price while a new one loads, but not once an input it needs is gone
+    placeholderData: (prev) => (estimateBody ? prev : undefined),
     retry: false,
   });
   const estimateErrors =
@@ -135,7 +140,8 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
       : null;
   const blockers = [
     ...(promptMissing ? [studio === "edit" ? "Describe the change you want." : "Describe the shot to generate it."] : []),
-    ...estimateErrors,
+    ...missingMedia,
+    ...(missingMedia.length ? [] : estimateErrors),
     ...(noRoute ? [noRoute] : []),
   ];
 
