@@ -47,7 +47,7 @@ def _out(reg: Registry, preset: PresetSpec) -> PresetOut:
         fields=preset.fields,
         inputs=[PresetInputOut(role=i.role, label=i.label or slot.label or i.role.replace("_", " "), slot=slot)
                 for i in preset.inputs if (slot := mode.slot(i.role))],
-        moves=[PresetMoveOut(id=m.id, label=m.label, category=m.category) for m in moves],
+        moves=[PresetMoveOut(id=m.id, label=m.label, category=m.category, glyph=m.glyph) for m in moves],
         look=look, local=local, live_price_usd=_live_price(reg, spec, preset),
     )
 

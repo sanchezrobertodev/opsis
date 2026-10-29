@@ -1,11 +1,11 @@
 "use client";
 
-import { ArrowDown, Plus, X } from "lucide-react";
+import { ArrowDown, LoaderCircle, Plus, Sparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ApiError, type MediaSlot } from "@/lib/api";
-import { usd } from "@/lib/cn";
+import { ApiError, api, type MediaSlot, unwrap } from "@/lib/api";
+import { cn, usd } from "@/lib/cn";
 import type { SlotAsset } from "@/lib/draft";
 import { useDebounced } from "@/lib/hooks";
 import { useModel, useRegistry } from "@/lib/queries";
@@ -13,13 +13,49 @@ import { type RunCreate, useEstimateRun, useStartRun } from "@/lib/runs";
 import { type Direction, DirectorPanel, mentionSlugs } from "@/components/create/DirectorPanel";
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { ModelPicker } from "@/components/create/ModelPicker";
-import { Button, Switch } from "@/components/ui/controls";
+import { Button, Segmented, Select, Slider, Switch } from "@/components/ui/controls";
 
 type Shot = { id: number; prompt: string; duration: number | null };
 
 const START_SLOT: MediaSlot = { role: "start_image", kinds: ["image"], label: "Start frame for shot 1", max: 1, min: 0, required: false, auto: false };
 const MAX_SHOTS = 12;
 let nextId = 3;
+
+/** Ways to start: short stories whose shots chain well from one frame to the next. */
+const IDEAS: { title: string; shots: string[] }[] = [
+  {
+    title: "Storm at the lighthouse",
+    shots: [
+      "A lighthouse keeper climbs a spiral staircase at dusk, lantern in hand, wind rattling the windows",
+      "At the top he lights the great lamp; its beam sweeps out across a dark, heaving sea",
+      "Far out on the water, a small fishing boat turns toward the light and steers for the harbour",
+    ],
+  },
+  {
+    title: "Morning in the city",
+    shots: [
+      "Sunrise on a quiet city street; a café owner rolls up the shutter of her shop",
+      "She sets out chairs as the first customers arrive, steam rising from their cups",
+      "The street fills with bikes and commuters as the morning rush begins",
+    ],
+  },
+  {
+    title: "Product reveal",
+    shots: [
+      "A matte black wireless headphone rests in shadow on a dark stone plinth",
+      "A slow sweep of light glides across its curves, picking out the brushed metal",
+      "The headphone turns to face us under a soft spotlight as the background glows warm",
+    ],
+  },
+  {
+    title: "Kite on the beach",
+    shots: [
+      "A child runs along a windy beach pulling a red kite behind her",
+      "The kite lifts and climbs into the wind, its long tail snapping",
+      "The string snaps and the kite drifts away over the waves as the child watches",
+    ],
+  },
+];
 
 /** Build a run of shots where each one starts from the last frame of the one before. */
 export function Sequence() {
@@ -48,6 +84,13 @@ export function Sequence() {
       : durationParam?.type === "int"
         ? Array.from({ length: durationParam.max - durationParam.min + 1 }, (_, i) => durationParam.min + i)
         : [];
+  const durationLabels = (durationParam?.type === "enum" ? durationParam.labels ?? {} : {}) as Record<string, string>;
+  // an unset length is the model's own default; show it as real seconds
+  const fallback = Number(durationParam?.default ?? durations[0] ?? 5);
+  const secondsOf = (s: Shot) => s.duration ?? fallback;
+  const total = shots.reduce((sum, s) => sum + secondsOf(s), 0);
+  const enhanceMode = detail?.modes.find((m) => m.ops.includes("i2v"))?.id;
+  const [enhancing, setEnhancing] = useState<number | null>(null);
   const hasDirection = (direction.camera_moves?.length ?? 0) > 0 ||
     Object.entries(direction).some(([k, v]) => k !== "camera_moves" && Boolean(v));
 
@@ -85,9 +128,93 @@ export function Sequence() {
 
   const patch = (id: number, p: Partial<Shot>) => setShots((all) => all.map((s) => (s.id === id ? { ...s, ...p } : s)));
 
+  async function enhance(shot: Shot) {
+    if (!model || !enhanceMode) return;
+    const before = shot.prompt;
+    setEnhancing(shot.id);
+    try {
+      const r = await unwrap(api.POST("/llm/enhance", {
+        body: { model_id: model, mode: enhanceMode, prompt: before, direction: (hasDirection ? direction : null) as never },
+      }));
+      patch(shot.id, { prompt: r.prompt });
+      toast(r.mock ? "Enhanced with the mock writer" : `Enhanced with Claude for ${usd(r.cost_usd)}`, {
+        description: [...r.changes, ...r.warnings].join(". ") || undefined,
+        action: { label: "Undo", onClick: () => patch(shot.id, { prompt: before }) },
+        duration: 10_000,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not enhance the prompt");
+    } finally {
+      setEnhancing(null);
+    }
+  }
+
+  function lengthControl(shot: Shot, n: number) {
+    const show = (d: number) => durationLabels[String(d)] ?? `${d} s`;
+    const set = (d: number) => patch(shot.id, { duration: d === fallback ? null : d });
+    if (durations.length <= 5) {
+      return <Segmented label={`Shot ${n} length`} value={secondsOf(shot)} options={durations} onChange={set} render={show} />;
+    }
+    if (durationParam?.type === "int") {
+      return (
+        <Slider id={`shot-${shot.id}-length`} value={secondsOf(shot)} min={durations[0]} max={durations[durations.length - 1]}
+                onChange={set} format={(v) => `${v} s`} />
+      );
+    }
+    return (
+      <Select id={`shot-${shot.id}-length`} value={String(secondsOf(shot))}
+              options={durations.map((d) => ({ value: String(d), label: show(d) }))} onChange={(v) => set(Number(v))} />
+    );
+  }
+
+  const empty = shots.every((s) => !s.prompt.trim());
+
   return (
     <div className="grid h-full grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="min-h-0 overflow-y-auto p-6 scrollbar-quiet">
+        <div className="mb-5 max-w-2xl">
+          <div className="mb-1.5 flex items-baseline justify-between text-2xs text-faint">
+            <span>{assemble ? "The joined video" : "The takes"}</span>
+            <span className="tabular">
+              {shots.length} shots, {Math.round(total)} s
+            </span>
+          </div>
+          <ol className="flex h-9 gap-1" aria-label="Shots by length">
+            {shots.map((shot, i) => (
+              <li key={shot.id} style={{ flexGrow: secondsOf(shot) }} className="min-w-0 basis-0">
+                <a
+                  href={`#shot-${shot.id}`}
+                  className={cn(
+                    "flex h-full items-center gap-1.5 overflow-hidden rounded-[4px] px-2 text-2xs",
+                    shot.prompt.trim()
+                      ? "bg-raised text-chalk hover:bg-line"
+                      : "border border-dashed border-line text-faint hover:text-chalk",
+                  )}
+                >
+                  <span className="type-title">{i + 1}</span>
+                  <span className="tabular truncate">{secondsOf(shot)} s</span>
+                </a>
+              </li>
+            ))}
+          </ol>
+        </div>
+        {empty && (
+          <div className="mb-5 max-w-2xl rounded-[var(--radius-panel)] border border-dashed border-line p-4">
+            <p className="mb-2 text-xs text-muted">Start from an idea, then make it yours:</p>
+            <div className="flex flex-wrap gap-2">
+              {IDEAS.map((idea) => (
+                <button
+                  key={idea.title}
+                  type="button"
+                  onClick={() => setShots(idea.shots.map((prompt) => ({ id: nextId++, prompt, duration: null })))}
+                  className="rounded-full border border-line-soft px-3 py-1 text-xs text-chalk hover:border-tungsten/60 hover:bg-raised"
+                >
+                  {idea.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <ol className="flex max-w-2xl flex-col">
           {shots.map((shot, i) => (
             <li key={shot.id}>
@@ -97,32 +224,15 @@ export function Sequence() {
                   starts from the last frame of shot {i}
                 </p>
               )}
-              <div className="rounded-[var(--radius-panel)] bg-panel p-4">
+              <div id={`shot-${shot.id}`} className="scroll-mt-6 rounded-[var(--radius-panel)] bg-panel p-4">
                 <div className="mb-2 flex items-center gap-3">
                   <span className="type-title text-sm">Shot {i + 1}</span>
-                  {durations.length > 0 && (
-                    <label className="ml-auto flex items-center gap-2 text-2xs text-faint">
-                      Length
-                      <select
-                        value={shot.duration ?? ""}
-                        onChange={(e) => patch(shot.id, { duration: e.target.value ? Number(e.target.value) : null })}
-                        className="h-7 rounded-[4px] border border-line-soft bg-bay px-1.5 text-xs text-chalk"
-                      >
-                        <option value="">Default</option>
-                        {durations.map((d) => (
-                          <option key={d} value={d}>
-                            {d} s
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
                   {shots.length > 1 && (
                     <button
                       type="button"
                       onClick={() => setShots((all) => all.filter((s) => s.id !== shot.id))}
                       aria-label={`Remove shot ${i + 1}`}
-                      className="grid size-7 place-items-center rounded-full text-muted hover:bg-raised hover:text-chalk"
+                      className="ml-auto grid size-7 place-items-center rounded-full text-muted hover:bg-raised hover:text-chalk"
                     >
                       <X className="size-3.5" aria-hidden />
                     </button>
@@ -136,6 +246,26 @@ export function Sequence() {
                   placeholder={i === 0 ? "How it opens: who, where, what happens." : "What happens next."}
                   className="w-full resize-y rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 py-2 text-sm leading-relaxed text-chalk outline-none placeholder:text-faint focus:border-tungsten/60"
                 />
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  {durations.length > 0 && (
+                    <div className="flex min-w-0 items-center gap-3">
+                      <label htmlFor={`shot-${shot.id}-length`} className="text-2xs text-faint">
+                        Length
+                      </label>
+                      <div className="w-56 max-w-full">{lengthControl(shot, i + 1)}</div>
+                    </div>
+                  )}
+                  {enhanceMode && (
+                    <Button size="sm" tone="ghost" className="ml-auto" onClick={() => void enhance(shot)}
+                            disabled={!shot.prompt.trim() || enhancing !== null}
+                            title="Rewrite this shot in the words the model follows best">
+                      {enhancing === shot.id
+                        ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                        : <Sparkles className="size-3.5" aria-hidden />}
+                      {enhancing === shot.id ? "Enhancing" : "Enhance"}
+                    </Button>
+                  )}
+                </div>
               </div>
             </li>
           ))}

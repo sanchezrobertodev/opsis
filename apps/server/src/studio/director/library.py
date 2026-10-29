@@ -25,6 +25,7 @@ class CameraMove(_Strict):
     speeds: bool = False
     dialects: dict[str, str] = {}
     native: dict[str, Any] = {}
+    glyph: str = ""  # how the picker's little preview moves (web `glyph-*` classes); empty = the category's
 
 
 class LookItem(_Strict):

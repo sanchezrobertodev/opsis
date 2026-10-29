@@ -1,7 +1,7 @@
 "use client";
 
-import { ImagePlus, LoaderCircle, Library, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { AudioLines, Film, ImagePlus, LoaderCircle, Library, Upload, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type MediaSlot, mediaUrl } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -10,6 +10,28 @@ import { uploadFile, useAssets, usePatchAsset } from "@/lib/queries";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 
 const ACCEPT: Record<string, string> = { image: "image/*", video: "video/*", audio: "audio/*" };
+
+/** The upload icon says what the slot takes: a picture, a clip, a sound, or anything else. */
+function UploadIcon({ kinds }: { kinds: string[] }) {
+  const main = new Set(kinds.map((k) => (k === "mask" ? "image" : k === "mask_video" ? "video" : k)));
+  const only = main.size === 1 ? [...main][0] : "";
+  if (only === "image") return <ImagePlus className="size-4" aria-hidden />;
+  if (only === "video") return <Film className="size-4" aria-hidden />;
+  if (only === "audio") return <AudioLines className="size-4" aria-hidden />;
+  return <Upload className="size-4" aria-hidden />;
+}
+
+/**
+ * Ctrl+V anywhere on the page fills a slot: the one holding focus if it takes the file, else the first visible
+ * open slot that does. Every slot listens; only that one takes it.
+ */
+function pasteTarget(kind: string): Element | null {
+  const takes = (el: Element) => (el.getAttribute("data-paste-kinds") ?? "").split(" ").includes(kind);
+  const open = [...document.querySelectorAll("[data-paste-kinds]")].filter(
+    (el) => takes(el) && (el as HTMLElement).offsetParent !== null,
+  );
+  return open.find((el) => el.contains(document.activeElement)) ?? open[0] ?? null;
+}
 
 /** Inputs worth keeping a library of: clips used as movement are tagged so they're easy to reuse. */
 const ROLE_LIBRARY: Record<string, { tag: string; label: string }> = {
@@ -40,6 +62,21 @@ export function MediaSlotField({
     if (library) patch.mutate({ id: a.id, add_tags: [library.tag] });
   };
   const label = slot.label ?? slot.role.replace(/_/g, " ");
+  const zone = useRef<HTMLDivElement>(null);
+  const pastable = slot.kinds.filter((k) => k in ACCEPT);
+
+  useEffect(() => {
+    if (full || !pastable.length) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const files = [...(e.clipboardData?.files ?? [])];
+      const kind = files[0]?.type.split("/")[0];
+      if (!kind || !zone.current || pasteTarget(kind) !== zone.current) return;
+      e.preventDefault();
+      void upload(files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  });
 
   async function upload(files: FileList | File[]) {
     for (const file of Array.from(files).slice(0, Math.max(1, max - value.length))) {
@@ -94,6 +131,8 @@ export function MediaSlotField({
         ))}
         {!full && (
           <div
+            ref={zone}
+            data-paste-kinds={pastable.join(" ")}
             onDragOver={(e) => {
               e.preventDefault();
               setDragging(true);
@@ -113,7 +152,7 @@ export function MediaSlotField({
               type="button"
               onClick={() => input.current?.click()}
               disabled={uploading !== null}
-              className="flex flex-1 flex-col items-center justify-center gap-1 text-2xs text-muted hover:bg-raised hover:text-chalk"
+              className="flex flex-1 flex-col items-center justify-center gap-1 px-2 text-center text-2xs text-muted hover:bg-raised hover:text-chalk"
             >
               {uploading !== null ? (
                 <>
@@ -122,8 +161,8 @@ export function MediaSlotField({
                 </>
               ) : (
                 <>
-                  <ImagePlus className="size-4" aria-hidden />
-                  Upload or drop
+                  <UploadIcon kinds={slot.kinds} />
+                  Upload, drop or paste
                 </>
               )}
             </button>

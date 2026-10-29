@@ -1385,6 +1385,11 @@ export interface components {
             native: {
                 [key: string]: unknown;
             };
+            /**
+             * Glyph
+             * @default
+             */
+            glyph: string;
         };
         /** CandidateOut */
         CandidateOut: {
@@ -2559,6 +2564,13 @@ export interface components {
              * @description At least one route can run right now (mock counts)
              */
             runnable: boolean;
+            /**
+             * Runs On
+             * @description Where it runs: this computer, your own cloud GPU endpoint, or a hosted API
+             * @default hosted
+             * @enum {string}
+             */
+            runs_on: "local" | "cloud_gpu" | "hosted";
         };
         /** MoveChoice */
         MoveChoice: {
@@ -2787,6 +2799,11 @@ export interface components {
             label: string;
             /** Category */
             category: string;
+            /**
+             * Glyph
+             * @default
+             */
+            glyph: string;
         };
         /** PresetOut */
         PresetOut: {
@@ -3840,6 +3857,13 @@ export interface components {
             recipe: string;
             /** Recipe Name */
             recipe_name: string;
+            /**
+             * Makes
+             * @description What it makes: which shelf it sits on
+             * @default video
+             * @enum {string}
+             */
+            makes: "video" | "image";
             /** Fields */
             fields: components["schemas"]["PresetField"][];
             /** Inputs */

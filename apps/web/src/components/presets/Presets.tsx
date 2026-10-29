@@ -21,11 +21,18 @@ import {
 import { useCreateGeneration } from "@/lib/queries";
 import { useClonedVoices, useElements } from "@/lib/elements";
 import { useEstimateRun, useStartRun } from "@/lib/runs";
+import { glyphClass } from "@/components/create/DirectorPanel";
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { Button, Dialog, Segmented, Select } from "@/components/ui/controls";
 
 const FILTERS = ["all", "guided", "camera", "effects", "look", "character", "product", "social", "edit"] as const;
 type Filter = (typeof FILTERS)[number];
+type Shelf = "video" | "image";
+const SHELVES: readonly Shelf[] = ["video", "image"];
+
+// every card's picture frame: an amber edge and a slight zoom say it opens
+const FRAME =
+  "h-40 overflow-hidden rounded-[var(--radius-frame)] bg-panel ring-1 ring-transparent transition-[box-shadow,background-color] group-hover:ring-tungsten/70 group-focus-visible:ring-2 group-focus-visible:ring-tungsten";
 
 const CATEGORY_ICON: Record<PresetCategory, typeof Sparkles> = {
   camera: Sparkles,
@@ -49,21 +56,36 @@ function priceText(p: Preset) {
 }
 
 export function Presets() {
-  const [filter, setFilter] = useState<Filter>("all");
+  const [shelf, setShelf] = useState<Shelf>("video");
+  const [chosen, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<Preset | null>(null);
   const [openTemplate, setOpenTemplate] = useState<Template | null>(null);
   const { data, isLoading } = usePresets();
   const { data: templates } = useTemplates();
-  const items = (data ?? []).filter((p) => filter === "all" || p.category === filter);
-  const guided = filter === "all" || filter === "guided" ? (templates ?? []) : [];
+  const onShelf = (data ?? []).filter((p) => (p.output_type === "image" ? "image" : "video") === shelf);
+  const stories = (templates ?? []).filter((t) => t.makes === shelf);
+  // only the categories this shelf has; a choice the other shelf lacks falls back to everything
+  const filters = FILTERS.filter(
+    (f) => f === "all" || (f === "guided" ? stories.length > 0 : onShelf.some((p) => p.category === f)),
+  );
+  const filter = filters.includes(chosen) ? chosen : "all";
+  const items = onShelf.filter((p) => filter === "all" || p.category === filter);
+  const guided = filter === "all" || filter === "guided" ? stories : [];
 
   return (
     <div className="h-full overflow-y-auto p-6 scrollbar-quiet">
-      <div className="mb-6 max-w-3xl">
+      <div className="mb-6 flex max-w-4xl flex-wrap items-center gap-x-5 gap-y-3">
+        <Segmented
+          label="Makes"
+          value={shelf}
+          options={SHELVES}
+          render={(s) => (s === "video" ? "Video" : "Image")}
+          onChange={setShelf}
+        />
         <Segmented
           label="Show"
           value={filter}
-          options={FILTERS}
+          options={filters}
           render={(f) => (f === "all" ? "Everything" : f === "guided" ? "Stories" : CATEGORY_LABEL[f])}
           onChange={setFilter}
         />
@@ -100,14 +122,14 @@ function Cover({ id, children }: { id: string; children: React.ReactNode }) {
   const [missing, setMissing] = useState(false);
   if (missing) return <>{children}</>;
   return (
-    <div className="h-40 overflow-hidden rounded-[var(--radius-frame)] bg-panel">
+    <div className={FRAME}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={`/covers/${id}.webp`}
         alt=""
         loading="lazy"
         onError={() => setMissing(true)}
-        className="size-full object-cover transition-transform group-hover:scale-[1.02]"
+        className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
       />
     </div>
   );
@@ -119,7 +141,7 @@ function Viewfinder({ preset }: { preset: Preset }) {
   const Icon = CATEGORY_ICON[preset.category as PresetCategory] ?? Sparkles;
   const move = preset.moves[0];
   return (
-    <div className="relative grid h-40 place-items-center rounded-[var(--radius-frame)] bg-panel transition-colors group-hover:bg-raised">
+    <div className={cn(FRAME, "relative grid place-items-center group-hover:bg-raised")}>
       <div
         className="relative grid place-items-center overflow-hidden"
         style={{ aspectRatio: `${w} / ${h}`, width: `min(85%, ${Math.round(((h > w ? 124 : 92) * w) / h)}px)` }}
@@ -130,7 +152,7 @@ function Viewfinder({ preset }: { preset: Preset }) {
         <span aria-hidden className="absolute bottom-0 left-0 size-3 border-b border-l border-faint" />
         <span aria-hidden className="absolute right-0 bottom-0 size-3 border-r border-b border-faint" />
         {move ? (
-          <span aria-hidden className={cn("block size-2.5 rounded-full bg-tungsten", `glyph-${move.category}`)} />
+          <span aria-hidden className={cn("block size-2.5 rounded-full bg-tungsten", glyphClass(move))} />
         ) : (
           <Icon aria-hidden className="size-5 text-tungsten" />
         )}
@@ -146,11 +168,11 @@ function Viewfinder({ preset }: { preset: Preset }) {
 function PresetCard({ preset, onOpen }: { preset: Preset; onOpen: () => void }) {
   const needs = preset.inputs.map((i) => i.label.toLowerCase());
   return (
-    <button type="button" onClick={onOpen} className="group block w-full text-left">
+    <button type="button" onClick={onOpen} className="group block w-full text-left outline-none">
       <Cover id={preset.id}>
         <Viewfinder preset={preset} />
       </Cover>
-      <p className="type-title mt-3 text-[15px]">{preset.name}</p>
+      <p className="type-title mt-3 text-[15px] transition-colors group-hover:text-tungsten">{preset.name}</p>
       <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">{preset.summary}</p>
       <p className="tabular mt-1.5 text-2xs text-faint">
         {preset.model_name}
@@ -315,13 +337,13 @@ function TemplateCard({ template, onOpen }: { template: Template; onOpen: () => 
   const needs = template.inputs.filter((i) => !i.alternative && !i.optional).map((i) => i.label.toLowerCase());
   const either = template.inputs.filter((i) => i.alternative).map((i) => i.label.toLowerCase().replace(/^or /, ""));
   return (
-    <button type="button" onClick={onOpen} className="group block w-full text-left">
+    <button type="button" onClick={onOpen} className="group block w-full text-left outline-none">
       <Cover id={template.id}>
-        <div className="grid h-40 place-items-center rounded-[var(--radius-frame)] bg-panel transition-colors group-hover:bg-raised">
+        <div className={cn(FRAME, "grid place-items-center group-hover:bg-raised")}>
           <BookOpen aria-hidden className="size-6 text-tungsten" />
         </div>
       </Cover>
-      <p className="type-title mt-3 text-[15px]">{template.name}</p>
+      <p className="type-title mt-3 text-[15px] transition-colors group-hover:text-tungsten">{template.name}</p>
       <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">{template.summary}</p>
       <p className="tabular mt-1.5 text-2xs text-faint">
         Guided, {template.recipe_name.toLowerCase()}

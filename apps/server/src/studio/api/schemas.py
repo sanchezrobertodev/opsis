@@ -50,6 +50,8 @@ class ModelSummary(ApiModel):
     modes: list[ModeSummary]
     from_price_usd: float | None = Field(None, description="Cheapest live estimate with default params")
     runnable: bool = Field(description="At least one route can run right now (mock counts)")
+    runs_on: Literal["local", "cloud_gpu", "hosted"] = Field(
+        "hosted", description="Where it runs: this computer, your own cloud GPU endpoint, or a hosted API")
 
 
 class RouteSummary(ApiModel):
@@ -416,6 +418,7 @@ class PresetMoveOut(ApiModel):
     id: str
     label: str
     category: str
+    glyph: str = ""
 
 
 class PresetOut(ApiModel):
@@ -463,6 +466,7 @@ class TemplateOut(ApiModel):
     tags: list[str]
     recipe: str
     recipe_name: str
+    makes: Literal["video", "image"] = Field("video", description="What it makes: which shelf it sits on")
     fields: list[PresetField]
     inputs: list[TemplateInput]
 

@@ -36,7 +36,7 @@ def _wrapped(reg: Registry, spec: ModelSpec) -> list[ModelSpec]:
 
 # Part of the summary's ETag: bump it when what the summary computes changes (from-prices), so browsers holding the
 # last copy fetch it again even though the registry files didn't change.
-SUMMARY_VERSION = 2
+SUMMARY_VERSION = 3
 STAND_IN_SECONDS = 5  # a typical input clip or sound, for modes priced by input length (video edits)
 STAND_IN_PROMPT = "x" * 300  # a short script, for routes priced by the text (speech)
 
@@ -73,6 +73,18 @@ def _from_price(reg: Registry, spec: ModelSpec) -> float | None:
     return min(prices) if prices else None
 
 
+# Where a model runs, from its routes' provider kinds; the picker groups by it. The most "yours" wins.
+RUNS_ON = ("local", "cloud_gpu", "hosted")
+
+
+def _runs_on(reg: Registry, spec: ModelSpec) -> str:
+    if spec.kind == "virtual":
+        found = [_runs_on(reg, m) for m in _wrapped(reg, spec)]
+        return min(found, key=RUNS_ON.index) if found else "hosted"
+    kinds = {p.kind for r in spec.routes if r.provider != MOCK_PROVIDER and (p := reg.providers.get(r.provider))}
+    return "local" if "local" in kinds else "cloud_gpu" if "selfhosted" in kinds else "hosted"
+
+
 async def _runnable(session: AsyncSession, reg: Registry, spec: ModelSpec) -> bool:
     if spec.kind == "virtual":
         return any([await _runnable(session, reg, m) for m in _wrapped(reg, spec)])
@@ -102,6 +114,7 @@ async def get_registry_summary(
             output_type=spec.output_type, status=spec.status, license_tier=spec.license_tier, tags=spec.tags,
             modes=[ModeSummary(id=m.id, label=m.label, ops=list(m.ops)) for m in spec.modes],
             from_price_usd=_from_price(reg, spec), runnable=await _runnable(session, reg, spec),
+            runs_on=_runs_on(reg, spec),
         ))
     return RegistryOut(hash=reg.hash, provider_mode=mode, models=models,
                        warnings=reg.warnings)

@@ -1,12 +1,13 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { type CSSProperties, useState } from "react";
 import { cn } from "@/lib/cn";
 import type { CaptionLook, FacelessStyle } from "@/lib/faceless";
 
 const SAMPLE = ["and", "the", "town", "was", "asleep"];
 
-/** A style shown by what you'll actually see of it: its burned-in caption treatment, on its own palette. */
+/** A style shown by what you'll actually see of it: a sample picture in that style (`public/faceless/<id>.webp`,
+ * else its own palette) under its burned-in caption treatment. */
 export function StyleCard({
   style,
   selected,
@@ -17,6 +18,7 @@ export function StyleCard({
   onSelect: () => void;
 }) {
   const look = style.caption as unknown as CaptionLook;
+  const [noSample, setNoSample] = useState(false);
   const stroke = `${look.outline}`;
   const text: CSSProperties = {
     fontFamily: `"${look.font}", sans-serif`,
@@ -38,10 +40,20 @@ export function StyleCard({
     >
       <span
         aria-hidden
-        className="relative flex aspect-video items-end justify-center px-3 pb-[9%]"
+        className="relative flex aspect-video items-end justify-center overflow-hidden px-3 pb-[9%]"
         style={{ background: `linear-gradient(160deg, ${look.highlight}33 0%, ${look.outline} 72%)` }}
       >
-        <span className="text-[15px] leading-tight" style={text}>
+        {!noSample && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/faceless/${style.id}.webp`}
+            alt=""
+            loading="lazy"
+            onError={() => setNoSample(true)}
+            className="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+          />
+        )}
+        <span className="relative text-[15px] leading-tight" style={text}>
           {SAMPLE.map((w, i) => (
             <span key={w} style={i === 2 ? { color: look.highlight } : undefined}>
               {w}
