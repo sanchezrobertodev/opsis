@@ -128,7 +128,7 @@ async def test_seedance_on_replicate_charges_the_estimate_and_caches_the_upload(
     entry = next(e for e in history["entries"] if e["generation_id"] == gen["id"])
     assert entry == {**entry, "kind": "generation", "amount_usd": pytest.approx(0.4112),
                      "label": "the ship sails out of the harbor", "model_id": "seedance-2.5"}
-    assert any(p["provider"] == "replicate" and p["usd"] >= 0.4112 for p in history["by_provider"])
+    assert any(p["provider"] == "replicate" and p["name"] == "Replicate" and p["usd"] >= 0.4112 for p in history["by_provider"])
 
     # Second take with the same start frame reuses the upload.
     gen2 = (await client.post("/generations", json=body)).json()

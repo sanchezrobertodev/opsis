@@ -197,8 +197,15 @@ async def spend_history(
                SpendLedger.created_at >= month)
         .group_by(SpendLedger.provider).order_by(func.sum(SpendLedger.amount_usd).desc())
     )).all()
+    providers = get_registry().providers
+    names = {"anthropic": "Anthropic (Claude)"}
+
+    def name(p: str) -> str:
+        return providers[p].name if p in providers else names.get(p, p)
+
     return SpendHistoryOut(entries=entries, by_provider=[
-        SpendBreakdown(provider=p or "unknown", usd=float(usd), count=n) for p, usd, n in totals])
+        SpendBreakdown(provider=p or "unknown", name=name(p or "unknown"), usd=float(usd), count=n)
+        for p, usd, n in totals])
 
 
 @router.get("/budget/balances", response_model=list[BalanceOut], tags=["budget"])

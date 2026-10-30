@@ -147,7 +147,8 @@ seven minutes. The first job after ComfyUI starts also loads the model, about 40
 | `flux2-vae.safetensors` | `vae/` | [Comfy-Org/flux2-dev](https://huggingface.co/Comfy-Org/flux2-dev/tree/main/split_files/vae) |
 | `4x_NMKD-Siax_200k.pth` | `upscale_models/` | [uwg/upscaler](https://huggingface.co/uwg/upscaler/tree/main/ESRGAN) |
 
-Sample prompt: *A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.* Progress
+Sample prompt: *A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.*
+([what Wan 2.2 5B made from it](docs/demo/wan22-5b-sailboat.mp4) on a 12 GB card.) Progress
 shows on the form and the job card, and a queued or running job can be canceled from its card. To see what runs,
 read [`workflows/comfy/wan22_ti2v_5b.json`](workflows/comfy/wan22_ti2v_5b.json) and its
 [`.map.yaml`](workflows/comfy/wan22_ti2v_5b.map.yaml).
