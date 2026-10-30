@@ -537,7 +537,7 @@ function IdentityPanel({ element }: { element: Element }) {
 const TRAITS: { key: string; label: string; options: string[] }[] = [
   { key: "style", label: "Style", options: ["photoreal", "cinematic film still", "anime", "stylized 3D animation", "graphic novel"] },
   { key: "age", label: "Age", options: ["young", "teenage", "twenty-something", "thirty-something", "middle-aged", "elderly"] },
-  { key: "presentation", label: "Presentation", options: ["woman", "man", "androgynous person", "non-human creature"] },
+  { key: "presentation", label: "Gender", options: ["woman", "man", "androgynous person", "non-human creature"] },
   { key: "build", label: "Build", options: ["slight", "athletic", "average", "broad", "heavyset", "very tall"] },
   { key: "hair", label: "Hair", options: ["short curly", "long straight", "shaved", "braided", "messy shoulder-length", "slicked back", "bald"] },
   { key: "hair_color", label: "Hair color", options: ["black", "dark brown", "auburn", "blonde", "silver", "dyed blue", "bright red"] },
@@ -555,6 +555,9 @@ const HINTS: Record<ElementKind, [string, string]> = {
   style: ["e.g. Noir", "The look: medium, palette, light, texture, era."],
   voice: ["e.g. Narrator", "How it sounds."],
 };
+
+/** Trait tile widths in Design a character (the pictures are 256 px). */
+const TILE = { Small: "w-[76px]", Medium: "w-[112px]", Large: "w-[156px]" };
 
 /** A trait option's preview picture in `public/designer/`: `<trait>-<option as a slug>.webp`. */
 const traitFile = (option: string) => option.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -582,6 +585,7 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
   const setDraft = useDraft((s) => s.set);
   const [traits, setTraits] = useState<Record<string, string>>({});
   const [heritage, setHeritage] = useState("");
+  const [size, setSize] = useState<keyof typeof TILE>("Medium");
   const description = describe(traits, heritage.trim());
   const style = traits.style ?? "photoreal";
 
@@ -620,6 +624,9 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
       }
     >
       <div className="flex flex-col gap-4">
+        <div className="ml-auto w-56">
+          <Segmented label="Picture size" value={size} options={Object.keys(TILE) as (keyof typeof TILE)[]} onChange={setSize} />
+        </div>
         {TRAITS.map((t) => (
           <fieldset key={t.key} className="flex flex-col gap-1.5">
             <legend className="mb-1.5 text-2xs text-faint">
@@ -632,13 +639,14 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
                 return (
                   <button key={o} type="button" aria-pressed={on} title={o}
                           onClick={() => setTraits({ ...traits, [t.key]: on ? "" : o })}
-                          className={cn("flex w-[76px] flex-col gap-1 rounded-[var(--radius-control)] border p-1 text-left",
+                          className={cn("flex flex-col gap-1 rounded-[var(--radius-control)] border p-1 text-left", TILE[size],
                                         on ? "border-tungsten bg-raised" : "border-line-soft hover:border-tungsten/40")}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={`/designer/${t.key}-${traitFile(o)}.webp`} alt="" loading="lazy"
                          className="aspect-square w-full rounded-[3px] bg-bay object-cover"
                          onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
-                    <span className={cn("line-clamp-2 text-2xs leading-tight", on ? "text-chalk" : "text-muted")}>{o}</span>
+                    <span className={cn("line-clamp-2 leading-tight", size === "Small" ? "text-2xs" : "text-xs",
+                                        on ? "text-chalk" : "text-muted")}>{o}</span>
                   </button>
                 );
               })}
