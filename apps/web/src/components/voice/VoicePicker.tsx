@@ -19,10 +19,12 @@ export function useVoices(modelId = VOICE_MODEL): [string, string][] {
   if (param?.type !== "enum") return [];
   const labels = (param.labels ?? {}) as Record<string, string>;
   const own = param.options.map((o) => [String(o), labels[String(o)] ?? String(o)] as [string, string]);
-  return param.open ? [...cloned, ...own] : own;
+  if (!param.open) return own;
+  return [...cloned, ...own.filter(([id]) => !cloned.some(([c]) => c === id))]; // a voice added by its ID may be built in
 }
 
-/** Pick a voice and hear it. A sample is made once per voice (the same request returns the same take after that). */
+/** Pick a voice and hear it. Built-in voices play a ready-made clip (`public/voices/<id>.mp3`); others get a sample
+ * made once (the same request returns the same take after that). */
 export function VoicePicker({ value, onChange, label = "Voice", allowNone, noneLabel = "No voice set", modelId = VOICE_MODEL }: {
   value: string | null | undefined; onChange: (voiceId: string | null) => void; label?: string;
   allowNone?: boolean; noneLabel?: string; modelId?: string;
@@ -34,6 +36,9 @@ export function VoicePicker({ value, onChange, label = "Voice", allowNone, noneL
   const { data: sample } = useGeneration(sampleOf?.generation);
   const url = sample?.status === "succeeded" ? mediaUrl(sample.assets?.[0]?.url) : undefined;
   const making = Boolean(sampleOf) && (!sample || isActive(sample.status));
+  const [noClip, setNoClip] = useState<string[]>([]);
+  const clip = value && modelId === VOICE_MODEL && !noClip.includes(value) ? `/voices/${value}.mp3` : undefined;
+  const wanted = useRef(false); // play was pressed: a missing clip falls back to making a sample
 
   useEffect(() => {
     if (url && audio.current && sampleOf?.voice === value) void audio.current.play().catch(() => undefined);
@@ -43,14 +48,25 @@ export function VoicePicker({ value, onChange, label = "Voice", allowNone, noneL
     if (!value) return;
     if (playing) {
       audio.current?.pause();
-      return;
+    } else if (clip) {
+      wanted.current = true;
+      void audio.current?.play().catch(() => undefined);
+    } else {
+      await makeSample(value);
     }
+  }
+
+  async function makeSample(voice: string) {
+    const post = (key: string) => unwrap(api.POST("/generations", {
+      body: { model_id: modelId, mode: "tts", prompt: SAMPLE, params: { voice_id: voice }, media: [], route_policy: "cheapest_healthy" },
+      headers: { "Idempotency-Key": key },
+    }));
     try {
-      const gen = await unwrap(api.POST("/generations", {
-        body: { model_id: modelId, mode: "tts", prompt: SAMPLE, params: { voice_id: value }, media: [], route_policy: "cheapest_healthy" },
-        headers: { "Idempotency-Key": `voice-sample:${modelId}:${value}` },
-      }));
-      setSampleOf({ voice: value, generation: gen.id });
+      const key = `voice-sample:${modelId}:${voice}`;
+      let gen = await post(key);
+      // the sample made earlier was deleted: make one more, once
+      if (gen.status === "succeeded" && !gen.assets?.length) gen = await post(`${key}:${gen.id}`);
+      setSampleOf({ voice, generation: gen.id });
       if (gen.status === "succeeded" && audio.current) void audio.current.play().catch(() => undefined);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't make a sample");
@@ -71,7 +87,14 @@ export function VoicePicker({ value, onChange, label = "Voice", allowNone, noneL
           {making ? <LoaderCircle className="size-4 animate-spin" aria-hidden />
             : playing ? <Square className="size-3.5" aria-hidden /> : <Play className="size-4" aria-hidden />}
         </button>
-        <audio ref={audio} src={sampleOf?.voice === value ? url : undefined} onPlay={() => setPlaying(true)}
+        <audio ref={audio} src={clip ?? (sampleOf?.voice === value ? url : undefined)} preload="none"
+               onError={() => {
+                 if (!clip || !value) return;
+                 setNoClip((n) => [...n, value]);
+                 if (wanted.current) void makeSample(value);
+                 wanted.current = false;
+               }}
+               onPlay={() => setPlaying(true)}
                onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} hidden />
       </div>
     </Field>

@@ -67,7 +67,7 @@ export function Characters() {
         <div className="ml-auto flex gap-2">
           <Button tone="quiet" size="sm" onClick={() => setCloning(true)}>
             <Mic className="size-4" aria-hidden />
-            Clone a voice
+            Add a voice
           </Button>
           <Button tone="quiet" size="sm" onClick={() => setBuilding(true)}>
             <Sparkles className="size-4" aria-hidden />
@@ -126,8 +126,8 @@ export function Characters() {
                      newKind={newKind ?? "character"} onClose={() => setEditing(null)} />
       <VoiceDialog voice={editing && editing !== "new" && editing.kind === "voice" ? editing : null}
                    onClose={() => setEditing(null)} />
-      <Dialog open={cloning} onClose={() => setCloning(false)} title="Clone a voice">
-        {cloning && <CloneVoiceForm onDone={() => setCloning(false)} />}
+      <Dialog open={cloning} onClose={() => setCloning(false)} title="Add a voice">
+        {cloning && <AddVoice onDone={() => setCloning(false)} />}
       </Dialog>
       <TraitBuilder open={building} onClose={() => setBuilding(false)} />
     </div>
@@ -135,6 +135,63 @@ export function Characters() {
 }
 
 const SAMPLE_SLOT: MediaSlot = { role: "input_audio", kinds: ["audio", "video"], label: "Recordings of the voice", max: 5, min: 1, required: true, auto: false };
+
+/** A voice of your own: cloned from recordings, or one you already have on ElevenLabs, by its ID. */
+function AddVoice({ onDone }: { onDone: () => void }) {
+  const [how, setHow] = useState<"clone" | "id">("clone");
+  return (
+    <div className="space-y-4">
+      <Segmented label="How" value={how} options={["clone", "id"] as const} onChange={setHow}
+                 render={(h) => (h === "clone" ? "Clone from recordings" : "ElevenLabs voice ID")} />
+      {how === "clone" ? <CloneVoiceForm onDone={onDone} /> : <VoiceIdForm onDone={onDone} />}
+    </div>
+  );
+}
+
+/** A voice from your ElevenLabs account by its ID; deleting it here never deletes it there. */
+function VoiceIdForm({ onDone }: { onDone: () => void }) {
+  const create = useCreateElement();
+  const [name, setName] = useState("");
+  const [id, setId] = useState("");
+  const valid = /^[A-Za-z0-9]{10,40}$/.test(id.trim());
+
+  async function save() {
+    try {
+      const voice = await create.mutateAsync({ kind: "voice", name: name.trim(), description: "", attributes: {}, images: [],
+                                               voice: { model_id: VOICE_MODEL, params: { voice_id: id.trim() } } });
+      toast(`${voice.name} is ready: pick it in any voice list`);
+      onDone();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't add the voice");
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm leading-relaxed text-muted">
+        Use a voice from your ElevenLabs account: one you made there, or one you added from their Voice Library. In
+        ElevenLabs, open My Voices and copy the voice&apos;s ID.
+      </p>
+      <label className="flex flex-col gap-1.5 text-xs text-muted">
+        <span>Name</span>
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="e.g. Old sailor"
+               className="h-10 rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60" />
+      </label>
+      <label className="flex flex-col gap-1.5 text-xs text-muted">
+        <span>Voice ID</span>
+        <input value={id} onChange={(e) => setId(e.target.value)} maxLength={40} placeholder="e.g. JBFqnCBsd6RMkjVDRZzb"
+               aria-invalid={id.trim() !== "" && !valid} spellCheck={false}
+               className="h-10 rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 font-mono text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60" />
+        {id.trim() !== "" && !valid && <span className="text-2xs text-fault">A voice ID is 10 to 40 letters and digits, like the example.</span>}
+      </label>
+      <div className="flex justify-end">
+        <Button tone="primary" onClick={() => void save()} disabled={!name.trim() || !valid || create.isPending}>
+          {create.isPending ? "Adding…" : "Add the voice"}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 /** Clone a voice: a minute or more of clean speech makes the best clone. */
 function CloneVoiceForm({ onDone }: { onDone: () => void }) {
@@ -187,7 +244,7 @@ function CloneVoiceForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-/** A cloned voice: hear it, or delete it (which also frees its slot on the voice service). */
+/** One of your voices: hear it, or delete it (a clone made here also frees its slot on the voice service). */
 function VoiceDialog({ voice, onClose }: { voice: Element | null; onClose: () => void }) {
   const remove = useDeleteElement();
   const id = (voice?.voice as { params?: { voice_id?: string } } | null)?.params?.voice_id ?? null;
@@ -267,6 +324,27 @@ function AddStarters({ starters }: { starters: typeof STARTERS }) {
   );
 }
 
+/** Draws a character's front portrait from its name and description and keeps it as its picture (the same run that
+ * draws a film's new cast). The card shows it when the run is done. */
+function useDrawPortrait() {
+  const start = useStartRun();
+  async function draw(e: Pick<Element, "id" | "slug" | "handle">, confirmCost?: number): Promise<void> {
+    try {
+      await start.mutateAsync({ recipe: "cinema_cast", input: { characters: [{ element_id: e.id, slug: e.slug }] },
+                                confirm_cost_usd: confirmCost ?? null });
+      toast.success(`Drawing ${e.handle}. The picture shows up on its card in about a minute.`);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const cost = (err.body as { estimate_usd: number }).estimate_usd;
+        toast(`Drawing ${e.handle} costs about ${usd(cost)}.`, { action: { label: "Draw it", onClick: () => void draw(e, cost) } });
+        return;
+      }
+      toast.error(err instanceof Error ? err.message : `Couldn't start drawing ${e.handle}`);
+    }
+  }
+  return { draw, drawing: start.isPending };
+}
+
 function ElementForm({ existing, newKind, onDone }: { existing: Element | null; newKind: ElementKind; onDone: () => void }) {
   const router = useRouter();
   const startSheet = useStartRun();
@@ -281,6 +359,9 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
   const [voice, setVoice] = useState<string | null>(
     ((existing?.voice as { params?: { voice_id?: string } } | null)?.params?.voice_id) ?? null);
   const [pending, setPending] = useState<SlotAsset[]>([]);
+  const [drawIt, setDrawIt] = useState(true);
+  const portrait = useDrawPortrait();
+  const pictureless = kind === "character" && pending.length === 0 && !existing?.images.length;
 
   const images: SlotAsset[] = useMemo(
     () => [
@@ -307,6 +388,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
           ...(voice ? { voice: { model_id: VOICE_MODEL, params: { voice_id: voice } } } : {}),
         });
         toast(`Created ${e.handle}. Use it in any prompt.`);
+        if (pictureless && drawIt && description.trim()) await portrait.draw(e);
       }
       onDone();
     } catch (err) {
@@ -395,6 +477,15 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
         <p className="text-2xs text-faint">
           Clear, well-lit images work best: a front view first, then other angles. The first image is the cover.
         </p>
+        {pictureless && !existing && (
+          <label className="flex items-start gap-2 text-sm text-muted">
+            <input type="checkbox" className="mt-1" checked={drawIt} onChange={(e) => setDrawIt(e.target.checked)} />
+            <span>
+              No pictures? Draw a front portrait from the description and keep it as the first one.
+              {!description.trim() && <span className="block text-2xs text-faint">Write a description first.</span>}
+            </span>
+          </label>
+        )}
         {existing && existing.kind === "character" && <IdentityPanel element={existing} />}
       </div>
 
@@ -403,6 +494,14 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
           <Button type="button" size="sm" onClick={() => void characterSheet()} disabled={!existing.images.length || startSheet.isPending}
                   title="Draws it from every side on one picture and keeps it as its second reference">
             Make a reference sheet
+          </Button>
+        )}
+        {existing && pictureless && (
+          <Button type="button" size="sm" onClick={() => void portrait.draw(existing)}
+                  disabled={!existing.description.trim() || portrait.drawing}
+                  title={existing.description.trim() ? "Draws a front portrait from the description" : "Write a description first"}>
+            <Sparkles className="size-4" aria-hidden />
+            Draw a picture
           </Button>
         )}
         {existing && (
@@ -587,8 +686,27 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
   const [heritage, setHeritage] = useState("");
   const [size, setSize] = useState<keyof typeof TILE>("Medium");
   const [zoom, setZoom] = useState<{ trait: (typeof TRAITS)[number]; option: string } | null>(null);
+  const [name, setName] = useState("");
   const description = describe(traits, heritage.trim());
   const style = traits.style ?? "photoreal";
+  const create = useCreateElement();
+  const portrait = useDrawPortrait();
+
+  /** Saves the character and draws its portrait here; a drawn style is part of its look, so it's in the description. */
+  async function save() {
+    try {
+      const e = await create.mutateAsync({
+        kind: "character", name: name.trim(), attributes: { traits }, images: [],
+        description: style === "photoreal" ? description : `${style} style, ${description}`,
+      });
+      onClose();
+      setTraits({});
+      setName("");
+      await portrait.draw(e);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't save the character");
+    }
+  }
 
   function randomize() {
     const next: Record<string, string> = {};
@@ -618,8 +736,13 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
           <Button type="button" tone="ghost" onClick={randomize}>
             Randomize
           </Button>
-          <Button type="button" tone="primary" onClick={generate} disabled={!description}>
-            Create portraits
+          <Button type="button" onClick={generate} disabled={!description}
+                  title="Two portrait takes in Create image; save the one you like to Characters">
+            Try in Create image
+          </Button>
+          <Button type="button" tone="primary" onClick={() => void save()}
+                  disabled={!description || !name.trim() || create.isPending || portrait.drawing}>
+            Create character
           </Button>
         </>
       }
@@ -674,6 +797,11 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
       <p className={cn("mt-4 rounded-[var(--radius-control)] bg-bay p-3 text-sm leading-relaxed", description ? "text-chalk" : "text-faint")}>
         {description || "Pick a few traits, or press Randomize."}
       </p>
+      <label className="mt-4 flex max-w-xs flex-col gap-1 text-2xs text-faint">
+        Name
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="e.g. Marco Reyes"
+               className="h-9 rounded-[var(--radius-control)] border border-line-soft bg-bay px-2 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60" />
+      </label>
       <Dialog open={zoom !== null} onClose={() => setZoom(null)} title={zoom ? `${zoom.trait.label}: ${zoom.option}` : ""} wide
               footer={zoom && (
                 <Button type="button" tone="primary" onClick={() => {
@@ -690,8 +818,9 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
         )}
       </Dialog>
       <p className="mt-2 text-2xs text-faint">
-        Click a picture to pick it, again to leave it open. The corner button shows it full size. This opens Create image with two portrait takes. Save the
-        one you like to Characters; its description is filled in from these traits.
+        Click a picture to pick it, again to leave it open; the corner button shows it full size. Create character
+        saves it here and draws its portrait from these traits. Try in Create image makes two takes to choose from
+        instead.
       </p>
     </Dialog>
   );
