@@ -26,5 +26,6 @@ own API keys.
 Media
 -----
 The test fixtures in fixtures/ are synthetic test patterns made with ffmpeg or media generated with AI models,
-and the template cover pictures in apps/web/public/covers/ were generated with AI models through this studio.
+and the template cover pictures and preview clips in apps/web/public/covers/ were generated with AI models through
+this studio.
 None of them shows a real person.
