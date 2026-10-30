@@ -272,7 +272,7 @@ async def delete_element(element_id: uuid.UUID, session: AsyncSession = Depends(
         except ProviderError as exc:
             raise HTTPException(502, f"ElevenLabs couldn't remove the voice: {exc.message}") from exc
     e.deleted_at = datetime.now(UTC)
-    e.slug = f"{e.slug[:30]}-del-{uuid.uuid4().hex[:6]}"  # frees the handle for reuse
+    e.slug = f"{e.slug[:29]}-del-{uuid.uuid4().hex[:6]}"  # frees the handle for reuse; fits slug's 40 characters
     await session.commit()
 
 

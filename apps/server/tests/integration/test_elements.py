@@ -60,6 +60,12 @@ async def test_crud_and_unique_handles(client):
     assert (await client.delete(f"/elements/{b['id']}")).status_code == 204
     assert (await client.get(f"/elements/{b['id']}")).status_code == 404
 
+    # a name long enough to fill the handle (a location named after a world's whole prompt) deletes too
+    long = (await client.post("/elements", json={"kind": "location", "name": "A quiet stone courtyard at dusk, lanterns"
+                                                 " on the walls, an old fig tree", "description": "", "attributes": {}})).json()
+    assert len(long["handle"]) == 41  # @ + 40
+    assert (await client.delete(f"/elements/{long['id']}")).status_code == 204
+
 
 async def estimate(client, **body) -> dict:
     r = await client.post("/registry/estimate", json={"route_policy": "cheapest_healthy", **body})

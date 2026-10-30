@@ -357,7 +357,10 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
             type="button"
             size="sm"
             tone="danger"
-            onClick={() => remove.mutate(existing.id, { onSuccess: () => { toast(`Deleted ${existing.name}`); onDone(); } })}
+            onClick={() => remove.mutate(existing.id, {
+              onSuccess: () => { toast(`Deleted ${existing.name}`); onDone(); },
+              onError: (err) => toast.error(err instanceof Error ? err.message : "Couldn't delete it"),
+            })}
           >
             <Trash2 className="size-4" aria-hidden />
             Delete
