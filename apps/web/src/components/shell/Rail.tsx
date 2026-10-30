@@ -38,21 +38,18 @@ const subscribe = (l: () => void) => {
 
 function RailItem({ studio, active, wide }: { studio: Studio; active: boolean; wide: boolean }) {
   const Icon = studio.icon;
-  const soon = Boolean(studio.phase);
   return (
     <Link
       href={studio.href}
       aria-current={active ? "page" : undefined}
-      title={soon ? `${studio.name} arrives in ${studio.phase}` : studio.name}
+      title={studio.name}
       className={cn(
         "group relative flex h-9 items-center gap-3 rounded-[var(--radius-control)] px-3 text-sm transition-colors",
         active ? "lumen-selected bg-select text-chalk" : "text-muted hover:bg-chalk/5 hover:text-chalk",
-        soon && !active && "text-faint",
       )}
     >
       <Icon className={cn("size-4 shrink-0", active && "text-tungsten")} strokeWidth={1.75} aria-hidden />
       <span className={cn("hidden truncate", wide && "lg:inline")}>{studio.name}</span>
-      {soon && <span className={cn("ml-auto hidden text-2xs text-faint tabular", wide && "lg:inline")}>{studio.phase}</span>}
     </Link>
   );
 }

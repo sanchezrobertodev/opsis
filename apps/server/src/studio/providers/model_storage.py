@@ -33,7 +33,8 @@ _write_lock = Lock()
 
 def config_path(settings: Settings) -> Path:
     if not settings.comfyui_model_paths_config:
-        raise ValueError("Model storage is not connected to this studio. Set COMFYUI_MODEL_PATHS_CONFIG on the server.")
+        raise ValueError("Optional, for a local ComfyUI: set COMFYUI_MODEL_PATHS_CONFIG in .env to choose its model "
+                         "folder here (see docs/local-model-storage.md).")
     if urlparse(settings.comfyui_url).hostname not in {"localhost", "127.0.0.1", "::1"}:
         raise ValueError("Model storage can be changed only for ComfyUI running on this server.")
     return settings.comfyui_model_paths_config

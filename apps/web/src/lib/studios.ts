@@ -24,8 +24,6 @@ export type Studio = {
   name: string;
   href: string;
   icon: LucideIcon;
-  /** Roadmap phase that ships it (docs/PLAN.md). Ready studios have none. */
-  phase?: string;
   summary: string;
   group: "create" | "studios" | "manage";
 };
@@ -55,8 +53,7 @@ export const STUDIOS: Studio[] = [
   },
   {
     slug: "motion", name: "Motion control", href: "/motion", icon: Move3d, group: "studios",
-    summary: "A library of 65 camera moves (crash zoom, dolly zoom, bullet time, FPV, 360 orbit) you can stack. " +
-      "Drawn trajectories that steer how things move arrive with the open models in P3.",
+    summary: "A library of 65 camera moves (crash zoom, dolly zoom, bullet time, FPV, 360 orbit) you can stack.",
   },
   {
     slug: "motion-transfer", name: "Motion transfer", href: "/motion-transfer", icon: PersonStanding,
@@ -112,7 +109,3 @@ export const STUDIOS: Studio[] = [
     summary: "Spending limits and provider status.",
   },
 ];
-
-export function studioBySlug(slug: string) {
-  return STUDIOS.find((s) => s.slug === slug);
-}

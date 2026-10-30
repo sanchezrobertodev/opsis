@@ -13,7 +13,7 @@ import { ModelStorage } from "@/components/shell/ModelStorage";
 const MODE_TEXT: Record<string, string> = {
   mock: "Every generation runs on the mock provider. Nothing is sent to a provider and nothing is billed.",
   mixed: "Only the routes below run for real; everything else stays on the mock provider.",
-  live: "Generations call real providers and are billed to your accounts, within the limits on the left.",
+  live: "Generations call real providers and are billed to your accounts, within your spending limits.",
 };
 const CLAUDE_TEXT: Record<string, string> = {
   mock: "Scripts, shot plans and prompt help come from a canned writer. Nothing is billed.",
@@ -82,8 +82,8 @@ export function Settings() {
                 {budget.provider_mode === "mixed" && (
                   <p className="text-xs text-muted">
                     {budget.live_route_allowlist.length
-                      ? budget.live_route_allowlist.join(", ")
-                      : "No routes are listed in LIVE_ROUTE_ALLOWLIST, so everything stays mocked."}
+                      ? `Live routes: ${budget.live_route_allowlist.join(", ")}`
+                      : "No routes are listed in LIVE_ROUTE_ALLOWLIST in .env, so everything stays mocked."}
                   </p>
                 )}
               </div>
@@ -101,7 +101,7 @@ export function Settings() {
               <p className="text-2xs text-faint">
                 Changes apply to the next generation, no restart needed.
                 {budget.provider_modes.length < 3 || budget.llm_modes.length < 2
-                  ? " This studio's .env (PROVIDER_MODE, LLM_MODE) keeps it from going further; change it there for more."
+                  ? " PROVIDER_MODE and LLM_MODE in .env set the highest mode offered here; raise them there and restart for more."
                   : ""}
               </p>
             </div>
@@ -152,9 +152,9 @@ export function Settings() {
           )}
         </section>
 
-        <Appearance />
-        <ModelStorage />
         <Balances />
+        <ModelStorage />
+        <Appearance />
         <WhereItWent />
         <SpendHistory />
       </div>
@@ -226,7 +226,10 @@ function Balances() {
       {!data ? (
         <p className="text-sm text-muted">Asking the providers&hellip;</p>
       ) : data.length === 0 ? (
-        <p className="text-sm text-muted">No provider keys in .env yet.</p>
+        <p className="text-sm text-muted">
+          No provider keys yet. Add the ones you have to .env (.env.example says where to get each), then restart the
+          API and worker.
+        </p>
       ) : (
         <ul className="grid gap-2 sm:grid-cols-2">
           {data.map((b) => (

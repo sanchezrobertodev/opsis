@@ -26,7 +26,8 @@ in the server's `.env` at that machine's ComfyUI (over Tailscale, for example).
 ## Deploy
 `infra/server/deploy.sh` (run it from anywhere, or from a dashboard button) does the following:
 1. Pulls the code.
-2. Waits for memory: it needs 3 GB free, and no Ollama model loading if Ollama runs on the same host.
+2. Waits for memory: it needs 3 GB free, and no Ollama model loading if Ollama runs on the same host
+   (`OLLAMA_URL` in `.env`, default `http://127.0.0.1:11434`).
 3. Builds both images.
 4. Installs the Quadlet units and timers.
 5. Migrates the database.
