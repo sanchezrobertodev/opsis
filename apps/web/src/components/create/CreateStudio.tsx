@@ -89,6 +89,7 @@ export function CreateStudio({
               <SelectionBar
                 count={picked.length}
                 selectable={selectable.length}
+                more={!!gens?.next_cursor}
                 onAll={() => selection.set(selectable)}
                 onNone={() => selection.set([])}
                 onDelete={() => setConfirming(true)}

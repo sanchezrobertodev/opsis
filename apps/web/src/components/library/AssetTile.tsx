@@ -6,6 +6,17 @@ import { type Asset, mediaUrl } from "@/lib/api";
 import { cn, seconds } from "@/lib/cn";
 import { SelectMark } from "@/components/ui/Selection";
 
+const KIND_LABEL: Record<string, string> = {
+  audio: "Audio",
+  video: "Video",
+  image: "Image",
+  mask: "Mask",
+  mask_video: "Mask clip",
+  model3d: "3D model",
+  splat: "3D world",
+  subtitle: "Transcript",
+};
+
 /** Library tile. Videos scrub through their filmstrip sprite as the pointer moves across them. While selecting,
  * a press picks the tile instead of opening it. */
 export function AssetTile({
@@ -22,6 +33,7 @@ export function AssetTile({
   onToggle?: () => void;
 }) {
   const [frame, setFrame] = useState<number | null>(null);
+  const [missing, setMissing] = useState(false);
   const frames = asset.filmstrip_frames ?? 0;
   const canScrub = asset.kind === "video" && asset.filmstrip_url && frames > 1;
   const aspect = asset.width && asset.height ? `${asset.width} / ${asset.height}` : "16 / 9";
@@ -55,16 +67,22 @@ export function AssetTile({
             backgroundPosition: `${(frame / (frames - 1)) * 100}% 0`,
           }}
         />
+      ) : missing ? (
+        <span className="absolute inset-0 grid place-items-center text-xs text-faint">File missing</span>
       ) : asset.thumb_url || asset.kind === "image" ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={mediaUrl(asset.thumb_url ?? asset.url)}
           alt=""
           loading="lazy"
+          onError={() => setMissing(true)}
           className="absolute inset-0 size-full object-cover"
         />
       ) : (
-        <span className="absolute inset-0 grid place-items-center text-xs text-faint">Processing…</span>
+        // audio, masks and older files have no picture; only a file still being read is "processing"
+        <span className="absolute inset-0 grid place-items-center text-xs text-faint">
+          {asset.status === "processing" || asset.status === "pending_upload" ? "Processing…" : KIND_LABEL[asset.kind] ?? asset.kind}
+        </span>
       )}
 
       {canScrub && frame !== null && (

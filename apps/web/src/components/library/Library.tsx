@@ -66,6 +66,7 @@ export function Library() {
         <SelectionBar
           count={picked.length}
           selectable={items.length}
+          more={!!data?.next_cursor}
           onAll={() => selection.set(items.map((a) => a.id))}
           onNone={() => selection.set([])}
           onDelete={() => setConfirming(true)}

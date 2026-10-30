@@ -40,6 +40,7 @@ export function SelectButton({ onClick }: { onClick: () => void }) {
 export function SelectionBar({
   count,
   selectable,
+  more = false,
   onAll,
   onNone,
   onDelete,
@@ -47,6 +48,8 @@ export function SelectionBar({
 }: {
   count: number;
   selectable: number;
+  /** the grid shows only the newest page, so "all" means all of those */
+  more?: boolean;
   onAll: () => void;
   onNone: () => void;
   onDelete: () => void;
@@ -63,7 +66,7 @@ export function SelectionBar({
       </span>
       {count < selectable ? (
         <Button size="sm" tone="ghost" onClick={onAll}>
-          Select all
+          {more ? `Select all ${selectable} shown` : "Select all"}
         </Button>
       ) : (
         <Button size="sm" tone="ghost" onClick={onNone}>
