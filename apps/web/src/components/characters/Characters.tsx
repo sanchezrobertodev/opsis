@@ -1,6 +1,6 @@
 "use client";
 
-import { AudioLines, Copy, Mic, Plus, Sparkles, Trash2 } from "lucide-react";
+import { AudioLines, Copy, Maximize2, Mic, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -537,7 +537,7 @@ function IdentityPanel({ element }: { element: Element }) {
 const TRAITS: { key: string; label: string; options: string[] }[] = [
   { key: "style", label: "Style", options: ["photoreal", "cinematic film still", "anime", "stylized 3D animation", "graphic novel"] },
   { key: "age", label: "Age", options: ["young", "teenage", "twenty-something", "thirty-something", "middle-aged", "elderly"] },
-  { key: "presentation", label: "Gender", options: ["woman", "man", "androgynous person", "non-human creature"] },
+  { key: "presentation", label: "Presentation", options: ["woman", "man", "androgynous person", "non-human creature"] },
   { key: "build", label: "Build", options: ["slight", "athletic", "average", "broad", "heavyset", "very tall"] },
   { key: "hair", label: "Hair", options: ["short curly", "long straight", "shaved", "braided", "messy shoulder-length", "slicked back", "bald"] },
   { key: "hair_color", label: "Hair color", options: ["black", "dark brown", "auburn", "blonde", "silver", "dyed blue", "bright red"] },
@@ -557,7 +557,7 @@ const HINTS: Record<ElementKind, [string, string]> = {
 };
 
 /** Trait tile widths in Design a character (the pictures are 256 px). */
-const TILE = { Small: "w-[76px]", Medium: "w-[112px]", Large: "w-[156px]" };
+const TILE = { Small: "w-[76px]", Medium: "w-[112px]", Large: "w-[156px]", XL: "w-[208px]" };
 
 /** A trait option's preview picture in `public/designer/`: `<trait>-<option as a slug>.webp`. */
 const traitFile = (option: string) => option.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -586,6 +586,7 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
   const [traits, setTraits] = useState<Record<string, string>>({});
   const [heritage, setHeritage] = useState("");
   const [size, setSize] = useState<keyof typeof TILE>("Medium");
+  const [zoom, setZoom] = useState<{ trait: (typeof TRAITS)[number]; option: string } | null>(null);
   const description = describe(traits, heritage.trim());
   const style = traits.style ?? "photoreal";
 
@@ -624,7 +625,7 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
       }
     >
       <div className="flex flex-col gap-4">
-        <div className="ml-auto w-56">
+        <div className="ml-auto w-64">
           <Segmented label="Picture size" value={size} options={Object.keys(TILE) as (keyof typeof TILE)[]} onChange={setSize} />
         </div>
         {TRAITS.map((t) => (
@@ -637,17 +638,24 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
               {t.options.map((o) => {
                 const on = traits[t.key] === o;
                 return (
-                  <button key={o} type="button" aria-pressed={on} title={o}
-                          onClick={() => setTraits({ ...traits, [t.key]: on ? "" : o })}
-                          className={cn("flex flex-col gap-1 rounded-[var(--radius-control)] border p-1 text-left", TILE[size],
-                                        on ? "border-tungsten bg-raised" : "border-line-soft hover:border-tungsten/40")}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={`/designer/${t.key}-${traitFile(o)}.webp`} alt="" loading="lazy"
-                         className="aspect-square w-full rounded-[3px] bg-bay object-cover"
-                         onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
-                    <span className={cn("line-clamp-2 leading-tight", size === "Small" ? "text-2xs" : "text-xs",
-                                        on ? "text-chalk" : "text-muted")}>{o}</span>
-                  </button>
+                  <div key={o} className={cn("group relative", TILE[size])}>
+                    <button type="button" aria-pressed={on} title={o}
+                            onClick={() => setTraits({ ...traits, [t.key]: on ? "" : o })}
+                            className={cn("flex w-full flex-col gap-1 rounded-[var(--radius-control)] border p-1 text-left",
+                                          on ? "border-tungsten bg-raised" : "border-line-soft hover:border-tungsten/40")}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`/designer/${t.key}-${traitFile(o)}.webp`} alt="" loading="lazy"
+                           className="aspect-square w-full rounded-[3px] bg-bay object-cover"
+                           onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
+                      <span className={cn("line-clamp-2 leading-tight", size === "Small" ? "text-2xs" : "text-xs",
+                                          on ? "text-chalk" : "text-muted")}>{o}</span>
+                    </button>
+                    <button type="button" aria-label={`See ${o} full size`} title="See full size"
+                            onClick={() => setZoom({ trait: t, option: o })}
+                            className="absolute right-2 top-2 grid size-7 place-items-center rounded-[4px] bg-black/55 text-white opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100">
+                      <Maximize2 className="size-3.5" aria-hidden />
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -666,8 +674,23 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
       <p className={cn("mt-4 rounded-[var(--radius-control)] bg-bay p-3 text-sm leading-relaxed", description ? "text-chalk" : "text-faint")}>
         {description || "Pick a few traits, or press Randomize."}
       </p>
+      <Dialog open={zoom !== null} onClose={() => setZoom(null)} title={zoom ? `${zoom.trait.label}: ${zoom.option}` : ""} wide
+              footer={zoom && (
+                <Button type="button" tone="primary" onClick={() => {
+                  setTraits({ ...traits, [zoom.trait.key]: zoom.option });
+                  setZoom(null);
+                }}>
+                  {traits[zoom.trait.key] === zoom.option ? "Picked" : "Pick this"}
+                </Button>
+              )}>
+        {zoom && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={`/designer/full/${zoom.trait.key}-${traitFile(zoom.option)}.webp`} alt={zoom.option} width={768} height={768}
+               className="mx-auto block h-auto max-h-[70vh] w-auto max-w-full rounded-[var(--radius-frame)]" />
+        )}
+      </Dialog>
       <p className="mt-2 text-2xs text-faint">
-        Click a picture to pick it, again to leave it open. This opens Create image with two portrait takes. Save the
+        Click a picture to pick it, again to leave it open. The corner button shows it full size. This opens Create image with two portrait takes. Save the
         one you like to Characters; its description is filled in from these traits.
       </p>
     </Dialog>
