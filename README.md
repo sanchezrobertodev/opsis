@@ -27,7 +27,7 @@
   <a href="#documentation">Docs</a>
 </p>
 
-[![The Opsis launch film (1:58)](docs/demo/opsis-launch.jpg)](docs/demo/opsis-launch.mp4)
+https://github.com/user-attachments/assets/dbfe8017-43c7-4855-b677-b80629ac9910
 
 Opsis is a self-hosted video studio in the spirit of Higgsfield. You pick a model, set a few controls that matter,
 and the take lands in your library. You never wire a node graph. Open models such as Wan 2.2, LTX-2.5 and FLUX.2 klein
