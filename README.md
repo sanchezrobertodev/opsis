@@ -107,8 +107,8 @@ Mock mode needs no GPU and no keys. You need, on Windows, macOS or Linux:
 - [ffmpeg](https://ffmpeg.org/download.html) on your PATH
 
 ```bash
-git clone https://github.com/sanchezrobertodev/ai-media-studio.git
-cd ai-media-studio
+git clone https://github.com/sanchezrobertodev/opsis.git
+cd opsis
 cp .env.example .env
 pnpm db:up        # Postgres in Docker, on port 5433
 uv sync
