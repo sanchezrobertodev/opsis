@@ -28,6 +28,7 @@ import { AspectPicker, Button, Field, Segmented, Select, Slider } from "@/compon
 import { ConfirmDelete, reportRemoval, SelectButton, SelectionBar, SelectMark, useSelection } from "@/components/ui/Selection";
 import type { Launch } from "./Editor";
 import { TakeActions } from "./TakeActions";
+import { ZoomButton } from "@/components/ui/PictureViewer";
 
 type Update = (fn: (d: CinemaDoc) => CinemaDoc) => void;
 
@@ -356,6 +357,9 @@ function SortableShot({ selected, onSelect, ...face }: FaceProps & { selected: b
       <button type="button" onClick={onSelect} onPointerDown={onPointerDown} aria-pressed={selected} className="block w-full">
         <ShotFace {...face} selected={selected} />
       </button>
+      {face.pic?.kind === "image" && (
+        <ZoomButton src={mediaUrl(face.pic.url)} title={`Shot ${String(face.n).padStart(2, "0")}`} className="top-7" />
+      )}
       <button type="button" ref={setActivatorNodeRef} {...attributes} {...listeners}
               aria-label={`Move shot ${String(face.n).padStart(2, "0")}`}
               className="absolute bottom-[3.6rem] right-1.5 grid size-6 cursor-grab place-items-center rounded-full bg-black/60 text-chalk opacity-0 focus-visible:opacity-100 group-hover:opacity-100 active:cursor-grabbing">
@@ -699,11 +703,14 @@ function TakeGrid({ takes, picked, onPick, empty, video, columns = 2, alt = "Ope
                        preload="metadata" className={cn("aspect-video w-full rounded-[var(--radius-frame)] bg-black object-cover",
                                                          picked === t.asset.id && "ring-2 ring-tungsten")} />
               ) : (
-                <button type="button" onClick={() => onPick(t.asset!.id)} aria-pressed={picked === t.asset.id}
-                        className={cn("overflow-hidden rounded-[var(--radius-frame)]", picked === t.asset.id && "ring-2 ring-tungsten")}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={mediaUrl(t.asset.thumb_url ?? t.asset.url)} alt={alt} className="aspect-video w-full object-cover" />
-                </button>
+                <div className="group relative">
+                  <button type="button" onClick={() => onPick(t.asset!.id)} aria-pressed={picked === t.asset.id}
+                          className={cn("block w-full overflow-hidden rounded-[var(--radius-frame)]", picked === t.asset.id && "ring-2 ring-tungsten")}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={mediaUrl(t.asset.thumb_url ?? t.asset.url)} alt={alt} className="aspect-video w-full object-cover" />
+                  </button>
+                  <ZoomButton src={mediaUrl(t.asset.url)} title={alt} />
+                </div>
               )
             ) : (
               <span className="grid aspect-video w-full place-items-center rounded-[var(--radius-frame)] bg-bay text-2xs text-faint">

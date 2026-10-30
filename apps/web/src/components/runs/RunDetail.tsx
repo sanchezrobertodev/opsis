@@ -17,6 +17,7 @@ import {
 import { PlanBlocks, ScriptReview } from "@/components/faceless/ScriptReview";
 import { Button } from "@/components/ui/controls";
 import { statusTone, WHEN } from "./Runs";
+import { OpensFullSize } from "@/components/ui/PictureViewer";
 
 const OUTPUT_TEXT: Record<string, string> = {
   sequence: "The joined cut.",
@@ -124,8 +125,10 @@ function Media({ asset, className }: { asset: Asset; className?: string }) {
   ) : asset.kind === "audio" ? (
     <audio src={mediaUrl(asset.url)} controls className={cn("w-full", className)} />
   ) : (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={mediaUrl(asset.url)} alt={asset.title ?? ""} className={className} />
+    <OpensFullSize src={mediaUrl(asset.url)!} title={asset.title ?? "Picture"} className="w-full">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={mediaUrl(asset.url)} alt="" className={className} />
+    </OpensFullSize>
   );
 }
 
@@ -133,10 +136,14 @@ function Media({ asset, className }: { asset: Asset; className?: string }) {
 function StepAsset({ asset }: { asset: Asset }) {
   const picture = asset.thumb_url ?? asset.poster_url ?? (asset.kind === "image" || asset.kind === "mask" ? asset.url : null);
   if (picture) {
+    const still = asset.kind === "image" || asset.kind === "mask";
+    const img = (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={mediaUrl(picture)} alt={still ? "" : asset.title ?? ""} className="size-full object-cover" />
+    );
     return (
       <span className="h-16 w-28 overflow-hidden rounded-[var(--radius-frame)] bg-bay">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={mediaUrl(picture)} alt={asset.title ?? ""} className="size-full object-cover" />
+        {still ? <OpensFullSize src={mediaUrl(asset.url)!} title={asset.title ?? "Picture"} className="size-full">{img}</OpensFullSize> : img}
       </span>
     );
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { AudioLines, Copy, Maximize2, Mic, Plus, Sparkles, Trash2 } from "lucide-react";
+import { AudioLines, Copy, Mic, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ import {
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { VOICE_MODEL, VoicePicker } from "@/components/voice/VoicePicker";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
+import { OpensFullSize, ZoomButton } from "@/components/ui/PictureViewer";
 
 const FILTERS = ["all", "character", "location", "prop", "style", "voice"] as const;
 type Filter = (typeof FILTERS)[number];
@@ -92,7 +93,8 @@ export function Characters() {
       ) : (
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-4">
           {items.map((e) => (
-            <li key={e.id}>
+            <li key={e.id} className="group relative">
+              {e.kind !== "voice" && e.cover && <ZoomButton src={mediaUrl(e.cover.url)} title={e.name} />}
               <button
                 type="button"
                 onClick={() => setEditing(e)}
@@ -307,10 +309,14 @@ function AddStarters({ starters }: { starters: typeof STARTERS }) {
 
   return (
     <div className="mb-6 flex max-w-3xl flex-wrap items-center gap-3 rounded-[var(--radius-panel)] bg-panel p-4">
-      <ul className="flex gap-2" aria-hidden>
+      <ul className="flex gap-2">
         {starters.map((s) => (
-          // eslint-disable-next-line @next/next/no-img-element
-          <li key={s.file}><img src={`/starters/${s.file}.webp`} alt="" className="h-12 w-20 rounded-[var(--radius-frame)] object-cover" /></li>
+          <li key={s.file}>
+            <OpensFullSize src={`/starters/${s.file}.webp`} title={s.name}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`/starters/${s.file}.webp`} alt="" className="h-12 w-20 rounded-[var(--radius-frame)] object-cover" />
+            </OpensFullSize>
+          </li>
         ))}
       </ul>
       <p className="min-w-48 flex-1 text-xs leading-relaxed text-muted">
@@ -365,7 +371,8 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
 
   const images: SlotAsset[] = useMemo(
     () => [
-      ...(existing?.images ?? []).map((i) => ({ id: i.asset.id, kind: "image", thumb: i.asset.thumb_url, url: i.asset.url })),
+      ...(existing?.images ?? []).map((i, n) => ({ id: i.asset.id, kind: "image", thumb: i.asset.thumb_url, url: i.asset.url,
+                                                   title: `${existing?.name}, picture ${n + 1}` })),
       ...pending,
     ],
     [existing, pending],
@@ -773,11 +780,7 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
                       <span className={cn("line-clamp-2 leading-tight", size === "Small" ? "text-2xs" : "text-xs",
                                           on ? "text-chalk" : "text-muted")}>{o}</span>
                     </button>
-                    <button type="button" aria-label={`See ${o} full size`} title="See full size"
-                            onClick={() => setZoom({ trait: t, option: o })}
-                            className="absolute right-2 top-2 grid size-7 place-items-center rounded-[4px] bg-black/55 text-white opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100">
-                      <Maximize2 className="size-3.5" aria-hidden />
-                    </button>
+                    <ZoomButton title={o} onClick={() => setZoom({ trait: t, option: o })} />
                   </div>
                 );
               })}

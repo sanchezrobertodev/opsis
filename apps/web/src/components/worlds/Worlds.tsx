@@ -18,6 +18,7 @@ import { QuickGenerate } from "@/components/create/QuickGenerate";
 import { Button, Dialog, Field, Segmented } from "@/components/ui/controls";
 import { ConfirmDelete, reportRemoval, SelectButton, SelectionBar, SelectMark, useSelection } from "@/components/ui/Selection";
 import type { ViewerHandle } from "./Viewers";
+import { ZoomButton } from "@/components/ui/PictureViewer";
 
 // WebGL only exists in the browser
 const WorldViewer = dynamic(() => import("./Viewers").then((m) => m.WorldViewer), { ssr: false });
@@ -257,7 +258,8 @@ function Stage({ open, onWorldFrom }: { open: Open; onWorldFrom: (pano: Asset) =
       {grabs.length > 0 && (
         <ul className="flex gap-2 overflow-x-auto border-t border-line-soft p-3 scrollbar-quiet" aria-label="Grabbed views">
           {grabs.map((g) => (
-            <li key={g.id} className="w-40 shrink-0">
+            <li key={g.id} className="group relative w-40 shrink-0">
+              <ZoomButton src={mediaUrl(g.url)} title={g.title ?? "A grabbed view"} className="right-1 top-1" />
               <Link href={`/library?asset=${g.id}`} className="flex flex-col gap-1 text-2xs text-muted hover:text-chalk">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={mediaUrl(g.url)} alt={g.title ?? "A grabbed view"} className="aspect-video w-full rounded-[3px] bg-black object-cover" />
