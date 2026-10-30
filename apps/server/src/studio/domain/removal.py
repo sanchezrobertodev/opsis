@@ -65,6 +65,12 @@ async def in_use(session: AsyncSession, user_id: uuid.UUID, asset_ids: list[uuid
         Generation.user_id == user_id, Generation.status.in_(ACTIVE_STATUSES), mentions(Generation.request)))
     texts += [("a take still rendering", text) for text in rendering.scalars()]
     going = (PipelineRun.user_id == user_id) & PipelineRun.status.in_((RunStatus.running, RunStatus.waiting))
+    # a run's take can finish before its step takes the output in, so what it made is the run's until the run ends
+    made = await session.execute(select(Asset.id).join(Generation, Generation.id == Asset.generation_id)
+                                 .join(PipelineRun, PipelineRun.id == Generation.group_id)
+                                 .where(Asset.id.in_(asset_ids), going))
+    for aid in made.scalars():
+        used.setdefault(aid, "a run still going")
     runs = await session.execute(select(PipelineRun.input.cast(Text)).where(going, mentions(PipelineRun.input)))
     steps = await session.execute(select(PipelineStep.output.cast(Text)).join(
         PipelineRun, PipelineRun.id == PipelineStep.run_id).where(going, mentions(PipelineStep.output)))

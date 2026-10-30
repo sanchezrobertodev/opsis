@@ -317,6 +317,24 @@ async def test_a_take_whose_last_file_is_deleted_leaves_history(client):
     assert not listed(await client.get("/generations"))
 
 
+async def test_what_a_running_runs_take_made_is_kept_until_the_run_ends(client):
+    from studio.db.models import PipelineRun, RunStatus
+
+    out = await create(client, model_id="nano-banana-2", mode="t2i", prompt="for the run")
+    gen = await drive(uuid.UUID(out["id"]))
+    async with session_scope() as s:  # the take finished; its step hasn't taken the output in yet
+        run = PipelineRun(user_id=gen.user_id, recipe="sequence", title="still going", status=RunStatus.running)
+        s.add(run)
+        await s.flush()
+        (await s.get(Generation, gen.id)).group_id = run.id
+        (asset,) = (await s.execute(select(Asset.id).where(Asset.generation_id == gen.id))).scalars().all()
+    r = await client.delete(f"/assets/{asset}")
+    assert r.status_code == 409 and "a run still going" in r.json()["detail"].lower()
+    async with session_scope() as s:
+        (await s.get(PipelineRun, run.id)).status = RunStatus.succeeded
+    assert (await client.delete(f"/assets/{asset}")).status_code == 204
+
+
 async def test_files_a_take_still_rendering_needs_are_kept(client):
     buf = io.BytesIO()
     Image.new("RGB", (640, 360), (90, 60, 30)).save(buf, "PNG")
