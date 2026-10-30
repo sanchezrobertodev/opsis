@@ -12,6 +12,7 @@ smoke_reports/
 *.wav
 *.mp3
 !fixtures/**
+!apps/web/public/covers/*.mp4
 
 # Python
 __pycache__/
