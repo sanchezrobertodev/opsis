@@ -6,7 +6,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { api, type Asset, mediaUrl, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
-import { useRegistry } from "@/lib/queries";
+import { useRegistry, useResolveUnknown } from "@/lib/queries";
 import {
   RUN_STATUS_TEXT,
   type Run,
@@ -227,7 +227,9 @@ function StatusIcon({ step }: { step: Step }) {
 
 function StepRow({ run, step }: { run: Run; step: Step }) {
   const answer = useAnswerCheckpoint();
+  const resolve = useResolveUnknown();
   const running = step.status === "running" && step.kind === "generate";
+  const held = running && step.generation_status === "unknown";
   return (
     <li className="rounded-[var(--radius-panel)] bg-panel p-3">
       <div className="flex items-center gap-3">
@@ -237,9 +239,23 @@ function StepRow({ run, step }: { run: Run; step: Step }) {
           {KIND_TEXT[step.kind] ?? step.kind}
           {running && step.progress != null && step.progress > 0 && `, ${Math.round(step.progress * 100)}%`}
           {running && step.generation_status === "queued" && ", waiting for a worker"}
+          {held && ", held"}
         </span>
       </div>
       {step.error && <p className="mt-2 pl-6 text-xs leading-relaxed text-fault">{step.error}</p>}
+      {held && step.generation_id && (
+        <div className="mt-2 flex flex-wrap items-center gap-3 pl-6">
+          <p className="flex-1 text-xs leading-relaxed text-muted">
+            The provider&rsquo;s answer couldn&rsquo;t be read, so this take is held rather than tried again (a second
+            try could be paid twice). If the provider shows it failed, mark it failed and the run goes on without it.
+          </p>
+          <Button type="button" size="sm" disabled={resolve.isPending}
+                  onClick={() => resolve.mutate(step.generation_id!, {
+                    onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't mark it failed") })}>
+            Mark failed
+          </Button>
+        </div>
+      )}
       {step.assets.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2 pl-6">
           {step.assets.slice(0, 4).map((a) => (
