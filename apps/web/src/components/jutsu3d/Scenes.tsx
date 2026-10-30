@@ -2,13 +2,14 @@
 
 import { Box, Plus } from "lucide-react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { mediaUrl } from "@/lib/api";
 import { useCreateScene, useScenes } from "@/lib/jutsu3d";
 import { Button, Dialog } from "@/components/ui/controls";
+import { ConfirmDelete, PickableLink, reportRemoval, SelectButton, SelectionBar, useSelection } from "@/components/ui/Selection";
+import { useDeleteProjects } from "@/lib/queries";
 import { WHEN } from "@/components/runs/Runs";
 
 /** The editor draws with WebGL, so it only ever renders in the browser. */
@@ -23,6 +24,20 @@ export function Scenes() {
   const create = useCreateScene();
   const [naming, setNaming] = useState(false);
   const [title, setTitle] = useState("");
+  const selection = useSelection();
+  const [confirming, setConfirming] = useState(false);
+  const removal = useDeleteProjects();
+  const picked = (scenes ?? []).filter((p) => selection.picked.has(p.id)).map((p) => p.id);
+
+  function removePicked() {
+    removal.mutate(picked, {
+      onSuccess: (r) => {
+        setConfirming(false);
+        selection.stop();
+        reportRemoval(r, ["scene", "scenes"]);
+      },
+    });
+  }
 
   async function start() {
     try {
@@ -40,11 +55,20 @@ export function Scenes() {
           Block a shot in 3D: place figures, props and lights, pose them, frame the camera and move it over time. Render
           the camera&rsquo;s view as pictures, depth or normals to guide image and video models.
         </p>
-        <Button tone="primary" onClick={() => { setTitle(""); setNaming(true); }}>
-          <Plus className="size-4" aria-hidden />
-          New scene
-        </Button>
+        <span className="flex gap-2">
+          {!!scenes?.length && !selection.selecting && <SelectButton onClick={selection.start} />}
+          <Button tone="primary" onClick={() => { setTitle(""); setNaming(true); }}>
+            <Plus className="size-4" aria-hidden />
+            New scene
+          </Button>
+        </span>
       </div>
+      {selection.selecting && !!scenes?.length && (
+        <div className="max-w-5xl">
+          <SelectionBar count={picked.length} selectable={scenes.length} onAll={() => selection.set(scenes.map((p) => p.id))}
+                        onNone={() => selection.set([])} onDelete={() => setConfirming(true)} onDone={selection.stop} />
+        </div>
+      )}
       {!isLoading && !scenes?.length && (
         <div className="flex max-w-5xl flex-col items-start gap-3 rounded-[var(--radius-panel)] bg-panel p-8">
           <Box className="size-6 text-tungsten" aria-hidden />
@@ -55,7 +79,8 @@ export function Scenes() {
       <ul className="grid max-w-5xl grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
         {scenes?.map((p) => (
           <li key={p.id}>
-            <Link href={`/jutsu3d/${p.id}`} className="flex flex-col overflow-hidden rounded-[var(--radius-panel)] bg-panel hover:bg-raised">
+            <PickableLink href={`/jutsu3d/${p.id}`} selecting={selection.selecting} selected={selection.picked.has(p.id)}
+                          onToggle={() => selection.toggle(p.id)} className="flex flex-col overflow-hidden rounded-[var(--radius-panel)] bg-panel hover:bg-raised">
               <span className="aspect-video w-full bg-bay">
                 {p.cover && (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -68,10 +93,15 @@ export function Scenes() {
                   {p.objects} object{p.objects === 1 ? "" : "s"}. Edited {WHEN.format(new Date(p.updated_at))}
                 </span>
               </span>
-            </Link>
+            </PickableLink>
           </li>
         ))}
       </ul>
+      <ConfirmDelete open={confirming} count={picked.length} noun={["scene", "scenes"]} pending={removal.isPending}
+                     onConfirm={removePicked} onClose={() => setConfirming(false)}>
+        Deleted scenes leave this list. Their takes and files stay in your history and library, where you can delete
+        them once no other scene uses them.
+      </ConfirmDelete>
       <Dialog open={naming} onClose={() => setNaming(false)} title="New scene" footer={(
         <>
           <Button tone="ghost" onClick={() => setNaming(false)}>Cancel</Button>

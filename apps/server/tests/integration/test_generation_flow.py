@@ -268,3 +268,151 @@ def test_a_reported_cost_is_read_the_same_way_everywhere():
     assert _reported_cost({"cost_usd": 0}, free_ok=True) == Decimal("0")  # a finished one may have been free
     for bad in ("0.4", None, True, -1, {"usd": 1}):  # not a number: the estimate stands, nothing crashes
         assert _reported_cost({"cost_usd": bad}, free_ok=True) is None
+
+
+async def test_deleting_a_take_removes_its_files_and_keeps_what_others_use(client):
+    out = await create(client, model_id="nano-banana-2", mode="t2i", prompt="tidy up", params={"num_images": 2})
+    gen_id = uuid.UUID(out["id"])
+    assert (await client.delete(f"/generations/{out['id']}")).status_code == 409  # still queued
+    await drive(gen_id)
+    async with session_scope() as s:
+        assets = (await s.execute(select(Asset).where(Asset.generation_id == gen_id)
+                                  .order_by(Asset.output_index))).scalars().all()
+        ledger = select(SpendLedger.id).join(GenerationAttempt, SpendLedger.generation_attempt_id == GenerationAttempt.id
+                                             ).where(GenerationAttempt.generation_id == gen_id)
+        spent = len((await s.execute(ledger)).all())
+    used, loose = assets
+    r = await client.post("/elements", json={"kind": "character", "name": "Mara Vale",
+                                             "images": [{"asset_id": str(used.id), "view": "front"}]})
+    assert r.status_code == 201, r.text
+    assert (await client.delete(f"/assets/{used.id}")).status_code == 409
+
+    r = await client.delete(f"/generations/{out['id']}")
+    assert r.status_code == 200, r.text
+    assert r.json() == {"files_removed": 1, "kept": ["the character Mara Vale"]}
+    storage = get_storage()
+    assert not storage.path_for(loose.storage_key).exists()
+    assert storage.path_for(used.storage_key).is_file()
+    detail = await client.get(f"/generations/{out['id']}")  # still readable: the kept output points back at it
+    assert detail.status_code == 200 and [a["id"] for a in detail.json()["assets"]] == [str(used.id)]
+    listed = (await client.get("/generations")).json()
+    assert out["id"] not in [g["id"] for g in listed["items"]]
+    async with session_scope() as s:
+        assert len((await s.execute(ledger)).all()) == spent  # what it cost stays on the books
+
+
+async def test_a_take_whose_last_file_is_deleted_leaves_history(client):
+    out = await create(client, model_id="nano-banana-2", mode="t2i", prompt="two of them", params={"num_images": 2})
+    await drive(uuid.UUID(out["id"]))
+    async with session_scope() as s:
+        first, second = (await s.execute(select(Asset.id).where(Asset.generation_id == uuid.UUID(out["id"]))
+                                         .order_by(Asset.output_index))).scalars().all()
+
+    def listed(page) -> bool:
+        return out["id"] in [g["id"] for g in page.json()["items"]]
+
+    assert (await client.delete(f"/assets/{first}")).status_code == 204
+    assert listed(await client.get("/generations"))  # one file left
+    assert (await client.delete(f"/assets/{second}")).status_code == 204
+    assert not listed(await client.get("/generations"))
+
+
+async def test_what_a_running_runs_take_made_is_kept_until_the_run_ends(client):
+    from studio.db.models import PipelineRun, RunStatus
+
+    out = await create(client, model_id="nano-banana-2", mode="t2i", prompt="for the run")
+    gen = await drive(uuid.UUID(out["id"]))
+    async with session_scope() as s:  # the take finished; its step hasn't taken the output in yet
+        run = PipelineRun(user_id=gen.user_id, recipe="sequence", title="still going", status=RunStatus.running)
+        s.add(run)
+        await s.flush()
+        (await s.get(Generation, gen.id)).group_id = run.id
+        (asset,) = (await s.execute(select(Asset.id).where(Asset.generation_id == gen.id))).scalars().all()
+    r = await client.delete(f"/assets/{asset}")
+    assert r.status_code == 409 and "a run still going" in r.json()["detail"].lower()
+    async with session_scope() as s:
+        (await s.get(PipelineRun, run.id)).status = RunStatus.succeeded
+    assert (await client.delete(f"/assets/{asset}")).status_code == 204
+
+
+async def test_files_a_take_still_rendering_needs_are_kept(client):
+    buf = io.BytesIO()
+    Image.new("RGB", (640, 360), (90, 60, 30)).save(buf, "PNG")
+    image = (await client.post("/uploads", files={"file": ("frame.png", buf.getvalue(), "image/png")})).json()
+    out = await create(client, model_id="veo-3.1", mode="i2v", prompt="animate",
+                       media=[{"role": "start_image", "asset_id": image["id"]}], params={"duration": 4})
+    r = await client.delete(f"/assets/{image['id']}")
+    assert r.status_code == 409 and "a take still rendering" in r.json()["detail"].lower()
+    gen = await drive(uuid.UUID(out["id"]))
+    assert gen.status == GenStatus.succeeded, gen.error_message
+    assert (await client.delete(f"/assets/{image['id']}")).status_code == 204
+
+
+async def _upload_picture(client) -> uuid.UUID:
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), (40, 160, 90)).save(buf, "PNG")
+    return uuid.UUID((await client.post("/uploads", files={"file": ("pic.png", buf.getvalue(), "image/png")})).json()["id"])
+
+
+async def test_files_a_delete_could_not_remove_are_retried_by_the_reaper(client, monkeypatch):
+    from studio.domain.removal import PURGE
+
+    aid = await _upload_picture(client)
+    storage = get_storage()
+    async with session_scope() as s:
+        path = storage.path_for((await s.get(Asset, aid)).storage_key)
+    with monkeypatch.context() as m:
+        m.setattr(type(storage), "delete_prefix", lambda self, prefix: None)  # a file held open: nothing goes
+        assert (await client.delete(f"/assets/{aid}")).status_code == 204
+    async with session_scope() as s:
+        assert (await s.get(Asset, aid)).metadata_.get(PURGE) is True
+    assert path.is_file()
+    assert (await reap(datetime.now(UTC)))["files_left"] == 0
+    assert not path.exists()
+    async with session_scope() as s:
+        assert PURGE not in (await s.get(Asset, aid)).metadata_
+
+
+async def test_a_delete_waits_for_a_save_that_starts_using_the_asset(client):
+    import asyncio
+    from types import SimpleNamespace
+
+    from studio.api.routers.projects import _available
+    from studio.db.models import Project
+
+    aid = await _upload_picture(client)
+    project = (await client.post("/projects", json={"title": "Race", "document": {}})).json()
+    async with session_scope() as s:  # a save, part way: it has checked the asset and not committed yet
+        asset = await s.get(Asset, aid)
+        assert await _available(s, SimpleNamespace(id=asset.user_id), {aid}) == {aid}
+        deleting = asyncio.create_task(client.delete(f"/assets/{aid}"))
+        await asyncio.sleep(0.5)
+        assert not deleting.done()
+        (await s.get(Project, uuid.UUID(project["id"]))).document = {"picked": str(aid)}
+    r = await deleting
+    assert r.status_code == 409 and "the film race" in r.json()["detail"].lower()
+
+
+async def test_show_in_folder_only_for_a_browser_on_this_machine(client, monkeypatch):
+    from studio.media import reveal
+
+    shown: list = []
+    monkeypatch.setattr(reveal, "in_container", lambda: False)
+    monkeypatch.setattr(reveal, "opener", lambda path: ["file-manager", str(path)])
+    monkeypatch.setattr(reveal, "reveal", shown.append)
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), (20, 120, 200)).save(buf, "PNG")
+    image = (await client.post("/uploads", files={"file": ("pic.png", buf.getvalue(), "image/png")})).json()
+
+    assert (await client.get("/health")).json()["reveal_files"] is True
+    assert (await client.post(f"/assets/{image['id']}/reveal")).status_code == 204
+    async with session_scope() as s:
+        asset = await s.get(Asset, uuid.UUID(image["id"]))
+    assert shown == [get_storage().path_for(asset.storage_key)]
+
+    proxied = {"X-Forwarded-For": "100.64.0.7"}  # e.g. a tailnet proxy in front of the API
+    assert (await client.get("/health", headers=proxied)).json()["reveal_files"] is False
+    assert (await client.post(f"/assets/{image['id']}/reveal", headers=proxied)).status_code == 403
+    monkeypatch.setattr(reveal, "in_container", lambda: True)
+    assert (await client.post(f"/assets/{image['id']}/reveal")).status_code == 403
+    assert shown == [get_storage().path_for(asset.storage_key)]

@@ -133,6 +133,105 @@ export function useCancelGeneration() {
   });
 }
 
+/** Shows the file in this computer's file manager (only when `/health` says `reveal_files`). */
+export function useRevealAsset() {
+  return useMutation({
+    mutationFn: (id: string) => unwrap(api.POST("/assets/{asset_id}/reveal", { params: { path: { asset_id: id } } })),
+  });
+}
+
+/** Removes a take from history and its files from disk; the answer lists outputs kept because something uses them. */
+export function useDeleteGeneration() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.DELETE("/generations/{generation_id}", { params: { path: { generation_id: id } } })),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["generations"] });
+      qc.invalidateQueries({ queryKey: ["assets"] });
+    },
+  });
+}
+
+/** What deleting several at once did: how many went, what was kept and why, and what failed. */
+export type Removal = { deleted: number; kept: string[]; failed: string[] };
+
+function settle(results: PromiseSettledResult<string[]>[], keptOn409: boolean): Removal {
+  const out: Removal = { deleted: 0, kept: [], failed: [] };
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      out.deleted += 1;
+      out.kept.push(...r.value);
+    } else if (keptOn409 && r.reason instanceof ApiError && r.reason.status === 409) {
+      out.kept.push(r.reason.message);
+    } else {
+      out.failed.push(r.reason instanceof Error ? r.reason.message : String(r.reason));
+    }
+  }
+  return { ...out, kept: [...new Set(out.kept)] };
+}
+
+/** Deletes several takes; `kept` names what still uses outputs that stayed. */
+export function useDeleteGenerations() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) =>
+      settle(await Promise.allSettled(ids.map((id) =>
+        unwrap(api.DELETE("/generations/{generation_id}", { params: { path: { generation_id: id } } })).then((r) => r.kept),
+      )), false),
+    onSettled: () => {
+      for (const key of ["generations", "assets", "takes"]) void qc.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
+/** Deletes several library files; `kept` has the reason for each one something still uses. */
+export function useDeleteAssets() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) =>
+      settle(await Promise.allSettled(ids.map((id) =>
+        unwrap(api.DELETE("/assets/{asset_id}", { params: { path: { asset_id: id } } })).then(() => []),
+      )), true),
+    onSettled: () => {
+      for (const key of ["generations", "assets", "takes"]) void qc.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
+/** Deletes takes with their files, then single files, as one answer (leave out files of the takes given). */
+export function useRemove() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ generations = [], assets = [] }: { generations?: string[]; assets?: string[] }) => {
+      const takes = settle(await Promise.allSettled(generations.map((id) =>
+        unwrap(api.DELETE("/generations/{generation_id}", { params: { path: { generation_id: id } } }))
+          .then((r) => r.kept.map((what) => `Kept a file ${what} uses.`)),
+      )), false);
+      const files = settle(await Promise.allSettled(assets.map((id) =>
+        unwrap(api.DELETE("/assets/{asset_id}", { params: { path: { asset_id: id } } })).then(() => []),
+      )), true);
+      return { deleted: takes.deleted + files.deleted, kept: [...takes.kept, ...files.kept],
+               failed: [...takes.failed, ...files.failed] } satisfies Removal;
+    },
+    onSettled: () => {
+      for (const key of ["generations", "assets", "takes"]) void qc.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
+/** Deletes films or 3D scenes. Their takes and files stay in history and the library. */
+export function useDeleteProjects() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) =>
+      settle(await Promise.allSettled(ids.map((id) =>
+        unwrap(api.DELETE("/projects/{project_id}", { params: { path: { project_id: id } } })).then(() => []),
+      )), false),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ["projects"] }),
+  });
+}
+
 export function useResolveUnknown() {
   const qc = useQueryClient();
   return useMutation({

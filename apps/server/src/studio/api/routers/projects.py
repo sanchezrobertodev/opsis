@@ -179,11 +179,12 @@ def _validate(kind: str, document: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _available(session: AsyncSession, user: User, ids: set[uuid.UUID]) -> set[uuid.UUID]:
-    """Which of these assets the user still has."""
+    """Which of these assets the user still has. Locked FOR SHARE: a delete waits for this save to commit, or this save
+    sees the asset gone (domain/removal.py)."""
     if not ids:
         return set()
     return set((await session.execute(select(Asset.id).where(
-        Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)))).scalars())
+        Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)).with_for_update(read=True))).scalars())
 
 
 PICKS = ("hero_asset_id", "end_asset_id", "take_asset_id")  # what a shot can pick: opening and closing frames, a take
@@ -663,7 +664,7 @@ async def list_takes(project_id: uuid.UUID, shot_key: str | None = None, session
     has picked are always listed, however old, so the storyboard and the cut can show and export them."""
     p = await _project(session, user, project_id)
     q = select(Generation).where(Generation.project_id == p.id, Generation.user_id == user.id,
-                                 Generation.shot_key.is_not(None))
+                                 Generation.shot_key.is_not(None), Generation.deleted_at.is_(None))
     if shot_key:
         q = q.where(Generation.shot_key == shot_key)
     gens = list((await session.execute(q.order_by(Generation.created_at.desc()).limit(TAKES_PAGE))).scalars().all())

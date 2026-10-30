@@ -126,7 +126,10 @@ async def test_the_cut_lives_in_the_document_and_follows_the_storyboard(client, 
     r = await client.put(f"/projects/{p['id']}", json={"version": 2, "document": stranger})
     assert r.status_code == 422 and "assets not found" in r.text
 
-    # restoring an old version whose sound was deleted since drops that sound
+    # a sound the cut plays can't be deleted; once it's out, restoring an old version that had it drops it
+    assert (await client.delete(f"/assets/{music['id']}")).status_code == 409
+    r = await client.put(f"/projects/{p['id']}", json={"version": 2, "document": {**doc, "cut": {**doc["cut"], "audio": []}}})
+    assert r.status_code == 200, r.text
     assert (await client.delete(f"/assets/{music['id']}")).status_code == 204
     r = await client.post(f"/projects/{p['id']}/revisions/1/restore")
     assert r.status_code == 200, r.text

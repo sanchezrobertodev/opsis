@@ -129,7 +129,9 @@ async def resolve_media_kinds(session: AsyncSession, user_id: uuid.UUID, media: 
             raise GenerationRequestError([f"invalid media entry {m!r}"]) from None
     rows = {
         a.id: a for a in (await session.execute(
+            # FOR SHARE: a delete waits for this take to commit, then keeps what it uses (domain/removal.py)
             select(Asset).where(Asset.id.in_(ids), Asset.user_id == user_id, Asset.deleted_at.is_(None))
+            .with_for_update(read=True)
         )).scalars()
     }
     errors = []

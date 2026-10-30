@@ -47,6 +47,7 @@ from studio.db.models import (
     User,
 )
 from studio.domain.enums import SPENT, LedgerEntry
+from studio.media import reveal
 from studio.providers.local_status import comfy_stats
 from studio.registry.loader import get_registry, get_registry_holder
 from studio.storage.local import get_storage
@@ -295,7 +296,7 @@ async def spend_breakdown(period: str = Query("month", pattern="^(today|month|al
 
 
 @router.get("/health", response_model=HealthOut, tags=["health"])
-async def health(session: AsyncSession = Depends(get_session)) -> HealthOut:
+async def health(request: Request, session: AsyncSession = Depends(get_session)) -> HealthOut:
     db_ok = True
     env = get_settings()
     m = modes.Modes(env.provider_mode, env.provider_mode, env.llm_mode, env.llm_mode)  # .env's, without a database
@@ -322,5 +323,5 @@ async def health(session: AsyncSession = Depends(get_session)) -> HealthOut:
         database=db_ok, provider_mode=m.provider, registry_hash=holder.current.hash,
         registry_errors=holder.last_error, ffmpeg=ff, media_root=str(get_storage().root), local_engine=local,
         llm_mode=m.llm, llm_key_set=bool(get_settings().anthropic_api_key),
-        reloads_on_change=os.environ.get("STUDIO_API_RELOAD") == "1",
+        reloads_on_change=os.environ.get("STUDIO_API_RELOAD") == "1", reveal_files=reveal.can_reveal(request),
     )

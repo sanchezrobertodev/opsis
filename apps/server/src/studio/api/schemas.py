@@ -239,6 +239,11 @@ class GenerationPage(ApiModel):
     next_cursor: str | None
 
 
+class GenerationRemoved(ApiModel):
+    files_removed: int = Field(description="Outputs whose files were deleted from disk")
+    kept: list[str] = Field(description="What still uses the outputs that were kept, e.g. 'the character Mara'")
+
+
 class AssetPage(ApiModel):
     items: list[AssetOut]
     next_cursor: str | None
@@ -403,6 +408,8 @@ class HealthOut(ApiModel):
     llm_key_set: bool
     reloads_on_change: bool = Field(False, description="The API restarts when its code changes (started with "
                                                        "--reload); a restart drops requests in flight")
+    reveal_files: bool = Field(False, description="This browser runs on the API's machine, so files can be shown "
+                                                  "in its file manager (POST /assets/{id}/reveal)")
 
 
 # ---------------------------------------------------------------- presets

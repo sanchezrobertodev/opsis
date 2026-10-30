@@ -20,11 +20,12 @@ import {
 import { clipSeconds } from "@/lib/cut";
 import { useElements } from "@/lib/elements";
 import { useDebounced } from "@/lib/hooks";
-import { useModel, useRegistry } from "@/lib/queries";
+import { useModel, useRegistry, useRemove } from "@/lib/queries";
 import { useEstimateRun } from "@/lib/runs";
 import type { RunCreate } from "@/lib/runs";
 import { type Direction, DirectorPanel, mentionSlugs } from "@/components/create/DirectorPanel";
 import { AspectPicker, Button, Field, Segmented, Select, Slider } from "@/components/ui/controls";
+import { ConfirmDelete, reportRemoval, SelectButton, SelectionBar, SelectMark, useSelection } from "@/components/ui/Selection";
 import type { Launch } from "./Editor";
 import { TakeActions } from "./TakeActions";
 
@@ -653,42 +654,80 @@ function TakeGrid({ takes, picked, onPick, empty, video, columns = 2, alt = "Ope
   takes: Take[]; picked: string | null; onPick: (assetId: string) => void; empty: string; video?: boolean;
   columns?: 2 | 3; alt?: string;
 }) {
+  const selection = useSelection();
+  const [confirming, setConfirming] = useState(false);
+  const removal = useRemove();
   if (!takes.length) return <p className="text-2xs text-faint">{empty}</p>;
   const number = new Map(takes.flatMap((t, i) => (t.asset ? [[t.asset.id, takes.length - i]] : [])));
+  const noun: [string, string] = video ? ["take", "takes"] : ["frame", "frames"];
+  // a file, or a take that made none (failed); the one in the cut stays until it's unpicked
+  const key = (t: Take) => t.asset?.id ?? t.generation_id;
+  const selectable = takes.filter((t) => key(t) && !isActive(t.status) && t.asset?.id !== picked);
+  const chosen = selectable.filter((t) => selection.picked.has(key(t)!));
+
+  function removeChosen() {
+    removal.mutate({ assets: chosen.flatMap((t) => (t.asset ? [t.asset.id] : [])),
+                     generations: chosen.flatMap((t) => (t.asset ? [] : [t.generation_id!])) }, {
+      onSuccess: (r) => {
+        setConfirming(false);
+        selection.stop();
+        reportRemoval(r, noun);
+      },
+    });
+  }
+
   return (
-    <ul className={cn("grid gap-2", columns === 3 ? "grid-cols-3" : "grid-cols-2")}>
-      {takes.map((t, i) => (
-        <li key={`${t.generation_id ?? "derived"}-${t.asset?.id ?? i}`} className="flex flex-col gap-1">
-          {t.asset ? (
-            video ? (
-              <video src={mediaUrl(t.asset.proxy_url ?? t.asset.url)} poster={mediaUrl(t.asset.poster_url)} controls muted playsInline
-                     preload="metadata" className={cn("aspect-video w-full rounded-[var(--radius-frame)] bg-black object-cover",
-                                                       picked === t.asset.id && "ring-2 ring-tungsten")} />
-            ) : (
-              <button type="button" onClick={() => onPick(t.asset!.id)} aria-pressed={picked === t.asset.id}
-                      className={cn("overflow-hidden rounded-[var(--radius-frame)]", picked === t.asset.id && "ring-2 ring-tungsten")}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={mediaUrl(t.asset.thumb_url ?? t.asset.url)} alt={alt} className="aspect-video w-full object-cover" />
-              </button>
-            )
-          ) : (
-            <span className="grid aspect-video w-full place-items-center rounded-[var(--radius-frame)] bg-bay text-2xs text-faint">
-              {isActive(t.status) ? <LoaderCircle className="size-4 animate-spin text-tungsten" aria-label="Rendering" /> : (t.error ?? t.status)}
-            </span>
-          )}
-          {video && (
-            <span className="truncate text-2xs text-faint" title={t.prompt}>
-              Take {takes.length - i}{madeBy(t, number)}
-            </span>
-          )}
-          {video && t.asset && (
-            <Button size="sm" tone={picked === t.asset.id ? "primary" : "quiet"} onClick={() => onPick(t.asset!.id)}>
-              {picked === t.asset.id ? "In the cut" : "Use this take"}
-            </Button>
-          )}
-        </li>
+    <div className="flex flex-col gap-2">
+      {selectable.length > 0 && (selection.selecting ? (
+        <SelectionBar count={chosen.length} selectable={selectable.length} onAll={() => selection.set(selectable.map((t) => key(t)!))}
+                      onNone={() => selection.set([])} onDelete={() => setConfirming(true)} onDone={selection.stop} />
+      ) : (
+        <div className="flex justify-end"><SelectButton onClick={selection.start} /></div>
       ))}
-    </ul>
+      <ul className={cn("grid gap-2", columns === 3 ? "grid-cols-3" : "grid-cols-2")}>
+        {takes.map((t, i) => (
+          <li key={`${t.generation_id ?? "derived"}-${t.asset?.id ?? i}`} className="relative flex flex-col gap-1">
+            {selection.selecting && selectable.includes(t) && (
+              <button type="button" onClick={() => selection.toggle(key(t)!)} aria-pressed={selection.picked.has(key(t)!)}
+                      aria-label={`Select ${noun[0]} ${takes.length - i}`} className="absolute left-1.5 top-1.5 z-10">
+                <SelectMark selected={selection.picked.has(key(t)!)} />
+              </button>
+            )}
+            {t.asset ? (
+              video ? (
+                <video src={mediaUrl(t.asset.proxy_url ?? t.asset.url)} poster={mediaUrl(t.asset.poster_url)} controls muted playsInline
+                       preload="metadata" className={cn("aspect-video w-full rounded-[var(--radius-frame)] bg-black object-cover",
+                                                         picked === t.asset.id && "ring-2 ring-tungsten")} />
+              ) : (
+                <button type="button" onClick={() => onPick(t.asset!.id)} aria-pressed={picked === t.asset.id}
+                        className={cn("overflow-hidden rounded-[var(--radius-frame)]", picked === t.asset.id && "ring-2 ring-tungsten")}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={mediaUrl(t.asset.thumb_url ?? t.asset.url)} alt={alt} className="aspect-video w-full object-cover" />
+                </button>
+              )
+            ) : (
+              <span className="grid aspect-video w-full place-items-center rounded-[var(--radius-frame)] bg-bay text-2xs text-faint">
+                {isActive(t.status) ? <LoaderCircle className="size-4 animate-spin text-tungsten" aria-label="Rendering" /> : (t.error ?? t.status)}
+              </span>
+            )}
+            {video && (
+              <span className="truncate text-2xs text-faint" title={t.prompt}>
+                Take {takes.length - i}{madeBy(t, number)}
+              </span>
+            )}
+            {video && t.asset && (
+              <Button size="sm" tone={picked === t.asset.id ? "primary" : "quiet"} onClick={() => onPick(t.asset!.id)}>
+                {picked === t.asset.id ? "In the cut" : "Use this take"}
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <ConfirmDelete open={confirming} count={chosen.length} noun={noun} pending={removal.isPending} onConfirm={removeChosen}
+                     onClose={() => setConfirming(false)}>
+        They&apos;re deleted from disk; this can&apos;t be undone. Anything another shot or a character uses is kept.
+      </ConfirmDelete>
+    </div>
   );
 }
 

@@ -21,6 +21,7 @@ from studio.db.models import (
 from studio.db.session import session_scope
 from studio.domain import fsm
 from studio.domain.enums import AttemptStatus, ErrorClass, GenStatus
+from studio.domain.removal import retry_purges
 from studio.storage.local import get_storage
 from studio.worker.app import Q_MAINT, app
 from studio.worker.tasks.generation import (
@@ -108,6 +109,7 @@ async def reap(now: datetime) -> dict[str, int]:
         await defer_advance(rid)
         counts["runs"] += 1
     counts["renders"] = _sweep_renders(now)
+    counts["files_left"] = await retry_purges()
     if any(counts.values()):
         log.info("reaper: %s", counts)
     return counts
