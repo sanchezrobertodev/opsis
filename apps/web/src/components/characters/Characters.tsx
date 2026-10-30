@@ -9,6 +9,8 @@ import { cn, usd } from "@/lib/cn";
 import type { SlotAsset } from "@/lib/draft";
 import { useDraft } from "@/lib/draft";
 import { useDebounced } from "@/lib/hooks";
+import { uploadFile } from "@/lib/queries";
+import { STARTERS } from "@/lib/starters";
 import { type RunCreate, useEstimateRun, useStartRun } from "@/lib/runs";
 import {
   type Element,
@@ -39,6 +41,9 @@ export function Characters() {
   const [cloning, setCloning] = useState(false);
   const { data, isLoading } = useElements(filter === "all" ? undefined : filter, q);
   const items = data ?? [];
+  const newKind: ElementKind | null =
+    filter === "character" || filter === "location" || filter === "prop" || filter === "style" ? filter : null;
+  const starters = STARTERS.filter((s) => s.kind === filter && !q && !items.some((e) => e.name === s.name));
 
   return (
     <div className="h-full overflow-y-auto p-6 scrollbar-quiet">
@@ -70,14 +75,15 @@ export function Characters() {
           </Button>
           <Button tone="primary" size="sm" onClick={() => setEditing("new")}>
             <Plus className="size-4" aria-hidden />
-            New from images
+            {newKind ? `New ${KIND_LABEL[newKind].toLowerCase()}` : "New from images"}
           </Button>
         </div>
       </div>
+      {starters.length > 0 && <AddStarters starters={starters} />}
 
       {isLoading ? null : items.length === 0 ? (
         <div className="mt-20 max-w-md">
-          <p className="type-title text-xl">{q ? "No matches" : "No characters yet"}</p>
+          <p className="type-title text-xl">{q ? "No matches" : newKind ? `No ${KIND_LABEL[newKind].toLowerCase()}s yet` : "No characters yet"}</p>
           <p className="mt-2 text-sm leading-relaxed text-muted">
             Save a person, place or prop once, then write <span className="text-chalk">@name</span> in any prompt.
             Models that take reference images get its pictures automatically; others get its description.
@@ -117,7 +123,7 @@ export function Characters() {
       )}
 
       <ElementDialog element={editing && editing !== "new" && editing.kind === "voice" ? null : editing}
-                     onClose={() => setEditing(null)} />
+                     newKind={newKind ?? "character"} onClose={() => setEditing(null)} />
       <VoiceDialog voice={editing && editing !== "new" && editing.kind === "voice" ? editing : null}
                    onClose={() => setEditing(null)} />
       <Dialog open={cloning} onClose={() => setCloning(false)} title="Clone a voice">
@@ -204,17 +210,64 @@ function VoiceDialog({ voice, onClose }: { voice: Element | null; onClose: () =>
   );
 }
 
-function ElementDialog({ element, onClose }: { element: Element | "new" | null; onClose: () => void }) {
+function ElementDialog({ element, newKind, onClose }: {
+  element: Element | "new" | null; newKind: ElementKind; onClose: () => void;
+}) {
   const isNew = element === "new";
   const existing = element && element !== "new" ? element : null;
   return (
-    <Dialog open={element !== null} onClose={onClose} title={isNew ? "New character, location or prop" : existing?.name ?? ""} wide>
-      {element !== null && <ElementForm key={existing?.id ?? "new"} existing={existing} onDone={onClose} />}
+    <Dialog open={element !== null} onClose={onClose} title={isNew ? `New ${KIND_LABEL[newKind].toLowerCase()}` : existing?.name ?? ""} wide>
+      {element !== null && <ElementForm key={existing?.id ?? "new"} existing={existing} newKind={newKind} onDone={onClose} />}
     </Dialog>
   );
 }
 
-function ElementForm({ existing, onDone }: { existing: Element | null; onDone: () => void }) {
+/** Adds the built-in styles or locations this tab doesn't have yet, each with its picture. */
+function AddStarters({ starters }: { starters: typeof STARTERS }) {
+  const create = useCreateElement();
+  const [busy, setBusy] = useState(false);
+  const noun = starters[0].kind === "style" ? "styles" : "locations";
+
+  async function add() {
+    setBusy(true);
+    try {
+      for (const s of starters) {
+        const blob = await fetch(`/starters/${s.file}.webp`).then((r) => {
+          if (!r.ok) throw new Error(`The picture for ${s.name} is missing`);
+          return r.blob();
+        });
+        const asset = await uploadFile(new File([blob], `${s.file}.webp`, { type: "image/webp" }));
+        await create.mutateAsync({ kind: s.kind, name: s.name, description: s.description, attributes: {},
+                                   images: [{ asset_id: asset.id, view: "front" }] });
+      }
+      toast(`Added ${starters.map((s) => s.name).join(", ")}. Write their @handles in any prompt.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `Couldn't add the ${noun}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mb-6 flex max-w-3xl flex-wrap items-center gap-3 rounded-[var(--radius-panel)] bg-panel p-4">
+      <ul className="flex gap-2" aria-hidden>
+        {starters.map((s) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <li key={s.file}><img src={`/starters/${s.file}.webp`} alt="" className="h-12 w-20 rounded-[var(--radius-frame)] object-cover" /></li>
+        ))}
+      </ul>
+      <p className="min-w-48 flex-1 text-xs leading-relaxed text-muted">
+        Start with {starters.length} ready-made {noun} ({starters.map((s) => s.name).join(", ")}). Write one as an
+        @handle in any prompt, like a character.
+      </p>
+      <Button size="sm" onClick={() => void add()} disabled={busy}>
+        {busy ? "Adding…" : `Add ${noun}`}
+      </Button>
+    </div>
+  );
+}
+
+function ElementForm({ existing, newKind, onDone }: { existing: Element | null; newKind: ElementKind; onDone: () => void }) {
   const router = useRouter();
   const startSheet = useStartRun();
   const create = useCreateElement();
@@ -223,7 +276,7 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
   const addImages = useAddElementImages();
   const removeImage = useRemoveElementImage();
   const [name, setName] = useState(existing?.name ?? "");
-  const [kind, setKind] = useState<ElementKind>(existing?.kind ?? "character");
+  const [kind, setKind] = useState<ElementKind>(existing?.kind ?? newKind);
   const [description, setDescription] = useState(existing?.description ?? "");
   const [voice, setVoice] = useState<string | null>(
     ((existing?.voice as { params?: { voice_id?: string } } | null)?.params?.voice_id) ?? null);
@@ -289,7 +342,7 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={80}
-            placeholder="e.g. Maya Ortiz"
+            placeholder={HINTS[kind][0]}
             className="h-10 rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60"
           />
         </label>
@@ -305,7 +358,7 @@ function ElementForm({ existing, onDone }: { existing: Element | null; onDone: (
             onChange={(e) => setDescription(e.target.value)}
             maxLength={600}
             rows={4}
-            placeholder="What makes them recognisable: age, build, hair, outfit, signature details."
+            placeholder={HINTS[kind][1]}
             className="resize-y rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 py-2 text-sm leading-relaxed text-chalk outline-none placeholder:text-faint focus:border-tungsten/60"
           />
           <span className="text-2xs text-faint">Models that can’t take images get this text instead. Keep it short.</span>
@@ -494,6 +547,18 @@ const TRAITS: { key: string; label: string; options: string[] }[] = [
   { key: "archetype", label: "Archetype", options: ["hero", "rebel", "mentor", "trickster", "villain", "everyday person"] },
 ];
 
+/** The name and description placeholders for each kind. */
+const HINTS: Record<ElementKind, [string, string]> = {
+  character: ["e.g. Maya Ortiz", "What makes them recognisable: age, build, hair, outfit, signature details."],
+  location: ["e.g. Harbour", "The place: setting, time of day, light, weather, the details that mark it."],
+  prop: ["e.g. Brass compass", "The object: shape, size, material, colour, wear."],
+  style: ["e.g. Noir", "The look: medium, palette, light, texture, era."],
+  voice: ["e.g. Narrator", "How it sounds."],
+};
+
+/** A trait option's preview picture in `public/designer/`: `<trait>-<option as a slug>.webp`. */
+const traitFile = (option: string) => option.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
 const withArticle = (phrase: string) => `${/^[aeiou]/i.test(phrase) ? "an" : "a"} ${phrase}`;
 
 function describe(traits: Record<string, string>, heritage: string): string {
@@ -534,7 +599,7 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
     });
     onClose();
     router.push("/create/image");
-    toast("Pick the take you like, then use “Save as character” on it.");
+    toast("Pick the take you like, then use “Save to Characters” on it.");
   }
 
   return (
@@ -554,25 +619,33 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
         </>
       }
     >
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="flex flex-col gap-4">
         {TRAITS.map((t) => (
-          <label key={t.key} className="flex flex-col gap-1 text-2xs text-faint">
-            {t.label}
-            <select
-              value={traits[t.key] ?? ""}
-              onChange={(e) => setTraits({ ...traits, [t.key]: e.target.value })}
-              className="h-9 rounded-[var(--radius-control)] border border-line-soft bg-bay px-2 text-xs text-chalk outline-none focus:border-tungsten/60"
-            >
-              <option value="">Any</option>
-              {t.options.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
-          </label>
+          <fieldset key={t.key} className="flex flex-col gap-1.5">
+            <legend className="mb-1.5 text-2xs text-faint">
+              {t.label}
+              {traits[t.key] && <span className="text-chalk">: {traits[t.key]}</span>}
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {t.options.map((o) => {
+                const on = traits[t.key] === o;
+                return (
+                  <button key={o} type="button" aria-pressed={on} title={o}
+                          onClick={() => setTraits({ ...traits, [t.key]: on ? "" : o })}
+                          className={cn("flex w-[76px] flex-col gap-1 rounded-[var(--radius-control)] border p-1 text-left",
+                                        on ? "border-tungsten bg-raised" : "border-line-soft hover:border-tungsten/40")}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`/designer/${t.key}-${traitFile(o)}.webp`} alt="" loading="lazy"
+                         className="aspect-square w-full rounded-[3px] bg-bay object-cover"
+                         onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
+                    <span className={cn("line-clamp-2 text-2xs leading-tight", on ? "text-chalk" : "text-muted")}>{o}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
         ))}
-        <label className="flex flex-col gap-1 text-2xs text-faint">
+        <label className="flex max-w-xs flex-col gap-1 text-2xs text-faint">
           Heritage (optional)
           <input
             value={heritage}
@@ -586,8 +659,8 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
         {description || "Pick a few traits, or press Randomize."}
       </p>
       <p className="mt-2 text-2xs text-faint">
-        This opens Create image with two portrait takes. Save the one you like as a character; its description is
-        filled in from these traits.
+        Click a picture to pick it, again to leave it open. This opens Create image with two portrait takes. Save the
+        one you like to Characters; its description is filled in from these traits.
       </p>
     </Dialog>
   );
