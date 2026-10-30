@@ -11,6 +11,7 @@ import { evaluate, fovFor, LIGHTS, type SceneDoc, trackOf, useScene, useScenePro
 import { Button, Field, Segmented } from "@/components/ui/controls";
 import { sparkIn } from "@/components/three/Splat";
 import type { ViewportHandle } from "./Viewport";
+import { OpensFullSize } from "@/components/ui/PictureViewer";
 
 export type Pass = "beauty" | "depth" | "normal";
 export const PASS_LABEL: Record<Pass, string> = { beauty: "Picture", depth: "Depth", normal: "Normals" };
@@ -253,8 +254,10 @@ export function RenderPanel({ doc, handleRef, projectId }: {
             <li key={a.id} className="flex flex-col gap-1">
               {a.kind === "video"
                 ? <video src={mediaUrl(a.url)} muted loop autoPlay playsInline className="aspect-video w-full rounded-[3px] bg-black object-contain" />
-                // eslint-disable-next-line @next/next/no-img-element
-                : <img src={mediaUrl(a.url)} alt={`${PASS_LABEL[pass]} still`} className="aspect-video w-full rounded-[3px] bg-black object-contain" />}
+                : <OpensFullSize src={mediaUrl(a.url)!} title={`${PASS_LABEL[pass]} still`} className="w-full">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={mediaUrl(a.url)} alt="" className="aspect-video w-full rounded-[3px] bg-black object-contain" />
+                  </OpensFullSize>}
               <Link href={`/library?asset=${a.id}`} className="text-2xs text-muted hover:text-chalk">
                 {PASS_LABEL[pass]}{typeof a.metadata?.time === "number" ? ` at ${a.metadata.time} s` : ""}
               </Link>
