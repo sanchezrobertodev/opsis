@@ -123,8 +123,8 @@ Rolled out 2026-10-11:
 - On a 4-vCPU CPU pod (`cpu3c`, $0.12/h, `python:3.12-slim` with the fetcher and manifest passed in env vars), the four
   Wan t2v files were deleted and the `ltx` group fetched: 39.7 GB in 2 min 37 s (60-157 MB/s per file), about $0.01.
   All 20 files are present at their exact sizes.
-- `wan-core:0.4.0` was pushed (only the top layers uploaded), template `yjkg0eh9ka` (`wan-core-0.4.0`) made, and
-  the endpoint switched to the image (release 7). Workers move to it as they cycle: a job can still land on a 0.3.0
+- `wan-core:0.4.0` was pushed (only the top layers uploaded), a `wan-core-0.4.0` template made, and
+  the endpoint switched to the image. Workers move to it as they cycle: a job can still land on a 0.3.0
   worker for a few minutes, which fails LTX-2.5 with "LatentUpscaleModelLoader ... not in []".
 
 - First live take (the registry's smoke example, through the studio's wan-core adapter): text to video, 720p, 2 s, from a
@@ -153,8 +153,8 @@ how long they last, which is why a failed upload falls back inline.
 
 ```bash
 cd infra/runpod/wan-core
-docker build --platform linux/amd64 -t <dockerhub-user>/wan-core:0.3.0 .
-docker push <dockerhub-user>/wan-core:0.3.0
+docker build --platform linux/amd64 -t <dockerhub-user>/wan-core:0.4.0 .
+docker push <dockerhub-user>/wan-core:0.4.0
 ```
 
 On Docker Hub, the 15 GB of base layers are mounted from `runpod/worker-comfyui`, so the push uploads only
@@ -163,13 +163,15 @@ what this image adds (the CUDA 13 torch layer, a few GB, from 0.3.0).
 ## Test locally (free, uses your GPU)
 
 ```bash
+docker build -t wan-core:local .
 docker run --rm --gpus all \
   -v <your ComfyUI folder>/models:/runpod-volume/models:ro \
   -v ./test_input.json:/test_input.json wan-core:local
 ```
 
-With no RunPod job queue around, the RunPod SDK runs `/test_input.json` once and exits. The scratch test renders
-the local Wan 2.2 5B workflow, which fits in 12 GB.
+With no RunPod job queue around, the RunPod SDK runs `/test_input.json` once and exits. Write that file yourself
+as a job: `{"input": {"action": "check"}}` lists the GPU and which model files it found, and a `workflow` job
+(the shape `handler.py` takes, above) renders one; the local Wan 2.2 5B workflow fits in 12 GB.
 
 ## Fill the volume
 

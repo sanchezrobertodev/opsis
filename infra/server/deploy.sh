@@ -34,11 +34,14 @@ if [ "${NO_PULL:-0}" != 1 ] && [ -d .git ]; then
 fi
 
 # Building the web app takes 2-3 GB for a minute or two. On a small server, a big pull while Ollama loads a model can
-# run it out of memory, so wait (up to 10 minutes) for 3 GB free and no model loading (an Ollama API on :8086).
+# run it out of memory, so wait (up to 10 minutes) for 3 GB free and no model loading. OLLAMA_URL (environment or
+# .env) is where an Ollama on this host answers; nothing answering there counts as no model loading.
+OLLAMA_URL="${OLLAMA_URL:-$(sed -n 's/^OLLAMA_URL=//p' .env | tail -1)}"
+OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 wait_for_memory() {
   for _ in $(seq 1 60); do
     avail_kb="$(awk '/MemAvailable/ {print $2}' /proc/meminfo)"
-    loading="$(curl -fsS --max-time 3 http://127.0.0.1:8086/api/ps 2>/dev/null | grep -c '"expires_at"' || true)"
+    loading="$(curl -fsS --max-time 3 "$OLLAMA_URL/api/ps" 2>/dev/null | grep -c '"expires_at"' || true)"
     if [ "$avail_kb" -ge 3000000 ] && [ "${loading:-0}" = 0 ]; then return 0; fi
     echo "==> waiting: $((avail_kb / 1024)) MB free, Ollama models loaded: ${loading:-0}"
     sleep 10

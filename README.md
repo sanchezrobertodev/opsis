@@ -40,31 +40,38 @@ conventions.
 
 ## Quick start (mock mode, no GPU, no keys)
 
-Requirements: Docker (for Postgres), Node 22+ with pnpm 9, Python 3.12 with [uv](https://docs.astral.sh/uv/),
-and ffmpeg on your PATH.
+Requirements (Windows, macOS or Linux):
 
-```bash
-git clone https://github.com/sanchezrobertodev/ai-media-studio.git
-```
+- [Docker](https://docs.docker.com/get-docker/) running, for Postgres
+- Node 22 or newer with pnpm 9 (`corepack enable` sets up the pinned pnpm)
+- [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 for you)
+- [ffmpeg](https://ffmpeg.org/download.html) on your PATH (`ffmpeg -version` should work)
 
-```bash
-cd ai-media-studio && cp .env.example .env
-```
+1. Get the code and make your settings file:
 
-```bash
-pnpm db:up
-```
+   ```bash
+   git clone https://github.com/sanchezrobertodev/ai-media-studio.git
+   cd ai-media-studio
+   cp .env.example .env
+   ```
 
-```bash
-uv sync && pnpm i && pnpm db:migrate
-```
+2. Start Postgres (in Docker, on port 5433) and install everything:
 
-```bash
-pnpm dev
-```
+   ```bash
+   pnpm db:up
+   uv sync
+   pnpm install
+   pnpm db:migrate
+   ```
 
-Open http://localhost:3000. The API runs on :8400 and the worker beside it. With the default
-`PROVIDER_MODE=mock`, every model answers with a labelled test clip, so you can try every studio for free.
+3. Start the API (:8400), the worker and the web app (:3000):
+
+   ```bash
+   pnpm dev
+   ```
+
+Open http://localhost:3000. With the default `PROVIDER_MODE=mock`, every model answers with a labelled test clip,
+so you can try every studio for free. Settings shows whether the database, ffmpeg and the local engine are found.
 
 ## Run a real video on your GPU (ComfyUI + Wan 2.2 5B)
 
@@ -112,10 +119,17 @@ for the larger graphs: LTX-2.5, Wan 2.2 14B, VACE, Animate, Uni3C and Wan-Move.
 
 ## Hosted models and spending
 
-Add the keys you have to `.env` (see [`.env.example`](.env.example)), then switch Settings > Generation from
-Mock to Mixed or Live. `.env`'s `PROVIDER_MODE` is the ceiling. Every request is priced before it runs and
-checked against your budget caps; spending is recorded per request and reconciled against provider bills where
-providers report them. Mock mode never calls a paid route.
+1. Add the keys you have to `.env`. [`.env.example`](.env.example) says where to get each one; you don't need
+   them all, and a model whose provider has no key is simply unavailable.
+2. Raise `PROVIDER_MODE` in `.env` to `mixed` or `live` (and `LLM_MODE` to `live` for Claude). It is the ceiling:
+   the switch in Settings can pick that mode or a safer one, never more.
+3. Restart `pnpm dev`, then set your daily and monthly limits in Settings > Spending and pick the mode in
+   Settings > Providers.
+
+Every request is priced before it runs and checked against your limits; spending is recorded per request and
+reconciled against provider bills where providers report them. Mock mode never calls a paid route. To try one
+paid route at a time, use `PROVIDER_MODE=mixed` with that route in `LIVE_ROUTE_ALLOWLIST`
+(for example `LIVE_ROUTE_ALLOWLIST=kling-3.0@fal`).
 
 The price line under Takes names the provider a take will run on (for example "$0.04 on fal.ai"), and Settings'
 spend history shows the route each charge ran on.
@@ -151,22 +165,25 @@ setup (`infra/server/`) the API and worker mount the host's `~/.codex`; point `C
 
 ```bash
 pnpm test
-```
-
-```bash
 pnpm lint
-```
-
-```bash
 pnpm e2e
 ```
 
-`pnpm test` runs the Python unit, registry-contract and database integration tests (it uses a separate
-`studio_test` database). `pnpm e2e` runs Playwright against the mock provider. After changing the API, run
-`pnpm gen` to refresh the TypeScript client. [`docs/PLAN.md`](docs/PLAN.md) is the roadmap and
-[`docs/research/06-architecture-blueprint.md`](docs/research/06-architecture-blueprint.md) the detailed design.
-[`infra/server/`](infra/server/) is an example deployment on a Linux server (rootless Podman, systemd timers,
-nightly backups).
+`pnpm test` runs the Python unit, registry-contract and database integration tests (it needs `pnpm db:up` and
+uses a separate `studio_test` database). `pnpm e2e` runs Playwright against the mock provider; install its
+browser once with `pnpm --filter @studio/web exec playwright install chromium`. It reuses a running `pnpm dev`,
+so stop a dev server that is in Live mode first. After changing the API, run `pnpm gen` to refresh the TypeScript
+client.
+
+More reading:
+
+- [`docs/PLAN.md`](docs/PLAN.md): the roadmap. [`docs/research/06-architecture-blueprint.md`](docs/research/06-architecture-blueprint.md):
+  the detailed design.
+- [`infra/server/`](infra/server/): an example deployment on a Linux server (rootless Podman, systemd timers,
+  nightly backups).
+- [`infra/runpod/wan-core/`](infra/runpod/wan-core/): your own RunPod endpoint for the larger open models.
+- [`docs/local-model-storage.md`](docs/local-model-storage.md): choosing ComfyUI's model folder from Settings.
+- [`docs/pika.md`](docs/pika.md) and [`docs/reactor.md`](docs/reactor.md): two optional providers.
 
 ## License
 
