@@ -71,7 +71,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         if (msg.type === "generation.succeeded" || msg.type === "generation.failed") invalidate("budget");
         if (msg.type !== "generation.progress") invalidate("run");
       } else if (msg.topic === "pipeline") {
-        invalidate("runs", "run");
+        // runs can give a character its picture (portraits, reference sheets)
+        invalidate("runs", "run", "elements");
       } else if (msg.topic === "asset") {
         invalidate("assets", "generations", "asset");
       } else if (msg.type === "system.registry_reloaded") {

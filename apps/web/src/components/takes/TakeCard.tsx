@@ -369,7 +369,7 @@ function TakeFooter({
               </IconButton>
             )}
             {first.kind === "image" && (
-              <IconButton label="Save as character" onClick={() => setSaving(true)}>
+              <IconButton label="Save to Characters" onClick={() => setSaving(true)}>
                 <UserRoundPlus className="size-4" aria-hidden />
               </IconButton>
             )}

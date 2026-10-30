@@ -226,7 +226,7 @@ export function AssetViewer({ asset: initial, onClose }: { asset: Asset | null; 
               {asset.kind === "image" && (
                 <Button size="sm" onClick={() => setSaving(true)}>
                   <UserRoundPlus className="size-4" aria-hidden />
-                  Save as character
+                  Save to Characters
                 </Button>
               )}
               <Button size="sm" onClick={() => patch.mutate({ id: asset.id, favorite: !asset.favorite })}>

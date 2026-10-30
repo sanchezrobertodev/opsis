@@ -44,7 +44,7 @@ export function SaveAsElement({
   onClose: () => void;
 }) {
   return (
-    <Dialog open={open} onClose={onClose} title="Save as character">
+    <Dialog open={open} onClose={onClose} title="Save to Characters">
       {open && <SaveForm asset={asset} prompt={prompt} onDone={onClose} />}
     </Dialog>
   );
