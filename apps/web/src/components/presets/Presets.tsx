@@ -117,24 +117,37 @@ export function Presets() {
   );
 }
 
+/** Whether a card is hovered or has keyboard focus: its cover clip plays meanwhile. */
+function useLive() {
+  const [live, setLive] = useState(false);
+  const on = () => setLive(true);
+  const off = () => setLive(false);
+  return [live, { onPointerEnter: on, onPointerLeave: off, onFocus: on, onBlur: off }] as const;
+}
+
 /** A card's picture: its cover (`public/covers/<id>.webp`, an example of what it makes) when there is one, else the
- * drawn stand-in it wraps. */
-function Cover({ id, children }: { id: string; children: React.ReactNode }) {
+ * drawn stand-in it wraps. A clip next to it (`<id>.mp4`, muted) plays over it while the card is `live`, unless
+ * animations are off; a card without one never asks again after the first miss. */
+function Cover({ id, live, children }: { id: string; live: boolean; children: React.ReactNode }) {
   const [missing, setMissing] = useState(false);
+  const [noClip, setNoClip] = useState(false);
   if (missing) return <>{children}</>;
+  const zoom = "size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]";
   return (
-    <div className={FRAME}>
+    <div className={cn(FRAME, "relative")}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={`/covers/${id}.webp`}
-        alt=""
-        loading="lazy"
-        onError={() => setMissing(true)}
-        className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
-      />
+      <img src={`/covers/${id}.webp`} alt="" loading="lazy" onError={() => setMissing(true)} className={zoom} />
+      {live && !noClip && !animationsOff() && (
+        // the poster is the picture under it, so nothing changes until the clip starts
+        <video src={`/covers/${id}.mp4`} poster={`/covers/${id}.webp`} autoPlay muted loop playsInline aria-hidden
+               onError={() => setNoClip(true)} className={cn(zoom, "absolute inset-0")} />
+      )}
     </div>
   );
 }
+
+const animationsOff = () =>
+  document.documentElement.dataset.motion === "off" || matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** A viewfinder drawn at the shot's own aspect ratio, with the camera move playing on hover. */
 function Viewfinder({ preset }: { preset: Preset }) {
@@ -168,9 +181,10 @@ function Viewfinder({ preset }: { preset: Preset }) {
 
 function PresetCard({ preset, onOpen }: { preset: Preset; onOpen: () => void }) {
   const needs = preset.inputs.map((i) => i.label.toLowerCase());
+  const [live, liveProps] = useLive();
   return (
-    <button type="button" onClick={onOpen} className="group block w-full text-left outline-none">
-      <Cover id={preset.id}>
+    <button type="button" onClick={onOpen} {...liveProps} className="group block w-full text-left outline-none">
+      <Cover id={preset.id} live={live}>
         <Viewfinder preset={preset} />
       </Cover>
       <p className="type-title mt-3 text-[15px] transition-colors group-hover:text-tungsten">{preset.name}</p>
@@ -337,9 +351,10 @@ function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) 
 function TemplateCard({ template, onOpen }: { template: Template; onOpen: () => void }) {
   const needs = template.inputs.filter((i) => !i.alternative && !i.optional).map((i) => i.label.toLowerCase());
   const either = template.inputs.filter((i) => i.alternative).map((i) => i.label.toLowerCase().replace(/^or /, ""));
+  const [live, liveProps] = useLive();
   return (
-    <button type="button" onClick={onOpen} className="group block w-full text-left outline-none">
-      <Cover id={template.id}>
+    <button type="button" onClick={onOpen} {...liveProps} className="group block w-full text-left outline-none">
+      <Cover id={template.id} live={live}>
         <div className={cn(FRAME, "grid place-items-center group-hover:bg-raised")}>
           <BookOpen aria-hidden className="size-6 text-tungsten" />
         </div>
