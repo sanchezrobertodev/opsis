@@ -33,6 +33,7 @@ from studio.db.models import (
     StepStatus,
     User,
 )
+from studio.director.elements import mentions
 from studio.domain.generations import (
     ConfirmationRequired,
     GenerationRequestError,
@@ -264,15 +265,23 @@ async def retry_estimate(run_id: uuid.UUID, session: AsyncSession = Depends(get_
         PipelineStep.run_id == run.id, PipelineStep.kind == StepKind.generate,
         PipelineStep.status.in_([StepStatus.failed, StepStatus.canceled, StepStatus.pending]))
         .order_by(PipelineStep.sort))).scalars().all()
+    reg = get_registry()
     jobs = []
     for st in steps:
         media = [(m["role"], str(m["asset_id"])) for m in st.input.get("media") or []]
-        jobs.append(PlannedJob(st.input["model_id"], st.input["mode"], st.input.get("params") or {},
-                               tuple(r for r, _ in media), prompt_chars=len(st.input.get("prompt") or ""),
-                               media=tuple(media)))
+        roles = tuple(r for r, _ in media)
+        prompt = st.input.get("prompt") or ""
+        spec = reg.model(st.input["model_id"])
+        mode = spec.mode(st.input["mode"]) if spec else None
+        # @mentions attach their pictures when the take is made, so price them like the recipes' jobs() do
+        ref = (spec.elements or {}).get("ref_role", "image_references") if spec else ""
+        if mode and mentions(prompt) and mode.slot(ref) and ref not in roles:
+            roles += (ref,)
+        jobs.append(PlannedJob(st.input["model_id"], st.input["mode"], st.input.get("params") or {}, roles,
+                               prompt_chars=len(prompt), media=tuple(media)))
     policy = await guard.get_policy(session, user.id)
     cap = run.cap_usd if run.cap_usd is not None else policy.default_run_cap_usd
-    return await _priced(session, user, jobs, get_registry(), cap)
+    return await _priced(session, user, jobs, reg, cap)
 
 
 @router.post("/{run_id}/retry", response_model=RunOut)

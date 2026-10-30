@@ -14,16 +14,22 @@ export type Quote = { usd: number | null; charged: number | null; count: number 
  * the button showed the price, so pressing it confirms the spend. */
 export function useRunQuote(body: RunCreate | null): Quote {
   const mock = useRegistry().data?.provider_mode === "mock";
-  const estimate = useEstimateRun(useDebounced(body, 250));
-  const d = body ? estimate.data : undefined;
+  const asked = useDebounced(body, 250);
+  const estimate = useEstimateRun(asked);
+  // only the answer for what's on screen now: not while a change waits to be asked or the old answer stands in
+  const current = body !== null && sameRequest(asked, body) && !estimate.isPlaceholderData;
+  const d = current ? estimate.data : undefined;
   return {
     usd: d ? ((mock ? d.live_estimate_usd : d.estimate_usd) ?? null) : null,
     charged: d?.estimate_usd ?? null,
     count: d?.generations ?? null,
     mock,
-    error: body && estimate.error instanceof Error ? estimate.error.message : null,
+    error: current && estimate.error instanceof Error ? estimate.error.message : null,
   };
 }
+
+/** Whether two requests are the same, field for field (they're rebuilt on every render). */
+export const sameRequest = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** "8 pictures, about $1.20"; `noun` is [one, many]. */
 export function quoteText(q: Quote, noun: [string, string]): string {

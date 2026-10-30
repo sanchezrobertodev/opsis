@@ -25,7 +25,7 @@ import { useClonedVoices, useElements } from "@/lib/elements";
 import { useEstimateRun, useStartRun } from "@/lib/runs";
 import { glyphClass } from "@/components/create/DirectorPanel";
 import { MediaSlotField } from "@/components/create/MediaSlots";
-import { type Quote, quotePrice, quoteText, useRunQuote } from "@/components/runs/RunQuote";
+import { type Quote, quotePrice, quoteText, sameRequest, useRunQuote } from "@/components/runs/RunQuote";
 import { Button, Dialog, Segmented, Select } from "@/components/ui/controls";
 import { GLASS_CARD, Lit } from "@/components/ui/Glass";
 
@@ -217,7 +217,8 @@ function useRendered<A, T>(key: string, answers: A | null, render: (answers: A) 
     enabled: Boolean(asked),
     retry: false,
   });
-  return { data: asked ? (q.data ?? null) : null, error: asked && q.error instanceof Error ? q.error.message : null };
+  const current = Boolean(asked) && sameRequest(asked, answers); // typed since: no answer until it's asked again
+  return { data: current ? (q.data ?? null) : null, error: current && q.error instanceof Error ? q.error.message : null };
 }
 
 /** What one take of a preset costs where it would run now (mock mode: what it would cost live), as a run's quote. */

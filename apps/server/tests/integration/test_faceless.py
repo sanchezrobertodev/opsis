@@ -515,6 +515,17 @@ async def test_more_pictures_of_a_character_vary_and_join_its_pictures(client, i
     pictures = [i["asset"]["id"] for i in (await client.get(f"/elements/{griffin['id']}")).json()["images"]]
     assert pictures[:2] == [i["asset"]["id"] for i in griffin["images"]] and pictures[2:] == made
 
+    # had they failed, a retry would draw them again from the pictures the @mention attaches (none in their media)
+    async with session_scope() as s:
+        from sqlalchemy import update
+
+        from studio.db.models import PipelineStep, StepStatus
+
+        await s.execute(update(PipelineStep).where(PipelineStep.run_id == uuid.UUID(run["id"]),
+                                                   PipelineStep.key.like("pic[%")).values(status=StepStatus.failed))
+    redo = await client.get(f"/pipelines/{run['id']}/retry/estimate")
+    assert redo.status_code == 200 and redo.json()["generations"] == 3, redo.text
+
 
 async def make_griffin(client):
     from test_elements import make_element

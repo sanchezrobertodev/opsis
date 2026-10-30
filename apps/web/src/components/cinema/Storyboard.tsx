@@ -28,7 +28,7 @@ import { AspectPicker, Button, Field, Segmented, Select, Slider } from "@/compon
 import { ConfirmDelete, reportRemoval, SelectButton, SelectionBar, SelectMark, useSelection } from "@/components/ui/Selection";
 import type { Launch } from "./Editor";
 import { TakeActions } from "./TakeActions";
-import { quotePrice, quoteText, useRunQuote } from "@/components/runs/RunQuote";
+import { quotePrice, quoteText, sameRequest, useRunQuote } from "@/components/runs/RunQuote";
 import { ZoomButton } from "@/components/ui/PictureViewer";
 
 type Update = (fn: (d: CinemaDoc) => CinemaDoc) => void;
@@ -111,7 +111,10 @@ type ShotEstimate = { usd: number; charged: number; live: boolean };
  * providers on, `usd` is the price on the paid routes; `charged` is what starting it now charges, to confirm with.
  */
 function useByShot(body: RunCreate | null) {
-  const { data } = useEstimateRun(useDebounced(body, 600));
+  const asked = useDebounced(body, 600);
+  const estimate = useEstimateRun(asked);
+  // no price while a change waits to be asked or the previous answer stands in for it
+  const data = body && sameRequest(asked, body) && !estimate.isPlaceholderData ? estimate.data : undefined;
   const one = (id: string): ShotEstimate | undefined => {
     const now = data?.by_key[id];
     if (now === undefined) return undefined;
