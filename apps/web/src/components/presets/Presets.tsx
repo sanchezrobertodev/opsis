@@ -506,7 +506,7 @@ function TemplateForm({ template }: { template: Template }) {
               />
             ) : (
               <textarea
-                rows={f.max_chars > 300 ? 4 : 1}
+                rows={f.max_chars > 300 ? 4 : 2}
                 value={values[f.key] ?? ""}
                 onChange={(e) => {
                   setValues((v) => ({ ...v, [f.key]: e.target.value }));
@@ -514,7 +514,7 @@ function TemplateForm({ template }: { template: Template }) {
                 }}
                 maxLength={f.max_chars}
                 placeholder={f.placeholder ? `e.g. ${f.placeholder}` : undefined}
-                className={cn(field, "resize-none")}
+                className={cn(field, "max-h-48 resize-none field-sizing-content", f.max_chars > 300 && "min-h-28")}
               />
             )}
           </label>

@@ -46,8 +46,8 @@ export function VoicePicker({ value, onChange, label = "Voice", allowNone, noneL
 
   async function hear() {
     if (!value) return;
-    if (playing) {
-      audio.current?.pause();
+    if (audio.current && !audio.current.paused) {
+      audio.current.pause();
     } else if (clip) {
       wanted.current = true;
       void audio.current?.play().catch(() => undefined);
@@ -76,7 +76,13 @@ export function VoicePicker({ value, onChange, label = "Voice", allowNone, noneL
   return (
     <Field label={label}>
       <div className="flex items-center gap-2">
-        <select value={value ?? ""} aria-label={label} onChange={(e) => onChange(e.target.value || null)}
+        <select value={value ?? ""} aria-label={label} onChange={(e) => {
+                  // a new source stops the old sound without a pause event, which left the button stuck on Stop
+                  audio.current?.pause();
+                  setPlaying(false);
+                  wanted.current = false;
+                  onChange(e.target.value || null);
+                }}
                 className="h-9 min-w-0 flex-1 rounded-[var(--radius-control)] border border-line-soft bg-bay px-2 text-sm text-chalk outline-none focus:border-tungsten/60">
           {(allowNone || !value) && <option value="">{noneLabel}</option>}
           {voices.map(([id, name]) => <option key={id} value={id}>{name}</option>)}

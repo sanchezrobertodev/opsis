@@ -26,7 +26,8 @@ import {
 } from "@/lib/elements";
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { VOICE_MODEL, VoicePicker } from "@/components/voice/VoicePicker";
-import { Button, Dialog, Segmented } from "@/components/ui/controls";
+import { useModelsFor } from "@/components/create/QuickGenerate";
+import { Button, Dialog, Field, Segmented, Select } from "@/components/ui/controls";
 import { OpensFullSize, ZoomButton } from "@/components/ui/PictureViewer";
 import { GLASS_CARD, Lit } from "@/components/ui/Glass";
 
@@ -335,17 +336,38 @@ function AddStarters({ starters }: { starters: typeof STARTERS }) {
 
 /** Draws a character's front portrait from its name and description and keeps it as its picture (the same run that
  * draws a film's new cast). The card shows it when the run is done. */
+const PORTRAIT_MODEL = "nano-banana-2"; // cinema_cast's own default
+
+function portraitRun(e: Pick<Element, "id" | "slug">, modelId: string): RunCreate {
+  return { recipe: "cinema_cast", input: { characters: [{ element_id: e.id, slug: e.slug }], image_model_id: modelId } };
+}
+
+/** Which image model draws a portrait, and what one costs on it. */
+function PortraitModel({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const models = useModelsFor("t2i").filter((m) => m.output_type === "image");
+  // the estimate needs no saved character: any id prices the same
+  const estimate = useEstimateRun(portraitRun({ id: "00000000-0000-0000-0000-000000000000", slug: "preview" }, value));
+  const cost = estimate.data ? (estimate.data.estimate_usd || estimate.data.live_estimate_usd) : null;
+  const options = models.map((m) => ({ value: m.id, label: m.id === PORTRAIT_MODEL ? `${m.name} (recommended)` : m.name }))
+    .sort((a, b) => Number(b.value === PORTRAIT_MODEL) - Number(a.value === PORTRAIT_MODEL));
+  return (
+    <Field label="Portrait drawn with" htmlFor="portrait-model"
+           hint={cost == null ? undefined : cost ? `About ${usd(cost)} a picture` : "Free on this route"}>
+      <Select id="portrait-model" value={value} onChange={onChange} options={options} />
+    </Field>
+  );
+}
+
 function useDrawPortrait() {
   const start = useStartRun();
-  async function draw(e: Pick<Element, "id" | "slug" | "handle">, confirmCost?: number): Promise<void> {
+  async function draw(e: Pick<Element, "id" | "slug" | "handle">, modelId: string, confirmCost?: number): Promise<void> {
     try {
-      await start.mutateAsync({ recipe: "cinema_cast", input: { characters: [{ element_id: e.id, slug: e.slug }] },
-                                confirm_cost_usd: confirmCost ?? null });
+      await start.mutateAsync({ ...portraitRun(e, modelId), confirm_cost_usd: confirmCost ?? null });
       toast.success(`Drawing ${e.handle}. The picture shows up on its card in about a minute.`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         const cost = (err.body as { estimate_usd: number }).estimate_usd;
-        toast(`Drawing ${e.handle} costs about ${usd(cost)}.`, { action: { label: "Draw it", onClick: () => void draw(e, cost) } });
+        toast(`Drawing ${e.handle} costs about ${usd(cost)}.`, { action: { label: "Draw it", onClick: () => void draw(e, modelId, cost) } });
         return;
       }
       toast.error(err instanceof Error ? err.message : `Couldn't start drawing ${e.handle}`);
@@ -369,6 +391,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
     ((existing?.voice as { params?: { voice_id?: string } } | null)?.params?.voice_id) ?? null);
   const [pending, setPending] = useState<SlotAsset[]>([]);
   const [drawIt, setDrawIt] = useState(true);
+  const [drawWith, setDrawWith] = useState(PORTRAIT_MODEL);
   const portrait = useDrawPortrait();
   const pictureless = kind === "character" && pending.length === 0 && !existing?.images.length;
 
@@ -398,7 +421,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
           ...(voice ? { voice: { model_id: VOICE_MODEL, params: { voice_id: voice } } } : {}),
         });
         toast(`Created ${e.handle}. Use it in any prompt.`);
-        if (pictureless && drawIt && description.trim()) await portrait.draw(e);
+        if (pictureless && drawIt && description.trim()) await portrait.draw(e, drawWith);
       }
       onDone();
     } catch (err) {
@@ -496,6 +519,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
             </span>
           </label>
         )}
+        {pictureless && (existing || drawIt) && <PortraitModel value={drawWith} onChange={setDrawWith} />}
         {existing && existing.kind === "character" && <IdentityPanel element={existing} />}
       </div>
 
@@ -507,7 +531,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
           </Button>
         )}
         {existing && pictureless && (
-          <Button type="button" size="sm" onClick={() => void portrait.draw(existing)}
+          <Button type="button" size="sm" onClick={() => void portrait.draw(existing, drawWith)}
                   disabled={!existing.description.trim() || portrait.drawing}
                   title={existing.description.trim() ? "Draws a front portrait from the description" : "Write a description first"}>
             <Sparkles className="size-4" aria-hidden />
@@ -697,6 +721,7 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
   const [size, setSize] = useState<keyof typeof TILE>("Medium");
   const [zoom, setZoom] = useState<{ trait: (typeof TRAITS)[number]; option: string } | null>(null);
   const [name, setName] = useState("");
+  const [drawWith, setDrawWith] = useState(PORTRAIT_MODEL);
   const description = describe(traits, heritage.trim());
   const style = traits.style ?? "photoreal";
   const create = useCreateElement();
@@ -712,7 +737,7 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
       onClose();
       setTraits({});
       setName("");
-      await portrait.draw(e);
+      await portrait.draw(e, drawWith);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't save the character");
     }
@@ -803,11 +828,14 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
       <p className={cn("mt-4 rounded-[var(--radius-control)] bg-bay p-3 text-sm leading-relaxed", description ? "text-chalk" : "text-faint")}>
         {description || "Pick a few traits, or press Randomize."}
       </p>
-      <label className="mt-4 flex max-w-xs flex-col gap-1 text-2xs text-faint">
-        Name
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="e.g. Marco Reyes"
-               className="h-9 rounded-[var(--radius-control)] border border-line-soft bg-bay px-2 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60" />
-      </label>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-2xs text-faint">
+          Name
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="e.g. Marco Reyes"
+                 className="h-9 rounded-[var(--radius-control)] border border-line-soft bg-bay px-2 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60" />
+        </label>
+        <PortraitModel value={drawWith} onChange={setDrawWith} />
+      </div>
       <Dialog open={zoom !== null} onClose={() => setZoom(null)} title={zoom ? `${zoom.trait.label}: ${zoom.option}` : ""} wide
               footer={zoom && (
                 <Button type="button" tone="primary" onClick={() => {
