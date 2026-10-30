@@ -156,7 +156,10 @@ setup (`infra/server/`) the API and worker mount the host's `~/.codex`; point `C
 
 - **Single user.** There is no sign-in; run it on your own machine or a private network (Tailscale, for
   example), never on the open internet.
-- **Local media.** Files are stored on disk under `data/media/`; back that folder up yourself.
+- **Local media.** Files are stored on disk under `data/media/`; back that folder up yourself. The database has
+  its own tools: `uv run python scripts/backup_db.py` dumps it to `data/backups/`,
+  `uv run python scripts/restore_db.py --check` test-restores the newest dump, and on Windows
+  `scripts/schedule_tasks.ps1` runs the backup nightly.
 - **Prices go stale.** Provider prices in `registry/` were verified on the dates written next to them.
 - **Hosted models need your own accounts** and cost money; the local Wan route is the only one that is free and
   open end to end.
