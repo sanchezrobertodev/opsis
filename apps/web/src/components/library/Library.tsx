@@ -16,6 +16,7 @@ const FILTERS = {
   all: { label: "Everything", filter: {} },
   video: { label: "Videos", filter: { kind: "video" } },
   image: { label: "Images", filter: { kind: "image" } },
+  audio: { label: "Sounds", filter: { kind: "audio" } },
   models: { label: "3D models", filter: { kind: "model3d" } },
   uploads: { label: "Uploads", filter: { source: "upload" } },
   favorites: { label: "Favorites", filter: { favorite: true } },
@@ -46,7 +47,7 @@ export function Library() {
   return (
     <div className="h-full overflow-y-auto p-6 scrollbar-quiet">
       <div className="mb-6 flex flex-wrap items-center gap-4">
-        <div className="w-full max-w-xl">
+        <div className="w-full max-w-2xl">
           <Segmented
             label="Show"
             value={key}

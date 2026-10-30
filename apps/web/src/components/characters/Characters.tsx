@@ -28,6 +28,7 @@ import { MediaSlotField } from "@/components/create/MediaSlots";
 import { VOICE_MODEL, VoicePicker } from "@/components/voice/VoicePicker";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 import { OpensFullSize, ZoomButton } from "@/components/ui/PictureViewer";
+import { GLASS_CARD, Lit } from "@/components/ui/Glass";
 
 const FILTERS = ["all", "character", "location", "prop", "style", "voice"] as const;
 type Filter = (typeof FILTERS)[number];
@@ -94,27 +95,29 @@ export function Characters() {
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-4">
           {items.map((e) => (
             <li key={e.id} className="group relative">
-              {e.kind !== "voice" && e.cover && <ZoomButton src={mediaUrl(e.cover.url)} title={e.name} />}
+              {e.kind !== "voice" && e.cover && <ZoomButton src={mediaUrl(e.cover.url)} title={e.name} className="right-4 top-4" />}
               <button
                 type="button"
                 onClick={() => setEditing(e)}
-                className="group block w-full text-left"
+                className={cn(GLASS_CARD, "block w-full text-left")}
                 aria-label={`${e.name}, ${KIND_LABEL[e.kind]}`}
               >
-                <div className="aspect-[3/4] overflow-hidden rounded-[var(--radius-frame)] bg-raised">
-                  {e.kind === "voice" ? (
-                    <span className="grid size-full place-items-center text-tungsten">
-                      <AudioLines className="size-8" aria-hidden />
-                    </span>
-                  ) : e.cover ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={mediaUrl(e.cover.thumb_url ?? e.cover.url)} alt="" className="size-full object-cover transition-transform group-hover:scale-[1.02]" />
-                  ) : (
-                    <span className="grid size-full place-items-center text-xs text-faint">No images yet</span>
-                  )}
-                </div>
-                <p className="type-title mt-2 truncate text-[15px]">{e.name}</p>
-                <p className="truncate text-xs text-faint">
+                <Lit picture={e.kind !== "voice" && e.cover ? mediaUrl(e.cover.thumb_url ?? e.cover.url) : undefined}>
+                  <div className="aspect-[3/4] overflow-hidden rounded-[var(--radius-frame)] bg-raised">
+                    {e.kind === "voice" ? (
+                      <span className="grid size-full place-items-center text-tungsten">
+                        <AudioLines className="size-8" aria-hidden />
+                      </span>
+                    ) : e.cover ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={mediaUrl(e.cover.thumb_url ?? e.cover.url)} alt="" className="size-full object-cover transition-transform group-hover:scale-[1.02]" />
+                    ) : (
+                      <span className="grid size-full place-items-center text-xs text-faint">No images yet</span>
+                    )}
+                  </div>
+                </Lit>
+                <p className="type-title mt-2 truncate px-1 text-[15px]">{e.name}</p>
+                <p className="truncate px-1 pb-1 text-xs text-faint">
                   <span className="text-tungsten">{e.handle}</span>, {KIND_LABEL[e.kind].toLowerCase()}
                   {e.kind !== "voice" && <>, {e.images.length} image{e.images.length === 1 ? "" : "s"}</>}
                 </p>
