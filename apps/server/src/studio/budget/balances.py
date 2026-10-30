@@ -3,6 +3,7 @@ each with a short timeout, and one provider failing never hides the others. Keys
 
 from __future__ import annotations
 
+import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -45,6 +46,7 @@ PROVIDERS: dict[str, tuple[str, str, str]] = {
     "google": ("Google (Gemini, Veo)", "https://console.cloud.google.com/billing", "gemini_api_key"),
     "replicate": ("Replicate", "https://replicate.com/account/billing", "replicate_api_token"),
     "worldlabs": ("World Labs", "https://platform.worldlabs.ai/", "worldlabs_api_key"),
+    "codex": ("Codex (your ChatGPT plan)", "https://developers.openai.com/codex/pricing", "codex_bin"),
 }
 
 _cache: dict[str, Balance] = {}
@@ -104,7 +106,24 @@ async def _pika(c: httpx.AsyncClient, key: str) -> dict[str, Any]:
             "detail": "remaining invoice-cycle allowance" if invoiced else "prepaid balance including credits"}
 
 
-READERS = {"fal": _fal, "runpod": _runpod, "runway": _runway, "elevenlabs": _elevenlabs, "pika": _pika}
+async def _codex(_: httpx.AsyncClient, binary: str) -> dict[str, Any]:
+    """No balance to read: whether the program runs and is signed in with ChatGPT, whose plan pays for the pictures."""
+    def ask() -> str:
+        done = subprocess.run([binary, "login", "status"], capture_output=True, text=True, timeout=TIMEOUT)
+        return done.stdout + done.stderr
+
+    try:
+        said = await anyio.to_thread.run_sync(ask)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"status": "error", "detail": f"CODEX_BIN doesn't run ({type(exc).__name__}); check the path"}
+    if "ChatGPT" in said:
+        return {"status": "ok", "detail": "signed in with ChatGPT: GPT Image comes from the plan's allowance"}
+    if "API key" in said:  # never echo the line: it shows part of the key
+        return {"status": "unavailable", "detail": "signed in with an API key, which bills per picture; run codex login"}
+    return {"status": "unavailable", "detail": "not signed in; run codex login with your ChatGPT account"}
+
+
+READERS = {"fal": _fal, "runpod": _runpod, "runway": _runway, "elevenlabs": _elevenlabs, "pika": _pika, "codex": _codex}
 
 
 async def _read(provider: str, key: str, transport: httpx.AsyncBaseTransport | None) -> Balance:

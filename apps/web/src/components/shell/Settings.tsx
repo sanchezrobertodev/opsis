@@ -253,6 +253,7 @@ function Balances() {
 }
 
 function amountText(b: { status: string; amount?: number | null; unit?: string | null; usd?: number | null }) {
+  if (b.status === "ok" && b.unit == null) return "Ready"; // nothing to read but whether it works (Codex)
   if (b.status !== "ok" || b.amount == null) return "–";
   if (b.unit === "usd") return usd(b.amount);
   const credits = `${Math.round(b.amount).toLocaleString()} credits`;

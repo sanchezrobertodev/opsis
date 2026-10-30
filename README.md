@@ -117,6 +117,27 @@ Mock to Mixed or Live. `.env`'s `PROVIDER_MODE` is the ceiling. Every request is
 checked against your budget caps; spending is recorded per request and reconciled against provider bills where
 providers report them. Mock mode never calls a paid route.
 
+The price line under Takes names the provider a take will run on (for example "$0.04 on fal.ai"), and Settings'
+spend history shows the route each charge ran on.
+
+### GPT Image through your ChatGPT plan (optional)
+
+GPT Image 2.5 can draw from a ChatGPT plan's allowance through the [Codex CLI](https://developers.openai.com/codex/cli)
+instead of being billed per picture on fal.
+
+1. Install the Codex CLI and sign in with your ChatGPT account: `codex login`. `codex login status` should say
+   "Logged in using ChatGPT" (an API-key sign-in bills per picture, so it defeats the purpose).
+2. Set `CODEX_BIN` in `.env` to the full path of the `codex` program (`where codex` on Windows, `which codex`
+   elsewhere), then restart the API and the worker.
+3. Settings > Provider balances shows **Codex (your ChatGPT plan): Ready** once it runs and is signed in. The
+   model picker then shows GPT Image 2.5 as Free, and the price line reads "on Codex (your ChatGPT plan)".
+
+It follows the Mock / Mixed / Live switch like any provider. It's slow (about 90 s a picture), and Codex picks the
+size, so pictures are cropped to the shape you asked for. A take Codex can't draw (the plan's usage limit, a
+refusal) moves on to fal and is billed there. Check OpenAI's terms for this use of a plan. On the Linux server
+setup (`infra/server/`) the API and worker mount the host's `~/.codex`; point `CODEX_BIN` at
+`/home/<you>/.codex/packages/standalone/current/bin/codex`.
+
 ## Limitations
 
 - **Single user.** There is no sign-in; run it on your own machine or a private network (Tailscale, for
