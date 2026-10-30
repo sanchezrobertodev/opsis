@@ -1,15 +1,78 @@
 "use client";
 
-import { ImagePlus, LoaderCircle, Library, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { AudioLines, Film, ImagePlus, LoaderCircle, Library, Upload, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { type MediaSlot, mediaUrl } from "@/lib/api";
+import { ApiError, type MediaSlot, mediaUrl } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { SlotAsset } from "@/lib/draft";
-import { uploadFile, useAssets, usePatchAsset } from "@/lib/queries";
+import { uploadFile, useAsset, useAssets, usePatchAsset } from "@/lib/queries";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
+import { OpensFullSize } from "@/components/ui/PictureViewer";
 
 const ACCEPT: Record<string, string> = { image: "image/*", video: "video/*", audio: "audio/*" };
+
+/** The upload icon says what the slot takes: a picture, a clip, a sound, or anything else. */
+function UploadIcon({ kinds }: { kinds: string[] }) {
+  const main = new Set(kinds.map((k) => (k === "mask" ? "image" : k === "mask_video" ? "video" : k)));
+  const only = main.size === 1 ? [...main][0] : "";
+  if (only === "image") return <ImagePlus className="size-4" aria-hidden />;
+  if (only === "video") return <Film className="size-4" aria-hidden />;
+  if (only === "audio") return <AudioLines className="size-4" aria-hidden />;
+  return <Upload className="size-4" aria-hidden />;
+}
+
+/** A file picked for a slot. One deleted since (a saved draft outlives it) leaves the slot, so it can't block a run. */
+function Chosen({ asset: a, label, onRemove }: { asset: SlotAsset; label: string; onRemove: (id: string) => void }) {
+  const { error } = useAsset(a.id);
+  const gone = error instanceof ApiError && error.status === 404;
+  const dropped = useRef(false);
+  useEffect(() => {
+    if (!gone || dropped.current) return;
+    dropped.current = true;
+    onRemove(a.id);
+    toast(`${a.title ?? "A file"} was deleted, so it was taken out of ${label}.`);
+  }, [gone, a.id, a.title, label, onRemove]);
+  const picture = a.kind === "image" || a.thumb ? mediaUrl(a.thumb ?? a.url) : undefined;
+  return (
+    <div className="lumen">
+      {picture && <div aria-hidden className="lumen-glow lumen-glow-sm" style={{ backgroundImage: `url("${picture}")` }} />}
+      <div className="group relative size-20 overflow-hidden rounded-[var(--radius-frame)] bg-raised">
+        {picture && (a.kind === "image" || a.kind === "mask") ? (
+          <OpensFullSize src={mediaUrl(a.url) ?? picture} title={a.title ?? label} className="size-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={picture} alt="" className="size-full object-cover" />
+          </OpensFullSize>
+        ) : picture ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={picture} alt={a.title ?? label} className="size-full object-cover" />
+        ) : (
+          <span className="grid size-full place-items-center text-2xs text-muted">{a.kind}</span>
+        )}
+        <button
+          type="button"
+          onClick={() => onRemove(a.id)}
+          aria-label={`Remove ${a.title ?? "media"}`}
+          className="absolute top-1 right-1 grid size-6 place-items-center rounded-full bg-bay/85 text-chalk opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+        >
+          <X className="size-3.5" aria-hidden />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Ctrl+V anywhere on the page fills a slot: the one holding focus if it takes the file, else the first visible
+ * open slot that does. Every slot listens; only that one takes it.
+ */
+function pasteTarget(kind: string): Element | null {
+  const takes = (el: Element) => (el.getAttribute("data-paste-kinds") ?? "").split(" ").includes(kind);
+  const open = [...document.querySelectorAll("[data-paste-kinds]")].filter(
+    (el) => takes(el) && (el as HTMLElement).offsetParent !== null,
+  );
+  return open.find((el) => el.contains(document.activeElement)) ?? open[0] ?? null;
+}
 
 /** Inputs worth keeping a library of: clips used as movement are tagged so they're easy to reuse. */
 const ROLE_LIBRARY: Record<string, { tag: string; label: string }> = {
@@ -40,6 +103,21 @@ export function MediaSlotField({
     if (library) patch.mutate({ id: a.id, add_tags: [library.tag] });
   };
   const label = slot.label ?? slot.role.replace(/_/g, " ");
+  const zone = useRef<HTMLDivElement>(null);
+  const pastable = slot.kinds.filter((k) => k in ACCEPT);
+
+  useEffect(() => {
+    if (full || !pastable.length) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const files = [...(e.clipboardData?.files ?? [])];
+      const kind = files[0]?.type.split("/")[0];
+      if (!kind || !zone.current || pasteTarget(kind) !== zone.current) return;
+      e.preventDefault();
+      void upload(files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  });
 
   async function upload(files: FileList | File[]) {
     for (const file of Array.from(files).slice(0, Math.max(1, max - value.length))) {
@@ -75,25 +153,12 @@ export function MediaSlotField({
       </div>
       <div className="flex flex-wrap gap-2">
         {value.map((a) => (
-          <div key={a.id} className="group relative size-20 overflow-hidden rounded-[var(--radius-frame)] bg-raised">
-            {a.kind === "image" || a.thumb ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={mediaUrl(a.thumb ?? a.url)} alt={a.title ?? label} className="size-full object-cover" />
-            ) : (
-              <span className="grid size-full place-items-center text-2xs text-muted">{a.kind}</span>
-            )}
-            <button
-              type="button"
-              onClick={() => onRemove(a.id)}
-              aria-label={`Remove ${a.title ?? "media"}`}
-              className="absolute top-1 right-1 grid size-6 place-items-center rounded-full bg-bay/85 text-chalk opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-            >
-              <X className="size-3.5" aria-hidden />
-            </button>
-          </div>
+          <Chosen key={a.id} asset={a} label={label} onRemove={onRemove} />
         ))}
         {!full && (
           <div
+            ref={zone}
+            data-paste-kinds={pastable.join(" ")}
             onDragOver={(e) => {
               e.preventDefault();
               setDragging(true);
@@ -113,7 +178,7 @@ export function MediaSlotField({
               type="button"
               onClick={() => input.current?.click()}
               disabled={uploading !== null}
-              className="flex flex-1 flex-col items-center justify-center gap-1 text-2xs text-muted hover:bg-raised hover:text-chalk"
+              className="flex flex-1 flex-col items-center justify-center gap-1 px-2 text-center text-2xs text-muted hover:bg-raised hover:text-chalk"
             >
               {uploading !== null ? (
                 <>
@@ -122,8 +187,8 @@ export function MediaSlotField({
                 </>
               ) : (
                 <>
-                  <ImagePlus className="size-4" aria-hidden />
-                  Upload or drop
+                  <UploadIcon kinds={slot.kinds} />
+                  Upload, drop or paste
                 </>
               )}
             </button>

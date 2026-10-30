@@ -24,7 +24,7 @@ modes:
     ops: [instruction_edit, restyle, relight]
     medias:
       - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 15}
-      - {role: image_references, kinds: [image], label: Reference images (optional), max: 4}
+      - {role: image_references, kinds: [image], label: Reference images, max: 4}
 
 routes:
   - id: pruna-p-video-edit@runpod

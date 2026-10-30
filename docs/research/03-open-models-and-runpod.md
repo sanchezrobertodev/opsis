@@ -17,7 +17,7 @@
 | Model | License | VRAM | ComfyUI | Notes |
 |---|---|---|---|---|
 | **Wan 2.2 T2V/I2V A14B** (MoE, 14B active) | Apache 2.0 | 80GB official; fp8 fits 24GB (experts load sequentially); GGUF Q4–Q5 runs at 480p on 12–16GB | Native + Kijai WanVideoWrapper | 4090 fp8 720p: 2.7–12 min. A step below Veo, Kling and Seedance |
-| **Wan 2.2 TI2V-5B** | Apache 2.0 | 8GB min, 24GB for 720p | Native | Draft tier. **Already installed locally** in `C:\Dev\AI\VideoStudio` |
+| **Wan 2.2 TI2V-5B** | Apache 2.0 | 8GB min, 24GB for 720p | Native | Draft tier. The opt-in local route (`comfy_local`) |
 | Wan 2.5–3.0 | API only | — | API nodes | RunPod resells Wan 2.6 at $0.10/s |
 | **LTX-2.3** (22B, audio + video) | LTX-2 Community License (free under $10M) | fp8 12–24GB | Native | 8-step distilled; 5090: 720p, 481 frames in 82 s; ~5.7× faster than Wan, but less stable camera |
 | **LTX-2.5** (2026-08-11) | same | int8 ~21.5GB; NVFP4 on Blackwell | Native day 0 | multi-shot, native 4K HDR up to 50fps, audio, IC-LoRAs (Restore, Upscaler, Layout-to-Render, Alpha, Ingredients) |
@@ -204,7 +204,7 @@ building, world models, and batches.
   - Fetch results with `GET /history/{prompt_id}`, then `GET /view?filename=&subfolder=&type=output`.
   - Other routes: `/upload/image`, `/interrupt`, `/free`, `/queue`, `/object_info`, `/system_stats`.
 - **Security:** no authentication. Keep it on localhost, or behind Tailscale or Cloudflare Tunnel + auth.
-- **What fits on 8–12GB (the user's RTX 5070):**
+- **What fits on 8–12GB consumer cards:**
   - Wan 5B; Wan 14B GGUF at 480p with Lightning; LTX GGUF at 540p.
   - Pre/post tools: SAM 2, DWPose, depth, RIFE, ESRGAN, FlashVSR, WhisperX, TTS, ACE-Step.
   - Blackwell supports NVFP4 where models ship it.

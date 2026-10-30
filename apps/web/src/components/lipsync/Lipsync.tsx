@@ -81,6 +81,12 @@ export function Lipsync() {
     }
   }
 
+  const voiceName = registry?.models.find((m) => m.id === VOICE_MODEL)?.name ?? VOICE_MODEL;
+  const takes = `${picked.length} take${picked.length === 1 ? "" : "s"}${picked.length > 1 ? ", one per model" : ""}`
+    + (speech === "script" ? `, the script voiced first on ${voiceName}` : "");
+  const e = estimate.data;
+  const cost = !e ? "Working out the cost…" : e.estimate_usd ? `About ${usd(e.estimate_usd)}`
+    : `Free mock run${e.live_estimate_usd ? `; live it would cost about ${usd(e.live_estimate_usd)}` : ""}`;
   const toggle = (id: string) => setChosen(picked.includes(id) ? picked.filter((m) => m !== id) : [...picked, id].slice(-MAX_MODELS));
 
   return (
@@ -128,7 +134,7 @@ export function Lipsync() {
             </ul>
           ) : <p className="text-2xs text-faint">Add who speaks first.</p>}
         </Field>
-        {speech === "script" && <VoicePicker value={voice} onChange={setVoice} />}
+        {speech === "script" && <VoicePicker value={voice} onChange={setVoice} label={`Voice (on ${voiceName})`} />}
         {!isClip && (
           <Field label="How they move (optional)" htmlFor="lipsync-prompt">
             <textarea id="lipsync-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={2} maxLength={1000}
@@ -138,8 +144,7 @@ export function Lipsync() {
         )}
         <div className="mt-auto flex flex-col gap-2">
           <p className="text-2xs text-faint">
-            {problem ?? (estimate.data ? (estimate.data.estimate_usd ? `About ${usd(estimate.data.estimate_usd)}` : "Free mock run")
-              + (estimate.data.live_estimate_usd ? `; live it would cost about ${usd(estimate.data.live_estimate_usd)}` : "") : "")}
+            {problem ?? (body ? `${takes}. ${cost}` : "")}
           </p>
           {confirm !== null ? (
             <Button tone="primary" onClick={() => void go(confirm)}>Start for {usd(confirm)}</Button>

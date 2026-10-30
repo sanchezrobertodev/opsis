@@ -85,6 +85,17 @@ def test_token_pricing():
     assert cost("claude-sonnet-5-5", input_tokens=0, output_tokens=0, cache_read=1_000_000) == Decimal("0.2")
 
 
+async def test_calls_name_the_model_and_a_typical_price(client):
+    r = await client.get("/llm/calls")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["mode"] == "mock"  # free now; the prices are what it would cost live
+    assert body["calls"]["enhance"] == {"model": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5",
+                                        "usd": float(cost("claude-sonnet-5-5", input_tokens=1_500, output_tokens=800))}
+    assert body["calls"]["cinema.director"]["name"] == "Claude Opus 5.5"
+    assert all(0 < c["usd"] < 1 for c in body["calls"].values())
+
+
 async def test_mock_mode_is_free_and_keeps_mentions(client):
     r = await client.post("/llm/enhance", json={"model_id": "kling-3.0", "mode": "t2v", "prompt": "@juno runs"})
     assert r.status_code == 200, r.text

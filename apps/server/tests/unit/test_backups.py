@@ -26,9 +26,9 @@ def test_the_database_comes_from_the_settings():
 
 def test_db_exec_says_how_the_postgres_tools_run(monkeypatch):
     settings = backups.get_settings()
-    monkeypatch.setattr(settings, "db_exec", None)  # the PC: into the compose service
+    monkeypatch.setattr(settings, "db_exec", None)  # the compose setup: into its service
     assert backups._prefix()[:2] == ["docker", "compose"] and backups._prefix()[-1] == "postgres"
-    monkeypatch.setattr(settings, "db_exec", "")  # the home server's pod: the tools sit next to the app
+    monkeypatch.setattr(settings, "db_exec", "")  # infra/server's pod: the tools sit next to the app
     assert backups._prefix() == []
     monkeypatch.setattr(settings, "db_exec", "podman exec -i 'ams postgres'")
     assert backups._prefix() == ["podman", "exec", "-i", "ams postgres"]

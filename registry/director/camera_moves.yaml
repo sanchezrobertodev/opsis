@@ -4,141 +4,141 @@
 # `native` maps a move to a model's own camera control (used instead of prompt text when the model has one).
 moves:
   # ---- push / pull ----------------------------------------------------------------
-  - {id: dolly_in, label: Dolly in, category: push, speeds: true, prompt: "dolly in toward {subject}",
+  - {id: dolly_in, label: Dolly in, category: push, glyph: in, speeds: true, prompt: "dolly in toward {subject}",
      description: "The camera rolls steadily closer to the subject.", native: {wan-fun-camera: ZoomIn}}
-  - {id: dolly_out, label: Dolly out, category: push, speeds: true, prompt: "dolly out away from {subject}",
+  - {id: dolly_out, label: Dolly out, category: push, glyph: out, speeds: true, prompt: "dolly out away from {subject}",
      description: "The camera rolls back to reveal more of the scene.", native: {wan-fun-camera: ZoomOut}}
-  - {id: super_dolly_in, label: Super dolly in, category: push, prompt: "long, fast dolly push from a wide view right up to {subject}",
+  - {id: super_dolly_in, label: Super dolly in, category: push, glyph: super-in, prompt: "long, fast dolly push from a wide view right up to {subject}",
      description: "An exaggerated push from far away to very close."}
-  - {id: super_dolly_out, label: Super dolly out, category: push, prompt: "long, fast dolly pull from {subject} back to a very wide view",
+  - {id: super_dolly_out, label: Super dolly out, category: push, glyph: super-out, prompt: "long, fast dolly pull from {subject} back to a very wide view",
      description: "An exaggerated pull from close up to a wide reveal."}
-  - {id: zoom_in, label: Zoom in, category: push, speeds: true, prompt: "zoom in on {subject}",
+  - {id: zoom_in, label: Zoom in, category: push, glyph: in, speeds: true, prompt: "zoom in on {subject}",
      description: "The lens zooms in while the camera stays put."}
-  - {id: zoom_out, label: Zoom out, category: push, speeds: true, prompt: "zoom out from {subject}",
+  - {id: zoom_out, label: Zoom out, category: push, glyph: out, speeds: true, prompt: "zoom out from {subject}",
      description: "The lens zooms out while the camera stays put."}
-  - {id: crash_zoom_in, label: Crash zoom in, category: push, prompt: "sudden crash zoom in on {subject}",
+  - {id: crash_zoom_in, label: Crash zoom in, category: push, glyph: crash-in, prompt: "sudden crash zoom in on {subject}",
      description: "A violent, very fast zoom in for impact."}
-  - {id: crash_zoom_out, label: Crash zoom out, category: push, prompt: "sudden crash zoom out from {subject}",
+  - {id: crash_zoom_out, label: Crash zoom out, category: push, glyph: crash-out, prompt: "sudden crash zoom out from {subject}",
      description: "A violent, very fast zoom out."}
-  - {id: rapid_zoom_in, label: Rapid zoom in, category: push, prompt: "rapid snap zoom in on {subject}",
+  - {id: rapid_zoom_in, label: Rapid zoom in, category: push, glyph: quick-in, prompt: "rapid snap zoom in on {subject}",
      description: "A quick, punchy zoom in."}
-  - {id: rapid_zoom_out, label: Rapid zoom out, category: push, prompt: "rapid snap zoom out from {subject}",
+  - {id: rapid_zoom_out, label: Rapid zoom out, category: push, glyph: quick-out, prompt: "rapid snap zoom out from {subject}",
      description: "A quick, punchy zoom out."}
-  - {id: dolly_zoom_in, label: Dolly zoom in, category: push, prompt: "dolly zoom (vertigo effect): the camera moves in while the lens zooms out, keeping {subject} the same size as the background stretches away",
+  - {id: dolly_zoom_in, label: Dolly zoom in, category: push, glyph: vertigo-in, prompt: "dolly zoom (vertigo effect): the camera moves in while the lens zooms out, keeping {subject} the same size as the background stretches away",
      description: "The vertigo effect, background stretches while the subject holds size."}
-  - {id: dolly_zoom_out, label: Dolly zoom out, category: push, prompt: "reverse dolly zoom (vertigo effect): the camera pulls back while the lens zooms in, keeping {subject} the same size as the background closes in",
+  - {id: dolly_zoom_out, label: Dolly zoom out, category: push, glyph: vertigo-out, prompt: "reverse dolly zoom (vertigo effect): the camera pulls back while the lens zooms in, keeping {subject} the same size as the background closes in",
      description: "The reverse vertigo effect, background compresses toward the subject."}
-  - {id: yoyo_zoom, label: Yo-yo zoom, category: push, prompt: "rhythmic yo-yo zoom pulsing in and out on {subject}",
+  - {id: yoyo_zoom, label: Yo-yo zoom, category: push, glyph: yoyo, prompt: "rhythmic yo-yo zoom pulsing in and out on {subject}",
      description: "The zoom pulses in and out repeatedly."}
-  - {id: double_dolly, label: Double dolly, category: push, prompt: "the camera and {subject} move forward together at the same pace, {subject} gliding while the background rushes past",
+  - {id: double_dolly, label: Double dolly, category: push, glyph: double-in, prompt: "the camera and {subject} move forward together at the same pace, {subject} gliding while the background rushes past",
      description: "Subject and camera travel together; the subject seems to float."}
-  - {id: eyes_in, label: Eyes in, category: push, prompt: "push in to an extreme close-up of {subject}'s eyes",
+  - {id: eyes_in, label: Eyes in, category: push, glyph: in, prompt: "push in to an extreme close-up of {subject}'s eyes",
      description: "Pushes all the way into the subject's eyes."}
-  - {id: mouth_in, label: Mouth in, category: push, prompt: "push in to an extreme close-up of {subject}'s mouth",
+  - {id: mouth_in, label: Mouth in, category: push, glyph: in, prompt: "push in to an extreme close-up of {subject}'s mouth",
      description: "Pushes all the way into the subject's mouth."}
-  - {id: eating_zoom, label: Eating zoom, category: push, prompt: "fast zoom into {subject}'s mouth as it takes a bite, extreme close-up",
+  - {id: eating_zoom, label: Eating zoom, category: push, glyph: super-in, prompt: "fast zoom into {subject}'s mouth as it takes a bite, extreme close-up",
      description: "Zooms into a bite, food-ad style."}
 
   # ---- orbit / lateral --------------------------------------------------------------
-  - {id: orbit_360, label: 360 orbit, category: orbit, speeds: true, prompt: "the camera orbits a full 360 degrees around {subject}",
+  - {id: orbit_360, label: 360 orbit, category: orbit, glyph: orbit, speeds: true, prompt: "the camera orbits a full 360 degrees around {subject}",
      description: "A complete circle around the subject.", native: {wan-fun-camera: Orbit}}
-  - {id: arc_left, label: Arc left, category: orbit, speeds: true, prompt: "the camera arcs to the left around {subject}",
+  - {id: arc_left, label: Arc left, category: orbit, glyph: arc-left, speeds: true, prompt: "the camera arcs to the left around {subject}",
      description: "A partial orbit to the left."}
-  - {id: arc_right, label: Arc right, category: orbit, speeds: true, prompt: "the camera arcs to the right around {subject}",
+  - {id: arc_right, label: Arc right, category: orbit, glyph: arc-right, speeds: true, prompt: "the camera arcs to the right around {subject}",
      description: "A partial orbit to the right."}
-  - {id: lazy_susan, label: Lazy Susan, category: orbit, prompt: "{subject} slowly rotates in place as if on a turntable while the camera holds still",
+  - {id: lazy_susan, label: Lazy Susan, category: orbit, glyph: spin, prompt: "{subject} slowly rotates in place as if on a turntable while the camera holds still",
      description: "The subject turns on the spot like a product on a turntable."}
-  - {id: rotation_3d, label: 3D rotation, category: orbit, prompt: "the camera rotates around {subject} on multiple axes, revealing it in three dimensions",
+  - {id: rotation_3d, label: 3D rotation, category: orbit, glyph: flip, prompt: "the camera rotates around {subject} on multiple axes, revealing it in three dimensions",
      description: "A sweeping rotation that shows the subject from several sides."}
-  - {id: dolly_left, label: Dolly left, category: lateral, speeds: true, prompt: "the camera trucks sideways to the left, parallel to {subject}",
+  - {id: dolly_left, label: Dolly left, category: lateral, glyph: left, speeds: true, prompt: "the camera trucks sideways to the left, parallel to {subject}",
      description: "A sideways slide to the left.", native: {wan-fun-camera: PanLeft}}
-  - {id: dolly_right, label: Dolly right, category: lateral, speeds: true, prompt: "the camera trucks sideways to the right, parallel to {subject}",
+  - {id: dolly_right, label: Dolly right, category: lateral, glyph: right, speeds: true, prompt: "the camera trucks sideways to the right, parallel to {subject}",
      description: "A sideways slide to the right.", native: {wan-fun-camera: PanRight}}
-  - {id: pan_left, label: Pan left, category: lateral, speeds: true, prompt: "the camera pans left from a fixed position",
+  - {id: pan_left, label: Pan left, category: lateral, glyph: left, speeds: true, prompt: "the camera pans left from a fixed position",
      description: "The camera turns left on its axis."}
-  - {id: pan_right, label: Pan right, category: lateral, speeds: true, prompt: "the camera pans right from a fixed position",
+  - {id: pan_right, label: Pan right, category: lateral, glyph: right, speeds: true, prompt: "the camera pans right from a fixed position",
      description: "The camera turns right on its axis."}
-  - {id: whip_pan, label: Whip pan, category: lateral, prompt: "fast whip pan with motion blur",
+  - {id: whip_pan, label: Whip pan, category: lateral, glyph: whip, prompt: "fast whip pan with motion blur",
      description: "A blur-fast pan, often used as a transition."}
 
   # ---- vertical ----------------------------------------------------------------------
-  - {id: crane_up, label: Crane up, category: vertical, speeds: true, prompt: "crane shot rising up and away from {subject}",
+  - {id: crane_up, label: Crane up, category: vertical, glyph: up, speeds: true, prompt: "crane shot rising up and away from {subject}",
      description: "The camera rises on a crane.", native: {wan-fun-camera: TiltUp}}
-  - {id: crane_down, label: Crane down, category: vertical, speeds: true, prompt: "crane shot descending toward {subject}",
+  - {id: crane_down, label: Crane down, category: vertical, glyph: down, speeds: true, prompt: "crane shot descending toward {subject}",
      description: "The camera lowers on a crane.", native: {wan-fun-camera: TiltDown}}
-  - {id: crane_over_head, label: Crane over the head, category: vertical, prompt: "the camera cranes up and over the top of {subject}'s head to a top-down view",
+  - {id: crane_over_head, label: Crane over the head, category: vertical, glyph: rise, prompt: "the camera cranes up and over the top of {subject}'s head to a top-down view",
      description: "Rises and passes over the subject's head."}
-  - {id: jib_up, label: Jib up, category: vertical, speeds: true, prompt: "short jib move rising up past {subject}",
+  - {id: jib_up, label: Jib up, category: vertical, glyph: up, speeds: true, prompt: "short jib move rising up past {subject}",
      description: "A smaller, smoother vertical rise."}
-  - {id: jib_down, label: Jib down, category: vertical, speeds: true, prompt: "short jib move lowering down past {subject}",
+  - {id: jib_down, label: Jib down, category: vertical, glyph: down, speeds: true, prompt: "short jib move lowering down past {subject}",
      description: "A smaller, smoother vertical drop."}
-  - {id: tilt_up, label: Tilt up, category: vertical, speeds: true, prompt: "the camera tilts up from a fixed position",
+  - {id: tilt_up, label: Tilt up, category: vertical, glyph: up, speeds: true, prompt: "the camera tilts up from a fixed position",
      description: "The camera angles upward on its axis."}
-  - {id: tilt_down, label: Tilt down, category: vertical, speeds: true, prompt: "the camera tilts down from a fixed position",
+  - {id: tilt_down, label: Tilt down, category: vertical, glyph: down, speeds: true, prompt: "the camera tilts down from a fixed position",
      description: "The camera angles downward on its axis."}
-  - {id: incline, label: Incline, category: vertical, prompt: "the camera rises at a diagonal incline while moving forward past {subject}",
+  - {id: incline, label: Incline, category: vertical, glyph: up, prompt: "the camera rises at a diagonal incline while moving forward past {subject}",
      description: "A diagonal rise while moving forward."}
-  - {id: overhead, label: Overhead, category: vertical, prompt: "top-down overhead shot looking straight down on {subject}",
+  - {id: overhead, label: Overhead, category: vertical, glyph: rise, prompt: "top-down overhead shot looking straight down on {subject}",
      description: "A bird's-eye view looking straight down."}
-  - {id: aerial_pullback, label: Aerial pullback, category: vertical, prompt: "aerial pullback rising high above {subject} to reveal the vast surroundings",
+  - {id: aerial_pullback, label: Aerial pullback, category: vertical, glyph: rise, prompt: "aerial pullback rising high above {subject} to reveal the vast surroundings",
      description: "Rises and pulls away into a huge aerial reveal."}
 
   # ---- handheld / energy -------------------------------------------------------------
-  - {id: handheld, label: Handheld, category: handheld, prompt: "handheld camera with natural, slightly shaky movement",
+  - {id: handheld, label: Handheld, category: handheld, glyph: shake, prompt: "handheld camera with natural, slightly shaky movement",
      description: "Organic handheld shake, documentary feel."}
-  - {id: wiggle, label: Wiggle, category: handheld, prompt: "playful jittery camera wiggle",
+  - {id: wiggle, label: Wiggle, category: handheld, glyph: shake, prompt: "playful jittery camera wiggle",
      description: "Quick, playful jitter."}
-  - {id: snorricam, label: Snorricam, category: handheld, prompt: "snorricam rig shot: camera fixed to {subject}'s body, {subject} stays centered while the world sways around them",
+  - {id: snorricam, label: Snorricam, category: handheld, glyph: follow, prompt: "snorricam rig shot: camera fixed to {subject}'s body, {subject} stays centered while the world sways around them",
      description: "Camera strapped to the subject; the world moves around them."}
-  - {id: head_tracking, label: Head tracking, category: handheld, prompt: "the camera tracks {subject}'s head closely, following every movement",
+  - {id: head_tracking, label: Head tracking, category: handheld, glyph: follow, prompt: "the camera tracks {subject}'s head closely, following every movement",
      description: "Stays locked on the subject's head as it moves."}
-  - {id: hero_cam, label: Hero cam, category: handheld, prompt: "low-angle hero shot slowly pushing up toward {subject}, epic and powerful",
+  - {id: hero_cam, label: Hero cam, category: handheld, glyph: hero, prompt: "low-angle hero shot slowly pushing up toward {subject}, epic and powerful",
      description: "Low, rising angle that makes the subject look heroic."}
-  - {id: robo_arm, label: Robot arm, category: handheld, prompt: "precise, fast robotic-arm camera move swooping around {subject}",
+  - {id: robo_arm, label: Robot arm, category: handheld, glyph: robo, prompt: "precise, fast robotic-arm camera move swooping around {subject}",
      description: "Machine-precise, fast swoop like a motion-control rig."}
-  - {id: glam, label: Glam, category: handheld, prompt: "glamorous slow push with soft beauty lighting on {subject}, fashion-commercial style",
+  - {id: glam, label: Glam, category: handheld, glyph: drift, prompt: "glamorous slow push with soft beauty lighting on {subject}, fashion-commercial style",
      description: "Slow, flattering beauty move."}
-  - {id: bts, label: Behind the scenes, category: handheld, prompt: "behind-the-scenes style handheld footage of {subject}, candid and unpolished",
+  - {id: bts, label: Behind the scenes, category: handheld, glyph: shake, prompt: "behind-the-scenes style handheld footage of {subject}, candid and unpolished",
      description: "Candid making-of footage."}
 
   # ---- vehicles / flight / transitions ------------------------------------------------
-  - {id: fpv_drone, label: FPV drone, category: vehicle, prompt: "FPV drone shot diving and weaving fast around {subject}",
+  - {id: fpv_drone, label: FPV drone, category: vehicle, glyph: fly, prompt: "FPV drone shot diving and weaving fast around {subject}",
      description: "Agile first-person drone flight."}
-  - {id: car_chasing, label: Car chase, category: vehicle, prompt: "camera car chasing {subject} at high speed from behind",
+  - {id: car_chasing, label: Car chase, category: vehicle, glyph: rush, prompt: "camera car chasing {subject} at high speed from behind",
      description: "Chases the subject from a moving vehicle."}
-  - {id: car_grip, label: Car grip, category: vehicle, prompt: "camera mounted on the side of a moving car, looking at {subject}",
+  - {id: car_grip, label: Car grip, category: vehicle, glyph: rush, prompt: "camera mounted on the side of a moving car, looking at {subject}",
      description: "Rigid car-mounted shot with the road rushing by."}
-  - {id: road_rush, label: Road rush, category: vehicle, prompt: "low camera racing forward just above the road surface, speed lines and motion blur",
+  - {id: road_rush, label: Road rush, category: vehicle, glyph: rush, prompt: "low camera racing forward just above the road surface, speed lines and motion blur",
      description: "Skims fast just above the road."}
-  - {id: buckle_up, label: Buckle up, category: vehicle, prompt: "sudden violent acceleration, the camera lurches forward as if launched",
+  - {id: buckle_up, label: Buckle up, category: vehicle, glyph: buckle, prompt: "sudden violent acceleration, the camera lurches forward as if launched",
      description: "A jolting launch forward."}
-  - {id: flying_cam_transition, label: Flying cam transition, category: vehicle, prompt: "the camera flies swiftly through the scene in one continuous flowing move toward {subject}",
+  - {id: flying_cam_transition, label: Flying cam transition, category: vehicle, glyph: fly, prompt: "the camera flies swiftly through the scene in one continuous flowing move toward {subject}",
      description: "One continuous flight through the space."}
-  - {id: through_object_in, label: Through object in, category: vehicle, prompt: "the camera pushes through a gap or window into the scene, arriving at {subject}",
+  - {id: through_object_in, label: Through object in, category: vehicle, glyph: through-in, prompt: "the camera pushes through a gap or window into the scene, arriving at {subject}",
      description: "Passes through a doorway, window or gap to enter."}
-  - {id: through_object_out, label: Through object out, category: vehicle, prompt: "the camera pulls back out through a gap or window, leaving {subject} behind",
+  - {id: through_object_out, label: Through object out, category: vehicle, glyph: through-out, prompt: "the camera pulls back out through a gap or window, leaving {subject} behind",
      description: "Passes back out through a gap to exit."}
-  - {id: object_pov, label: Object POV, category: vehicle, prompt: "point-of-view shot from an object near {subject}",
+  - {id: object_pov, label: Object POV, category: vehicle, glyph: pov, prompt: "point-of-view shot from an object near {subject}",
      description: "Sees the scene from an object's point of view."}
 
   # ---- time / lens effects ---------------------------------------------------------------
-  - {id: bullet_time, label: Bullet time, category: time, prompt: "bullet time: action frozen in extreme slow motion while the camera sweeps around {subject}",
+  - {id: bullet_time, label: Bullet time, category: time, glyph: orbit-slow, prompt: "bullet time: action frozen in extreme slow motion while the camera sweeps around {subject}",
      description: "Frozen action with a sweeping camera."}
-  - {id: hyperlapse, label: Hyperlapse, category: time, prompt: "hyperlapse moving forward through the scene, time sped up",
+  - {id: hyperlapse, label: Hyperlapse, category: time, glyph: hyper, prompt: "hyperlapse moving forward through the scene, time sped up",
      description: "Moving timelapse."}
-  - {id: timelapse_landscape, label: Timelapse landscape, category: time, prompt: "timelapse of the landscape, clouds and light moving quickly across the sky",
+  - {id: timelapse_landscape, label: Timelapse landscape, category: time, glyph: pulse, prompt: "timelapse of the landscape, clouds and light moving quickly across the sky",
      description: "Static timelapse of a landscape."}
-  - {id: timelapse_human, label: Timelapse people, category: time, prompt: "timelapse of people streaming past {subject}, who stays still",
+  - {id: timelapse_human, label: Timelapse people, category: time, glyph: pulse, prompt: "timelapse of people streaming past {subject}, who stays still",
      description: "Crowds blur past a still subject."}
-  - {id: timelapse_glam, label: Timelapse glam, category: time, prompt: "fast timelapse of {subject}'s look being styled and transformed",
+  - {id: timelapse_glam, label: Timelapse glam, category: time, glyph: pulse, prompt: "fast timelapse of {subject}'s look being styled and transformed",
      description: "A makeover in fast motion."}
-  - {id: low_shutter, label: Low shutter, category: time, prompt: "low shutter speed with long motion-blur trails",
+  - {id: low_shutter, label: Low shutter, category: time, glyph: trail, prompt: "low shutter speed with long motion-blur trails",
      description: "Dreamy streaking motion blur."}
-  - {id: focus_change, label: Focus change, category: lens, prompt: "rack focus shifting from the foreground to {subject}",
+  - {id: focus_change, label: Focus change, category: lens, glyph: focus, prompt: "rack focus shifting from the foreground to {subject}",
      description: "Focus pulls between foreground and subject."}
-  - {id: fisheye, label: Fisheye, category: lens, prompt: "fisheye lens with strong barrel distortion close to {subject}",
+  - {id: fisheye, label: Fisheye, category: lens, glyph: fisheye, prompt: "fisheye lens with strong barrel distortion close to {subject}",
      description: "Ultra-wide distorted look."}
-  - {id: dutch_angle, label: Dutch angle, category: lens, prompt: "tilted dutch angle framing",
+  - {id: dutch_angle, label: Dutch angle, category: lens, glyph: dutch, prompt: "tilted dutch angle framing",
      description: "A canted, uneasy horizon."}
 
   # ---- static ---------------------------------------------------------------------------

@@ -514,3 +514,4 @@ class TemplateSpec(_Strict):
     inputs: list[TemplateInput] = []
     tags: list[str] = []
     status: Literal["active", "hidden"] = "active"
+    makes: Literal["video", "image"] = "video"  # which shelf of the Templates page it sits on

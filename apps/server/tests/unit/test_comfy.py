@@ -43,9 +43,9 @@ def test_wan_template_text_to_video_drops_start_image():
 
 def test_wan_template_image_to_video_keeps_loader_and_reports_unknown_keys():
     graph, warnings = load_template(WORKFLOWS, "wan22_ti2v_5b").render(
-        {"prompt": "cat", "start_image": ["ai-media-studio/a.png"], "bogus": 1}
+        {"prompt": "cat", "start_image": ["opsis/a.png"], "bogus": 1}
     )
-    assert graph["56"]["inputs"]["image"] == "ai-media-studio/a.png"
+    assert graph["56"]["inputs"]["image"] == "opsis/a.png"
     assert graph["55"]["inputs"]["start_image"] == ["56", 0]
     assert any("bogus" in w for w in warnings)
 
@@ -88,7 +88,7 @@ class FakeComfy:
         path = request.url.path
         if path == "/upload/image":
             self.uploads.append("x")
-            return httpx.Response(200, json={"name": "abc.png", "subfolder": "ai-media-studio", "type": "input"})
+            return httpx.Response(200, json={"name": "abc.png", "subfolder": "opsis", "type": "input"})
         if path == "/prompt":
             body = json.loads(request.content)
             if "UNETLoader" in json.dumps(body) and "missing" in json.dumps(body):
@@ -115,7 +115,7 @@ class FakeComfy:
             if st == "done":
                 return httpx.Response(200, json={pid: {
                     "prompt": [1, pid, {}, {}, ["58"]],
-                    "outputs": {"58": {"images": [{"filename": "clip_00001_.mp4", "subfolder": "ai-media-studio",
+                    "outputs": {"58": {"images": [{"filename": "clip_00001_.mp4", "subfolder": "opsis",
                                                    "type": "output"}], "animated": [True]}},
                     "status": {"status_str": "success", "completed": True, "messages": []},
                 }})
@@ -149,12 +149,12 @@ async def test_full_job_lifecycle(fake, tmp_path):
     img = tmp_path / "frame.png"
     img.write_bytes(b"png")
     staged = await a.stage_inputs(ROUTE, [ResolvedMedia("start_image", "asset-1", img, "image/png", "image")])
-    assert staged == {"start_image": ["ai-media-studio/abc.png"]}
+    assert staged == {"start_image": ["opsis/abc.png"]}
 
     res = await a.submit(ROUTE, "wan22_ti2v_5b", {"prompt": "x", "start_image": staged["start_image"][0]},
                          client_ref="0123456789")
     queued = fake.prompts[res.job_id]
-    assert queued["client_id"] == "ai-media-studio"
+    assert queued["client_id"] == "opsis"
     assert queued["prompt"]["58"]["inputs"]["filename_prefix"].endswith("/01234567")
 
     poll = await a.poll(ROUTE, res.job_id)
@@ -209,7 +209,7 @@ async def test_offline_engine_is_route_unavailable_with_instructions(monkeypatch
     with pytest.raises(ProviderError) as exc:
         await a.submit(ROUTE, "wan22_ti2v_5b", {"prompt": "x"}, client_ref="r")
     assert exc.value.error_class == ErrorClass.route_unavailable
-    assert "Start Local Video Studio" in exc.value.message
+    assert "Start ComfyUI" in exc.value.message
 
 
 async def test_download_rejects_missing_file(monkeypatch, tmp_path):
@@ -396,7 +396,7 @@ def test_ltx_payloads_fill_their_wan_core_templates():
     cases = {"t2v": [], "i2v": [start], "flf2v": [start, end]}
     for mode, media in cases.items():
         req = normalize(spec, mode, "harbor", {"duration": 5, "aspect_ratio": "9:16"}, media)
-        staged = {m.role: f"ai-media-studio/{m.asset_id}.png" for m in media}
+        staged = {m.role: f"opsis/{m.asset_id}.png" for m in media}
         endpoint, payload, _ = build_payload(spec, route, req, staged)
         graph, warnings = load_template(WORKFLOWS, endpoint).render(payload)
         assert warnings == [], (mode, warnings)
@@ -406,10 +406,10 @@ def test_ltx_payloads_fill_their_wan_core_templates():
         size = (graph["9"]["inputs"]["width"], graph["9"]["inputs"]["height"])
         assert size == ((704, 1280) if mode == "flf2v" else (352, 640))
         if media:
-            assert graph["30"]["inputs"]["image"] == "ai-media-studio/a.png"
+            assert graph["30"]["inputs"]["image"] == "opsis/a.png"
             assert (graph["31"]["inputs"]["width"], graph["31"]["inputs"]["height"]) == (704, 1280)
         if mode == "flf2v":
-            assert graph["35"]["inputs"]["image"] == "ai-media-studio/b.png"
+            assert graph["35"]["inputs"]["image"] == "opsis/b.png"
 
     req = normalize(spec, "t2v", "harbor", {"generate_audio": False, "resolution": "1080p"}, [])
     endpoint, payload, _ = build_payload(spec, route, req, {})

@@ -128,7 +128,8 @@ class PikaAdapter(ProviderAdapter):
                     raise ValueError
                 if quoted > ceiling:
                     raise ProviderError(ErrorClass.route_unavailable,
-                                        "Pika quote exceeds the studio reservation; refresh route pricing before retrying")
+                                        f"Pika quoted ${quoted / 1e6:.2f}, above the ${ceiling / 1_000_000:.2f} the "
+                                        "studio priced it at; refresh route pricing before retrying")
                 response = await c.get("/billing/balance")
                 if response.status_code != 200:
                     raise http_error("Pika balance", response)

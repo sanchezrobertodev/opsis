@@ -4,7 +4,9 @@ import { ArrowLeftToLine, ArrowRightToLine, Scissors, Wand2 } from "lucide-react
 import Link from "next/link";
 import { useState } from "react";
 import { type CinemaDoc, type Shot } from "@/lib/cinema";
-import { useRegistry } from "@/lib/queries";
+import { useModel, useRegistry } from "@/lib/queries";
+import type { RunCreate } from "@/lib/runs";
+import { quotePrice, quoteText, useRunQuote } from "@/components/runs/RunQuote";
 import { Button, Field, Segmented, Select, Slider } from "@/components/ui/controls";
 import type { Launch } from "./Editor";
 import { mergedDirection } from "./Storyboard";
@@ -33,18 +35,24 @@ export function TakeActions({ projectId, doc, shot, takeId, launch }: {
   const [editor, setEditor] = useState<string | null>(null);
   const editModel = editor ?? editors[0]?.id ?? "";
   const params = { ...doc.settings.model_params, aspect_ratio: doc.settings.aspect_ratio, resolution: doc.settings.resolution };
+  const film = useModel(doc.settings.model_id).data?.name ?? doc.settings.model_id;
+  const image = useModel(doc.settings.image_model_id).data?.name ?? doc.settings.image_model_id;
+
+  // priced before anything is written: the words don't change what it costs
+  const body = (text: string): RunCreate => {
+    const common = { project_id: projectId, shot_key: shot.id, take_asset_id: takeId, prompt: text };
+    return what === "edit" ? { recipe: "cinema_edit", input: { ...common, model_id: editModel } }
+      : { recipe: "cinema_extend", input: {
+          ...common, side: what, direction: mergedDirection(doc.settings, shot), model_id: doc.settings.model_id,
+          params, duration: seconds, image_model_id: doc.settings.image_model_id } };
+  };
+  const quote = useRunQuote(what === "edit" && !editModel ? null : body(prompt.trim() || "x"));
 
   async function go() {
     const text = prompt.trim();
     if (!text) return;
-    const common = { project_id: projectId, shot_key: shot.id, take_asset_id: takeId, prompt: text };
-    if (what === "edit") {
-      await launch({ recipe: "cinema_edit", input: { ...common, model_id: editModel } }, "Editing");
-    } else {
-      await launch({ recipe: "cinema_extend", input: {
-        ...common, side: what, direction: mergedDirection(doc.settings, shot), model_id: doc.settings.model_id,
-        params, duration: seconds, image_model_id: doc.settings.image_model_id } }, what === "after" ? "Continuing" : "Leading in");
-    }
+    await launch({ ...body(text), confirm_cost_usd: quote.charged },
+                 what === "edit" ? "Editing" : what === "after" ? "Continuing" : "Leading in");
     setPrompt("");
   }
 
@@ -68,9 +76,15 @@ export function TakeActions({ projectId, doc, shot, takeId, launch }: {
           <Slider value={seconds} min={2} max={10} step={1} onChange={setSeconds} format={(v) => `${v} s`} />
         </Field>
       )}
+      {what !== "edit" && (
+        <p className="text-2xs text-faint">
+          On {film}{what === "before" && `, with the earlier frame drawn by ${image}`}. Change them in Film settings.
+        </p>
+      )}
       <Button size="sm" tone="primary" onClick={() => void go()} disabled={!prompt.trim() || (what === "edit" && !editModel)}>
-        {COPY[what].go}
+        {COPY[what].go}{quotePrice(quote) && ` · ${quotePrice(quote)}`}
       </Button>
+      <p className="-mt-1 text-2xs text-faint">{quoteText(quote, ["take", "takes"])}</p>
       <Link href={`/swap?video=${takeId}&project=${projectId}&shot=${shot.id}`}
             className="flex items-center gap-1.5 text-2xs text-muted hover:text-chalk">
         <Scissors className="size-3.5" aria-hidden />

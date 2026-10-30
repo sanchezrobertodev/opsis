@@ -63,6 +63,8 @@ class Generation(IdMixin, TimestampMixin, Base):
     queued_at: Mapped[datetime | None]
     started_at: Mapped[datetime | None]
     finished_at: Mapped[datetime | None]
+    # removed from history (domain/removal.py); the row stays because its attempts carry the spending records
+    deleted_at: Mapped[datetime | None]
 
 
 class GenerationAttempt(IdMixin, TimestampMixin, Base):

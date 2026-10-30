@@ -16,7 +16,7 @@ async def list_templates() -> list[TemplateOut]:
     """Guided templates: recipe runs with most of their input chosen."""
     reg = get_registry()
     return [TemplateOut(id=t.id, name=t.name, summary=t.summary, tags=t.tags, recipe=t.recipe,
-                        recipe_name=recipe.name, fields=t.fields, inputs=t.inputs)
+                        recipe_name=recipe.name, makes=t.makes, fields=t.fields, inputs=t.inputs)
             for t in sorted(reg.templates.values(), key=lambda t: t.name)
             if t.status == "active" and (recipe := get_recipe(t.recipe))]
 

@@ -57,13 +57,13 @@ class Settings(BaseSettings):
     llm_smart_model: str = "claude-opus-5-5"  # scripts, shot plans
 
     # How backups reach the Postgres tools (ops/backups.py). Unset: `docker compose exec` into the dev container.
-    # Empty: run pg_dump/psql here, with PGHOST/PGPASSWORD set (the home server's pod). Else a command prefix.
+    # Empty: run pg_dump/psql here, with PGHOST/PGPASSWORD set (infra/server's pod). Else a command prefix.
     db_exec: str | None = None
 
     # The Codex CLI, signed in with a ChatGPT plan: GPT Image from the plan's allowance. Empty turns the route off.
     codex_bin: str = ""
 
-    # Local ComfyUI (C:/Dev/AI/VideoStudio). Empty disables the local route.
+    # Local ComfyUI. Empty disables the local route.
     comfyui_url: str = ""
     comfyui_workflows_dir: Path = REPO_ROOT / "workflows" / "comfy"
     # Optional shared YAML read by the local ComfyUI launcher; enables Settings > Model storage.

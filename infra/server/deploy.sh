@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Deploys AI Media Studio on the home server (Fedora, rootless Podman, Quadlet; see infra/server/README.md).
-# Run from anywhere: ~/Development/repos/ai-media-studio/infra/server/deploy.sh   (the Hub's Deploy button runs it)
+# Deploys Opsis on a Linux server (rootless Podman, Quadlet; see infra/server/README.md).
+# Run from anywhere: <checkout>/infra/server/deploy.sh   (or from a dashboard's deploy button)
 #   NO_PULL=1   deploy what's checked out without `git pull`
 #   FORCE=1     build even when memory is short (see wait_for_memory)
 set -euo pipefail
@@ -33,12 +33,15 @@ if [ "${NO_PULL:-0}" != 1 ] && [ -d .git ]; then
   fi
 fi
 
-# Building the web app takes 2-3 GB for a minute or two. The laptop has 14 GB, and a big pull while Ollama was
-# loading a model ran it out of memory on 2026-10-07, so wait (up to 10 minutes) for 3 GB free and no model loading.
+# Building the web app takes 2-3 GB for a minute or two. On a small server, a big pull while Ollama loads a model can
+# run it out of memory, so wait (up to 10 minutes) for 3 GB free and no model loading. OLLAMA_URL (environment or
+# .env) is where an Ollama on this host answers; nothing answering there counts as no model loading.
+OLLAMA_URL="${OLLAMA_URL:-$(sed -n 's/^OLLAMA_URL=//p' .env | tail -1)}"
+OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 wait_for_memory() {
   for _ in $(seq 1 60); do
     avail_kb="$(awk '/MemAvailable/ {print $2}' /proc/meminfo)"
-    loading="$(curl -fsS --max-time 3 http://127.0.0.1:8086/api/ps 2>/dev/null | grep -c '"expires_at"' || true)"
+    loading="$(curl -fsS --max-time 3 "$OLLAMA_URL/api/ps" 2>/dev/null | grep -c '"expires_at"' || true)"
     if [ "$avail_kb" -ge 3000000 ] && [ "${loading:-0}" = 0 ]; then return 0; fi
     echo "==> waiting: $((avail_kb / 1024)) MB free, Ollama models loaded: ${loading:-0}"
     sleep 10

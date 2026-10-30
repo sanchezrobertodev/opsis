@@ -23,6 +23,7 @@ import { useRegistry } from "@/lib/queries";
 import { RUN_STATUS_TEXT, type RunCreate, useEstimateRun, useStartRun } from "@/lib/runs";
 import { AspectPicker, Button, Dialog, Field, Segmented, Select, Slider, Switch } from "@/components/ui/controls";
 import { statusTone } from "@/components/runs/Runs";
+import { useClaudeCost } from "@/components/llm/ClaudeCost";
 import { StyleCard } from "./StyleCard";
 
 const WORDS_PER_MINUTE = 150;
@@ -97,6 +98,10 @@ export function Faceless() {
   const problem = estimate.error instanceof ApiError
     ? ((estimate.error.body as { errors?: string[] })?.errors ?? [estimate.error.message]).join(" ")
     : null;
+  // what Claude writes: the script unless it's yours, then its picture plan; a song's lyrics come with their pictures
+  const claudeSteps = s?.format === "song" ? (writeOwn ? [] : ["faceless.song"])
+    : writeOwn ? ["faceless.plan"] : ["faceless.script", "faceless.plan"];
+  const claude = useClaudeCost(...claudeSteps);
 
   async function go(confirmCost?: number) {
     if (!body) return;
@@ -118,6 +123,14 @@ export function Faceless() {
   const minutes = writeOwn ? script.trim().split(/\s+/).filter(Boolean).length / WORDS_PER_MINUTE : s.minutes;
   // same guess as the recipe's estimate: ~6 characters a word, read at 14.5 characters a second
   const blocks = Math.max(1, Math.ceil((minutes * WORDS_PER_MINUTE * 6) / 14.5 / BLOCK_SECONDS[s.format]));
+  const modelName = (id: string) => registry?.models.find((m) => m.id === id)?.name ?? id;
+  const madeWith = [
+    claudeSteps.length > 0 && `${claude.name} (${song ? "lyrics" : writeOwn ? "plan" : "script and plan"}${claude.price ? `; ${claude.price}` : ""})`,
+    !song && `${modelName(s.voice_model)} (voice)`,
+    `${modelName(s.image_model)} (pictures)`,
+    s.format === "motion" && `${modelName(s.video_model)} (clips)`,
+    (song || s.music) && `${modelName(s.music_model)} (${song ? "singing" : "music"})`,
+  ].filter(Boolean).join(", ");
 
   return (
     <div className="grid h-full grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -286,6 +299,7 @@ export function Faceless() {
         </details>
 
         <div className="mt-auto space-y-3">
+          <p className="text-2xs leading-relaxed text-faint">Made with {madeWith}.</p>
           <p className="text-xs leading-relaxed text-muted">
             {problem ? (
               <span className="text-fault">{problem}</span>
@@ -338,6 +352,7 @@ function TopicPicker({ theme, channelId, topic, onTopic, notes }: {
   theme: string; channelId: string; topic: string; onTopic: (t: string) => void; notes: string;
 }) {
   const suggest = useSuggestTopics();
+  const claude = useClaudeCost("faceless.topics");
   const [ideas, setIdeas] = useState<TopicIdea[]>([]);
   async function ask() {
     try {
@@ -362,6 +377,7 @@ function TopicPicker({ theme, channelId, topic, onTopic, notes }: {
           Suggest
         </Button>
       </div>
+      <p className="text-2xs text-faint">Suggest asks {claude.text}.</p>
       {ideas.length > 0 && (
         <ul className="grid gap-2 sm:grid-cols-2">
           {ideas.map((idea) => (

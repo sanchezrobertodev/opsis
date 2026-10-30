@@ -1,19 +1,24 @@
 "use client";
 
-import { Clock3, Coins, Download, ImageUp, RotateCcw, Star, StepForward, UserRoundPlus, X } from "lucide-react";
+import { Clock3, Coins, Download, FolderOpen, ImageUp, RotateCcw, Star, StepForward, Trash2, UserRoundPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { type Asset, type Generation, isActive, mediaUrl, viaOf } from "@/lib/api";
+import { ApiError, type Asset, type Generation, isActive, mediaUrl, viaOf } from "@/lib/api";
 import { cn, seconds, timecode, usd } from "@/lib/cn";
 import { useDraft } from "@/lib/draft";
 import {
   useCancelGeneration,
   useContinueFromLastFrame,
   useCreateGeneration,
+  useDeleteGeneration,
+  useHealth,
   usePatchAsset,
   useResolveUnknown,
+  useRevealAsset,
 } from "@/lib/queries";
 import { SaveAsElement } from "@/components/characters/SaveAsElement";
+import { Button, Dialog } from "@/components/ui/controls";
+import { SelectMark } from "@/components/ui/Selection";
 
 const STATUS_TEXT: Record<string, string> = {
   queued: "Waiting for a worker",
@@ -63,31 +68,61 @@ export function TakeCard({
   modelName,
   modelFamily,
   onOpen,
+  selecting,
+  selected = false,
+  onToggle,
 }: {
   gen: Generation;
   takeNumber: number;
   modelName: string;
   modelFamily?: string;
   onOpen?: (asset: Asset) => void;
+  /** picking takes to delete together: the whole card toggles it (a take still rendering can't be picked) */
+  selecting?: boolean;
+  selected?: boolean;
+  onToggle?: () => void;
 }) {
   const active = isActive(gen.status);
   const now = useNow(active);
   const assets = gen.assets ?? [];
   const prompt = String(gen.request.prompt ?? "");
+  // the take's own picture, blurred under it as its light (a video's poster; none until it has one)
+  const picture = assets[0] && (assets[0].kind === "image" ? assets[0].thumb_url ?? assets[0].url : assets[0].poster_url);
 
   return (
     <article
-      className="flex flex-col gap-2"
+      className={cn(
+        "glass relative flex flex-col gap-2.5 overflow-hidden rounded-2xl border border-line-soft p-2.5 pb-3",
+        selected && "ring-2 ring-tungsten",
+      )}
       aria-label={`Take ${takeNumber}, ${modelName}, ${gen.status.replace("_", " ")}`}
     >
+      {selecting && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selected}
+          aria-label={`Select take ${takeNumber}`}
+          title={active ? "Still rendering" : undefined}
+          disabled={active}
+          onClick={onToggle}
+          className="absolute inset-0 z-10 flex items-start p-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-tungsten disabled:cursor-not-allowed"
+        >
+          {!active && <SelectMark selected={selected} />}
+        </button>
+      )}
       {gen.status === "succeeded" && assets.length > 0 ? (
-        <div className={cn("grid gap-1", assets.length > 1 && "grid-cols-2")}>
+        <div className={cn("lumen grid gap-1", assets.length > 1 && "grid-cols-2")}>
+          {picture && <div aria-hidden className="lumen-glow" style={{ backgroundImage: `url("${mediaUrl(picture)}")` }} />}
           {assets.map((a) => (
             <Frame key={a.id} asset={a} aspect={aspectOf(gen, a)} onOpen={onOpen} />
           ))}
         </div>
       ) : active ? (
-        <Slate gen={gen} takeNumber={takeNumber} modelName={modelName} aspect={aspectOf(gen)} now={now} />
+        <div className="lumen">
+          <div aria-hidden className="lumen-glow lumen-glow-ring" />
+          <Slate gen={gen} takeNumber={takeNumber} modelName={modelName} aspect={aspectOf(gen)} now={now} />
+        </div>
       ) : (
         <Fault gen={gen} aspect={aspectOf(gen)} />
       )}
@@ -143,7 +178,7 @@ function Slate({
       <div aria-hidden className="absolute inset-x-0 top-0 h-2.5 bg-[repeating-linear-gradient(115deg,var(--color-chalk)_0_14px,var(--color-bay)_14px_28px)] opacity-80" />
       <div className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
         <span className="text-faint">Take</span>
-        <span className="type-title tabular text-chalk">{String(takeNumber).padStart(2, "0")}</span>
+        <span className="readout text-chalk">{String(takeNumber).padStart(2, "0")}</span>
         <span className="text-faint">Model</span>
         <span className="type-title truncate text-chalk">{modelName}</span>
         <span className="text-faint">Mode</span>
@@ -155,7 +190,7 @@ function Slate({
           <p className="truncate text-xs text-muted" aria-live="polite">
             {statusText}
           </p>
-          <p className="type-title tabular text-3xl leading-none text-chalk">{timecode(gen.created_at, now)}</p>
+          <p className="readout text-3xl leading-none tracking-tight text-chalk">{timecode(gen.created_at, now)}</p>
         </div>
         {gen.status === "unknown" ? (
           <button
@@ -190,6 +225,17 @@ function Slate({
       </div>
     </div>
   );
+}
+
+/** ", about $0.40" for another take like this one: its own estimate, or for a mock take what it would cost live. */
+function againPrice(gen: Generation): string {
+  const r = gen.routing as { chosen?: string; planned?: string; candidates?: { route_id: string; is_mock?: boolean }[];
+                             live_reference?: { estimate_usd?: number | null } | null };
+  const live = r.live_reference?.estimate_usd;
+  if (r.candidates?.find((c) => c.route_id === (r.chosen ?? r.planned))?.is_mock) {
+    return `, free as a mock run${live ? ` (about ${usd(live)} when live)` : ""}`;
+  }
+  return gen.estimated_cost_usd == null ? "" : `, ${gen.estimated_cost_usd ? `about ${usd(gen.estimated_cost_usd)}` : "free"}`;
 }
 
 function remainingText(seconds: number) {
@@ -260,12 +306,17 @@ function TakeFooter({
   const create = useCreateGeneration();
   const patch = usePatchAsset();
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const removal = useDeleteGeneration();
+  const reveal = useRevealAsset();
+  const { data: health } = useHealth();
   const continueShot = useContinueFromLastFrame();
   const first = assets[0];
   const cost = gen.actual_cost_usd ?? gen.estimated_cost_usd;
   const duration = first?.duration_ms ? seconds(first.duration_ms) : null;
 
-  function retry() {
+  // priced like this take; pressing confirms that price, and a higher one over the threshold asks again
+  function retry(confirmCost = gen.estimated_cost_usd) {
     const r = gen.request as {
       model_id: string;
       mode: string;
@@ -278,86 +329,109 @@ function TakeFooter({
     const params = Object.fromEntries(Object.entries(r.params ?? {}).filter(([k]) => k !== "seed"));
     create.mutate(
       { model_id: r.model_id, mode: r.mode, prompt: r.prompt, negative_prompt: r.negative_prompt, params,
-        media: (r.media ?? []).map((m) => ({ role: m.role, asset_id: m.asset_id })) },
-      { onError: (e) => toast.error(e instanceof Error ? e.message : "Could not start the take") },
+        media: (r.media ?? []).map((m) => ({ role: m.role, asset_id: m.asset_id })), confirm_cost_usd: confirmCost },
+      { onError: (e) => {
+        if (e instanceof ApiError && e.status === 409) {
+          const now = (e.body as { estimate_usd: number }).estimate_usd;
+          toast(`Another take now costs about ${usd(now)}.`, { action: { label: "Start it", onClick: () => retry(now) } });
+          return;
+        }
+        toast.error(e instanceof Error ? e.message : "Could not start the take");
+      } },
     );
+  }
+
+  function remove() {
+    removal.mutate(gen.id, {
+      onSuccess: (r) => {
+        setDeleting(false);
+        toast(r.kept.length ? `Take deleted. Kept what ${r.kept.join(", ")} uses.` : "Take deleted");
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete the take"),
+    });
   }
 
   return (
     <div className="flex flex-col gap-2 px-0.5">
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
-        <div className="min-w-0 flex-1">
-          <p className="line-clamp-2 text-xs leading-relaxed text-chalk" title={prompt}>
-            {prompt || <span className="text-faint">No prompt</span>}
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-0.5">
-          {gen.status === "succeeded" && first && (
-            <>
-              <IconButton
-                label={first.favorite ? "Remove from favorites" : "Add to favorites"}
-                onClick={() => patch.mutate({ id: first.id, favorite: !first.favorite })}
-              >
-                <Star className={cn("size-4", first.favorite && "fill-tungsten text-tungsten")} aria-hidden />
-              </IconButton>
-              {first.kind === "image" && (
-                <IconButton
-                  label="Use as start frame for a video"
-                  onClick={() => {
-                    addMedia("video", "start_image", { id: first.id, kind: "image", thumb: first.thumb_url, url: first.url, title: first.title }, 1);
-                    setDraft("video", { mode: "i2v" });
-                    toast("Added as the start frame in Create video");
-                  }}
-                >
-                  <ImageUp className="size-4" aria-hidden />
-                </IconButton>
-              )}
-              {first.kind === "video" && (
-                <IconButton
-                  label="Continue from the last frame"
-                  onClick={() =>
-                    void continueShot
-                      .run(first.id)
-                      .then(() => toast("Last frame set as the start frame. Describe what happens next."))
-                      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "Could not grab the frame"))
-                  }
-                >
-                  <StepForward className="size-4" aria-hidden />
-                </IconButton>
-              )}
-              {first.kind === "image" && (
-                <IconButton label="Save as character" onClick={() => setSaving(true)}>
-                  <UserRoundPlus className="size-4" aria-hidden />
-                </IconButton>
-              )}
-              <a
-                href={mediaUrl(first.url)}
-                download
-                aria-label="Download"
-                title="Download"
-                className="grid size-8 place-items-center rounded-full text-muted hover:bg-raised hover:text-chalk"
-              >
-                <Download className="size-4" aria-hidden />
-              </a>
-            </>
-          )}
-          {!isActive(gen.status) && (
-            <IconButton label="Generate another take with the same settings" onClick={retry}>
-              <RotateCcw className="size-4" aria-hidden />
+      <div className="flex flex-wrap gap-0.5">
+        {gen.status === "succeeded" && first && (
+          <>
+            <IconButton
+              label={first.favorite ? "Remove from favorites" : "Add to favorites"}
+              onClick={() => patch.mutate({ id: first.id, favorite: !first.favorite })}
+            >
+              <Star className={cn("size-4", first.favorite && "fill-tungsten text-tungsten")} aria-hidden />
             </IconButton>
-          )}
-          <IconButton
-            label="Reuse this prompt"
-            onClick={() => setDraft(studio, { prompt, modelId: viaOf(gen)?.model_id ?? gen.model_id, mode: viaOf(gen)?.mode ?? gen.mode })}
-          >
-            <span className="text-2xs">Aa</span>
+            {first.kind === "image" && (
+              <IconButton
+                label="Use as start frame for a video"
+                onClick={() => {
+                  addMedia("video", "start_image", { id: first.id, kind: "image", thumb: first.thumb_url, url: first.url, title: first.title }, 1);
+                  setDraft("video", { mode: "i2v" });
+                  toast("Added as the start frame in Create video");
+                }}
+              >
+                <ImageUp className="size-4" aria-hidden />
+              </IconButton>
+            )}
+            {first.kind === "video" && (
+              <IconButton
+                label="Continue from the last frame"
+                onClick={() =>
+                  void continueShot
+                    .run(first.id)
+                    .then(() => toast("Last frame set as the start frame. Describe what happens next."))
+                    .catch((e: unknown) => toast.error(e instanceof Error ? e.message : "Could not grab the frame"))
+                }
+              >
+                <StepForward className="size-4" aria-hidden />
+              </IconButton>
+            )}
+            {first.kind === "image" && (
+              <IconButton label="Save to Characters" onClick={() => setSaving(true)}>
+                <UserRoundPlus className="size-4" aria-hidden />
+              </IconButton>
+            )}
+            <a
+              href={mediaUrl(first.url)}
+              download
+              aria-label="Download"
+              title="Download"
+              className="grid size-8 place-items-center rounded-full text-muted hover:bg-raised hover:text-chalk"
+            >
+              <Download className="size-4" aria-hidden />
+            </a>
+            {health?.reveal_files && (
+              <IconButton label="Show in folder" onClick={() => reveal.mutate(first.id, { onError: (e) => toast.error(e instanceof Error ? e.message : "Could not show the file") })}>
+                <FolderOpen className="size-4" aria-hidden />
+              </IconButton>
+            )}
+          </>
+        )}
+        {!isActive(gen.status) && (
+          <IconButton label={`Generate another take with the same settings${againPrice(gen)}`} onClick={() => retry()}>
+            <RotateCcw className="size-4" aria-hidden />
           </IconButton>
-        </div>
+        )}
+        <IconButton
+          label="Reuse this prompt"
+          onClick={() => setDraft(studio, { prompt, modelId: viaOf(gen)?.model_id ?? gen.model_id, mode: viaOf(gen)?.mode ?? gen.mode })}
+        >
+          <span className="text-2xs">Aa</span>
+        </IconButton>
+        {!isActive(gen.status) && (
+          <IconButton label="Delete this take" onClick={() => setDeleting(true)}>
+            <Trash2 className="size-4" aria-hidden />
+          </IconButton>
+        )}
       </div>
+      <p className="line-clamp-2 text-xs leading-relaxed text-chalk" title={prompt}>
+        {prompt || <span className="text-faint">No prompt</span>}
+      </p>
       <dl className="flex flex-wrap items-center gap-1.5 text-2xs">
         <div className="mr-0.5 text-muted">
           <dt className="sr-only">Take</dt>
-          <dd className="tabular">Take {String(takeNumber).padStart(2, "0")}</dd>
+          <dd className="readout">Take {String(takeNumber).padStart(2, "0")}</dd>
         </div>
         <div className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border px-2 py-1 font-medium", modelChipTone(modelFamily))}>
           <dt className="sr-only">Model</dt>
@@ -369,7 +443,7 @@ function TakeFooter({
         {duration && (
           <div className="inline-flex items-center gap-1 rounded-full border border-line bg-panel px-2 py-1 text-chalk">
             <dt className="sr-only">Duration</dt>
-            <dd className="tabular flex items-center gap-1">
+            <dd className="readout flex items-center gap-1">
               <Clock3 className="size-3 shrink-0 text-muted" aria-hidden />
               {duration}
             </dd>
@@ -378,7 +452,7 @@ function TakeFooter({
         {cost != null && gen.status !== "canceled" && (
           <div className="inline-flex items-center gap-1 rounded-full border border-done/25 bg-done/10 px-2 py-1 text-done">
             <dt className="sr-only">{gen.actual_cost_usd != null ? "Cost" : "Estimated cost"}</dt>
-            <dd className="tabular flex items-center gap-1">
+            <dd className="readout flex items-center gap-1">
               <Coins className="size-3 shrink-0" aria-hidden />
               {gen.actual_cost_usd == null && <span>Est.</span>}
               {usd(cost, { free: "free" })}
@@ -389,6 +463,25 @@ function TakeFooter({
       {first?.kind === "image" && (
         <SaveAsElement asset={first} prompt={prompt} open={saving} onClose={() => setSaving(false)} />
       )}
+      <Dialog
+        open={deleting}
+        onClose={() => setDeleting(false)}
+        title={`Delete take ${String(takeNumber).padStart(2, "0")}?`}
+        footer={
+          <>
+            <Button tone="ghost" onClick={() => setDeleting(false)}>
+              Keep it
+            </Button>
+            <Button tone="danger" onClick={remove} disabled={removal.isPending}>
+              {removal.isPending ? "Deleting…" : "Delete"}
+            </Button>
+          </>
+        }
+      >
+        {assets.length > 0
+          ? "It leaves your history and its files are deleted from disk. This can't be undone. What it cost stays in your spending records."
+          : "It leaves your history. What it cost stays in your spending records."}
+      </Dialog>
     </div>
   );
 }

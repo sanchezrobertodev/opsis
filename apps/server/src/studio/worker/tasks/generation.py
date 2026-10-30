@@ -240,12 +240,24 @@ async def run_submit(gen_id: uuid.UUID) -> None:
         eligible = [c for c in cands if c.eligible and c.route.id not in tried]
         limit = gen.routing.get("max_cost_usd")
         if limit is not None and eligible:  # a failover or reroute must still fit in what's left of the run's cap
-            affordable = [c for c in eligible if (c.estimate.usd if c.estimate else Decimal("0")) <= Decimal(str(limit))]
+            def usd(c: Any) -> Decimal:
+                return c.estimate.usd if c.estimate else Decimal("0")
+
+            affordable = [c for c in eligible if usd(c) <= Decimal(str(limit))]
             if not affordable:
+                # say why the route it was priced on is gone, or the price alone reads like the estimate was wrong
+                last = (await s.execute(select(GenerationAttempt).where(GenerationAttempt.generation_id == gen.id)
+                                        .order_by(GenerationAttempt.attempt_no.desc()).limit(1))).scalar_one_or_none()
+                why = ""
+                if last is not None and last.error_message:
+                    name = reg.providers[last.provider].name if last.provider in reg.providers else last.provider
+                    why = f"{name} couldn't take it: {last.error_message}. "
+                cheapest = min(eligible, key=usd)
                 await fsm.transition(s, gen, GenStatus.failed, error=(
                     ErrorClass.invalid_request,
-                    f"every route left costs more than the ${limit:.2f} this take was approved for "
-                    "(what was left of its run's cap, or the price you confirmed); start it again to see the new price"))
+                    f"{why}Every route left costs more than the ${limit:.2f} this take was approved for "
+                    f"({cheapest.provider_name or cheapest.route.provider}: ${usd(cheapest):.2f}); "
+                    "start it again to see the new price"))
                 return
             eligible = affordable
         if not eligible:

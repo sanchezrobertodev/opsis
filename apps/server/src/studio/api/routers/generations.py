@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -15,13 +15,15 @@ from studio.api.schemas import (
     GenerationCreate,
     GenerationOut,
     GenerationPage,
+    GenerationRemoved,
     ValidationProblem,
 )
 from studio.api.serializers import generation_out
-from studio.db.models import Asset, Generation, User
+from studio.db.models import Asset, Generation, PipelineRun, RunStatus, User
 from studio.domain import fsm
 from studio.domain.enums import ACTIVE_STATUSES, ErrorClass, GenStatus
 from studio.domain.generations import CreateRequest, cancel_generation, create_generation, inflight_attempt
+from studio.domain.removal import delete_files, remove_assets
 from studio.registry.loader import get_registry
 from studio.worker.tasks.generation import defer_cancel_remote, defer_submit
 
@@ -88,7 +90,7 @@ async def list_generations(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(current_user),
 ) -> GenerationPage:
-    stmt = select(Generation).where(Generation.user_id == user.id)
+    stmt = select(Generation).where(Generation.user_id == user.id, Generation.deleted_at.is_(None))
     if status == "active":
         stmt = stmt.where(Generation.status.in_(list(ACTIVE_STATUSES)))
     elif status in ("succeeded", "failed"):
@@ -111,9 +113,10 @@ async def list_generations(
                           next_cursor=_cursor(page[-1].created_at, page[-1].id) if more else None)
 
 
-async def _get_owned(session: AsyncSession, user: User, gid: uuid.UUID, *, lock: bool = False) -> Generation:
+async def _get_owned(session: AsyncSession, user: User, gid: uuid.UUID, *, lock: bool = False,
+                     deleted_ok: bool = False) -> Generation:
     gen = await session.get(Generation, gid, with_for_update=lock)
-    if gen is None or gen.user_id != user.id:
+    if gen is None or gen.user_id != user.id or (gen.deleted_at is not None and not deleted_ok):
         raise HTTPException(404, "generation not found")
     return gen
 
@@ -122,8 +125,33 @@ async def _get_owned(session: AsyncSession, user: User, gid: uuid.UUID, *, lock:
 async def get_generation(
     generation_id: uuid.UUID, session: AsyncSession = Depends(get_session), user: User = Depends(current_user)
 ) -> GenerationOut:
-    gen = await _get_owned(session, user, generation_id)
+    # still readable once deleted: outputs kept for a character or a project point back at it (a world's collider)
+    gen = await _get_owned(session, user, generation_id, deleted_ok=True)
     return (await _with_assets(session, [gen]))[0]
+
+
+@router.delete("/{generation_id}", response_model=GenerationRemoved)
+async def delete_generation(
+    generation_id: uuid.UUID, session: AsyncSession = Depends(get_session), user: User = Depends(current_user)
+) -> GenerationRemoved:
+    """Remove a take from history and its files from disk. Spending records stay, and outputs a saved character or a
+    project still uses are kept (the answer says which). A take already removed can be deleted again: what it left
+    because something used it then goes once nothing does (a world whose 3D scene was deleted since)."""
+    gen = await _get_owned(session, user, generation_id, lock=True, deleted_ok=True)
+    if gen.status in ACTIVE_STATUSES:
+        raise HTTPException(409, "This take is still rendering. Cancel it first, or mark it failed if it's stuck.")
+    run = await session.get(PipelineRun, gen.group_id) if gen.group_id else None
+    if run is not None and run.status in (RunStatus.running, RunStatus.waiting):
+        raise HTTPException(409, "This take belongs to a run that is still going. Cancel the run or let it finish first.")
+    outputs = (await session.execute(select(Asset).where(
+        Asset.generation_id == gen.id, Asset.deleted_at.is_(None)).with_for_update())).scalars().all()
+    removed, kept = await remove_assets(session, user.id, list(outputs))
+    gen.deleted_at = gen.deleted_at or datetime.now(UTC)
+    await fsm.emit(session, user_id=user.id, topic="generation", type="generation.deleted", subject_id=gen.id,
+                   payload={"generation_id": str(gen.id)})
+    await session.commit()
+    await delete_files(user.id, removed)
+    return GenerationRemoved(files_removed=len(removed), kept=sorted(set(kept.values())))
 
 
 @router.post("/{generation_id}/cancel", response_model=GenerationOut)

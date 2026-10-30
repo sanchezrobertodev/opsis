@@ -50,6 +50,8 @@ class ModelSummary(ApiModel):
     modes: list[ModeSummary]
     from_price_usd: float | None = Field(None, description="Cheapest live estimate with default params")
     runnable: bool = Field(description="At least one route can run right now (mock counts)")
+    runs_on: Literal["local", "cloud_gpu", "hosted"] = Field(
+        "hosted", description="Where it runs: this computer, your own cloud GPU endpoint, or a hosted API")
 
 
 class RouteSummary(ApiModel):
@@ -237,6 +239,11 @@ class GenerationPage(ApiModel):
     next_cursor: str | None
 
 
+class GenerationRemoved(ApiModel):
+    files_removed: int = Field(description="Outputs whose files were deleted from disk")
+    kept: list[str] = Field(description="What still uses the outputs that were kept, e.g. 'the character Mara'")
+
+
 class AssetPage(ApiModel):
     items: list[AssetOut]
     next_cursor: str | None
@@ -401,6 +408,8 @@ class HealthOut(ApiModel):
     llm_key_set: bool
     reloads_on_change: bool = Field(False, description="The API restarts when its code changes (started with "
                                                        "--reload); a restart drops requests in flight")
+    reveal_files: bool = Field(False, description="This browser runs on the API's machine, so files can be shown "
+                                                  "in its file manager (POST /assets/{id}/reveal)")
 
 
 # ---------------------------------------------------------------- presets
@@ -416,6 +425,7 @@ class PresetMoveOut(ApiModel):
     id: str
     label: str
     category: str
+    glyph: str = ""
 
 
 class PresetOut(ApiModel):
@@ -463,6 +473,7 @@ class TemplateOut(ApiModel):
     tags: list[str]
     recipe: str
     recipe_name: str
+    makes: Literal["video", "image"] = Field("video", description="What it makes: which shelf it sits on")
     fields: list[PresetField]
     inputs: list[TemplateInput]
 
@@ -491,6 +502,18 @@ class EnhanceOut(ApiModel):
     cost_usd: float
 
 
+class ClaudeCallOut(ApiModel):
+    model: str = Field(description="e.g. claude-sonnet-5-5")
+    name: str = Field(description="e.g. Claude Sonnet 5.5")
+    usd: float = Field(description="A typical call at live rates")
+
+
+class ClaudeCallsOut(ApiModel):
+    mode: Literal["mock", "live"] = Field(description="Claude's mode in effect: mock calls are free")
+    verified: str = Field(description="When the token prices were checked")
+    calls: dict[str, ClaudeCallOut] = Field(description="By the spend ledger's purpose (enhance, cinema.plan, ...)")
+
+
 # ---------------------------------------------------------------- pipelines
 
 
@@ -513,6 +536,7 @@ class RunEstimateOut(ApiModel):
     estimate_usd: float = Field(description="On the routes that would run now (mock routes are free)")
     live_estimate_usd: float | None = Field(None, description="On the cheapest paid routes")
     generations: int
+    models: list[str] = Field([], description="Names of the models it makes them with, in the order they're used")
     cap_usd: float
     by_key: dict[str, float] = Field({}, description="estimate_usd split by what each job is for (a Cinema shot's "
                                                      "id), where the recipe says")

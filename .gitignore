@@ -12,6 +12,9 @@ smoke_reports/
 *.wav
 *.mp3
 !fixtures/**
+!apps/web/public/covers/*.mp4
+!apps/web/public/voices/*.mp3
+!docs/demo/*.mp4
 
 # Python
 __pycache__/
@@ -45,3 +48,6 @@ Thumbs.db
 !.vscode/extensions.json
 
 .claude/settings.local.json
+# Personal notes for Claude Code on your machine (paths, hosts, how you deploy)
+CLAUDE.local.md
+.playwright-mcp/

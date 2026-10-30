@@ -8,6 +8,7 @@ import { type CinemaDoc, type ProposedCharacter, type Scene, usePlanShots, useSa
 import { unmention } from "@/lib/mentions";
 import { useElements } from "@/lib/elements";
 import { useEstimateRun } from "@/lib/runs";
+import { useClaudeCost } from "@/components/llm/ClaudeCost";
 import { Button, Field, Slider } from "@/components/ui/controls";
 import type { Launch } from "./Editor";
 
@@ -21,6 +22,7 @@ export function ScriptTab({ projectId, doc, update, onPlanned, launch }: {
 }) {
   const { data: elements } = useElements();
   const plan = usePlanShots(projectId);
+  const claude = useClaudeCost("cinema.plan");
   const saveCast = useSaveCast(projectId);
   const [maxShots, setMaxShots] = useState(12);
   const [notes, setNotes] = useState("");
@@ -115,10 +117,13 @@ export function ScriptTab({ projectId, doc, update, onPlanned, launch }: {
                     placeholder="Mostly handheld; keep the lighthouse in frame"
                     className="resize-y rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 py-2 text-sm outline-none placeholder:text-faint focus:border-tungsten/60" />
         </Field>
-        <Button tone="primary" onClick={() => void ask()} disabled={plan.isPending || !(doc.script.trim() || doc.logline.trim())}>
-          {plan.isPending ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <Sparkles className="size-4" aria-hidden />}
-          Plan shots with Claude
-        </Button>
+        <div className="flex flex-col gap-1.5">
+          <Button tone="primary" onClick={() => void ask()} disabled={plan.isPending || !(doc.script.trim() || doc.logline.trim())}>
+            {plan.isPending ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <Sparkles className="size-4" aria-hidden />}
+            Plan shots with Claude
+          </Button>
+          <p className="text-2xs text-faint">Each plan asks {claude.text}.</p>
+        </div>
 
         {proposal && (
           <section className="flex flex-col gap-3 rounded-[var(--radius-panel)] bg-panel p-3">

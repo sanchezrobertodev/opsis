@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("Model storage: save, restart notice, persistence and validation", async ({ page }, testInfo) => {
-  let directory = "G:\\AI\\Models\\ComfyUI";
+  let directory = "D:\\Models\\ComfyUI";
   let restart = false;
   await page.route("**/local-engine/model-storage", async (route) => {
     if (route.request().method() === "PATCH") {
@@ -20,8 +20,8 @@ test("Model storage: save, restart notice, persistence and validation", async ({
       restart = true;
     }
     await route.fulfill({ json: {
-      available: true, directory, active_directory: "G:\\AI\\Models\\ComfyUI", restart_required: restart,
-      libraries: ["G:\\AI\\Models\\VideoStudio"], free_bytes: 816.7 * 1024 ** 3,
+      available: true, directory, active_directory: "D:\\Models\\ComfyUI", restart_required: restart,
+      libraries: ["D:\\Models\\Old"], free_bytes: 816.7 * 1024 ** 3,
     } });
   });
   await page.goto("/settings");
@@ -35,10 +35,10 @@ test("Model storage: save, restart notice, persistence and validation", async ({
   await expect(section.getByRole("alert")).toHaveText("Choose an absolute folder path.");
   await input.fill("J:\\AI\\Models");
   await section.getByRole("button", { name: "Save model folder" }).click();
-  await expect(section.getByText(/Saved\. Restart Local Video Studio/)).toBeVisible();
+  await expect(section.getByText(/Saved\. Restart ComfyUI/)).toBeVisible();
   await page.reload();
   await expect(input).toHaveValue("J:\\AI\\Models");
-  await expect(section.getByText("G:\\AI\\Models\\VideoStudio", { exact: true })).toBeVisible();
+  await expect(section.getByText("D:\\Models\\Old", { exact: true })).toBeVisible();
   await section.screenshot({ path: testInfo.outputPath("model-storage.png") });
 });
 

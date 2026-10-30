@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+
 import httpx
 import pytest
 import respx
@@ -61,7 +63,7 @@ def keys(monkeypatch):
     for attr, value in (("fal_key", "fal-secret"), ("runpod_api_key", "rp-secret"), ("runway_api_key", "rw-secret"),
                         ("elevenlabs_api_key", "el-secret"), ("anthropic_api_key", "sk-secret"),
                         ("gemini_api_key", ""), ("replicate_api_token", ""), ("worldlabs_api_key", ""),
-                        ("reactor_api_key", ""), ("pika_api_key", "")):
+                        ("reactor_api_key", ""), ("pika_api_key", ""), ("codex_bin", "")):
         monkeypatch.setattr(s, attr, value)
     b.clear_cache()
     yield
@@ -92,6 +94,27 @@ async def test_balances_from_the_providers_that_report_them(keys):
     assert fal.call_count == 1
     await b.balances(refresh=True)
     assert fal.call_count == 2
+
+
+@pytest.mark.parametrize(("said", "status", "detail"), [
+    ("Logged in using ChatGPT", "ok", "plan's allowance"),
+    ("Logged in using an API key - sk-proj-***abcd", "unavailable", "API key"),
+    ("Not logged in", "unavailable", "not signed in"),
+    (None, "error", "check the path"),
+])
+async def test_codex_says_whether_it_runs_and_is_signed_in(keys, monkeypatch, said, status, detail):
+    monkeypatch.setattr(get_settings(), "codex_bin", "codex")
+
+    def run(cmd, **_):
+        assert cmd == ["codex", "login", "status"]
+        if said is None:
+            raise FileNotFoundError(cmd[0])
+        return subprocess.CompletedProcess(cmd, 0, said, "")
+
+    monkeypatch.setattr(b.subprocess, "run", run)
+    got = {x.provider: x for x in await b.balances()}["codex"]
+    assert got.status == status and detail in got.detail and got.unit is None
+    assert "sk-" not in got.detail
 
 
 @respx.mock

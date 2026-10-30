@@ -267,6 +267,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/llm/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Calls
+         * @description The Claude model each kind of call uses and what a typical one costs live, for the buttons that make one.
+         */
+        get: operations["get_calls_llm_calls_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/llm/enhance": {
         parameters: {
             query?: never;
@@ -370,6 +390,27 @@ export interface paths {
         put?: never;
         /** Cancel */
         post: operations["cancel_pipelines__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pipelines/{run_id}/retry/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Retry Estimate
+         * @description What a retry makes: the takes of the failed and canceled steps, and of those that never started. Steps the
+         *     plan adds once those finish aren't known yet; they start only within the run's cap.
+         */
+        get: operations["retry_estimate_pipelines__run_id__retry_estimate_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -798,7 +839,13 @@ export interface paths {
         get: operations["get_generation_generations__generation_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Generation
+         * @description Remove a take from history and its files from disk. Spending records stay, and outputs a saved character or a
+         *     project still uses are kept (the answer says which). A take already removed can be deleted again: what it left
+         *     because something used it then goes once nothing does (a world whose 3D scene was deleted since).
+         */
+        delete: operations["delete_generation_generations__generation_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -909,13 +956,34 @@ export interface paths {
         post?: never;
         /**
          * Delete Asset
-         * @description Soft delete: hidden from the library; files stay until a purge job (later) removes them.
+         * @description Remove from the library and delete its files from disk. Refused while a character or a project uses it. A take
+         *     whose last file this was leaves history too.
          */
         delete: operations["delete_asset_assets__asset_id__delete"];
         options?: never;
         head?: never;
         /** Patch Asset */
         patch: operations["patch_asset_assets__asset_id__patch"];
+        trace?: never;
+    };
+    "/assets/{asset_id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal Asset
+         * @description Show the file in this computer's file manager. Only for a browser on the machine the API runs on.
+         */
+        post: operations["reveal_asset_assets__asset_id__reveal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/assets/{asset_id}/lineage": {
@@ -1385,6 +1453,11 @@ export interface components {
             native: {
                 [key: string]: unknown;
             };
+            /**
+             * Glyph
+             * @default
+             */
+            glyph: string;
         };
         /** CandidateOut */
         CandidateOut: {
@@ -1568,6 +1641,45 @@ export interface components {
         CheckpointAnswer: {
             /** Choice */
             choice: string;
+        };
+        /** ClaudeCallOut */
+        ClaudeCallOut: {
+            /**
+             * Model
+             * @description e.g. claude-sonnet-5-5
+             */
+            model: string;
+            /**
+             * Name
+             * @description e.g. Claude Sonnet 5.5
+             */
+            name: string;
+            /**
+             * Usd
+             * @description A typical call at live rates
+             */
+            usd: number;
+        };
+        /** ClaudeCallsOut */
+        ClaudeCallsOut: {
+            /**
+             * Mode
+             * @description Claude's mode in effect: mock calls are free
+             * @enum {string}
+             */
+            mode: "mock" | "live";
+            /**
+             * Verified
+             * @description When the token prices were checked
+             */
+            verified: string;
+            /**
+             * Calls
+             * @description By the spend ledger's purpose (enhance, cinema.plan, ...)
+             */
+            calls: {
+                [key: string]: components["schemas"]["ClaudeCallOut"];
+            };
         };
         /** CloneVoiceIn */
         CloneVoiceIn: {
@@ -2201,6 +2313,19 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** GenerationRemoved */
+        GenerationRemoved: {
+            /**
+             * Files Removed
+             * @description Outputs whose files were deleted from disk
+             */
+            files_removed: number;
+            /**
+             * Kept
+             * @description What still uses the outputs that were kept, e.g. 'the character Mara'
+             */
+            kept: string[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -2239,6 +2364,12 @@ export interface components {
              * @default false
              */
             reloads_on_change: boolean;
+            /**
+             * Reveal Files
+             * @description This browser runs on the API's machine, so files can be shown in its file manager (POST /assets/{id}/reveal)
+             * @default false
+             */
+            reveal_files: boolean;
         };
         /** IntParam */
         IntParam: {
@@ -2559,6 +2690,13 @@ export interface components {
              * @description At least one route can run right now (mock counts)
              */
             runnable: boolean;
+            /**
+             * Runs On
+             * @description Where it runs: this computer, your own cloud GPU endpoint, or a hosted API
+             * @default hosted
+             * @enum {string}
+             */
+            runs_on: "local" | "cloud_gpu" | "hosted";
         };
         /** MoveChoice */
         MoveChoice: {
@@ -2787,6 +2925,11 @@ export interface components {
             label: string;
             /** Category */
             category: string;
+            /**
+             * Glyph
+             * @default
+             */
+            glyph: string;
         };
         /** PresetOut */
         PresetOut: {
@@ -3214,6 +3357,12 @@ export interface components {
             live_estimate_usd?: number | null;
             /** Generations */
             generations: number;
+            /**
+             * Models
+             * @description Names of the models it makes them with, in the order they're used
+             * @default []
+             */
+            models: string[];
             /** Cap Usd */
             cap_usd: number;
             /**
@@ -3840,6 +3989,13 @@ export interface components {
             recipe: string;
             /** Recipe Name */
             recipe_name: string;
+            /**
+             * Makes
+             * @description What it makes: which shelf it sits on
+             * @default video
+             * @enum {string}
+             */
+            makes: "video" | "image";
             /** Fields */
             fields: components["schemas"]["PresetField"][];
             /** Inputs */
@@ -4546,6 +4702,26 @@ export interface operations {
             };
         };
     };
+    get_calls_llm_calls_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeCallsOut"];
+                };
+            };
+        };
+    };
     post_enhance_llm_enhance_post: {
         parameters: {
             query?: never;
@@ -4791,6 +4967,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_estimate_pipelines__run_id__retry_estimate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunEstimateOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationProblem"];
                 };
             };
         };
@@ -5803,6 +6010,37 @@ export interface operations {
             };
         };
     };
+    delete_generation_generations__generation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationRemoved"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cancel_generations__generation_id__cancel_post: {
         parameters: {
             query?: never;
@@ -6055,6 +6293,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AssetOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reveal_asset_assets__asset_id__reveal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

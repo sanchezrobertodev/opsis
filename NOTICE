@@ -1,0 +1,32 @@
+Opsis
+Copyright 2026 Roberto Sanchez
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party software
+--------------------
+Dependencies are installed by uv and pnpm and keep their own licenses; none are vendored in this repository.
+One of them is not under an open-source license:
+
+- Remotion (remotion, @remotion/*), used for the Cinema Studio cut preview, is under the Remotion License:
+  free for individuals and companies of up to three people, a paid company license otherwise.
+  See https://www.remotion.dev/license.
+
+ComfyUI (GPL-3.0) is not included or linked: the studio talks to a separately installed ComfyUI over its
+HTTP API. The workflow files in workflows/comfy/ are API-format graphs written for this project.
+
+Models
+------
+No model weights are included. Models run through ComfyUI are downloaded separately and keep their own
+licenses, for example Wan 2.2 TI2V 5B (Apache-2.0), FLUX.2 klein 4B (Apache-2.0) and LTX-2.5 (LTX-2
+Community License). Each model's license is noted in its registry file (registry/models/, license_tier).
+Hosted models (fal.ai, Google, Runway, ElevenLabs and others) are used under each provider's terms with your
+own API keys.
+
+Media
+-----
+The test fixtures in fixtures/ are synthetic test patterns made with ffmpeg or media generated with AI models,
+and the template cover pictures and preview clips in apps/web/public/covers/ were generated with AI models through
+this studio. The launch film in docs/demo/ was made with this studio too; its whoosh, click, riser and impact sounds
+are from Pixabay, used under the Pixabay Content License.
+None of them shows a real person.

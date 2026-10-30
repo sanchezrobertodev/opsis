@@ -6,7 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/cn";
 import { useDraft } from "@/lib/draft";
-import { CATEGORIES, type Direction, MAX_MOVES, type Move, useDirectorLibrary } from "@/components/create/DirectorPanel";
+import { CATEGORIES, type Direction, glyphClass, MAX_MOVES, type Move, useDirectorLibrary } from "@/components/create/DirectorPanel";
 import { Button, Segmented } from "@/components/ui/controls";
 
 type Speed = "slow" | "normal" | "fast";
@@ -75,7 +75,7 @@ export function Motion() {
                         )}
                       >
                         <span aria-hidden className="mb-3 grid h-20 place-items-center rounded-[4px] bg-bay">
-                          <span className={cn("block size-2 rounded-full bg-tungsten", `glyph-${m.category}`)} />
+                          <span className={cn("block size-2 rounded-full bg-tungsten", glyphClass(m))} />
                         </span>
                         <span className="text-sm text-chalk">{m.label}</span>
                         <span className="mt-0.5 line-clamp-2 text-2xs leading-relaxed text-faint">{m.description}</span>

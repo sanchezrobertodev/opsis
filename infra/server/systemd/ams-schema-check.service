@@ -1,5 +1,5 @@
 [Unit]
-Description=AI Media Studio provider schema check (report in data/reports/)
+Description=Opsis provider schema check (report in data/reports/)
 Requires=ams-worker.service
 After=ams-worker.service
 

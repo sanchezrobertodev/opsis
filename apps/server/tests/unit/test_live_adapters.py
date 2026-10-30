@@ -206,6 +206,8 @@ class FakeFal:
         return self.statuses.pop(0)
 
     async def result(self, app, request_id):
+        if isinstance(self.result_value, Exception):
+            raise self.result_value
         return self.result_value
 
     async def cancel(self, app, request_id):
@@ -277,6 +279,21 @@ async def test_fal_poll_errors():
     blocked = FakeFal([fal_client.Completed(logs=[], metrics={}, error="Content policy violation", error_type="content_policy_violation")])
     failed = await FalAdapter(client=blocked).poll(route(), "fal-ai/x::r")
     assert failed.status == "failed" and failed.error_class == ErrorClass.moderation
+
+    def http_error(code, message, error_type=None):
+        return fal_client.FalClientHTTPError(message=message, status_code=code, response_headers={},
+                                             response=httpx.Response(code), error_type=error_type)
+
+    # finished, then refused when its result is read (GPT Image's content checker): a failure, not an unknown
+    refused = FakeFal([fal_client.Completed(logs=[], metrics={})], result=http_error(
+        422, "[{'msg': 'The content could not be processed because it contained material flagged by a content "
+             "checker.', 'type': 'content_policy_violation'}]"))
+    failed = await FalAdapter(client=refused).poll(route(), "fal-ai/x::r")
+    assert failed.status == "failed" and failed.error_class == ErrorClass.moderation
+    # a result that can't be read at all leaves open whether it ran
+    gone = FakeFal([fal_client.Completed(logs=[], metrics={})], result=http_error(404, "Request not found"))
+    with pytest.raises(ProviderError):
+        await FalAdapter(client=gone).poll(route(), "fal-ai/x::r")
 
 
 # ---------------------------------------------------------------- Google (fake SDK client)

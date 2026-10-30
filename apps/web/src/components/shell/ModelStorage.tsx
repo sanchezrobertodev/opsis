@@ -20,7 +20,7 @@ export function ModelStorage() {
     onSuccess: (data) => {
       qc.setQueryData(["model-storage"], data);
       setDraft(null);
-      toast.success("Model folder saved. Restart Local Video Studio to apply it.");
+      toast.success("Model folder saved. Restart ComfyUI to apply it.");
     },
   });
   const data = query.data;
@@ -37,7 +37,7 @@ export function ModelStorage() {
       </div>
       <div className="space-y-4 rounded-[var(--radius-panel)] bg-panel p-4">
         <p className="text-xs leading-relaxed text-muted">
-          Choose where ComfyUI stores new models on the computer running AI Media Studio’s server.
+          Choose where ComfyUI stores new models on the computer running the Opsis server.
           Existing model libraries remain available when you change this folder.
         </p>
         {query.isPending && <p className="text-sm text-muted">Loading model storage…</p>}
@@ -48,7 +48,7 @@ export function ModelStorage() {
             <Field label="Model download folder" htmlFor="model-download-folder"
               hint="Enter a full folder path. Model-type subfolders are created automatically. Existing files are not moved.">
               <input id="model-download-folder" type="text" value={directory} spellCheck={false}
-                autoComplete="off" placeholder="G:\AI\Models\ComfyUI" disabled={save.isPending}
+                autoComplete="off" placeholder="D:\Models\ComfyUI" disabled={save.isPending}
                 onChange={(event) => { setDraft(event.target.value); save.reset(); }}
                 className="h-10 w-full rounded-[var(--radius-control)] border border-line bg-bay px-3 text-sm outline-none focus:border-tungsten" />
             </Field>
@@ -64,10 +64,10 @@ export function ModelStorage() {
             {save.error && <p role="alert" className="text-sm text-fault">{save.error.message}</p>}
             <p role="status" className="text-xs leading-relaxed text-muted">
               {data.restart_required === true
-                ? "Saved. Restart Local Video Studio to use this folder. Running jobs are unaffected."
+                ? "Saved. Restart ComfyUI to use this folder. Running jobs are unaffected."
                 : data.restart_required === false
                   ? "ComfyUI is using this folder."
-                  : "The active folder could not be checked. This setting applies when Local Video Studio starts."}
+                  : "The active folder could not be checked. This setting applies when ComfyUI starts."}
             </p>
             {data.active_directory && data.restart_required && <p className="break-all text-xs text-muted">
               Currently active: {data.active_directory}

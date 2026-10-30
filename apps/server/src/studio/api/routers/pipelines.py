@@ -33,6 +33,8 @@ from studio.db.models import (
     StepStatus,
     User,
 )
+from studio.director.elements import mentions
+from studio.domain.enums import GenStatus
 from studio.domain.generations import (
     ConfirmationRequired,
     GenerationRequestError,
@@ -48,9 +50,9 @@ from studio.pipelines.engine import (
     retry_run,
     run_spent,
 )
-from studio.pipelines.recipe import Recipe
+from studio.pipelines.recipe import PlannedJob, Recipe
 from studio.pipelines.recipes import RECIPES, get_recipe
-from studio.registry.loader import get_registry
+from studio.registry.loader import Registry, get_registry
 from studio.worker.tasks.pipeline import apply, defer_advance
 
 router = APIRouter(prefix="/pipelines", tags=["pipelines"])
@@ -80,10 +82,16 @@ async def _estimate(session: AsyncSession, user: User, body: RunCreate) -> tuple
     inp = await recipe.resolve(session, user.id, inp, reg)  # first, so validate sees what it filled in
     if errors := recipe.validate(inp, reg):
         raise GenerationRequestError(errors)
+    policy = await guard.get_policy(session, user.id)
+    cap = Decimal(str(body.cap_usd)) if body.cap_usd is not None else policy.default_run_cap_usd
+    return recipe, inp, await _priced(session, user, recipe.jobs(inp, reg), reg, cap)
+
+
+async def _priced(session: AsyncSession, user: User, jobs: list[PlannedJob], reg: Registry,
+                  cap: Decimal) -> RunEstimateOut:
     total, live, live_known = Decimal("0"), Decimal("0"), True
     by_key: dict[str, Decimal] = {}
     live_by_key: dict[str, Decimal] = {}
-    jobs = recipe.jobs(inp, reg)
     for job in jobs:
         known = await resolve_media_kinds(session, user.id, [{"role": r, "asset_id": a} for r, a in job.media])             if job.media else None
         usd, live_usd = await quick_estimate(session, job.model_id, job.mode, job.params, list(job.roles), reg,
@@ -98,11 +106,10 @@ async def _estimate(session: AsyncSession, user: User, body: RunCreate) -> tuple
             live += live_usd
             if job.key is not None:
                 live_by_key[job.key] = live_by_key.get(job.key, Decimal("0")) + live_usd
-    policy = await guard.get_policy(session, user.id)
-    cap = Decimal(str(body.cap_usd)) if body.cap_usd is not None else policy.default_run_cap_usd
-    return recipe, inp, RunEstimateOut(
+    models = dict.fromkeys(spec.name if (spec := reg.model(job.model_id)) else job.model_id for job in jobs)
+    return RunEstimateOut(
         estimate_usd=float(total), live_estimate_usd=float(live) if live_known else None, generations=len(jobs),
-        cap_usd=float(cap), by_key={k: float(v) for k, v in by_key.items()},
+        models=list(models), cap_usd=float(cap), by_key={k: float(v) for k, v in by_key.items()},
         live_by_key={k: float(v) for k, v in live_by_key.items()} if live_known else None)
 
 
@@ -210,7 +217,9 @@ async def run_out(session: AsyncSession, run: PipelineRun) -> RunOut:
                    for o in st.input.get("options", [])]
         return StepOut(
             key=st.key, kind=st.kind.value, label=st.label, status=st.status.value, depends_on=st.depends_on,
-            error=st.error, output=st.output, options=options, generation_id=st.generation_id,
+            # a take held as unknown says why, since its step only shows it as still running
+            error=st.error or (gen.error_message if gen and gen.status == GenStatus.unknown else None),
+            output=st.output, options=options, generation_id=st.generation_id,
             generation_status=gen.status.value if gen else None, progress=gen.progress if gen else None,
             assets=[asset_out(assets[i]) for i in mine if i in assets],
             started_at=st.started_at, finished_at=st.finished_at,
@@ -247,6 +256,35 @@ async def cancel(run_id: uuid.UUID, session: AsyncSession = Depends(get_session)
     await session.commit()
     await apply(fx, run.id)
     return await run_out(session, run)
+
+
+@router.get("/{run_id}/retry/estimate", response_model=RunEstimateOut, responses={422: {"model": ValidationProblem}})
+async def retry_estimate(run_id: uuid.UUID, session: AsyncSession = Depends(get_session),
+                         user: User = Depends(current_user)) -> RunEstimateOut:
+    """What a retry makes: the takes of the failed and canceled steps, and of those that never started. Steps the
+    plan adds once those finish aren't known yet; they start only within the run's cap."""
+    run = await _owned(session, user, run_id)
+    steps = (await session.execute(select(PipelineStep).where(
+        PipelineStep.run_id == run.id, PipelineStep.kind == StepKind.generate,
+        PipelineStep.status.in_([StepStatus.failed, StepStatus.canceled, StepStatus.pending]))
+        .order_by(PipelineStep.sort))).scalars().all()
+    reg = get_registry()
+    jobs = []
+    for st in steps:
+        media = [(m["role"], str(m["asset_id"])) for m in st.input.get("media") or []]
+        roles = tuple(r for r, _ in media)
+        prompt = st.input.get("prompt") or ""
+        spec = reg.model(st.input["model_id"])
+        mode = spec.mode(st.input["mode"]) if spec else None
+        # @mentions attach their pictures when the take is made, so price them like the recipes' jobs() do
+        ref = (spec.elements or {}).get("ref_role", "image_references") if spec else ""
+        if mode and mentions(prompt) and mode.slot(ref) and ref not in roles:
+            roles += (ref,)
+        jobs.append(PlannedJob(st.input["model_id"], st.input["mode"], st.input.get("params") or {}, roles,
+                               prompt_chars=len(prompt), media=tuple(media)))
+    policy = await guard.get_policy(session, user.id)
+    cap = run.cap_usd if run.cap_usd is not None else policy.default_run_cap_usd
+    return await _priced(session, user, jobs, reg, cap)
 
 
 @router.post("/{run_id}/retry", response_model=RunOut)

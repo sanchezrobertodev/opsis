@@ -1,10 +1,12 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { Check, Circle, LoaderCircle, Minus, X } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { type Asset, mediaUrl } from "@/lib/api";
+import { api, type Asset, mediaUrl, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
+import { useRegistry, useResolveUnknown } from "@/lib/queries";
 import {
   RUN_STATUS_TEXT,
   type Run,
@@ -16,7 +18,9 @@ import {
 } from "@/lib/runs";
 import { PlanBlocks, ScriptReview } from "@/components/faceless/ScriptReview";
 import { Button } from "@/components/ui/controls";
+import { type Quote, quotePrice, quoteText } from "./RunQuote";
 import { statusTone, WHEN } from "./Runs";
+import { OpensFullSize } from "@/components/ui/PictureViewer";
 
 const OUTPUT_TEXT: Record<string, string> = {
   sequence: "The joined cut.",
@@ -77,9 +81,31 @@ export function RunDetail({ id }: { id: string }) {
   );
 }
 
+const AND = new Intl.ListFormat("en", { type: "conjunction" });
+
+/** What "Retry what failed" makes again and costs (mock mode: what it would cost live), as a run's quote. */
+function useRetryQuote(run: Run): { quote: Quote; models: string[]; cap: number | null } {
+  const mock = useRegistry().data?.provider_mode === "mock";
+  const retryable = run.status === "failed" || run.status === "canceled";
+  const est = useQuery({
+    queryKey: ["run-retry-estimate", run.id, run.finished_at], // a new failure is a new set of steps
+    queryFn: () => unwrap(api.GET("/pipelines/{run_id}/retry/estimate", { params: { path: { run_id: run.id } } })),
+    enabled: retryable,
+    retry: false,
+  });
+  const d = retryable ? est.data : undefined;
+  return {
+    quote: { usd: d ? ((mock ? d.live_estimate_usd : d.estimate_usd) ?? null) : null, charged: d?.estimate_usd ?? null,
+             count: d?.generations ?? null, mock, error: retryable && est.error instanceof Error ? est.error.message : null },
+    models: d?.models ?? [],
+    cap: d?.cap_usd ?? null,
+  };
+}
+
 function RunHeader({ run }: { run: Run }) {
   const cancel = useCancelRun();
   const retry = useRetryRun();
+  const redo = useRetryQuote(run);
   const active = run.status === "running" || run.status === "waiting";
   return (
     <div className="mb-6 flex max-w-3xl flex-wrap items-start gap-4">
@@ -92,6 +118,15 @@ function RunHeader({ run }: { run: Run }) {
           </span>
         </p>
         {run.error && <p className="mt-2 text-sm leading-relaxed text-fault">{run.error}</p>}
+        {(run.status === "failed" || run.status === "canceled") && (
+          <p className="mt-2 text-xs leading-relaxed text-muted">
+            {redo.quote.error ? `Couldn't price the retry: ${redo.quote.error}`
+              : redo.quote.count == null ? "Working out the cost…"
+              : redo.quote.count === 0 ? "Retrying makes no new takes."
+              : `Retrying makes ${quoteText(redo.quote, ["take", "takes"])}, on ${AND.format(redo.models)}.`}
+            {redo.cap != null && ` Later steps stay within the run's ${usd(redo.cap)} cap.`}
+          </p>
+        )}
       </div>
       {active && (
         <Button size="sm" tone="danger" onClick={() => cancel.mutate(run.id)} disabled={cancel.isPending}>
@@ -105,7 +140,7 @@ function RunHeader({ run }: { run: Run }) {
           onClick={() => retry.mutate(run.id, { onSuccess: () => toast("Retrying the steps that didn't finish") })}
           disabled={retry.isPending}
         >
-          Retry what failed
+          Retry what failed{quotePrice(redo.quote) && ` · ${quotePrice(redo.quote)}`}
         </Button>
       )}
     </div>
@@ -121,9 +156,38 @@ function Media({ asset, className }: { asset: Asset; className?: string }) {
       playsInline
       className={cn("bg-black", className)}
     />
+  ) : asset.kind === "audio" ? (
+    <audio src={mediaUrl(asset.url)} controls className={cn("w-full", className)} />
   ) : (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={mediaUrl(asset.url)} alt={asset.title ?? ""} className={className} />
+    <OpensFullSize src={mediaUrl(asset.url)!} title={asset.title ?? "Picture"} className="w-full">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={mediaUrl(asset.url)} alt="" className={className} />
+    </OpensFullSize>
+  );
+}
+
+/** A step's result, small: a picture where there is one, a player for sound, else its name. */
+function StepAsset({ asset }: { asset: Asset }) {
+  const picture = asset.thumb_url ?? asset.poster_url ?? (asset.kind === "image" || asset.kind === "mask" ? asset.url : null);
+  if (picture) {
+    const still = asset.kind === "image" || asset.kind === "mask";
+    const img = (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={mediaUrl(picture)} alt={still ? "" : asset.title ?? ""} className="size-full object-cover" />
+    );
+    return (
+      <span className="h-16 w-28 overflow-hidden rounded-[var(--radius-frame)] bg-bay">
+        {still ? <OpensFullSize src={mediaUrl(asset.url)!} title={asset.title ?? "Picture"} className="size-full">{img}</OpensFullSize> : img}
+      </span>
+    );
+  }
+  if (asset.kind === "audio") {
+    return <audio src={mediaUrl(asset.url)} controls aria-label={asset.title ?? "Sound"} className="h-10 w-64" />;
+  }
+  return (
+    <span className="flex h-16 w-28 items-center justify-center rounded-[var(--radius-frame)] bg-bay px-2 text-center text-2xs text-muted">
+      {asset.title ?? asset.kind}
+    </span>
   );
 }
 
@@ -163,7 +227,9 @@ function StatusIcon({ step }: { step: Step }) {
 
 function StepRow({ run, step }: { run: Run; step: Step }) {
   const answer = useAnswerCheckpoint();
+  const resolve = useResolveUnknown();
   const running = step.status === "running" && step.kind === "generate";
+  const held = running && step.generation_status === "unknown";
   return (
     <li className="rounded-[var(--radius-panel)] bg-panel p-3">
       <div className="flex items-center gap-3">
@@ -173,16 +239,27 @@ function StepRow({ run, step }: { run: Run; step: Step }) {
           {KIND_TEXT[step.kind] ?? step.kind}
           {running && step.progress != null && step.progress > 0 && `, ${Math.round(step.progress * 100)}%`}
           {running && step.generation_status === "queued" && ", waiting for a worker"}
+          {held && ", held"}
         </span>
       </div>
       {step.error && <p className="mt-2 pl-6 text-xs leading-relaxed text-fault">{step.error}</p>}
+      {held && step.generation_id && (
+        <div className="mt-2 flex flex-wrap items-center gap-3 pl-6">
+          <p className="flex-1 text-xs leading-relaxed text-muted">
+            The provider&rsquo;s answer couldn&rsquo;t be read, so this take is held rather than tried again (a second
+            try could be paid twice). If the provider shows it failed, mark it failed and the run goes on without it.
+          </p>
+          <Button type="button" size="sm" disabled={resolve.isPending}
+                  onClick={() => resolve.mutate(step.generation_id!, {
+                    onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't mark it failed") })}>
+            Mark failed
+          </Button>
+        </div>
+      )}
       {step.assets.length > 0 && (
-        <div className="mt-3 flex gap-2 pl-6">
+        <div className="mt-3 flex flex-wrap items-center gap-2 pl-6">
           {step.assets.slice(0, 4).map((a) => (
-            <span key={a.id} className="h-16 w-28 overflow-hidden rounded-[var(--radius-frame)] bg-bay">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={mediaUrl(a.thumb_url ?? a.poster_url ?? a.url)} alt={a.title ?? ""} className="size-full object-cover" />
-            </span>
+            <StepAsset key={a.id} asset={a} />
           ))}
         </div>
       )}

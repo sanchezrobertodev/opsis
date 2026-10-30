@@ -15,7 +15,7 @@ from pathlib import Path
 
 # Must be set before any studio import reads settings.
 _MEDIA = Path(tempfile.mkdtemp(prefix="studio-test-media-"))
-# The compose Postgres on the PC; STUDIO_TEST_PG points elsewhere (the home server's pod: 127.0.0.1:5432)
+# The compose Postgres (:5433); STUDIO_TEST_PG points elsewhere (infra/server's pod: 127.0.0.1:5432)
 PG_HOST, PG_PORT = os.environ.get("STUDIO_TEST_PG", "127.0.0.1:5433").rsplit(":", 1)
 os.environ.update({
     "DATABASE_URL": f"postgresql+asyncpg://studio:studio@{PG_HOST}:{PG_PORT}/studio_test",
@@ -30,7 +30,10 @@ os.environ.update({
     "COMFYUI_URL": "",
     # Claude is mocked; live-mode tests swap in a fake client explicitly.
     "LLM_MODE": "mock",
-    "ANTHROPIC_API_KEY": "",
+    # No real credentials from the developer's .env: routing must not depend on which keys this machine has.
+    **{k: "" for k in ("ANTHROPIC_API_KEY", "FAL_KEY", "GEMINI_API_KEY", "RUNWAY_API_KEY", "REPLICATE_API_TOKEN",
+                       "RUNPOD_API_KEY", "RUNPOD_WAN_CORE_ENDPOINT", "ELEVENLABS_API_KEY", "REACTOR_API_KEY",
+                       "PIKA_API_KEY", "WORLDLABS_API_KEY", "CODEX_BIN")},
 })
 
 import pytest  # noqa: E402

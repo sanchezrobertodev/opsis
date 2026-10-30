@@ -1,5 +1,5 @@
 [Unit]
-Description=AI Media Studio off-site copy of media and database dumps (Taildrop to the PC)
+Description=Opsis off-site copy of media and database dumps (Taildrop to another device)
 After=network-online.target
 
 [Service]

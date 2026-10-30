@@ -52,7 +52,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       } catch {
         return;
       }
-      if (msg.topic === "generation" && msg.subject_id) {
+      if (msg.type === "generation.deleted") {
+        // removed from history (maybe from another tab): its outputs left the library and a film's takes too
+        invalidate("generations", "assets", "run", "takes");
+      } else if (msg.topic === "generation" && msg.subject_id) {
         const p = msg.payload as Partial<Generation> & { generation_id?: string };
         const patch: Partial<Generation> = {
           status: p.status,
@@ -68,7 +71,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         if (msg.type === "generation.succeeded" || msg.type === "generation.failed") invalidate("budget");
         if (msg.type !== "generation.progress") invalidate("run");
       } else if (msg.topic === "pipeline") {
-        invalidate("runs", "run");
+        // runs can give a character its picture (portraits, reference sheets)
+        invalidate("runs", "run", "elements");
       } else if (msg.topic === "asset") {
         invalidate("assets", "generations", "asset");
       } else if (msg.type === "system.registry_reloaded") {

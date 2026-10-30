@@ -1,0 +1,19 @@
+id: product-packshot
+name: Product packshot
+category: product
+summary: A plain product photo turned into an ad-ready packshot, on a set you describe.
+model_id: nano-banana-2
+mode: edit
+inputs:
+  - {role: image_references, label: A photo of the product}
+fields:
+  - key: setting
+    label: The set
+    placeholder: a travertine plinth on a sand-coloured backdrop, warm sunlight with a leaf shadow
+    default: a sculpted stone plinth on a soft seamless backdrop, warm directional sunlight
+prompt: >-
+  Premium advertising packshot of the product in the reference photo, placed on {setting}, the product
+  exactly as it is (same shape, colours, materials, labels and logo), centred and in sharp focus, soft
+  reflections and natural contact shadows, high-end product photography
+params: {aspect_ratio: "4:3"}
+tags: [ads]

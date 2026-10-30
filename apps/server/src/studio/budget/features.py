@@ -16,6 +16,7 @@ LABELS = {
 # classified by the mode each generation ran
 RECIPES = {"faceless": "faceless", "object_swap": "swap", "talking_shot": "lipsync", "jutsu3d": "jutsu3d",
            "sequence": "create_video", "keyframe": "create_video", "lora_train": "characters", "character_sheet": "characters",
+           "character_photos": "characters",
            "vlog": "templates", "music_video": "templates", "revoice": "audio", "dub": "audio", "face_swap": "swap"}
 PROJECTS = {"cinema": "cinema", "jutsu3d": "jutsu3d"}
 # first match wins, so a lipsync or tracking mode isn't counted as plain video

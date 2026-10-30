@@ -1,25 +1,33 @@
 @import "tailwindcss";
 
 /*
-  Grading-suite palette: neutral graphite surfaces so the footage carries the color.
-  Tungsten (the colour of practical film lights) is the only accent, kept for the primary action
-  and progress. Muted red is reserved for failures.
+  Opsis palette, "Graphite glass": graphite panes, partly see-through, over a room lit in the icon's colors (see
+  .aura), so the footage carries the color. Orange (tungsten) is the only accent, kept for the primary action and
+  progress; a blue-gray tint marks what's selected (the cool side of the icon's ring, against the orange of the
+  action); blue-gray text is for links and free things. Dark red is too dark for text: fills and borders only.
+  Panel, line and select are translucent; anything that floats over content (dialogs, menus) uses the solid sheet.
 */
 @theme {
-  --color-bay: #222326;
-  --color-panel: #2d2e32;
-  --color-raised: #37383d;
-  --color-line: #45464c;
-  --color-line-soft: #36373c;
-  --color-chalk: #ecebe7;
-  --color-muted: #a3a39e;
-  --color-faint: #76767a;
-  --color-tungsten: #f0a93b;
-  --color-tungsten-dim: #8a6a33;
+  --color-bay: #121111;
+  --color-panel: rgb(26 25 24 / 0.6);
+  --color-sheet: #1a1918;
+  --color-raised: #262321;
+  --color-line: rgb(255 253 248 / 0.12);
+  --color-line-soft: rgb(255 253 248 / 0.07);
+  --color-chalk: #fffdf8;
+  --color-muted: #9f9c97;
+  --color-faint: #85807b;
+  --color-tungsten: #f09e2e;
+  --color-tungsten-dim: #8a5a1f;
+  --color-beige: #fedfb0;
+  --color-select: rgb(105 139 148 / 0.32);
+  --color-ember: #7c1c04;
+  --color-steel: #698b94;
   --color-fault: #e5484d;
-  --color-done: #8fbfa8;
+  --color-done: #8fb3bc;
 
-  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
   --radius-frame: 3px;
   --radius-control: 6px;
@@ -37,8 +45,15 @@
     background: var(--color-bay);
     color: var(--color-chalk);
     font-family: var(--font-sans);
-    font-variation-settings: "wdth" 100;
     -webkit-font-smoothing: antialiased;
+  }
+  /* Tailwind v4 dropped the pointer on buttons; anything clickable should say so */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  label:has(> input[type="checkbox"]:not(:disabled)),
+  select:not(:disabled),
+  summary {
+    cursor: pointer;
   }
   :focus-visible {
     outline: 2px solid var(--color-tungsten);
@@ -49,17 +64,27 @@
   }
 }
 
-@layer utilities {
-  /* Archivo's width axis: credits-style titles without a second typeface */
-  .type-title {
-    font-variation-settings: "wdth" 118;
-    font-weight: 600;
-    letter-spacing: -0.01em;
+@layer components {
+  /* a frosted pane: what's behind it shows through, blurred and a little richer */
+  .glass {
+    background-color: rgb(22 20 19 / 0.55);
+    -webkit-backdrop-filter: blur(28px) saturate(150%);
+    backdrop-filter: blur(28px) saturate(150%);
+    box-shadow: inset 0 1px 0 rgb(255 253 248 / 0.08), 0 24px 48px -28px rgb(0 0 0 / 0.85);
   }
-  .type-condensed {
-    font-variation-settings: "wdth" 82;
+}
+
+@layer utilities {
+  .type-title {
+    font-weight: 500;
+    letter-spacing: -0.02em;
   }
   .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  /* standalone figures (take numbers, timecodes, prices, counters) read like a camera's readout */
+  .readout {
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
   .scrollbar-quiet {
@@ -68,29 +93,239 @@
   }
 }
 
-/* Camera-move glyphs: a dot that moves like the category moves. Plays on hover of the card. */
-@keyframes glyph-push { from { transform: scale(1); } to { transform: scale(3); } }
+/*
+  Camera-move glyphs: a dot that moves the way the move does (a move's `glyph` in camera_moves.yaml, else its
+  category). In and out grow and shrink the subject; directions move the way the camera goes. Plays on hover.
+*/
+@keyframes glyph-in { from { transform: scale(0.8); } to { transform: scale(3); } }
+@keyframes glyph-out { from { transform: scale(3); } to { transform: scale(0.8); } }
+@keyframes glyph-super-in { from { transform: scale(0.3); } to { transform: scale(5); } }
+@keyframes glyph-super-out { from { transform: scale(5); } to { transform: scale(0.3); } }
+@keyframes glyph-crash-in { 0% { transform: scale(0.8); } 18%, 100% { transform: scale(3.6); } }
+@keyframes glyph-crash-out { 0% { transform: scale(3.6); } 18%, 100% { transform: scale(0.8); } }
+@keyframes glyph-quick-in { 0% { transform: scale(0.8); } 45%, 100% { transform: scale(2.8); } }
+@keyframes glyph-quick-out { 0% { transform: scale(2.8); } 45%, 100% { transform: scale(0.8); } }
+@keyframes glyph-yoyo { 0%, 100% { transform: scale(0.8); } 50% { transform: scale(3); } }
+@keyframes glyph-double-in { 0% { transform: scale(0.8); } 30%, 50% { transform: scale(1.8); } 80%, 100% { transform: scale(3.2); } }
+/* the subject holds its size while the world around it stretches away or closes in */
+@keyframes glyph-vertigo-in { from { outline-offset: 1px; opacity: 1; } to { outline-offset: 9px; } }
+@keyframes glyph-vertigo-out { from { outline-offset: 9px; } to { outline-offset: 1px; } }
 @keyframes glyph-orbit { from { transform: rotate(0deg) translateX(9px) rotate(0deg); } to { transform: rotate(360deg) translateX(9px) rotate(-360deg); } }
-@keyframes glyph-lateral { from { transform: translateX(-12px); } to { transform: translateX(12px); } }
-@keyframes glyph-vertical { from { transform: translateY(8px); } to { transform: translateY(-8px); } }
-@keyframes glyph-handheld { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(2px, -1px); } 50% { transform: translate(-1px, 2px); } 75% { transform: translate(-2px, -1px); } }
-@keyframes glyph-vehicle { from { transform: translateX(-16px); opacity: 0.2; } to { transform: translateX(16px); opacity: 1; } }
-@keyframes glyph-time { 0%, 100% { opacity: 1; filter: blur(0); } 50% { opacity: 0.3; filter: blur(2px); } }
-@keyframes glyph-lens { from { transform: scaleX(1); } to { transform: scaleX(3.5); } }
-.group:hover .glyph-push { animation: glyph-push 1.2s ease-in-out infinite alternate; }
+@keyframes glyph-arc-left { from { transform: rotate(60deg) translateX(9px) rotate(-60deg); } to { transform: rotate(-120deg) translateX(9px) rotate(120deg); } }
+@keyframes glyph-arc-right { from { transform: rotate(120deg) translateX(9px) rotate(-120deg); } to { transform: rotate(-60deg) translateX(9px) rotate(60deg); } }
+@keyframes glyph-flip { 0%, 100% { transform: scaleX(1.6); } 50% { transform: scaleX(0.15); } }
+@keyframes glyph-left { from { transform: translateX(13px); } to { transform: translateX(-13px); } }
+@keyframes glyph-right { from { transform: translateX(-13px); } to { transform: translateX(13px); } }
+@keyframes glyph-whip { 0%, 60% { transform: translateX(-14px); filter: blur(0); } 70% { filter: blur(1.5px); } 80%, 100% { transform: translateX(14px); filter: blur(0); } }
+@keyframes glyph-up { from { transform: translateY(9px); } to { transform: translateY(-9px); } }
+@keyframes glyph-down { from { transform: translateY(-9px); } to { transform: translateY(9px); } }
+@keyframes glyph-rise { from { transform: translateY(6px) scale(2.2); } to { transform: translateY(-6px) scale(0.6); } }
+@keyframes glyph-hero { from { transform: translateY(7px) scale(1); } to { transform: translateY(-2px) scale(2.6); } }
+@keyframes glyph-shake { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(2px, -1px); } 50% { transform: translate(-1px, 2px); } 75% { transform: translate(-2px, -1px); } }
+@keyframes glyph-follow { 0%, 100% { transform: translate(-3px, 0) scale(1.6); } 50% { transform: translate(3px, -1px) scale(1.6); } }
+@keyframes glyph-drift { 0%, 100% { transform: translate(-6px, 2px); } 50% { transform: translate(6px, -2px); } }
+@keyframes glyph-robo { 0%, 18% { transform: translate(-11px, 6px); } 33%, 51% { transform: translate(0, -7px) scale(1.6); } 66%, 84% { transform: translate(11px, 5px); } 100% { transform: translate(-11px, 6px); } }
+@keyframes glyph-fly { from { transform: translate(-15px, 8px) scale(0.6); } to { transform: translate(15px, -7px) scale(2); } }
+@keyframes glyph-rush { from { transform: translateX(-18px); opacity: 0.2; filter: blur(1px); } to { transform: translateX(18px); opacity: 1; filter: blur(0); } }
+@keyframes glyph-buckle { 0%, 100% { transform: scale(1.4) translate(0, 0); } 20% { transform: scale(1.6) translate(1px, -1px); } 40% { transform: scale(1.4) translate(-1px, 1px); } 60% { transform: scale(1.7) translate(1px, 1px); } }
+@keyframes glyph-through-in { 0% { transform: scale(0.8); opacity: 1; } 80% { transform: scale(7); opacity: 1; } 100% { transform: scale(9); opacity: 0; } }
+@keyframes glyph-through-out { 0% { transform: scale(9); opacity: 0; } 20% { transform: scale(7); opacity: 1; } 100% { transform: scale(0.8); opacity: 1; } }
+@keyframes glyph-pov { 0%, 100% { transform: translateY(0) scale(1.8); } 50% { transform: translateY(-2px) scale(2.1); } }
+@keyframes glyph-hyper { 0%, 30% { transform: translateX(-14px) scale(1); } 33%, 63% { transform: translateX(-4px) scale(1.4); } 66%, 96% { transform: translateX(6px) scale(1.8); } 100% { transform: translateX(14px) scale(2.2); } }
+@keyframes glyph-pulse { 0%, 100% { opacity: 1; } 25% { opacity: 0.25; } 50% { opacity: 0.9; } 75% { opacity: 0.4; } }
+@keyframes glyph-trail { from { transform: translateX(-12px) scaleX(1); filter: blur(0); } to { transform: translateX(12px) scaleX(4); filter: blur(1.5px); } }
+@keyframes glyph-focus { 0%, 100% { filter: blur(0); transform: scale(1.8); } 50% { filter: blur(3px); transform: scale(2.6); } }
+@keyframes glyph-fisheye { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(3.4, 2.4); } }
+@keyframes glyph-dutch { 0%, 100% { transform: rotate(0deg) scaleX(4); } 50% { transform: rotate(-22deg) scaleX(4); } }
+.group:hover :is(.glyph-in, .glyph-push) { animation: glyph-in 1.4s ease-in infinite; }
+.group:hover .glyph-out { animation: glyph-out 1.4s ease-out infinite; }
+.group:hover .glyph-super-in { animation: glyph-super-in 1.8s ease-in infinite; }
+.group:hover .glyph-super-out { animation: glyph-super-out 1.8s ease-out infinite; }
+.group:hover .glyph-crash-in { animation: glyph-crash-in 1.3s cubic-bezier(0.7, 0, 1, 1) infinite; }
+.group:hover .glyph-crash-out { animation: glyph-crash-out 1.3s cubic-bezier(0.7, 0, 1, 1) infinite; }
+.group:hover .glyph-quick-in { animation: glyph-quick-in 1.1s ease-out infinite; }
+.group:hover .glyph-quick-out { animation: glyph-quick-out 1.1s ease-out infinite; }
+.group:hover .glyph-yoyo { animation: glyph-yoyo 1.4s ease-in-out infinite; }
+.group:hover .glyph-double-in { animation: glyph-double-in 2s ease-in-out infinite; }
+:is(.glyph-vertigo-in, .glyph-vertigo-out) { outline: 1px solid color-mix(in oklab, var(--color-tungsten) 55%, transparent); }
+.group:hover .glyph-vertigo-in { animation: glyph-vertigo-in 1.6s ease-in-out infinite; }
+.group:hover .glyph-vertigo-out { animation: glyph-vertigo-out 1.6s ease-in-out infinite; }
 .group:hover .glyph-orbit { animation: glyph-orbit 1.6s linear infinite; }
-.group:hover .glyph-lateral { animation: glyph-lateral 1.2s ease-in-out infinite alternate; }
-.group:hover .glyph-vertical { animation: glyph-vertical 1.2s ease-in-out infinite alternate; }
-.group:hover .glyph-handheld { animation: glyph-handheld 0.35s linear infinite; }
-.group:hover .glyph-vehicle { animation: glyph-vehicle 0.7s ease-in infinite; }
-.group:hover .glyph-time { animation: glyph-time 1s ease-in-out infinite; }
-.group:hover .glyph-lens { animation: glyph-lens 1.2s ease-in-out infinite alternate; }
+.group:hover .glyph-spin { animation: glyph-orbit 3.2s linear infinite; }
+.group:hover .glyph-orbit-slow { animation: glyph-orbit 4s linear infinite; }
+.group:hover .glyph-arc-left { animation: glyph-arc-left 1.6s ease-in-out infinite; }
+.group:hover .glyph-arc-right { animation: glyph-arc-right 1.6s ease-in-out infinite; }
+.group:hover .glyph-flip { animation: glyph-flip 1.4s ease-in-out infinite; }
+.group:hover :is(.glyph-left, .glyph-lateral) { animation: glyph-left 1.3s ease-in-out infinite; }
+.group:hover .glyph-right { animation: glyph-right 1.3s ease-in-out infinite; }
+.group:hover .glyph-whip { animation: glyph-whip 1.2s ease-in infinite; }
+.group:hover :is(.glyph-up, .glyph-vertical) { animation: glyph-up 1.3s ease-in-out infinite; }
+.group:hover .glyph-down { animation: glyph-down 1.3s ease-in-out infinite; }
+.group:hover .glyph-rise { animation: glyph-rise 1.8s ease-in-out infinite; }
+.group:hover .glyph-hero { animation: glyph-hero 1.6s ease-out infinite; }
+.group:hover :is(.glyph-shake, .glyph-handheld) { animation: glyph-shake 0.35s linear infinite; }
+.group:hover .glyph-follow { animation: glyph-follow 1.6s ease-in-out infinite; }
+.group:hover .glyph-drift { animation: glyph-drift 2.6s ease-in-out infinite; }
+.group:hover .glyph-robo { animation: glyph-robo 1.8s cubic-bezier(0.8, 0, 0.2, 1) infinite; }
+.group:hover :is(.glyph-fly, .glyph-vehicle) { animation: glyph-fly 1.2s ease-in infinite; }
+.group:hover .glyph-rush { animation: glyph-rush 0.6s linear infinite; }
+.group:hover .glyph-buckle { animation: glyph-buckle 0.5s linear infinite; }
+.group:hover .glyph-through-in { animation: glyph-through-in 1.6s ease-in infinite; }
+.group:hover .glyph-through-out { animation: glyph-through-out 1.6s ease-out infinite; }
+.group:hover .glyph-pov { animation: glyph-pov 0.8s ease-in-out infinite; }
+.group:hover .glyph-hyper { animation: glyph-hyper 1.2s linear infinite; }
+.group:hover :is(.glyph-pulse, .glyph-time) { animation: glyph-pulse 0.9s steps(4) infinite; }
+.group:hover .glyph-trail { animation: glyph-trail 1.1s ease-in infinite; }
+.group:hover :is(.glyph-focus, .glyph-lens) { animation: glyph-focus 1.6s ease-in-out infinite; }
+.group:hover .glyph-fisheye { animation: glyph-fisheye 1.6s ease-in-out infinite; }
+.group:hover .glyph-dutch { animation: glyph-dutch 1.6s ease-in-out infinite; }
+
+/*
+  Lumen: the footage lights its glass. A take casts a soft glow of its own picture (a blurred copy under it), a
+  rendering take breathes the icon's ring instead, and Generate wears the ring, turning while anything renders.
+*/
+@property --ring-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: -30deg;
+}
+:root {
+  /* the icon's ring, read clockwise from the top */
+  --ring-stops: #0c0403, #698b94 14%, #9f9c97 28%, #fedfb0 44%, #f09e2e 60%, #7c1c04 76%, #0c0403 92%;
+}
+@keyframes ring-turn { to { --ring-angle: 330deg; } }
+@keyframes glow-breathe { 50% { opacity: 0.2; } }
+.lumen { position: relative; isolation: isolate; }
+.lumen-glow {
+  position: absolute;
+  inset: 4% -3% -6%;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: var(--radius-frame);
+  background-position: center;
+  background-size: cover;
+  filter: blur(32px) saturate(1.7);
+  opacity: 0.8;
+  transform: translateY(10px);
+}
+.lumen-glow-sm { inset: 0; filter: blur(14px) saturate(1.7); transform: translateY(6px); }
+.lumen-glow-ring {
+  background-image: conic-gradient(from var(--ring-angle), var(--ring-stops));
+  opacity: 0.45;
+  animation: glow-breathe 3s ease-in-out infinite, ring-turn 8s linear infinite;
+}
+.ring-button {
+  --ring-fill: var(--color-raised);
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--ring-fill), var(--ring-fill)) padding-box,
+    conic-gradient(from var(--ring-angle), var(--ring-stops)) border-box;
+  box-shadow: 0 0 26px -8px rgb(240 158 46 / 0.5);
+}
+/* solid: a see-through fill would show the ring's gradient through the button */
+.ring-button:hover:not(:disabled) { --ring-fill: #322d2a; }
+.ring-button[data-busy] { animation: ring-turn 6s linear infinite; }
+/* the page you're on, the chosen option: lit from inside */
+.lumen-selected { box-shadow: inset 0 1px 0 rgb(255 253 248 / 0.12), 0 0 20px -6px rgb(105 139 148 / 0.55); }
+
+/*
+  The room behind the glass, lit like a set in the icon's colors: a cool fill from the top right, a warm key low on
+  the left, an ember bounce under the takes, a faint beige spill from the top. Each light is a soft disc of its own,
+  so with animations on (Settings > Appearance; html[data-motion="off"] turns them off) they drift and swell and their
+  colors flow into each other; at rest they make the still version. A fine grain keeps the dark gradients from banding.
+*/
+.aura {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: #0c0b0b;
+}
+/* each light: a disc centered where the light comes from, as wide and tall as its reach */
+.aura-light { position: absolute; }
+.aura-beige {
+  left: -10%; top: -43%; width: 100%; height: 70%;
+  background: radial-gradient(closest-side, rgb(254 223 176 / 0.1), rgb(254 223 176 / 0.03) 50%, transparent 80%);
+}
+.aura-ember {
+  left: 13%; top: 57%; width: 130%; height: 110%;
+  background: radial-gradient(closest-side, rgb(124 28 4 / 0.6), rgb(124 28 4 / 0.24) 45%, rgb(124 28 4 / 0.06) 70%, transparent 90%);
+}
+.aura-warm {
+  left: -60%; top: 40%; width: 120%; height: 130%;
+  background: radial-gradient(closest-side, rgb(240 158 46 / 0.32), rgb(240 158 46 / 0.12) 40%, rgb(240 158 46 / 0.03) 65%, transparent 85%);
+}
+.aura-cool {
+  left: 15%; top: -80%; width: 150%; height: 140%;
+  background: radial-gradient(closest-side, rgb(105 139 148 / 0.42), rgb(105 139 148 / 0.16) 40%, rgb(105 139 148 / 0.05) 65%, transparent 85%);
+}
+.aura::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+}
+@keyframes aura-cool {
+  33% { transform: translate(-18vw, 12vh) scale(1.1); }
+  66% { transform: translate(-6vw, 24vh) scale(0.92); opacity: 0.75; }
+}
+@keyframes aura-warm {
+  40% { transform: translate(16vw, -20vh) scale(1.15); }
+  70% { transform: translate(28vw, -6vh) scale(0.95); opacity: 0.8; }
+}
+@keyframes aura-ember {
+  50% { transform: translate(-30vw, -10vh) scale(1.15); opacity: 0.8; }
+}
+@keyframes aura-beige {
+  50% { transform: translate(32vw, 8vh) scale(1.35); }
+}
+:root:not([data-motion="off"]) .aura-cool { animation: aura-cool 36s ease-in-out infinite; }
+:root:not([data-motion="off"]) .aura-warm { animation: aura-warm 30s ease-in-out infinite; }
+:root:not([data-motion="off"]) .aura-ember { animation: aura-ember 42s ease-in-out infinite; }
+:root:not([data-motion="off"]) .aura-beige { animation: aura-beige 48s ease-in-out infinite; }
+
+/*
+  With animations on, Generate's ring turns all the time and lights the panel under it (a blurred copy of the ring,
+  turning with it); the glow breathes while anything renders. Off, the ring turns only while something renders.
+*/
+@keyframes halo-breathe { 50% { opacity: 0.7; } }
+.ring-halo { display: none; }
+:root:not([data-motion="off"]) .ring-button { animation: ring-turn 6s linear infinite; }
+:root:not([data-motion="off"]) .ring-halo {
+  display: block;
+  inset: 8px 3% -2px;
+  border-radius: var(--radius-control);
+  background-image: conic-gradient(from var(--ring-angle), var(--ring-stops));
+  filter: blur(16px) saturate(1.4);
+  opacity: 0.35;
+  transform: none;
+  animation: ring-turn 6s linear infinite;
+}
+:root:not([data-motion="off"]) .lumen:has(> [data-busy]) > .ring-halo {
+  animation: ring-turn 6s linear infinite, halo-breathe 2.4s ease-in-out infinite;
+}
+.lumen:has(> :disabled) > .ring-halo { opacity: 0.12; }
+
+/* The top bar's "N rendering" chip: warm light sweeps across it while anything renders (a 200% gradient moved one
+   width per loop, so it repeats seamlessly). Animations off: still glow, and the loader stops. */
+.render-chip {
+  background: linear-gradient(100deg, rgb(240 158 46 / 0.1) 0%, rgb(240 158 46 / 0.1) 30%, rgb(240 158 46 / 0.34) 45%,
+              rgb(124 28 4 / 0.3) 55%, rgb(240 158 46 / 0.1) 70%, rgb(240 158 46 / 0.1) 100%) 0 0 / 200% 100%;
+  box-shadow: 0 0 14px -4px rgb(240 158 46 / 0.45);
+}
+@keyframes render-sweep { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+:root:not([data-motion="off"]) .render-chip { animation: render-sweep 2.2s linear infinite; }
+:root[data-motion="off"] .render-chip svg { animation: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

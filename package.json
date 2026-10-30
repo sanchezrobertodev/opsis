@@ -1,13 +1,14 @@
 {
   "name": "ai-media-studio",
   "private": true,
+  "license": "Apache-2.0",
   "packageManager": "pnpm@9.14.4",
   "scripts": {
     "dev": "concurrently -k -n api,worker,web -c blue,magenta,green \"pnpm dev:api\" \"pnpm dev:worker\" \"pnpm dev:web\"",
     "dev:api": "uv run python -m studio.api --reload",
     "dev:worker": "uv run python -m studio.worker",
     "dev:web": "pnpm --filter @studio/web dev",
-    "db:up": "docker compose -f infra/docker-compose.yml up -d",
+    "db:up": "docker compose -f infra/docker-compose.yml up -d --wait",
     "db:migrate": "uv run --directory apps/server alembic upgrade head",
     "gen": "uv run python -m studio.api.export_openapi > packages/api-client/openapi.json && pnpm --filter @studio/api-client gen",
     "test": "uv run --directory apps/server pytest -q",

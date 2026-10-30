@@ -108,8 +108,9 @@ class ElementOut(BaseModel):
 
 async def _owned_assets(session: AsyncSession, user: User, ids: list[uuid.UUID],
                         images: bool = True) -> dict[uuid.UUID, Asset]:
+    # FOR SHARE: a delete waits for this save, or this save sees the asset gone (domain/removal.py)
     rows = (await session.execute(select(Asset).where(
-        Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)))).scalars().all()
+        Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)).with_for_update(read=True))).scalars().all()
     found = {a.id: a for a in rows}
     missing = [str(i) for i in ids if i not in found]
     if missing:
@@ -271,7 +272,7 @@ async def delete_element(element_id: uuid.UUID, session: AsyncSession = Depends(
         except ProviderError as exc:
             raise HTTPException(502, f"ElevenLabs couldn't remove the voice: {exc.message}") from exc
     e.deleted_at = datetime.now(UTC)
-    e.slug = f"{e.slug[:30]}-del-{uuid.uuid4().hex[:6]}"  # frees the handle for reuse
+    e.slug = f"{e.slug[:29]}-del-{uuid.uuid4().hex[:6]}"  # frees the handle for reuse; fits slug's 40 characters
     await session.commit()
 
 

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { Toaster } from "sonner";
 import { RealtimeProvider } from "@/lib/realtime";
+import { PictureViewer } from "@/components/ui/PictureViewer";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(
@@ -17,6 +18,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <RealtimeProvider>{children}</RealtimeProvider>
+      <PictureViewer />
       <Toaster
         theme="dark"
         position="bottom-right"

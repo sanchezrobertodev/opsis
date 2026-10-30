@@ -11,12 +11,14 @@ import { type Asset, isActive, mediaUrl } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { SlotAsset } from "@/lib/draft";
 import { useCreateElement } from "@/lib/elements";
-import { uploadFile, useAssets, useGeneration } from "@/lib/queries";
+import { uploadFile, useAssets, useGeneration, useRemove } from "@/lib/queries";
 import { canvasPicture, saveThumbnail } from "@/lib/thumbs";
 import { useFilmWorld, useWorldParts } from "@/lib/worlds";
 import { QuickGenerate } from "@/components/create/QuickGenerate";
 import { Button, Dialog, Field, Segmented } from "@/components/ui/controls";
+import { ConfirmDelete, reportRemoval, SelectButton, SelectionBar, SelectMark, useSelection } from "@/components/ui/Selection";
 import type { ViewerHandle } from "./Viewers";
+import { ZoomButton } from "@/components/ui/PictureViewer";
 
 // WebGL only exists in the browser
 const WorldViewer = dynamic(() => import("./Viewers").then((m) => m.WorldViewer), { ssr: false });
@@ -36,6 +38,25 @@ export function Worlds() {
   const [open, setOpen] = useState<Open | null>(null);
   const worlds = useAssets({ kind: "splat" });
   const panos = useAssets({ kind: "image", projection: "equirectangular" });
+  const selection = useSelection();
+  const [confirming, setConfirming] = useState(false);
+  const removal = useRemove();
+  const shown = [...(worlds.data?.items ?? []), ...(panos.data?.items ?? [])];
+  const picked = shown.filter((a) => selection.picked.has(a.id));
+
+  function removePicked() {
+    // a world goes with what its take made (its panorama and collision mesh); a panorama alone
+    const takes = picked.filter((a) => a.kind === "splat" && a.generation_id).map((a) => a.generation_id!);
+    const files = picked.filter((a) => !(a.generation_id && takes.includes(a.generation_id))).map((a) => a.id);
+    removal.mutate({ generations: takes, assets: files }, {
+      onSuccess: (r) => {
+        setConfirming(false);
+        selection.stop();
+        if (open && picked.some((a) => a.id === open.asset.id)) setOpen(null);
+        reportRemoval(r, ["world or panorama", "worlds and panoramas"]);
+      },
+    });
+  }
 
   const settled = useCallback((genId: string, made: Asset | null) => {
     setPending((p) => p.filter((id) => id !== genId));
@@ -67,10 +88,21 @@ export function Worlds() {
           {pending.map((id) => <Pending key={id} id={id} onSettled={settled} />)}
         </section>
 
+        {shown.length > 0 && (selection.selecting ? (
+          <SelectionBar count={picked.length} selectable={shown.length} onAll={() => selection.set(shown.map((a) => a.id))}
+                        onNone={() => selection.set([])} onDelete={() => setConfirming(true)} onDone={selection.stop} />
+        ) : (
+          <div><SelectButton onClick={selection.start} /></div>
+        ))}
         <Shelf title="Worlds" icon={Globe2} items={worlds.data?.items ?? []} loading={worlds.isLoading} open={open}
-               kind="world" onOpen={setOpen} empty="Your worlds appear here." />
+               kind="world" onOpen={setOpen} empty="Your worlds appear here." selection={selection} />
         <Shelf title="Panoramas" icon={Orbit} items={panos.data?.items ?? []} loading={panos.isLoading} open={open}
-               kind="pano" onOpen={setOpen} empty="Your 360 panoramas appear here." />
+               kind="pano" onOpen={setOpen} empty="Your 360 panoramas appear here." selection={selection} />
+        <ConfirmDelete open={confirming} count={picked.length} noun={["world or panorama", "worlds and panoramas"]}
+                       pending={removal.isPending} onConfirm={removePicked} onClose={() => setConfirming(false)}>
+          They&apos;re deleted from disk; this can&apos;t be undone. A world goes with its panorama and collision mesh.
+          Anything a location, a film or a 3D scene uses is kept.
+        </ConfirmDelete>
       </aside>
 
       <main className="flex min-h-0 flex-col">
@@ -109,9 +141,9 @@ function Pending({ id, onSettled }: { id: string; onSettled: (genId: string, mad
   );
 }
 
-function Shelf({ title, icon: Icon, items, loading, open, kind, onOpen, empty }: {
+function Shelf({ title, icon: Icon, items, loading, open, kind, onOpen, empty, selection }: {
   title: string; icon: typeof Globe2; items: Asset[]; loading: boolean; open: Open | null; kind: Open["kind"];
-  onOpen: (o: Open) => void; empty: string;
+  onOpen: (o: Open) => void; empty: string; selection: ReturnType<typeof useSelection>;
 }) {
   return (
     <section className="flex flex-col gap-2" aria-label={title}>
@@ -120,9 +152,12 @@ function Shelf({ title, icon: Icon, items, loading, open, kind, onOpen, empty }:
       <ul className="grid grid-cols-2 gap-2">
         {items.map((a) => (
           <li key={a.id}>
-            <button type="button" onClick={() => onOpen({ kind, asset: a })} aria-pressed={open?.asset.id === a.id}
-                    className={cn("flex w-full flex-col gap-1 rounded-[var(--radius-control)] border p-1 text-left",
-                                  open?.asset.id === a.id ? "border-tungsten/70 bg-raised" : "border-line-soft hover:border-tungsten/40")}>
+            <button type="button" aria-pressed={selection.selecting ? selection.picked.has(a.id) : open?.asset.id === a.id}
+                    onClick={() => (selection.selecting ? selection.toggle(a.id) : onOpen({ kind, asset: a }))}
+                    className={cn("relative flex w-full flex-col gap-1 rounded-[var(--radius-control)] border p-1 text-left",
+                                  (selection.selecting ? selection.picked.has(a.id) : open?.asset.id === a.id)
+                                    ? "border-tungsten/70 bg-raised" : "border-line-soft hover:border-tungsten/40")}>
+              {selection.selecting && <span className="absolute left-2 top-2"><SelectMark selected={selection.picked.has(a.id)} /></span>}
               {a.thumb_url
                 // eslint-disable-next-line @next/next/no-img-element
                 ? <img src={mediaUrl(a.thumb_url)} alt="" className="aspect-video w-full rounded-[3px] bg-black object-cover" />
@@ -223,7 +258,8 @@ function Stage({ open, onWorldFrom }: { open: Open; onWorldFrom: (pano: Asset) =
       {grabs.length > 0 && (
         <ul className="flex gap-2 overflow-x-auto border-t border-line-soft p-3 scrollbar-quiet" aria-label="Grabbed views">
           {grabs.map((g) => (
-            <li key={g.id} className="w-40 shrink-0">
+            <li key={g.id} className="group relative w-40 shrink-0">
+              <ZoomButton src={mediaUrl(g.url)} title={g.title ?? "A grabbed view"} className="right-1 top-1" />
               <Link href={`/library?asset=${g.id}`} className="flex flex-col gap-1 text-2xs text-muted hover:text-chalk">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={mediaUrl(g.url)} alt={g.title ?? "A grabbed view"} className="aspect-video w-full rounded-[3px] bg-black object-cover" />

@@ -1,6 +1,6 @@
-# AI Media Studio
+# Opsis
 
-A personal, Higgsfield-class AI video studio: Create/Edit Video, Motion Control, Motion Transfer, Object Swap,
+A self-hosted, Higgsfield-class AI video studio: Create/Edit Video, Motion Control, Motion Transfer, Object Swap,
 Character Creation, World Creation, Faceless Studio, Cinema Studio, 3D Jutsu, Lipsync. It orchestrates third-party
 model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and an opt-in local ComfyUI.
 
@@ -25,8 +25,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 
 ## Non-negotiable rules
 - **Mock first.** `PROVIDER_MODE=mock` is the default. Never call a paid route in tests. Live calls only via
-  `PROVIDER_MODE=mixed` + `LIVE_ROUTE_ALLOWLIST`, or `scripts/smoke_live.py` with a `--cap`. (The home server's
-  `.env` is `live`, for real use.)
+  `PROVIDER_MODE=mixed` + `LIVE_ROUTE_ALLOWLIST`, or `scripts/smoke_live.py` with a `--cap`. (A deployment you
+  use for real sets `live` in its own `.env`.)
 - **Mode switch:** `PROVIDER_MODE` and `LLM_MODE` in `.env` are a ceiling. The Settings switch (Generation:
   Mock / Mixed / Live, Claude: Mock / Live; `budget_policies.provider_mode` / `llm_mode`, `budget/modes.py`) picks that
   or safer and applies at once, with no restart. Read the mode in effect through `modes.current()` /
@@ -46,7 +46,7 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 - Sora 2 is shut down (2026-09-24). Do not add it.
 - Before writing `studio/llm/*`, load the `claude-api` skill. Default models: `claude-opus-5-5` (scripts, shot
   plans) and `claude-sonnet-5-5` (enhance, vision review).
-- `C:\Dev\AI\OpenMontage` is AGPL-3.0. Borrow ideas only; never copy its code.
+- OpenMontage is AGPL-3.0. Borrow ideas only; never copy its code.
 
 ## Adding a model
 1. Draft YAML in `registry/models/<type>/<id>.yaml` (or run `scripts/import_catalog.py`). Include `status`,
@@ -227,7 +227,7 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   `--check` uses a scratch database; `--replace --yes` (API and worker stopped) restores into a new database and
   swaps it in, keeping the old one as `studio_before_restore_<time>`.
 - **Media is not in the database.** `data/media/` (every asset) needs its own copy, e.g.
-  `robocopy data\media E:\studio-media /MIR` to an external drive; a restored database pointing at missing files
+  `robocopy data\media <drive>:\opsis-media /MIR` to an external drive; a restored database pointing at missing files
   shows broken assets.
 - The schema check (`studio/registry/drift.py`) reads each route's published schema (fal per endpoint, Runway,
   ElevenLabs, World Labs from the OpenAPI block in its public docs pages; Replicate with its key) and reports gone or
@@ -237,21 +237,23 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   prompt kinds exist, not the fields inside them. The contract tests check every route against those baselines offline. After a reviewed change, fix the
   YAML and run with `--update` (`--provider` limits it).
 
-## Running on the home server
-- The studio you use runs on the Fedora home server (`infra/server/`, README there; plan in `docs/home-server-move.md`):
+## Self-hosting on a Linux server
+- `infra/server/` (README there) is an example deployment:
   - **Containers:** rootless Podman with Quadlet runs the pod `ams` with Postgres 18, the API, the worker and the web app.
-  - **Addresses:** web `https://fedora.tail36d2f8.ts.net:19443/`, API `:19444`, tailnet only.
-  - **Files:** the checkout is `~/Development/repos/ai-media-studio`, with its `.env` and `data/`.
-- The PC is for development: mock mode against its own database, tests and Playwright.
-- **Deploying:** merge, then press Deploy on the Hub (`infra/server/deploy.sh`). It pulls, builds both images (the API
-  address is compiled into the web image), migrates and restarts.
-- The local models stay on the PC: the server's `COMFYUI_URL` points at the PC's ComfyUI over Tailscale. When the PC is
-  off, the route says it isn't running.
-- **Backups:** `DB_EXEC` says how backups reach the Postgres tools. Unset is `docker compose exec` (the PC); empty
-  runs them in place (the worker container has the Postgres 18 client). systemd timers replace the Windows tasks.
+  - **Addresses:** `tailscale serve` publishes the web app on `https://<host>.<tailnet>.ts.net:19443/` and the API on
+    `:19444`, tailnet only.
+  - **Files:** the server's checkout holds its `.env` and `data/`.
+- A common split: the server runs the studio with live keys; a development machine runs mock mode against its own
+  database, tests and Playwright.
+- **Deploying:** `infra/server/deploy.sh` pulls, builds both images (the API address is compiled into the web image),
+  migrates and restarts.
+- Local models can stay on a GPU machine: point the server's `COMFYUI_URL` at that machine's ComfyUI (e.g. over
+  Tailscale). When it's off, the route says it isn't running.
+- **Backups:** `DB_EXEC` says how backups reach the Postgres tools. Unset is `docker compose exec` (the compose setup);
+  empty runs them in place (the worker container has the Postgres 18 client). systemd timers replace the Windows tasks.
 - **Off-site copy:** the hourly `ams-offsite.timer` (`infra/server/offsite.sh`) sends new media, as tar bundles, and
-  new dumps to the PC with Taildrop. The PC's "AI Media Studio backup collect" task files them on
-  `E:\Backups\ai-media-studio`: a media mirror plus 60 days of dumps.
+  new dumps with Taildrop to `AMS_OFFSITE_TARGET`. On a Windows PC, `infra/server/windows/install-backup-task.ps1`
+  registers a task that files them in a folder of your choice (`-Dest`): a media mirror plus 60 days of dumps.
 - The server's caption fonts are open stand-ins (`infra/server/fonts.conf`).
 
 ## Providers without a model
@@ -315,7 +317,7 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   song at the sections, and `narrated_cut` plays each piece under its picture back to back (`gap_s: 0`). Captions
   spread each section's lines after its bar of lead-in (`lead_in`), a line per caption; no narration, no score.
 - Creature documentaries (the "Creature documentary" template; theme `creature-documentary`, style
-  `wildlife-documentary`, David's voice `BNgbHR0DNeZixGQVzloa`): a Faceless episode can star a saved `character`
+  `wildlife-documentary`, default narrator ElevenLabs' David, `BNgbHR0DNeZixGQVzloa`): a Faceless episode can star a saved `character`
   (stills and motion; a song ignores it). Claude marks the shots it's in (`Block.star`; none marked means all), those
   stills and the thumbnail use the image model's reference mode with `The star is @handle`, so its pictures attach;
   the script and plan steps check it first (`llm_ops._star`). `clip_sound` (motion only) sets the video model's
@@ -437,18 +439,11 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   balance is billed to the card at month end: keep caps on.
 
 ## Local engine (ComfyUI)
-- `comfy_local` provider = the VideoStudio ComfyUI at `COMFYUI_URL` (default http://127.0.0.1:8188). Start it with
-  `C:/Dev/AI/VideoStudio/ComfyUI_windows_portable/python_embeded/python.exe C:/Dev/AI/VideoStudio/setup/launcher.py --no-browser`
-  (stop with `--stop`). Local models: `wan-2.2-5b` (t2v/i2v) and `flux-2-klein-4b` (t2i).
+- `comfy_local` provider = your ComfyUI (0.34) at `COMFYUI_URL` (default http://127.0.0.1:8188; the README's "Open models on your
+  GPU" lists the model files). Local models: `wan-2.2-5b` (t2v/i2v) and `flux-2-klein-4b` (t2i).
 - Local routes are free and run in every PROVIDER_MODE. A model with a configured local route never falls back to
   the mock; if ComfyUI is off, routing reports "isn't running" instead.
 - Workflows live in `workflows/comfy/<name>.json` (API graph) + `<name>.map.yaml` (which node inputs to fill,
   optional nodes, outputs). Routes name the template as their endpoint; `transform` hooks in
   `studio/providers/transforms/` map quality/aspect to pixel sizes. Route `eta` expressions drive time estimates.
-- One job at a time (12 GB). Draft Wan ≈ 70–90 s, standard ≈ 7 min.
-
-## Reusable assets elsewhere on this machine
-- `C:\Dev\AI\RunpodVideos\runpod_video_client.py`: RunPod `/run` + status polling + base64 video handling.
-- `C:\Dev\AI\VideoStudio\`: ComfyUI v0.34 portable (CUDA 13) with Wan 2.2 TI2V-5B, and workflows tuned for the
-  RTX 5070 (12GB VRAM, 64GB RAM). This is the `comfy_local` route target (`COMFYUI_URL=http://127.0.0.1:8188`).
-- `C:\Dev\AI\Videos\cryptid-video-production.md`: verified Seedance 2.5 per-route price notes.
+- One job at a time (sized for 12 GB of VRAM). On a 12 GB card, draft Wan ≈ 70–90 s, standard ≈ 7 min.

@@ -177,7 +177,7 @@ def make_glb(dest: Path, *, seed: int | None = None, size: float = 0.8) -> None:
     idx += b"\x00" * (-len(idx) % 4)
     binary = pos + nor + idx
     gltf = {
-        "asset": {"version": "2.0", "generator": "ai-media-studio mock"},
+        "asset": {"version": "2.0", "generator": "opsis mock"},
         "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0, "name": "mock"}],
         "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1}, "indices": 2, "material": 0}]}],
         "materials": [{"pbrMetallicRoughness": {"baseColorFactor": color, "metallicFactor": 0, "roughnessFactor": 0.8}}],

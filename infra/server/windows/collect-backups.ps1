@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  File away the AI Media Studio backups the home server sends with Taildrop (infra/server/offsite.sh).
+  File away the Opsis backups a server sends with Taildrop (infra/server/offsite.sh).
 
 .DESCRIPTION
   Taildrop saves incoming files to the Downloads folder.
@@ -17,7 +17,7 @@
 #>
 param(
     [string]$Source = (New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path,
-    [string]$Dest = "E:\Backups\ai-media-studio",
+    [string]$Dest = (Join-Path $HOME "Backups\opsis"),
     [int]$KeepDays = 60
 )
 $ErrorActionPreference = "Stop"

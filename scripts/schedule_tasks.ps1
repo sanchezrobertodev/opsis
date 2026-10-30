@@ -16,15 +16,17 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $logs = Join-Path $root "data\logs"
 $tasks = @(
-  @{ Name = "AI Media Studio - nightly database backup"
+  @{ Name = "Opsis - nightly database backup"
      Script = "scripts/backup_db.py"; Log = "backup.log"
      Trigger = New-ScheduledTaskTrigger -Daily -At "03:30" },
-  @{ Name = "AI Media Studio - weekly provider schema check"
+  @{ Name = "Opsis - weekly provider schema check"
      Script = "scripts/fetch_provider_schemas.py"; Log = "schema-drift.log"
      Trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At "09:00" }
 )
 
 foreach ($t in $tasks) {
+  # the same task under the project's earlier name
+  Unregister-ScheduledTask -TaskName ($t.Name -replace '^Opsis', 'AI Media Studio') -Confirm:$false -ErrorAction SilentlyContinue
   if ($Remove) {
     Unregister-ScheduledTask -TaskName $t.Name -Confirm:$false -ErrorAction SilentlyContinue
     Write-Output "Removed: $($t.Name)"
@@ -39,6 +41,6 @@ foreach ($t in $tasks) {
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Hours 1)
   Register-ScheduledTask -TaskName $t.Name -Action $action -Trigger $t.Trigger -Settings $settings `
-    -Description "AI Media Studio ($($t.Script)); see CLAUDE.md, Backups and schema checks." -Force | Out-Null
+    -Description "Opsis ($($t.Script)); see CLAUDE.md, Backups and schema checks." -Force | Out-Null
   Write-Output "Registered: $($t.Name) -> $log"
 }

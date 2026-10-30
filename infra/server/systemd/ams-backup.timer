@@ -1,5 +1,5 @@
 [Unit]
-Description=Nightly AI Media Studio database backup
+Description=Nightly Opsis database backup
 
 [Timer]
 OnCalendar=*-*-* 03:30

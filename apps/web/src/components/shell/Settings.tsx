@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, LoaderCircle, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { api, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
@@ -13,7 +13,7 @@ import { ModelStorage } from "@/components/shell/ModelStorage";
 const MODE_TEXT: Record<string, string> = {
   mock: "Every generation runs on the mock provider. Nothing is sent to a provider and nothing is billed.",
   mixed: "Only the routes below run for real; everything else stays on the mock provider.",
-  live: "Generations call real providers and are billed to your accounts, within the limits on the left.",
+  live: "Generations call real providers and are billed to your accounts, within your spending limits.",
 };
 const CLAUDE_TEXT: Record<string, string> = {
   mock: "Scripts, shot plans and prompt help come from a canned writer. Nothing is billed.",
@@ -82,8 +82,8 @@ export function Settings() {
                 {budget.provider_mode === "mixed" && (
                   <p className="text-xs text-muted">
                     {budget.live_route_allowlist.length
-                      ? budget.live_route_allowlist.join(", ")
-                      : "No routes are listed in LIVE_ROUTE_ALLOWLIST, so everything stays mocked."}
+                      ? `Live routes: ${budget.live_route_allowlist.join(", ")}`
+                      : "No routes are listed in LIVE_ROUTE_ALLOWLIST in .env, so everything stays mocked."}
                   </p>
                 )}
               </div>
@@ -101,7 +101,7 @@ export function Settings() {
               <p className="text-2xs text-faint">
                 Changes apply to the next generation, no restart needed.
                 {budget.provider_modes.length < 3 || budget.llm_modes.length < 2
-                  ? " This studio's .env (PROVIDER_MODE, LLM_MODE) keeps it from going further; change it there for more."
+                  ? " PROVIDER_MODE and LLM_MODE in .env set the highest mode offered here; raise them there and restart for more."
                   : ""}
               </p>
             </div>
@@ -124,7 +124,7 @@ export function Settings() {
                     ? `Running${health.local_engine.gpu ? ` on ${health.local_engine.gpu.replace(/^cuda:\d+\s*/, "").split(" : ")[0]}` : ""}${
                         health.local_engine.vram_free_gb != null ? `, ${health.local_engine.vram_free_gb} GB free` : ""
                       }`
-                    : "Not running. Start Local Video Studio to use the local models."}
+                    : "Not running. Start ComfyUI to use the local models."}
               </dd>
               <dt className="text-muted">Claude</dt>
               <dd>
@@ -152,12 +152,48 @@ export function Settings() {
           )}
         </section>
 
-        <ModelStorage />
         <Balances />
+        <ModelStorage />
+        <Appearance />
         <WhereItWent />
         <SpendHistory />
       </div>
     </div>
+  );
+}
+
+// Animations are on unless turned off in this browser: html[data-motion="off"], set before the first paint by the
+// root layout's script from localStorage "motion" (see the .aura and .ring-halo rules in globals.css)
+const motionListeners = new Set<() => void>();
+const subscribeMotion = (l: () => void) => {
+  motionListeners.add(l);
+  return () => void motionListeners.delete(l);
+};
+
+function setMotion(on: boolean) {
+  document.documentElement.dataset.motion = on ? "on" : "off";
+  try {
+    localStorage.setItem("motion", on ? "on" : "off");
+  } catch {}
+  motionListeners.forEach((l) => l());
+}
+
+function Appearance() {
+  const motion = useSyncExternalStore(subscribeMotion, () => document.documentElement.dataset.motion !== "off", () => true);
+  return (
+    <section className="space-y-5 lg:col-span-2">
+      <h2 className="type-title text-xl">Appearance</h2>
+      <div className="flex items-center justify-between gap-4 rounded-[var(--radius-panel)] bg-panel p-4">
+        <div>
+          <p className="text-sm">Animations</p>
+          <p className="mt-0.5 text-xs text-muted">
+            The lights behind the studio drift and the ring on Generate turns. Off keeps them still; your system&apos;s
+            reduce-motion setting stills them too. Saved in this browser.
+          </p>
+        </div>
+        <Switch label="Animations" checked={motion} onChange={setMotion} />
+      </div>
+    </section>
   );
 }
 
@@ -190,7 +226,10 @@ function Balances() {
       {!data ? (
         <p className="text-sm text-muted">Asking the providers&hellip;</p>
       ) : data.length === 0 ? (
-        <p className="text-sm text-muted">No provider keys in .env yet.</p>
+        <p className="text-sm text-muted">
+          No provider keys yet. Add the ones you have to .env (.env.example says where to get each), then restart the
+          API and worker.
+        </p>
       ) : (
         <ul className="grid gap-2 sm:grid-cols-2">
           {data.map((b) => (
@@ -217,6 +256,7 @@ function Balances() {
 }
 
 function amountText(b: { status: string; amount?: number | null; unit?: string | null; usd?: number | null }) {
+  if (b.status === "ok" && b.unit == null) return "Ready"; // nothing to read but whether it works (Codex)
   if (b.status !== "ok" || b.amount == null) return "–";
   if (b.unit === "usd") return usd(b.amount);
   const credits = `${Math.round(b.amount).toLocaleString()} credits`;

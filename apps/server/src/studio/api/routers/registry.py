@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +16,7 @@ from studio.api.schemas import (
     RouteSummary,
 )
 from studio.budget import modes
+from studio.config import get_settings
 from studio.db.models import User
 from studio.domain.generations import CreateRequest, plan, routing_env
 from studio.registry.loader import MOCK_PROVIDER, Registry, get_registry
@@ -36,7 +39,7 @@ def _wrapped(reg: Registry, spec: ModelSpec) -> list[ModelSpec]:
 
 # Part of the summary's ETag: bump it when what the summary computes changes (from-prices), so browsers holding the
 # last copy fetch it again even though the registry files didn't change.
-SUMMARY_VERSION = 2
+SUMMARY_VERSION = 4
 STAND_IN_SECONDS = 5  # a typical input clip or sound, for modes priced by input length (video edits)
 STAND_IN_PROMPT = "x" * 300  # a short script, for routes priced by the text (speech)
 
@@ -59,7 +62,8 @@ def _from_price(reg: Registry, spec: ModelSpec) -> float | None:
     if spec.kind == "virtual":
         prices = [p for m in _wrapped(reg, spec) if (p := _from_price(reg, m)) is not None]
         return min(prices) if prices else None
-    prices = []
+    settings = get_settings()
+    prices, usable = [], []
     for mode in spec.modes:
         params = _defaults(spec, mode.id)
         media = _stand_ins(mode)
@@ -67,10 +71,28 @@ def _from_price(reg: Registry, spec: ModelSpec) -> float | None:
             if route.provider == MOCK_PROVIDER or not route.enabled or mode.id not in route.modes:
                 continue
             try:
-                prices.append(float(estimate(route.pricing, params, STAND_IN_PROMPT, media=media, mode=mode.id).usd))
+                usd = float(estimate(route.pricing, params, STAND_IN_PROMPT, media=media, mode=mode.id).usd)
             except ValueError:
                 continue
-    return min(prices) if prices else None
+            prices.append(usd)
+            if (provider := reg.providers.get(route.provider)) and provider.configured(settings):
+                usable.append(usd)
+    # routes that are set up, so a free route that isn't (Codex without CODEX_BIN) doesn't make the model look free;
+    # every route on a fresh install with no keys yet
+    found = usable or prices
+    return min(found) if found else None
+
+
+# Where a model runs, from its routes' provider kinds; the picker groups by it. The most "yours" wins.
+RUNS_ON = ("local", "cloud_gpu", "hosted")
+
+
+def _runs_on(reg: Registry, spec: ModelSpec) -> str:
+    if spec.kind == "virtual":
+        found = [_runs_on(reg, m) for m in _wrapped(reg, spec)]
+        return min(found, key=RUNS_ON.index) if found else "hosted"
+    kinds = {p.kind for r in spec.routes if r.provider != MOCK_PROVIDER and (p := reg.providers.get(r.provider))}
+    return "local" if "local" in kinds else "cloud_gpu" if "selfhosted" in kinds else "hosted"
 
 
 async def _runnable(session: AsyncSession, reg: Registry, spec: ModelSpec) -> bool:
@@ -90,7 +112,9 @@ async def get_registry_summary(
 ) -> RegistryOut | Response:
     reg = get_registry()
     mode = (await modes.current(session)).provider  # the Settings switch changes what's runnable
-    etag = f'"{reg.hash}-{mode}-{SUMMARY_VERSION}"'
+    settings = get_settings()
+    ready = ",".join(sorted(p.id for p in reg.providers.values() if p.configured(settings)))
+    etag = f'"{reg.hash}-{mode}-{SUMMARY_VERSION}-{hashlib.sha1(ready.encode()).hexdigest()[:8]}"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304)
     response.headers["ETag"] = etag
@@ -102,6 +126,7 @@ async def get_registry_summary(
             output_type=spec.output_type, status=spec.status, license_tier=spec.license_tier, tags=spec.tags,
             modes=[ModeSummary(id=m.id, label=m.label, ops=list(m.ops)) for m in spec.modes],
             from_price_usd=_from_price(reg, spec), runnable=await _runnable(session, reg, spec),
+            runs_on=_runs_on(reg, spec),
         ))
     return RegistryOut(hash=reg.hash, provider_mode=mode, models=models,
                        warnings=reg.warnings)

@@ -33,7 +33,7 @@ modes:
     ops: [i2v, flf2v]
     medias:
       - {role: start_image, kinds: [image], label: Start frame, required: true}
-      - {role: end_image, kinds: [image], label: End frame (optional)}
+      - {role: end_image, kinds: [image], label: End frame}
   - id: multi_shot
     label: Multi-shot
     ops: [multi_shot]

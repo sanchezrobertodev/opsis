@@ -145,7 +145,7 @@ export function DirectorPanel({
                 const move = moveById.get(choice.id);
                 return (
                   <li key={`${choice.id}-${i}`} className="flex items-center gap-2 rounded-[var(--radius-control)] bg-bay px-2.5 py-1.5">
-                    <MoveGlyph category={move?.category ?? "static"} small />
+                    <MoveGlyph move={move} small />
                     <span className="min-w-0 flex-1 truncate text-sm">{move?.label ?? choice.id}</span>
                     {move?.speeds && (
                       <Segmented
@@ -310,7 +310,7 @@ function MovePicker({
                 onClick={() => onPick(m)}
                 className="group flex h-full w-full items-start gap-3 rounded-[var(--radius-control)] border border-line-soft p-3 text-left hover:border-tungsten/50 hover:bg-raised/60"
               >
-                <MoveGlyph category={m.category} />
+                <MoveGlyph move={m} />
                 <span className="min-w-0">
                   <span className="block text-sm text-chalk">{m.label}</span>
                   <span className="mt-0.5 block text-2xs leading-relaxed text-faint">{m.description}</span>
@@ -325,8 +325,12 @@ function MovePicker({
   );
 }
 
-/** A tiny frame with a mark that moves the way the category moves (hover to play). */
-export function MoveGlyph({ category, small }: { category: Move["category"]; small?: boolean }) {
+/** The `glyph-*` class for a move's preview: its own glyph, else its category's. */
+export const glyphClass = (move: { glyph: string; category: string } | undefined) =>
+  `glyph-${move ? move.glyph || move.category : "static"}`;
+
+/** A tiny frame with a mark that moves the way the camera move does (hover to play). */
+export function MoveGlyph({ move, small }: { move: Move | undefined; small?: boolean }) {
   return (
     <span
       aria-hidden
@@ -335,7 +339,7 @@ export function MoveGlyph({ category, small }: { category: Move["category"]; sma
         small ? "h-5 w-7" : "h-8 w-11",
       )}
     >
-      <span className={cn("block size-1.5 rounded-full bg-tungsten", `glyph-${category}`)} />
+      <span className={cn("block size-1.5 rounded-full bg-tungsten", glyphClass(move))} />
     </span>
   );
 }

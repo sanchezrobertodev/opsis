@@ -1,5 +1,5 @@
 [Unit]
-Description=AI Media Studio worker (generations, recipe runs, ffmpeg)
+Description=Opsis worker (generations, recipe runs, ffmpeg)
 Requires=ams-postgres.service
 After=ams-postgres.service
 
@@ -22,7 +22,7 @@ Volume=@APP_DIR@/data:/app/data:z
 # here; set CODEX_BIN in .env to %h/.codex/packages/standalone/current/bin/codex to turn the route on.
 Volume=%h/.codex:%h/.codex:z
 Environment=CODEX_HOME=%h/.codex
-# ffmpeg assembly is the peak; the cap keeps a runaway render from taking the laptop down
+# ffmpeg assembly is the peak; the cap keeps a runaway render from taking the server down
 PodmanArgs=--memory=1536m
 StopTimeout=30
 

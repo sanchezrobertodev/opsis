@@ -9,6 +9,8 @@ const BUTTON =
   "inline-flex items-center justify-center gap-2 rounded-[var(--radius-control)] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45";
 const TONE = {
   primary: "bg-tungsten text-bay hover:bg-[#f5b955]",
+  // the studio's main action (Generate): the icon's ring as its border, see globals.css
+  ring: "ring-button text-chalk",
   quiet: "bg-raised text-chalk hover:bg-line",
   ghost: "text-muted hover:bg-raised hover:text-chalk",
   danger: "bg-fault/15 text-fault hover:bg-fault/25",
@@ -81,11 +83,12 @@ export function Segmented<T extends string | number>({
             aria-checked={selected}
             onClick={() => onChange(opt)}
             className={cn(
-              "tabular min-w-10 flex-1 rounded-[4px] px-2.5 py-1.5 text-xs transition-colors",
-              selected ? "bg-raised text-chalk" : "text-muted hover:text-chalk",
+              "tabular flex-1 rounded-[4px] px-2.5 py-1.5 text-xs transition-colors",
+              selected ? "lumen-selected bg-select text-chalk" : "text-muted hover:text-chalk",
             )}
           >
-            {render ? render(opt) : String(opt)}
+            {/* the option is never narrower than its longest word (or a 40px target), however many share the row */}
+            <span className="inline-block min-w-5">{render ? render(opt) : String(opt)}</span>
           </button>
         );
       })}
@@ -118,7 +121,7 @@ export function AspectPicker({
             onClick={() => onChange(opt)}
             className={cn(
               "flex h-12 min-w-12 flex-col items-center justify-center gap-1 rounded-[var(--radius-control)] border px-2 transition-colors",
-              selected ? "border-tungsten/60 bg-raised text-chalk" : "border-line-soft text-muted hover:border-line hover:text-chalk",
+              selected ? "lumen-selected border-transparent bg-select text-chalk" : "border-line-soft text-muted hover:border-line hover:text-chalk",
             )}
           >
             <span
@@ -262,7 +265,11 @@ export function Dialog({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (open && !el.open) el.showModal();
+    if (open && !el.open) {
+      el.showModal();
+      // showModal focuses the first control; start on the one marked instead (e.g. the current choice)
+      el.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    }
     if (!open && el.open) el.close();
   }, [open]);
   return (
@@ -273,7 +280,7 @@ export function Dialog({
       onClose={(e) => e.target === e.currentTarget && onClose()}
       onClick={(e) => e.target === ref.current && onClose()}
       className={cn(
-        "m-auto w-[calc(100%-2rem)] rounded-[var(--radius-panel)] border border-line bg-panel p-0 text-chalk backdrop:bg-black/60",
+        "m-auto w-[calc(100%-2rem)] rounded-[var(--radius-panel)] border border-line bg-sheet p-0 text-chalk backdrop:bg-black/60",
         wide ? "max-w-3xl" : "max-w-md",
       )}
     >

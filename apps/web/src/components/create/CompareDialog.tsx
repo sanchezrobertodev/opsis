@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { ApiError, type ModelSummary } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import type { CreateBody } from "@/lib/queries";
-import { useStartRun } from "@/lib/runs";
+import { type RunCreate, useStartRun } from "@/lib/runs";
+import { quotePrice, quoteText, useRunQuote } from "@/components/runs/RunQuote";
 import { Button, Dialog } from "@/components/ui/controls";
 
 const MAX = 4;
@@ -38,23 +39,26 @@ export function CompareDialog({
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length < MAX ? [...p, id] : p));
   }
 
+  const run: RunCreate | null = picked.length >= 2 ? {
+    recipe: "compare",
+    input: {
+      prompt: body.prompt,
+      // the current model keeps its settings and mode; the others use their defaults
+      entries: picked.map((id) => (id === body.model_id ? { model_id: id, mode: body.mode, params: body.params } : { model_id: id })),
+      media: body.media,
+      direction: body.direction ?? null,
+      ops,
+      pick: true,
+    },
+  } : null;
+  const quote = useRunQuote(run);
+
   async function go(confirmCost?: number) {
+    if (!run) return;
     try {
-      const run = await start.mutateAsync({
-        recipe: "compare",
-        confirm_cost_usd: confirmCost ?? null,
-        input: {
-          prompt: body.prompt,
-          // the current model keeps its settings and mode; the others use their defaults
-          entries: picked.map((id) => (id === body.model_id ? { model_id: id, mode: body.mode, params: body.params } : { model_id: id })),
-          media: body.media,
-          direction: body.direction ?? null,
-          ops,
-          pick: true,
-        },
-      });
+      const started = await start.mutateAsync({ ...run, confirm_cost_usd: confirmCost ?? quote.charged });
       onClose();
-      router.push(`/runs/${run.id}`);
+      router.push(`/runs/${started.id}`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setConfirm((err.body as { estimate_usd: number }).estimate_usd);
@@ -83,11 +87,13 @@ export function CompareDialog({
           </>
         ) : (
           <>
+            {run && <span className="mr-auto self-center text-xs text-muted">{quoteText(quote, ["take", "takes"])}</span>}
             <Button type="button" tone="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" tone="primary" onClick={() => void go()} disabled={picked.length < 2 || start.isPending}>
-              Compare {picked.length} models
+            <Button type="button" tone="primary" onClick={() => void go()}
+                    disabled={!run || quote.count == null || Boolean(quote.error) || start.isPending}>
+              {!run ? "Pick at least 2 models" : `Compare ${picked.length} models${quotePrice(quote) && ` · ${quotePrice(quote)}`}`}
             </Button>
           </>
         )

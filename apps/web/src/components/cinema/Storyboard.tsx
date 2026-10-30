@@ -20,13 +20,16 @@ import {
 import { clipSeconds } from "@/lib/cut";
 import { useElements } from "@/lib/elements";
 import { useDebounced } from "@/lib/hooks";
-import { useModel, useRegistry } from "@/lib/queries";
+import { useModel, useRegistry, useRemove } from "@/lib/queries";
 import { useEstimateRun } from "@/lib/runs";
 import type { RunCreate } from "@/lib/runs";
 import { type Direction, DirectorPanel, mentionSlugs } from "@/components/create/DirectorPanel";
 import { AspectPicker, Button, Field, Segmented, Select, Slider } from "@/components/ui/controls";
+import { ConfirmDelete, reportRemoval, SelectButton, SelectionBar, SelectMark, useSelection } from "@/components/ui/Selection";
 import type { Launch } from "./Editor";
 import { TakeActions } from "./TakeActions";
+import { quotePrice, quoteText, sameRequest, useRunQuote } from "@/components/runs/RunQuote";
+import { ZoomButton } from "@/components/ui/PictureViewer";
 
 type Update = (fn: (d: CinemaDoc) => CinemaDoc) => void;
 
@@ -101,24 +104,35 @@ function takesRun(projectId: string, doc: CinemaDoc, shots: TakeShot[]): RunCrea
     shots } };
 }
 
-type ShotEstimate = { usd: number; live: boolean };
+type ShotEstimate = { usd: number; charged: number; live: boolean };
 
 /**
- * What filming each shot would cost: one estimate of filming every described shot, split by shot. With mock
- * providers on, that's the price on the paid routes.
+ * One estimate of a run over every described shot (filming them, or drawing their frames), split by shot. With mock
+ * providers on, `usd` is the price on the paid routes; `charged` is what starting it now charges, to confirm with.
  */
-function useShotEstimates(projectId: string, doc: CinemaDoc, voices: Record<string, string>, endFrames: boolean) {
-  const ids = allShots(doc).filter((x) => x.shot.action.trim()).map((x) => x.shot.id);
-  // the wording doesn't change the price, so typing doesn't ask again
-  const shots = takeShots(doc, ids, voices, endFrames).map((s) => ({ ...s, prompt: "x" }));
-  const { data } = useEstimateRun(useDebounced(shots.length ? takesRun(projectId, doc, shots) : null, 600));
-  return (id: string): ShotEstimate | undefined => {
+function useByShot(body: RunCreate | null) {
+  const asked = useDebounced(body, 600);
+  const estimate = useEstimateRun(asked);
+  // no price while a change waits to be asked or the previous answer stands in for it
+  const data = body && sameRequest(asked, body) && !estimate.isPlaceholderData ? estimate.data : undefined;
+  const one = (id: string): ShotEstimate | undefined => {
     const now = data?.by_key[id];
     if (now === undefined) return undefined;
     const live = data?.live_by_key?.[id];
-    return now === 0 && live != null ? { usd: live, live: true } : { usd: now, live: false };
+    return now === 0 && live != null ? { usd: live, charged: 0, live: true } : { usd: now, charged: now, live: false };
   };
+  const sum = (ids: string[]): ShotEstimate | undefined => {
+    const each = ids.map(one).filter((e) => e !== undefined);
+    if (!ids.length || each.length < ids.length) return undefined;
+    return { usd: each.reduce((t, e) => t + e.usd, 0), charged: each.reduce((t, e) => t + e.charged, 0),
+             live: each.some((e) => e.live) };
+  };
+  return { one, sum };
 }
+
+/** " · $1.20" for a button, once the price is known. */
+const priced = (e?: ShotEstimate) => (e ? ` · ${e.usd ? usd(e.usd) : "free"}` : "");
+const confirmed = (body: RunCreate, e?: ShotEstimate): RunCreate => (e ? { ...body, confirm_cost_usd: e.charged } : body);
 
 export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
   projectId: string; doc: CinemaDoc; update: Update; takes: Take[]; launch: Launch; busy: boolean;
@@ -127,6 +141,7 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
   const shots = allShots(doc);
   const current = shots.find((x) => x.shot.id === selected);
   const { data: filmModel } = useModel(doc.settings.model_id);
+  const { data: imageModel } = useModel(doc.settings.image_model_id);
   const voices = useCastVoices();
   const multiShot = Boolean(filmModel?.modes.some((m) => m.ops.includes("multi_shot")));
   const assets = new Map<string, Asset>(takes.flatMap((t) => (t.asset ? [[t.asset.id, t.asset as Asset]] : [])));
@@ -134,7 +149,11 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
 
   const spend = useProjectSpend(projectId, busy).data;
   const endFrames = endsOnAFrame(filmModel);
-  const estimate = useShotEstimates(projectId, doc, voices, endFrames);
+  const described = shots.filter((x) => x.shot.action.trim()).map((x) => x.shot.id);
+  // the wording doesn't change a take's price, so typing doesn't ask again (a frame's does: @mentions draw from refs)
+  const filmCost = useByShot(described.length ? takesRun(projectId, doc,
+    takeShots(doc, described, voices, endFrames).map((s) => ({ ...s, prompt: "x" }))) : null);
+  const frameCost = useByShot(described.length ? framesRun(described, "start") : null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [overScene, setOverScene] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -158,7 +177,7 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
   const dragged = dragging ? shots.find((x) => x.shot.id === dragging) : undefined;
   const face = (shot: Shot, n: number): FaceProps => ({
     shot, n, pic: assets.get(shot.take_asset_id ?? "") ?? assets.get(shot.hero_asset_id ?? ""),
-    takes: byShot(shot.id), spent: spend?.shots[shot.id], estimate: estimate(shot.id),
+    takes: byShot(shot.id), spent: spend?.shots[shot.id], estimate: filmCost.one(shot.id),
   });
 
   const patchShot = (id: string, p: Partial<Shot>) => update((d) => ({
@@ -177,23 +196,33 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
   };
 
   const noFrames = shots.filter((x) => x.shot.action.trim() && !x.shot.hero_asset_id && x.shot.continuity === "cut");
-  const unfilmed = shots.filter((x) => x.shot.action.trim() && !x.shot.take_asset_id);
-  const framesFor = (ids: string[], which: "start" | "end" = "start") => launch({ recipe: "cinema_frames", input: {
-    project_id: projectId, image_model_id: doc.settings.image_model_id, aspect_ratio: doc.settings.aspect_ratio,
-    count: doc.settings.hero_frames, which,
-    shots: shots.filter((x) => ids.includes(x.shot.id)).map((x) => ({
-      key: x.shot.id, prompt: x.shot.action.trim(), direction: mergedDirection(doc.settings, x.shot) })) } },
-    which === "end" ? "Closing frames" : "Hero frames");
+  // a shot with finished takes waits for a pick, not for more filming
+  const unfilmed = shots.filter((x) => x.shot.action.trim() && !x.shot.take_asset_id
+    && !byShot(x.shot.id).some((t) => t.output_type === "video" && t.asset));
+  function framesRun(ids: string[], which: "start" | "end"): RunCreate {
+    return { recipe: "cinema_frames", input: {
+      project_id: projectId, image_model_id: doc.settings.image_model_id, aspect_ratio: doc.settings.aspect_ratio,
+      count: doc.settings.hero_frames, which,
+      shots: shots.filter((x) => ids.includes(x.shot.id)).map((x) => ({
+        key: x.shot.id, prompt: x.shot.action.trim(), direction: mergedDirection(doc.settings, x.shot) })) } };
+  }
+  // start and end frames are drawn alike, so one estimate prices both
+  const framesFor = (ids: string[], which: "start" | "end" = "start") =>
+    launch(confirmed(framesRun(ids, which), frameCost.sum(ids)), which === "end" ? "Closing frames" : "Hero frames");
   // a whole scene in one multi-shot call; each shot then gets its piece as a take
   const sceneShots = (scene: Scene) => scene.shots.filter((s) => s.action.trim());
-  const filmScene = (scene: Scene) => launch({ recipe: "cinema_scene", input: {
+  const sceneRun = (scene: Scene): RunCreate => ({ recipe: "cinema_scene", input: {
     project_id: projectId, model_id: doc.settings.model_id, scene_key: scene.id, takes: 1,
     params: { ...doc.settings.model_params, aspect_ratio: doc.settings.aspect_ratio, resolution: doc.settings.resolution },
     start_asset_id: scene.shots[0]?.hero_asset_id ?? null,
     shots: sceneShots(scene).map((s) => ({ key: s.id, prompt: s.action.trim(), duration: s.duration ?? 5,
-                                          direction: withDialogue(mergedDirection(doc.settings, s), s, voices) })) } },
-    "Filming the scene");
-  const filmFor = (ids: string[]) => launch(takesRun(projectId, doc, takeShots(doc, ids, voices, endFrames)), "Filming");
+                                          direction: withDialogue(mergedDirection(doc.settings, s), s, voices) })) } });
+  const filmFor = (ids: string[]) =>
+    launch(confirmed(takesRun(projectId, doc, takeShots(doc, ids, voices, endFrames)), filmCost.sum(ids)), "Filming");
+  const noFramesCost = frameCost.sum(noFrames.map((x) => x.shot.id));
+  const unfilmedCost = filmCost.sum(unfilmed.map((x) => x.shot.id));
+  const models = <ModelsLine image={imageModel?.name} film={filmModel?.name} doc={doc}
+                             live={Boolean(noFramesCost?.live || unfilmedCost?.live)} onChange={() => setSelected(null)} />;
 
   return (
     <div className="grid h-full grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px]">
@@ -201,16 +230,17 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
         <div className="mb-5 flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={() => void framesFor(noFrames.map((x) => x.shot.id))} disabled={!noFrames.length}>
             <ImageIcon className="size-4" aria-hidden />
-            Hero frames for {noFrames.length} shot{noFrames.length === 1 ? "" : "s"}
+            Hero frames for {noFrames.length} shot{noFrames.length === 1 ? "" : "s"}{priced(noFramesCost)}
           </Button>
           <Button size="sm" tone="primary" onClick={() => void filmFor(unfilmed.map((x) => x.shot.id))} disabled={!unfilmed.length}>
             <Film className="size-4" aria-hidden />
-            Film {unfilmed.length} unfilmed shot{unfilmed.length === 1 ? "" : "s"}
+            Film {unfilmed.length} unfilmed shot{unfilmed.length === 1 ? "" : "s"}{priced(unfilmedCost)}
           </Button>
           {busy && <span className="flex items-center gap-1.5 text-2xs text-tungsten"><LoaderCircle className="size-3 animate-spin" aria-hidden />Rendering</span>}
           <Button size="sm" tone="ghost" className="ml-auto" onClick={() => setSelected(null)} aria-pressed={selected === null}>
             Film settings
           </Button>
+          <div className="basis-full">{models}</div>
         </div>
         {doc.scenes.length === 0 && (
           <p className="mb-4 max-w-xl text-sm text-muted">
@@ -225,16 +255,14 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
               <div className="flex flex-wrap items-baseline gap-3">
                 <input value={scene.heading} onChange={(e) => patchScene(scene.id, { heading: e.target.value })}
                        placeholder="INT. / EXT. PLACE - TIME" aria-label="Scene heading"
-                       className="type-title min-w-56 bg-transparent text-base outline-none placeholder:text-faint" />
+                       className="type-title min-w-56 flex-1 bg-transparent text-base outline-none placeholder:text-faint" />
                 <input value={scene.summary} onChange={(e) => patchScene(scene.id, { summary: e.target.value })}
                        placeholder="What this scene is for" aria-label="Scene summary"
-                       className="min-w-0 flex-1 bg-transparent text-xs text-muted outline-none placeholder:text-faint" />
+                       className="min-w-56 flex-[2] bg-transparent text-xs text-muted outline-none placeholder:text-faint" />
                 {multiShot && sceneShots(scene).length >= 2 && (
-                  <Button size="sm" tone="ghost" onClick={() => void filmScene(scene)}
-                          title="Renders the scene's shots in one call, then gives each shot its piece as a take">
-                    <Clapperboard className="size-4" aria-hidden />
-                    Film as one take, {sceneShots(scene).reduce((t, s) => t + (s.duration ?? 5), 0)} s
-                  </Button>
+                  <FilmScene body={sceneRun(scene)} model={filmModel?.name}
+                             seconds={sceneShots(scene).reduce((t, s) => t + (s.duration ?? 5), 0)}
+                             onFilm={(body) => void launch(body, "Filming the scene")} />
                 )}
               </div>
               <SceneShots sceneId={scene.id} ids={scene.shots.map((s) => s.id)} highlight={Boolean(dragging) && overScene === scene.id}>
@@ -269,6 +297,7 @@ export function Storyboard({ projectId, doc, update, takes, launch, busy }: {
                          takes={byShot(current.shot.id)} patch={(p) => patchShot(current.shot.id, p)} update={update}
                          onFrames={(which) => void framesFor([current.shot.id], which)}
                          onFilm={() => void filmFor([current.shot.id])} endFrames={endFrames}
+                         frameCost={frameCost.one(current.shot.id)} filmCost={filmCost.one(current.shot.id)} models={models}
                          onRemoved={() => setSelected(null)} onAdded={setSelected}
                          take={current.shot.take_asset_id ? assets.get(current.shot.take_asset_id) : undefined} />
         ) : (
@@ -287,6 +316,8 @@ function shotStatus(shot: Shot, takes: Take[]): { label: string; tone: string; i
     return { label: "Rendering", tone: "text-tungsten", icon: <LoaderCircle className="size-3 animate-spin" aria-hidden /> };
   }
   if (shot.take_asset_id) return { label: "Filmed", tone: "text-done", icon: <Check className="size-3" aria-hidden /> };
+  const ready = takes.filter((t) => t.output_type === "video" && t.asset).length;
+  if (ready) return { label: `${ready} take${ready === 1 ? "" : "s"}, pick one`, tone: "text-tungsten" };
   if (!shot.action.trim()) return { label: "No description", tone: "text-faint" };
   const newest = takes.find((t) => t.output_type === "video");
   if (newest && newest.status !== "succeeded" && !takes.some((t) => t.output_type === "video" && t.asset)) {
@@ -351,6 +382,9 @@ function SortableShot({ selected, onSelect, ...face }: FaceProps & { selected: b
       <button type="button" onClick={onSelect} onPointerDown={onPointerDown} aria-pressed={selected} className="block w-full">
         <ShotFace {...face} selected={selected} />
       </button>
+      {face.pic?.kind === "image" && (
+        <ZoomButton src={mediaUrl(face.pic.url)} title={`Shot ${String(face.n).padStart(2, "0")}`} className="top-7" />
+      )}
       <button type="button" ref={setActivatorNodeRef} {...attributes} {...listeners}
               aria-label={`Move shot ${String(face.n).padStart(2, "0")}`}
               className="absolute bottom-[3.6rem] right-1.5 grid size-6 cursor-grab place-items-center rounded-full bg-black/60 text-chalk opacity-0 focus-visible:opacity-100 group-hover:opacity-100 active:cursor-grabbing">
@@ -452,11 +486,43 @@ function SplitPanel({ shot, take, durations, onSplit, onCancel }: {
   );
 }
 
+/** Which models the storyboard's buttons use and how many each makes, with a way to the settings that change them. */
+function ModelsLine({ image, film, doc, live, onChange }: {
+  image?: string; film?: string; doc: CinemaDoc; live: boolean; onChange: () => void;
+}) {
+  const takes = doc.settings.takes_per_shot;
+  return (
+    <p className="text-2xs text-faint">
+      Frames: {image ?? doc.settings.image_model_id}, {doc.settings.hero_frames} a shot. Takes: {film ?? doc.settings.model_id},{" "}
+      {takes} {takes === 1 ? "take" : "takes"} a shot.{live && " Prices are for live routes; mock ones are free."}{" "}
+      <button type="button" onClick={onChange} className="text-muted underline-offset-2 hover:text-chalk hover:underline">
+        Change in Film settings
+      </button>
+    </p>
+  );
+}
+
+/** A scene's shots in one multi-shot call, priced before it starts. */
+function FilmScene({ body, model, seconds, onFilm }: {
+  body: RunCreate; model?: string; seconds: number; onFilm: (body: RunCreate) => void;
+}) {
+  const quote = useRunQuote(body);
+  return (
+    <Button size="sm" tone="ghost" onClick={() => onFilm({ ...body, confirm_cost_usd: quote.charged })}
+            title={`Renders the scene's shots in one call on ${model ?? "the film's model"}, then gives each shot its piece `
+              + `as a take. ${quoteText(quote, ["take", "takes"])}.`}>
+      <Clapperboard className="size-4" aria-hidden />
+      Film as one take, {seconds} s{quotePrice(quote) && ` · ${quotePrice(quote)}`}
+    </Button>
+  );
+}
+
 function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, patch, update, onFrames, onFilm, onRemoved,
-                        onAdded, take, endFrames }: {
+                        onAdded, take, endFrames, frameCost, filmCost, models }: {
   projectId: string; launch: Launch; doc: CinemaDoc; number: number; scene: Scene; shot: Shot; takes: Take[];
   patch: (p: Partial<Shot>) => void; update: Update; onFrames: (which: "start" | "end") => void; onFilm: () => void;
   onRemoved: () => void; onAdded: (id: string) => void; take?: Asset; endFrames: boolean;
+  frameCost?: ShotEstimate; filmCost?: ShotEstimate; models: ReactNode;
 }) {
   const [splitting, setSplitting] = useState(false);
   const { data: model } = useModel(doc.settings.model_id);
@@ -526,6 +592,7 @@ function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, pat
                      render={(v) => (v === "cut" ? "On a cut" : "From last")} onChange={(v) => patch({ continuity: v })} />
         </Field>
       </div>
+      {models}
       <DialogueEditor shot={shot} cast={[...new Set([...mentionSlugs(shot.action), ...doc.cast])]}
                       onChange={(lines) => patch({ lines })} />
       <DirectorPanel direction={shot.direction} onChange={(d) => patch({ direction: d })} stills={false}
@@ -537,7 +604,7 @@ function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, pat
             <h3 className="text-xs text-muted">Opening frame</h3>
             <Button size="sm" onClick={() => onFrames("start")} disabled={!shot.action.trim()}>
               <ImageIcon className="size-4" aria-hidden />
-              Make {doc.settings.hero_frames}
+              Make {doc.settings.hero_frames}{priced(frameCost)}
             </Button>
           </div>
           <TakeGrid takes={frames} picked={shot.hero_asset_id} columns={columns} alt="Opening frame option"
@@ -550,7 +617,7 @@ function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, pat
           <h3 className="text-xs text-muted">Closing frame</h3>
           <Button size="sm" onClick={() => onFrames("end")} disabled={!shot.action.trim() || !endFrames}>
             <ImageIcon className="size-4" aria-hidden />
-            Make {doc.settings.hero_frames}
+            Make {doc.settings.hero_frames}{priced(frameCost)}
           </Button>
         </div>
         {!endFrames ? (
@@ -570,7 +637,7 @@ function ShotInspector({ projectId, launch, doc, number, scene, shot, takes, pat
           <h3 className="text-xs text-muted">Takes</h3>
           <Button size="sm" tone="primary" onClick={onFilm} disabled={!canFilm}>
             <Film className="size-4" aria-hidden />
-            Film {doc.settings.takes_per_shot}
+            Film {doc.settings.takes_per_shot}{priced(filmCost)}
           </Button>
         </div>
         <p className="text-2xs text-faint">
@@ -649,42 +716,83 @@ function TakeGrid({ takes, picked, onPick, empty, video, columns = 2, alt = "Ope
   takes: Take[]; picked: string | null; onPick: (assetId: string) => void; empty: string; video?: boolean;
   columns?: 2 | 3; alt?: string;
 }) {
+  const selection = useSelection();
+  const [confirming, setConfirming] = useState(false);
+  const removal = useRemove();
   if (!takes.length) return <p className="text-2xs text-faint">{empty}</p>;
   const number = new Map(takes.flatMap((t, i) => (t.asset ? [[t.asset.id, takes.length - i]] : [])));
+  const noun: [string, string] = video ? ["take", "takes"] : ["frame", "frames"];
+  // a file, or a take that made none (failed); the one in the cut stays until it's unpicked
+  const key = (t: Take) => t.asset?.id ?? t.generation_id;
+  const selectable = takes.filter((t) => key(t) && !isActive(t.status) && t.asset?.id !== picked);
+  const chosen = selectable.filter((t) => selection.picked.has(key(t)!));
+
+  function removeChosen() {
+    removal.mutate({ assets: chosen.flatMap((t) => (t.asset ? [t.asset.id] : [])),
+                     generations: chosen.flatMap((t) => (t.asset ? [] : [t.generation_id!])) }, {
+      onSuccess: (r) => {
+        setConfirming(false);
+        selection.stop();
+        reportRemoval(r, noun);
+      },
+    });
+  }
+
   return (
-    <ul className={cn("grid gap-2", columns === 3 ? "grid-cols-3" : "grid-cols-2")}>
-      {takes.map((t, i) => (
-        <li key={`${t.generation_id ?? "derived"}-${t.asset?.id ?? i}`} className="flex flex-col gap-1">
-          {t.asset ? (
-            video ? (
-              <video src={mediaUrl(t.asset.proxy_url ?? t.asset.url)} poster={mediaUrl(t.asset.poster_url)} controls muted playsInline
-                     preload="metadata" className={cn("aspect-video w-full rounded-[var(--radius-frame)] bg-black object-cover",
-                                                       picked === t.asset.id && "ring-2 ring-tungsten")} />
-            ) : (
-              <button type="button" onClick={() => onPick(t.asset!.id)} aria-pressed={picked === t.asset.id}
-                      className={cn("overflow-hidden rounded-[var(--radius-frame)]", picked === t.asset.id && "ring-2 ring-tungsten")}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={mediaUrl(t.asset.thumb_url ?? t.asset.url)} alt={alt} className="aspect-video w-full object-cover" />
-              </button>
-            )
-          ) : (
-            <span className="grid aspect-video w-full place-items-center rounded-[var(--radius-frame)] bg-bay text-2xs text-faint">
-              {isActive(t.status) ? <LoaderCircle className="size-4 animate-spin text-tungsten" aria-label="Rendering" /> : (t.error ?? t.status)}
-            </span>
-          )}
-          {video && (
-            <span className="truncate text-2xs text-faint" title={t.prompt}>
-              Take {takes.length - i}{madeBy(t, number)}
-            </span>
-          )}
-          {video && t.asset && (
-            <Button size="sm" tone={picked === t.asset.id ? "primary" : "quiet"} onClick={() => onPick(t.asset!.id)}>
-              {picked === t.asset.id ? "In the cut" : "Use this take"}
-            </Button>
-          )}
-        </li>
+    <div className="flex flex-col gap-2">
+      {selectable.length > 0 && (selection.selecting ? (
+        <SelectionBar count={chosen.length} selectable={selectable.length} onAll={() => selection.set(selectable.map((t) => key(t)!))}
+                      onNone={() => selection.set([])} onDelete={() => setConfirming(true)} onDone={selection.stop} />
+      ) : (
+        <div className="flex justify-end"><SelectButton onClick={selection.start} /></div>
       ))}
-    </ul>
+      <ul className={cn("grid gap-2", columns === 3 ? "grid-cols-3" : "grid-cols-2")}>
+        {takes.map((t, i) => (
+          <li key={`${t.generation_id ?? "derived"}-${t.asset?.id ?? i}`} className="relative flex flex-col gap-1">
+            {selection.selecting && selectable.includes(t) && (
+              <button type="button" onClick={() => selection.toggle(key(t)!)} aria-pressed={selection.picked.has(key(t)!)}
+                      aria-label={`Select ${noun[0]} ${takes.length - i}`} className="absolute left-1.5 top-1.5 z-10">
+                <SelectMark selected={selection.picked.has(key(t)!)} />
+              </button>
+            )}
+            {t.asset ? (
+              video ? (
+                <video src={mediaUrl(t.asset.proxy_url ?? t.asset.url)} poster={mediaUrl(t.asset.poster_url)} controls muted playsInline
+                       preload="metadata" className={cn("aspect-video w-full rounded-[var(--radius-frame)] bg-black object-cover",
+                                                         picked === t.asset.id && "ring-2 ring-tungsten")} />
+              ) : (
+                <div className="group relative">
+                  <button type="button" onClick={() => onPick(t.asset!.id)} aria-pressed={picked === t.asset.id}
+                          className={cn("block w-full overflow-hidden rounded-[var(--radius-frame)]", picked === t.asset.id && "ring-2 ring-tungsten")}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={mediaUrl(t.asset.thumb_url ?? t.asset.url)} alt={alt} className="aspect-video w-full object-cover" />
+                  </button>
+                  <ZoomButton src={mediaUrl(t.asset.url)} title={alt} />
+                </div>
+              )
+            ) : (
+              <span className="grid aspect-video w-full place-items-center rounded-[var(--radius-frame)] bg-bay text-2xs text-faint">
+                {isActive(t.status) ? <LoaderCircle className="size-4 animate-spin text-tungsten" aria-label="Rendering" /> : (t.error ?? t.status)}
+              </span>
+            )}
+            {video && (
+              <span className="truncate text-2xs text-faint" title={t.prompt}>
+                Take {takes.length - i}{madeBy(t, number)}
+              </span>
+            )}
+            {video && t.asset && (
+              <Button size="sm" tone={picked === t.asset.id ? "primary" : "quiet"} onClick={() => onPick(t.asset!.id)}>
+                {picked === t.asset.id ? "In the cut" : "Use this take"}
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <ConfirmDelete open={confirming} count={chosen.length} noun={noun} pending={removal.isPending} onConfirm={removeChosen}
+                     onClose={() => setConfirming(false)}>
+        They&apos;re deleted from disk; this can&apos;t be undone. Anything another shot or a character uses is kept.
+      </ConfirmDelete>
+    </div>
   );
 }
 

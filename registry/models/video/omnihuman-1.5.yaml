@@ -31,7 +31,7 @@ modes:
     medias:
       - {role: character_image, kinds: [image], label: Picture, required: true}
       - {role: input_audio, kinds: [audio], label: Speech, required: true, max_duration_s: 60}
-      - {role: mask, kinds: [mask], label: Who speaks (optional)}
+      - {role: mask, kinds: [mask], label: Who speaks}
 
 routes:
   - id: omnihuman-1.5@fal

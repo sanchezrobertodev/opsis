@@ -67,10 +67,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="AI Media Studio API",
+    title="Opsis API",
     version="0.1.0",
     lifespan=lifespan,
-    description="Personal AI video studio: model registry, generations, assets and live events.",
+    description="Self-hosted AI video studio: model registry, generations, assets and live events.",
 )
 MAX_BODY_BYTES = MAX_UPLOAD_BYTES + (16 << 20)  # the largest upload plus the form around it
 _web = get_settings().web_origin

@@ -35,7 +35,7 @@ modes:
     ops: [i2v, flf2v]
     medias:
       - {role: start_image, kinds: [image], label: Start frame, required: true}
-      - {role: end_image, kinds: [image], label: End frame (optional)}
+      - {role: end_image, kinds: [image], label: End frame}
   - id: multi_shot
     label: Multi-shot
     ops: [multi_shot]
@@ -58,7 +58,7 @@ modes:
     ops: [instruction_edit, restyle, relight, object_replace]
     medias:
       - {role: input_video, kinds: [video], label: Clip to edit, required: true, max_duration_s: 30, max_mb: 200}
-      - {role: image_references, kinds: [image], label: Reference images (optional), max: 9}
+      - {role: image_references, kinds: [image], label: Reference images, max: 9}
   - id: extend
     label: Extend
     ops: [extend]
@@ -153,11 +153,14 @@ routes:
       basis: formula
       # Nominal area, with 12% reservation headroom. Pika's free quote currently reserves ~10% above
       # nominal output cost. Reject quotes above this ceiling; reconcile to settled micro-USD, not tokens.
+      # The quote holds any input clip as 30 s (the longest Pika takes), whatever its length, and an edit's
+      # output as 30 s more: 720p extend of a 5 s clip quotes $5.59, an edit $9.58. The run settles on the
+      # real seconds, but the price must cover the quote or the job is refused before it starts.
       formula: >-
         ceil((10044 if resolution == '480p' else 21600) * 1.12 *
-        (input_video_seconds * 2 if mode == 'video_edit' else duration + input_video_seconds))
+        (60 if mode == 'video_edit' else duration + (30 if input_video_seconds > 0 else 0)))
         * (6.72 if input_video_seconds > 0 else 11.235) / 1000000
-      verified: 2026-10-25
+      verified: 2026-10-30
       source: https://dev.pika.art/models/bytedance/seedance-2.5/reference-to-video/pricing
     output: {path: output.video, kind: video}
     notes: >-

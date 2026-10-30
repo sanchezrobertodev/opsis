@@ -93,6 +93,7 @@ export function SceneEditor({ id }: { id: string }) {
     function onKey(e: KeyboardEvent) {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
+      if (document.querySelector("dialog:modal")) return; // a dialog on top (a picture, a form) has the keys, not the scene
       const ctrl = e.ctrlKey || e.metaKey;
       const sel = useScene.getState().selected;
       if (ctrl && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
@@ -142,7 +143,7 @@ export function SceneEditor({ id }: { id: string }) {
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-3 border-b border-line-soft px-5 py-2.5">
         <input value={title ?? project.title} onChange={(e) => setTitle(e.target.value)} aria-label="Scene title"
-               className="type-title min-w-0 flex-1 bg-transparent text-lg outline-none" />
+               className="type-title min-w-64 flex-1 bg-transparent text-lg outline-none" />
         <span className={cn("tabular text-2xs", dirty ? "text-tungsten" : "text-faint")} aria-live="polite">{status}</span>
         <Button size="sm" tone="ghost" aria-label="Undo" onClick={undo} disabled={!canUndo}><Undo2 className="size-4" aria-hidden /></Button>
         <Button size="sm" tone="ghost" aria-label="Redo" onClick={redo} disabled={!canRedo}><Redo2 className="size-4" aria-hidden /></Button>
