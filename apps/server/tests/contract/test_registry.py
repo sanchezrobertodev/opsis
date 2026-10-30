@@ -51,7 +51,9 @@ def test_examples_normalize_price_and_map(spec, example):
         low, high = example.expect.get("cost_usd_range", [0, 1e9])
         violates = [k for k, v in route.constraints.items() if not k.startswith("media.")
                     and "options" in v and req.params.get(k) not in v["options"]]
-        if not violates:
+        if REG.providers[route.provider].kind == "local":
+            assert usd == 0, f"{route.id}: a local route is free, not ${usd}"  # the range prices the paid routes
+        elif not violates:
             assert low <= usd <= high, f"{route.id}: ${usd} outside {low}-{high}"
         staged = {m.role: f"https://example.test/{m.asset_id}" for m in req.media}
         endpoint, payload, _ = build_payload(spec, route, req, staged)

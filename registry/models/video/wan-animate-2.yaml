@@ -28,7 +28,8 @@ modes:
       - {role: driving_video, kinds: [video], label: Movement to copy, required: true, max_duration_s: 5}
 
 routes:
-  - id: wan-animate-2@wan_core
+  - &wan_core
+    id: wan-animate-2@wan_core
     provider: runpod_wan_core
     modes:
       move: {endpoint: runpod_wan_animate2}
@@ -54,6 +55,16 @@ routes:
     output: {path: output.outputs, kind: video}
     # Wan works at 16 fps: clips are re-timed to it, so its 81 frames cover up to 5 s of them
     media_fps: {driving_video: 16}
+
+  # The same graph on your own ComfyUI, free and picked first once it has the model files and enough GPU
+  # memory. The memory floor and the run time (twice the RTX PRO 6000's) are estimates, not measured.
+  - <<: *wan_core
+    id: wan-animate-2@comfy_local
+    provider: comfy_local
+    min_vram_gb: 24
+    pricing: {basis: per_request, rates: [{usd: 0}], verified: 2026-10-30, source: your own GPU}
+    eta: "2 * (30 if quality == '480p' else 90)"
+    output: {path: outputs, kind: video}
 
 examples:
   - name: move_smoke

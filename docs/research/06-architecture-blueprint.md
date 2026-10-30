@@ -254,7 +254,7 @@ params, so failover never changes quality.
 - CI runs `pnpm gen && git diff --exit-code`.
 
 **Bootstrap:**
-- `scripts/import_catalog.py` drafts YAML from fal OpenAPI and the Higgsfield catalog export.
+- New model YAML is written by hand, starting from a similar model (an `import_catalog.py` that drafts it from fal's OpenAPI was planned, not built).
 - `scripts/fetch_provider_schemas.py` snapshots provider input schemas for contract tests and a weekly drift diff.
 
 ## Provider adapters
@@ -575,7 +575,7 @@ and action first, then camera, look, audio, extras).
   updates route health.
 - **Drift:** weekly `fetch_provider_schemas.py --diff`.
 - **Adding a model:**
-  1. Run `import_catalog.py`.
+  1. Copy a similar model's YAML.
   2. Edit the YAML.
   3. Run `pytest tests/contract -k <id>`.
   4. Run `smoke_live --routes <route> --cap 0.5`.

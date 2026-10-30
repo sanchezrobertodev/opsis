@@ -11,6 +11,10 @@
 # repo is gated: accept the license at huggingface.co/Lightricks/LTX-2.5 and pass HF_TOKEN to the fetcher. License:
 # LTX-2.x Community License (free, commercial use under $10M yearly revenue). The Wan 2.2 text-to-video group (31 GB)
 # was dropped the same day; LTX-2.5 replaced it.
+# Your own ComfyUI runs these graphs too (fetch_models.py --local). `local_only` entries are never fetched onto the
+# volume: the two models only the local engine runs (wan5b, flux-klein; sizes checked 2026-10-30) and wan-shared, the
+# Wan text encoder, VAE and clip vision on their own, so a PC fetching VACE or Animate-2 skips core's 14B experts. A file
+# several groups need is listed once per group; the fetcher fetches it once.
 files:
   - {group: core, folder: diffusion_models, name: wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors, bytes: 14294742832,
      url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"}
@@ -52,3 +56,27 @@ files:
      url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-audio-vae-bf16.safetensors"}
   - {group: ltx, folder: latent_upscale_models, name: ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors, bytes: 995778752,
      url: "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"}
+  - {group: camera, local_only: true, folder: loras, name: wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors, bytes: 1226977424,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"}
+  - {group: camera, local_only: true, folder: loras, name: wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors, bytes: 1226977424,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"}
+  - {group: wan-shared, local_only: true, folder: text_encoders, name: umt5_xxl_fp8_e4m3fn_scaled.safetensors, bytes: 6735906897,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"}
+  - {group: wan-shared, local_only: true, folder: vae, name: wan_2.1_vae.safetensors, bytes: 253815318,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"}
+  - {group: wan-shared, local_only: true, folder: clip_vision, name: clip_vision_h.safetensors, bytes: 1264219396,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"}
+  - {group: wan5b, local_only: true, folder: diffusion_models, name: wan2.2_ti2v_5B_fp16.safetensors, bytes: 9999658848,
+     url: "https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"}
+  - {group: wan5b, local_only: true, folder: vae, name: wan2.2_vae.safetensors, bytes: 1409400960,
+     url: "https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/vae/wan2.2_vae.safetensors"}
+  - {group: wan5b, local_only: true, folder: text_encoders, name: umt5_xxl_fp8_e4m3fn_scaled.safetensors, bytes: 6735906897,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"}
+  - {group: flux-klein, local_only: true, folder: diffusion_models, name: flux-2-klein-base-4b-fp8.safetensors, bytes: 4089498488,
+     url: "https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8/resolve/main/flux-2-klein-base-4b-fp8.safetensors"}
+  - {group: flux-klein, local_only: true, folder: text_encoders, name: qwen_3_4b.safetensors, bytes: 8044982048,
+     url: "https://huggingface.co/Comfy-Org/Flux-2-Klein-4B/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors"}
+  - {group: flux-klein, local_only: true, folder: vae, name: flux2-vae.safetensors, bytes: 336213556,
+     url: "https://huggingface.co/Comfy-Org/Flux-2-Dev/resolve/main/split_files/vae/flux2-vae.safetensors"}
+  - {group: flux-klein, local_only: true, folder: upscale_models, name: 4x_NMKD-Siax_200k.pth, bytes: 66957746,
+     url: "https://huggingface.co/uwg/upscaler/resolve/main/ESRGAN/4x_NMKD-Siax_200k.pth"}

@@ -101,6 +101,11 @@ class ProviderAdapter(ABC):
         tracking and the circuit breaker handle outages)."""
         return True
 
+    async def unavailable(self, route: Route, mode: str) -> str | None:
+        """For local engines that are up: why this route's mode can't run here (too little GPU memory, missing model
+        files), or None when it can."""
+        return None
+
     def classify(self, exc: BaseException) -> ErrorClass:
         if isinstance(exc, ProviderError):
             return exc.error_class

@@ -33,7 +33,8 @@ modes:
       - {role: start_image, kinds: [image], label: Start frame, required: true}
 
 routes:
-  - id: wan-2.2-14b-fast@wan_core
+  - &wan_core
+    id: wan-2.2-14b-fast@wan_core
     provider: runpod_wan_core
     modes:
       i2v: {endpoint: runpod_wan22_i2v}
@@ -58,6 +59,16 @@ routes:
     eta: "(10 + 4 * duration) if quality == '480p' else (20 + 12 * duration)"
     timeout_s: 3600
     output: {path: output.outputs, kind: video}
+
+  # The same graph on your own ComfyUI, free and picked first once it has the model files and enough GPU
+  # memory. The memory floor and the run time (twice the RTX PRO 6000's) are estimates, not measured.
+  - <<: *wan_core
+    id: wan-2.2-14b-fast@comfy_local
+    provider: comfy_local
+    min_vram_gb: 16
+    pricing: {basis: per_request, rates: [{usd: 0}], verified: 2026-10-30, source: your own GPU}
+    eta: "2 * ((10 + 4 * duration) if quality == '480p' else (20 + 12 * duration))"
+    output: {path: outputs, kind: video}
 
 examples:
   - name: i2v_480p_smoke

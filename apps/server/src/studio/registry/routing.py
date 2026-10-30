@@ -43,6 +43,8 @@ class RoutingEnv:
     has_adapter: Callable[[str], bool]  # adapter key -> implemented?
     health: dict[str, RouteHealth] = field(default_factory=dict)
     reachable: Callable[[str], bool] = lambda _provider: True  # local engines: is the server up?
+    # local engines that are up: why one can't run this route's mode (missing model files, too little GPU memory)
+    blocked: Callable[[Route, str], str | None] = lambda _route, _mode: None
     setting_set: Callable[[str], bool] = lambda _name: True  # is this Settings field filled in?
     now: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -95,13 +97,13 @@ def _constraint_violation(route: Route, req: NormalizedRequest) -> str | None:
 
 
 def _mode_gate(
-    route: Route, kind: str | None, env: RoutingEnv, model_has_allowlisted: bool, local_configured: bool
+    route: Route, kind: str | None, env: RoutingEnv, model_has_allowlisted: bool, local_first: bool
 ) -> str | None:
     is_mock = route.provider == MOCK_PROVIDER
     if kind == "local":
         return None  # free and offline: allowed in every provider mode
-    if is_mock and local_configured:
-        # A real local engine exists for this model; never swap its output for a test pattern.
+    if is_mock and local_first:
+        # A real local engine runs this model; never swap its output for a test pattern.
         return "this model runs on the local engine"
     if env.provider_mode == "mock":
         return None if is_mock else "PROVIDER_MODE=mock (live routes disabled)"
@@ -113,6 +115,27 @@ def _mode_gate(
     return None if is_mock else "not in LIVE_ROUTE_ALLOWLIST"
 
 
+def _local_ready(reg: Registry, r: Route, mode: str, env: RoutingEnv) -> bool:
+    """A local route for this mode whose engine is set up (not necessarily running)."""
+    p = reg.providers.get(r.provider)
+    return bool(
+        p and p.kind == "local" and r.enabled and mode in r.modes and env.has_adapter(p.adapter)
+        and (not p.key_setting or env.has_key(r.provider))
+    )
+
+
+def local_only(reg: Registry, spec: ModelSpec) -> bool:
+    """Every real route runs on a local engine (Wan 2.2 5B, FLUX.2 klein 4B): there's nowhere else to run it."""
+    kinds = [p.kind for r in spec.routes if r.provider != MOCK_PROVIDER and (p := reg.providers.get(r.provider))]
+    return bool(kinds) and all(k == "local" for k in kinds)
+
+
+def runs_locally(reg: Registry, spec: ModelSpec, mode: str, env: RoutingEnv) -> bool:
+    """A local engine is set up, running, and able to run this mode here (its model files, enough GPU memory)."""
+    return any(_local_ready(reg, r, mode, env) and env.reachable(r.provider) and env.blocked(r, mode) is None
+               for r in spec.routes)
+
+
 def candidates(
     reg: Registry,
     spec: ModelSpec,
@@ -122,15 +145,11 @@ def candidates(
 ) -> list[Candidate]:
     """Every route for the model with eligibility, reason and estimate. Eligible ones first, in order."""
     model_has_allowlisted = any(r.id in env.live_allowlist for r in spec.routes)
-
-    def local_ready(r: Route) -> bool:
-        p = reg.providers.get(r.provider)
-        return bool(
-            p and p.kind == "local" and r.enabled and req.mode in r.modes and env.has_adapter(p.adapter)
-            and (not p.key_setting or env.has_key(r.provider))
-        )
-
-    local_configured = any(local_ready(r) for r in spec.routes)
+    # The mock gives way to a local engine that can run this, and to a set-up one for a model that runs nowhere else
+    # (so an engine that's off says so instead of drawing test patterns). A model that also runs on RunPod or a hosted
+    # API keeps its mock while the local engine can't run it.
+    local_first = runs_locally(reg, spec, req.mode, env) or (
+        any(_local_ready(reg, r, req.mode, env) for r in spec.routes) and local_only(reg, spec))
     out: list[Candidate] = []
     for route in spec.routes:
         est: CostEstimate | None = None
@@ -151,7 +170,7 @@ def candidates(
             reason = f"unknown provider {route.provider}"
         kind = provider.kind if provider else None
         if reason is None:
-            reason = _mode_gate(route, kind, env, model_has_allowlisted, local_configured)
+            reason = _mode_gate(route, kind, env, model_has_allowlisted, local_first)
         if reason is None and provider and not env.has_adapter(provider.adapter):
             reason = f"{provider.name} adapter not implemented yet"
         if reason is None and provider and provider.key_setting and not env.has_key(route.provider):
@@ -163,6 +182,8 @@ def candidates(
                           f"{provider.hosting_setting.upper()} so they can be hosted")
         if reason is None and kind == "local" and not env.reachable(route.provider):
             reason = f"{provider.name} isn't running. Start it, then try again."
+        if reason is None and kind == "local":
+            reason = env.blocked(route, req.mode)
         if reason is None:
             health = env.health.get(route.id)
             if health and health.breaker_open(env.now):
@@ -200,6 +221,8 @@ def candidates(
 
 def cheapest_live_estimate(cands: list[Candidate]) -> Candidate | None:
     """What this would cost on the cheapest real route, regardless of keys/adapters. Shown next to mock runs."""
-    # estimate is None when the route lacks the requested mode, so this keeps only comparable routes
-    live = [c for c in cands if c.route.provider != MOCK_PROVIDER and c.estimate is not None and c.route.enabled]
+    # estimate is None when the route lacks the requested mode, so this keeps only comparable routes; a free local
+    # route that can't run here (no model files) isn't a price this machine would pay
+    live = [c for c in cands if c.route.provider != MOCK_PROVIDER and c.estimate is not None and c.route.enabled
+            and (c.provider_kind != "local" or c.eligible)]
     return min(live, key=lambda c: c.estimate.usd) if live else None

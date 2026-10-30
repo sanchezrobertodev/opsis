@@ -21,7 +21,7 @@ from studio.domain import fsm
 from studio.domain.enums import AssetStatus, AttemptStatus, GenStatus
 from studio.domain.health import load_health
 from studio.providers.factory import adapter_implemented
-from studio.providers.local_status import local_reachability
+from studio.providers.local_status import local_state
 from studio.registry.loader import Registry, get_registry
 from studio.registry.routing import Candidate, RoutingEnv, candidates, cheapest_live_estimate
 from studio.registry.schema import Mode, ModelSpec, ShotsParam
@@ -107,7 +107,7 @@ async def routing_env(session: AsyncSession, reg: Registry, user_id: uuid.UUID |
         provider = reg.providers.get(provider_id)
         return bool(provider and provider.key_setting and provider.configured(settings))
 
-    reach = await local_reachability(reg)
+    reach, blocked = await local_state(reg)
     return RoutingEnv(
         provider_mode=mode,
         live_allowlist=settings.live_routes,
@@ -115,6 +115,7 @@ async def routing_env(session: AsyncSession, reg: Registry, user_id: uuid.UUID |
         has_adapter=adapter_implemented,
         health=await load_health(session),
         reachable=lambda provider_id: reach.get(provider_id, True),
+        blocked=lambda route, route_mode: blocked.get((route.id, route_mode)),
         setting_set=lambda name: bool(getattr(settings, name, "")),
     )
 

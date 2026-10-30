@@ -68,7 +68,7 @@ Across every studio:
   Create form shows whether the provider's balance covers it. Every charge is recorded and, where the provider
   reports its bill, corrected to match.
 - **Mock first.** By default every hosted and RunPod model answers with a labelled test clip, so the app works
-  without a GPU or keys. The two local models run for real once ComfyUI is up.
+  without a GPU or keys. Local models run for real once ComfyUI is up and has their files.
 - **Characters stay themselves.** A saved character's pictures attach to any prompt that mentions them; models that
   take a LoRA load their trained identity instead.
 - **Models are data.** Each model is one YAML file in [`registry/`](registry/): its modes, parameters, prices and
@@ -122,7 +122,8 @@ Local routes are free, work offline and run in every mode, mock included. You ne
 [ComfyUI](https://github.com/comfyanonymous/ComfyUI) 0.34 (portable or manual install) and an NVIDIA GPU with 12 GB of
 VRAM or more. The workflows use only built-in nodes, so no custom nodes are needed.
 
-1. Download the model files below into ComfyUI's `models/` folder.
+1. Download the model files below into ComfyUI's `models/` folder, or let the downloader do it:
+   `uv run python infra/runpod/wan-core/fetch_models.py --local --dest <ComfyUI>/models --group wan5b --group flux-klein`.
 2. Start ComfyUI on its default port. `.env` already points there: `COMFYUI_URL=http://127.0.0.1:8188`.
 3. Restart `pnpm dev`, then pick **Wan 2.2 5B (local)** in Create video or **FLUX.2 klein 4B (local)** in Create
    image.
@@ -152,6 +153,34 @@ Sample prompt: *A small red sailboat drifts on a calm alpine lake at sunrise, ge
 shows on the form and the job card, and a queued or running job can be canceled from its card. To see what runs,
 read [`workflows/comfy/wan22_ti2v_5b.json`](workflows/comfy/wan22_ti2v_5b.json) and its
 [`.map.yaml`](workflows/comfy/wan22_ti2v_5b.map.yaml).
+
+### Bigger open models on a bigger GPU
+
+The graphs the RunPod endpoint below runs also run on your own ComfyUI. Once ComfyUI has a model's files and the GPU
+has enough memory, Opsis runs that model there for free, ahead of RunPod or a hosted API. Until then the model runs
+where it did before, and its route explains why: the GPU memory it needs, or the files ComfyUI is missing and the
+download groups that fetch them.
+
+| Model | Download groups | GPU memory |
+|---|---|---|
+| LTX-2.5: text, a picture, or first and last frame to video, with sound | `ltx` | 24 GB |
+| Wan 2.2 14B Fast: a picture to video | `core` | 16 GB |
+| Fun Camera: camera moves from a picture | `camera`, `wan-shared` | 16 GB |
+| Wan-Move: motion paths drawn on a picture | `move`, `wan-shared` | 16 GB |
+| Uni3C: the camera of a reference clip | `core`, `uni3c` | 16 GB |
+| Wan Animate-2: motion transfer | `animate2`, `wan-shared` | 24 GB |
+| Wan VACE: masked edits (Object swap) | `vace`, `wan-shared` | 24 GB |
+
+```bash
+uv run python infra/runpod/wan-core/fetch_models.py --local --dest <ComfyUI>/models --group ltx
+```
+
+Run it with `--local` and no group to list every group's size (they are 2 to 40 GB). LTX-2.5's files are gated: accept
+the license at [huggingface.co/Lightricks/LTX-2.5](https://huggingface.co/Lightricks/LTX-2.5) and set `HF_TOKEN` first.
+ComfyUI notices new files within a minute. The memory figures and run times are estimates: these graphs were tuned on
+RunPod's 96 GB card and haven't been measured on a consumer one. Weights larger than the card are streamed from system
+RAM, which is slower, so 64 GB of RAM helps. LTX-2.5 and Animate-2 use int8 files made for the comfy-kitchen kernels
+that ComfyUI 0.34's CUDA 13 build (the portable download) turns on.
 
 ### Larger open models on your RunPod
 
@@ -200,7 +229,7 @@ the API and worker mount the host's `~/.codex`; point `CODEX_BIN` at
 | Symptom | Fix |
 |---|---|
 | "Local ComfyUI isn't running" | ComfyUI isn't reachable at `COMFYUI_URL`. Start it, or check the port. |
-| A local job fails with a missing model | A file is missing or in the wrong folder. Compare with the tables above. |
+| "ComfyUI is missing ..." on a model | Run `fetch_models.py --local` with the groups it names and `--dest` set to ComfyUI's `models` folder. |
 | Out of memory on a local job | Use Draft quality or close other GPU apps. One local job runs at a time. |
 | The API won't start on Windows | Run it as `python -m studio.api` (what `pnpm dev` does), not bare uvicorn. |
 

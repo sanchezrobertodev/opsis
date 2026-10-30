@@ -1,4 +1,5 @@
-"""Is a local engine (ComfyUI) up? Cached briefly so routing can ask on every request."""
+"""Is a local engine (ComfyUI) up, and can it run each local route? Cached briefly so routing can ask on every
+request."""
 
 from __future__ import annotations
 
@@ -45,3 +46,26 @@ async def local_reachability(reg: Registry) -> dict[str, bool]:
             continue
         out[provider.id] = await get_adapter(provider.adapter).reachable()
     return out
+
+
+async def local_blockers(reg: Registry, reach: dict[str, bool]) -> dict[tuple[str, str], str]:
+    """(route id, mode) -> why a running local engine can't run it (too little GPU memory, missing model files)."""
+    from studio.providers.factory import get_adapter
+
+    out: dict[tuple[str, str], str] = {}
+    for spec in reg.models.values():
+        for route in spec.routes:
+            provider = reg.providers.get(route.provider)
+            if provider is None or not reach.get(provider.id) or not route.enabled:
+                continue
+            adapter = get_adapter(provider.adapter)
+            for mode in route.modes:
+                if why := await adapter.unavailable(route, mode):
+                    out[(route.id, mode)] = why
+    return out
+
+
+async def local_state(reg: Registry) -> tuple[dict[str, bool], dict[tuple[str, str], str]]:
+    """Which local engines are up, and which of their routes they can't run: what routing needs about them."""
+    reach = await local_reachability(reg)
+    return reach, await local_blockers(reg, reach)
