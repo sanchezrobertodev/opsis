@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/opsis-mark-dark.png">
-    <img src="docs/assets/opsis-mark.png" width="96" alt="Opsis logo">
-  </picture>
+  <img src="docs/assets/opsis-mark.png" width="96" alt="Opsis logo">
 </p>
 
 <h1 align="center">Opsis</h1>
