@@ -25,8 +25,10 @@ own API keys.
 
 Media
 -----
-The test fixtures in fixtures/ are synthetic test patterns made with ffmpeg or media generated with AI models,
-and the template cover pictures and preview clips in apps/web/public/covers/ were generated with AI models through
-this studio. The launch film in docs/demo/ was made with this studio too; its whoosh, click, riser and impact sounds
-are from Pixabay, used under the Pixabay Content License.
+The test fixtures in fixtures/ are synthetic test patterns made with ffmpeg or media generated with AI models.
+The pictures and clips in apps/web/public/ (template covers, character designer, starter, Faceless previews) were
+generated with AI models through this studio, and the voice samples in apps/web/public/voices/ with ElevenLabs
+Eleven v4 through it. The logo, the screenshots in docs/screenshots/ and the Wan 2.2 5B sample in docs/demo/ are this project's own. The launch film
+linked from the README was made with this studio too; its whoosh, click, riser and impact sounds are from Pixabay,
+used under the Pixabay Content License.
 None of them shows a real person.
