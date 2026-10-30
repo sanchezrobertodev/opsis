@@ -13,6 +13,7 @@ import { type RunCreate, useEstimateRun, useProjectRuns, useStartRun } from "@/l
 import { Button, Field, Segmented, Select } from "@/components/ui/controls";
 import { renderScene, renderTimes } from "./RenderPanel";
 import type { ViewportHandle } from "./Viewport";
+import { OpensFullSize } from "@/components/ui/PictureViewer";
 
 type Path = "angles" | "depth" | "real";
 /** `film`: the pass of the whole timeline a driven path sends (depth, or the picture for real) */
@@ -137,9 +138,12 @@ export function MakeReal({ doc, handleRef, projectId }: {
             </li>
           )}
           {ready.stills.map((a) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <li key={a.id}><img src={mediaUrl(a.url)} alt={`Angle at ${a.metadata?.time ?? 0} s`}
-                                className="aspect-video w-full rounded-[3px] bg-black object-cover" /></li>
+            <li key={a.id}>
+              <OpensFullSize src={mediaUrl(a.url)!} title={`Angle at ${a.metadata?.time ?? 0} s`} className="w-full">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={mediaUrl(a.url)} alt="" className="aspect-video w-full rounded-[3px] bg-black object-cover" />
+              </OpensFullSize>
+            </li>
           ))}
         </ul>
       )}

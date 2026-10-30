@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import type { SlotAsset } from "@/lib/draft";
 import { uploadFile, useAsset, useAssets, usePatchAsset } from "@/lib/queries";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
+import { OpensFullSize } from "@/components/ui/PictureViewer";
 
 const ACCEPT: Record<string, string> = { image: "image/*", video: "video/*", audio: "audio/*" };
 
@@ -37,7 +38,12 @@ function Chosen({ asset: a, label, onRemove }: { asset: SlotAsset; label: string
     <div className="lumen">
       {picture && <div aria-hidden className="lumen-glow lumen-glow-sm" style={{ backgroundImage: `url("${picture}")` }} />}
       <div className="group relative size-20 overflow-hidden rounded-[var(--radius-frame)] bg-raised">
-        {picture ? (
+        {picture && (a.kind === "image" || a.kind === "mask") ? (
+          <OpensFullSize src={mediaUrl(a.url) ?? picture} title={a.title ?? label} className="size-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={picture} alt="" className="size-full object-cover" />
+          </OpensFullSize>
+        ) : picture ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={picture} alt={a.title ?? label} className="size-full object-cover" />
         ) : (

@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { mediaUrl } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import { useCreateProject, useProjects } from "@/lib/cinema";
 import { Button, Dialog } from "@/components/ui/controls";
 import { ConfirmDelete, PickableLink, reportRemoval, SelectButton, SelectionBar, useSelection } from "@/components/ui/Selection";
 import { useDeleteProjects } from "@/lib/queries";
 import { WHEN } from "@/components/runs/Runs";
+import { GLASS_CARD, Lit } from "@/components/ui/Glass";
 
 /** Your films: open one, or start a new one from a title. */
 export function CinemaProjects() {
@@ -74,14 +76,16 @@ export function CinemaProjects() {
         {projects?.map((p) => (
           <li key={p.id}>
             <PickableLink href={`/cinema/${p.id}`} selecting={selection.selecting} selected={selection.picked.has(p.id)}
-                          onToggle={() => selection.toggle(p.id)} className="group flex flex-col overflow-hidden rounded-[var(--radius-panel)] bg-panel hover:bg-raised">
-              <span className="aspect-video w-full bg-bay">
-                {p.cover && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={mediaUrl(p.cover.thumb_url ?? p.cover.poster_url ?? p.cover.url)} alt="" className="size-full object-cover" />
-                )}
-              </span>
-              <span className="flex flex-col gap-1 p-3">
+                          onToggle={() => selection.toggle(p.id)} className={cn(GLASS_CARD, "flex flex-col")}>
+              <Lit picture={p.cover ? mediaUrl(p.cover.thumb_url ?? p.cover.poster_url ?? p.cover.url) : undefined}>
+                <span className="block aspect-video w-full overflow-hidden rounded-[var(--radius-frame)] bg-bay">
+                  {p.cover && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={mediaUrl(p.cover.thumb_url ?? p.cover.poster_url ?? p.cover.url)} alt="" className="size-full object-cover" />
+                  )}
+                </span>
+              </Lit>
+              <span className="flex flex-col gap-1 px-1 pt-2.5 pb-1">
                 <span className="type-title text-sm">{p.title}</span>
                 <span className="tabular text-2xs text-faint">
                   {p.scenes} scene{p.scenes === 1 ? "" : "s"}, {p.shots} shot{p.shots === 1 ? "" : "s"}
