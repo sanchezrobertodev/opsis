@@ -48,7 +48,9 @@ def test_payload_contract_and_reservation(mode):
         inputs = {"image_references": ["https://media.test/ref.png"]}
     _, body, _ = build_payload(SPEC, ROUTE, req, inputs)
     assert "seed" not in body and "aspect_ratio" not in body and "negative_prompt" not in body
-    assert float(body["_studio_max_cost_usd"]) >= (1.334729 if not media else 1.45)
+    # Pika's live quotes on 2026-10-30 (a 5 s clip is held as 30 s; an edit's output as 30 s more)
+    quoted = {"video_edit": 9.580032, "extend": 5.588359}.get(mode, 1.334729)
+    assert float(body["_studio_max_cost_usd"]) >= quoted
     if media:
         assert body["video_urls"] == inputs["input_video"]
         assert body["omni_reference_task_type"] == ("edit" if mode == "video_edit" else "extend")

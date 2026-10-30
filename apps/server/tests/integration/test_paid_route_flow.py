@@ -22,6 +22,7 @@ from studio.api.main import app as api
 from studio.config import get_settings
 from studio.db.models import AssetProviderUpload, GenerationAttempt, SpendLedger
 from studio.db.session import session_scope
+from studio.domain.enums import AttemptStatus, ErrorClass
 from studio.media.mock_media import make_video
 from studio.worker.tasks.generation import run_ingest, run_poll, run_submit
 
@@ -248,7 +249,28 @@ async def test_a_reroute_never_goes_over_what_is_left_of_the_runs_cap(client, ht
     await run_submit(uuid.UUID(gen["id"]))
     done = (await client.get(f"/generations/{gen['id']}")).json()
     assert done["status"] == "failed" and "approved for" in done["error_message"]
+    assert "$0.10" in done["error_message"] and ": $" in done["error_message"]  # the limit and the cheapest route left
     assert routes["predict"].call_count == 0  # nothing sent
+
+
+async def test_a_failover_over_the_limit_says_why_the_first_route_refused(client, http, mp4_bytes):
+    """The route it was priced on refused it and the next costs more than it was approved for: the error leads with
+    the refusal, or it reads like the estimate was wrong."""
+    from studio.db.models import Generation
+
+    routes = mock_replicate(http, mp4_bytes)
+    gen = (await client.post("/generations", json={"model_id": "seedance-2.5", "mode": "t2v", "prompt": "a calm sea",
+                                                   "params": {"duration": 4}})).json()
+    async with session_scope() as s:  # as if Pika's quote came in high and the take failed over
+        g = await s.get(Generation, uuid.UUID(gen["id"]))
+        g.routing = {**g.routing, "max_cost_usd": 0.10, "tried": ["seedance-2.5@pika"]}
+        s.add(GenerationAttempt(generation_id=g.id, attempt_no=1, route_id="seedance-2.5@pika", provider="pika",
+                                status=AttemptStatus.failed, error_class=ErrorClass.route_unavailable,
+                                error_message="Pika quoted $5.59, above the $1.63 the studio priced it at"))
+    await run_submit(uuid.UUID(gen["id"]))
+    done = (await client.get(f"/generations/{gen['id']}")).json()
+    assert done["error_message"].startswith("Pika couldn't take it: Pika quoted $5.59")
+    assert "approved for" in done["error_message"] and routes["predict"].call_count == 0
 
 
 async def test_a_take_canceled_while_its_send_is_in_doubt_says_so(client, http, mp4_bytes, monkeypatch):

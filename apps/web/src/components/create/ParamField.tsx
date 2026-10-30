@@ -49,7 +49,9 @@ export function ParamField({
           </Field>
         );
       }
-      if (param.ui === "segmented" || options.length <= 4) {
+      // no default means the model needs none (Cinema Studio's look), so it can stay unset
+      const optional = param.default === undefined || param.default === null;
+      if (!optional && (param.ui === "segmented" || options.length <= 4)) {
         return (
           <Field label={label} hint={param.help ?? undefined}>
             <Segmented label={label} value={value as string | number} options={options} onChange={onChange} render={show} />
@@ -61,8 +63,9 @@ export function ParamField({
           <Select
             id={id}
             value={String(value ?? "")}
-            options={options.map((o) => ({ value: String(o), label: show(o) }))}
-            onChange={(v) => onChange(options.find((o) => String(o) === v) ?? v)}
+            options={[...(optional ? [{ value: "", label: "Not set" }] : []),
+                      ...options.map((o) => ({ value: String(o), label: show(o) }))]}
+            onChange={(v) => onChange(v === "" ? undefined : options.find((o) => String(o) === v) ?? v)}
           />
         </Field>
       );
