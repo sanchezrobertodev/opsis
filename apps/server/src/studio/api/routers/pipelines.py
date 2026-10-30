@@ -34,6 +34,7 @@ from studio.db.models import (
     User,
 )
 from studio.director.elements import mentions
+from studio.domain.enums import GenStatus
 from studio.domain.generations import (
     ConfirmationRequired,
     GenerationRequestError,
@@ -216,7 +217,9 @@ async def run_out(session: AsyncSession, run: PipelineRun) -> RunOut:
                    for o in st.input.get("options", [])]
         return StepOut(
             key=st.key, kind=st.kind.value, label=st.label, status=st.status.value, depends_on=st.depends_on,
-            error=st.error, output=st.output, options=options, generation_id=st.generation_id,
+            # a take held as unknown says why, since its step only shows it as still running
+            error=st.error or (gen.error_message if gen and gen.status == GenStatus.unknown else None),
+            output=st.output, options=options, generation_id=st.generation_id,
             generation_status=gen.status.value if gen else None, progress=gen.progress if gen else None,
             assets=[asset_out(assets[i]) for i in mine if i in assets],
             started_at=st.started_at, finished_at=st.finished_at,

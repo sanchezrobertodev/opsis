@@ -117,6 +117,12 @@ class FalAdapter(ProviderAdapter):
                               usage=status.metrics or {})
         try:
             result = await self.client.result(app, request_id)
+        except fal_client.FalClientHTTPError as exc:
+            err = self._error(exc, "result")
+            if exc.status_code in (400, 422):  # the job finished and was refused (a content check, a bad input)
+                return PollResult(status="failed", error_class=err.error_class, error_message=err.message,
+                                  usage=status.metrics or {})
+            raise err from exc  # 401, 404: its result can't be read, so whether it ran stays open
         except Exception as exc:
             raise self._error(exc, "result") from exc
         outputs = route_outputs(result, route.output)
