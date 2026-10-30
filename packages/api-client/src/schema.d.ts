@@ -3705,6 +3705,11 @@ export interface components {
         SpendBreakdown: {
             /** Provider */
             provider: string;
+            /**
+             * Name
+             * @description The provider's display name
+             */
+            name: string;
             /** Usd */
             usd: number;
             /** Count */

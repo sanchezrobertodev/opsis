@@ -323,6 +323,7 @@ class SpendEntryOut(ApiModel):
 
 class SpendBreakdown(ApiModel):
     provider: str
+    name: str = Field(description="The provider's display name")
     usd: float
     count: int
 

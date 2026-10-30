@@ -388,7 +388,7 @@ function SpendHistory() {
               {data.by_provider.map((p, i) => (
                 <span key={p.provider}>
                   {i > 0 && ", "}
-                  <span className="text-chalk">{usd(p.usd)}</span> on {p.provider} ({p.count})
+                  <span className="text-chalk">{usd(p.usd)}</span> on {p.name} ({p.count})
                 </span>
               ))}
             </p>
