@@ -179,11 +179,12 @@ def _validate(kind: str, document: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _available(session: AsyncSession, user: User, ids: set[uuid.UUID]) -> set[uuid.UUID]:
-    """Which of these assets the user still has."""
+    """Which of these assets the user still has. Locked FOR SHARE: a delete waits for this save to commit, or this save
+    sees the asset gone (domain/removal.py)."""
     if not ids:
         return set()
     return set((await session.execute(select(Asset.id).where(
-        Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)))).scalars())
+        Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)).with_for_update(read=True))).scalars())
 
 
 PICKS = ("hero_asset_id", "end_asset_id", "take_asset_id")  # what a shot can pick: opening and closing frames, a take

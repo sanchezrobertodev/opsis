@@ -143,7 +143,7 @@ async def delete_generation(
     if run is not None and run.status in (RunStatus.running, RunStatus.waiting):
         raise HTTPException(409, "This take belongs to a run that is still going. Cancel the run or let it finish first.")
     outputs = (await session.execute(select(Asset).where(
-        Asset.generation_id == gen.id, Asset.deleted_at.is_(None)))).scalars().all()
+        Asset.generation_id == gen.id, Asset.deleted_at.is_(None)).with_for_update())).scalars().all()
     removed, kept = await remove_assets(session, user.id, list(outputs))
     gen.deleted_at = datetime.now(UTC)
     await fsm.emit(session, user_id=user.id, topic="generation", type="generation.deleted", subject_id=gen.id,

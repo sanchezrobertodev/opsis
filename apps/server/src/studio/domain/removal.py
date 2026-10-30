@@ -1,9 +1,17 @@
 """Removing what a user made: hidden from the studio and its files taken off disk. Spending records stay (they hang
 off the generation's attempts, which are kept), and files that something still uses are kept, so removing a take never
-breaks it: a saved character, a project (a film, a 3D scene), a take still rendering or a run still going."""
+breaks it: a saved character, a project (a film, a 3D scene), a take still rendering or a run still going.
+
+Races with a save that adds a reference: a delete locks the assets FOR UPDATE before checking, and every writer that
+takes an asset in (project saves, characters' pictures, takes' media, run inputs) checks it FOR SHARE. So the delete
+waits for that save to commit and then sees the reference, or the save waits for the delete and finds it gone.
+
+Files go after the commit and are flagged until they're gone (`purge_pending`), so a file another program holds open
+is retried by the reaper instead of being left behind unseen."""
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -21,9 +29,13 @@ from studio.db.models import (
     Project,
     RunStatus,
 )
+from studio.db.session import session_scope
 from studio.domain.enums import ACTIVE_STATUSES
 from studio.storage.local import get_storage
 
+log = logging.getLogger(__name__)
+
+PURGE = "purge_pending"
 PROJECT_NOUN = {"cinema": "the film", "jutsu3d": "the 3D scene"}
 
 
@@ -66,17 +78,42 @@ async def in_use(session: AsyncSession, user_id: uuid.UUID, asset_ids: list[uuid
 
 async def remove_assets(session: AsyncSession, user_id: uuid.UUID,
                         assets: list[Asset]) -> tuple[list[Asset], dict[uuid.UUID, str]]:
-    """Mark the assets nothing else uses as deleted. Returns them, and what keeps the others."""
+    """Mark the assets nothing else uses as deleted. Returns them, and what keeps the others. The assets must be
+    locked FOR UPDATE by the caller (see the module docstring)."""
     kept = await in_use(session, user_id, [a.id for a in assets])
     removed = [a for a in assets if a.id not in kept]
     now = datetime.now(UTC)
     for a in removed:
         a.deleted_at = now
+        a.metadata_ = {**(a.metadata_ or {}), PURGE: True}
     return removed, kept
 
 
-async def delete_files(user_id: uuid.UUID, assets: list[Asset]) -> None:
-    """After the commit (a rolled-back delete keeps its files): every file of an asset lives in its own folder."""
+async def delete_files(user_id: uuid.UUID, assets: list[Asset]) -> int:
+    """After the commit (a rolled-back delete keeps its files): every file of an asset lives in its own folder.
+    Returns how many folders are still there (a file held open on Windows); those stay flagged for the reaper."""
     storage = get_storage()
+    gone = []
     for a in assets:
-        await anyio.to_thread.run_sync(storage.delete_prefix, f"u/{user_id}/a/{a.id}")
+        key = f"u/{user_id}/a/{a.id}"
+        await anyio.to_thread.run_sync(storage.delete_prefix, key)
+        if storage.path_for(key).exists():
+            log.warning("could not delete every file of asset %s; the reaper will try again", a.id)
+        else:
+            gone.append(a.id)
+    if gone:
+        async with session_scope() as s:
+            for a in (await s.execute(select(Asset).where(Asset.id.in_(gone)))).scalars():
+                a.metadata_ = {k: v for k, v in (a.metadata_ or {}).items() if k != PURGE}
+    return len(assets) - len(gone)
+
+
+async def retry_purges() -> int:
+    """The reaper's retry for files a delete couldn't remove. Returns how many are still left."""
+    async with session_scope() as s:
+        pending = (await s.execute(select(Asset).where(
+            Asset.deleted_at.is_not(None), Asset.metadata_.has_key(PURGE)).limit(500))).scalars().all()
+    left = 0
+    for user_id in {a.user_id for a in pending}:
+        left += await delete_files(user_id, [a for a in pending if a.user_id == user_id])
+    return left

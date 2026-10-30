@@ -108,8 +108,9 @@ class ElementOut(BaseModel):
 
 async def _owned_assets(session: AsyncSession, user: User, ids: list[uuid.UUID],
                         images: bool = True) -> dict[uuid.UUID, Asset]:
+    # FOR SHARE: a delete waits for this save, or this save sees the asset gone (domain/removal.py)
     rows = (await session.execute(select(Asset).where(
-        Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)))).scalars().all()
+        Asset.id.in_(ids), Asset.user_id == user.id, Asset.deleted_at.is_(None)).with_for_update(read=True))).scalars().all()
     found = {a.id: a for a in rows}
     missing = [str(i) for i in ids if i not in found]
     if missing:

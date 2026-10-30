@@ -314,6 +314,51 @@ async def test_files_a_take_still_rendering_needs_are_kept(client):
     assert (await client.delete(f"/assets/{image['id']}")).status_code == 204
 
 
+async def _upload_picture(client) -> uuid.UUID:
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), (40, 160, 90)).save(buf, "PNG")
+    return uuid.UUID((await client.post("/uploads", files={"file": ("pic.png", buf.getvalue(), "image/png")})).json()["id"])
+
+
+async def test_files_a_delete_could_not_remove_are_retried_by_the_reaper(client, monkeypatch):
+    from studio.domain.removal import PURGE
+
+    aid = await _upload_picture(client)
+    storage = get_storage()
+    async with session_scope() as s:
+        path = storage.path_for((await s.get(Asset, aid)).storage_key)
+    with monkeypatch.context() as m:
+        m.setattr(type(storage), "delete_prefix", lambda self, prefix: None)  # a file held open: nothing goes
+        assert (await client.delete(f"/assets/{aid}")).status_code == 204
+    async with session_scope() as s:
+        assert (await s.get(Asset, aid)).metadata_.get(PURGE) is True
+    assert path.is_file()
+    assert (await reap(datetime.now(UTC)))["files_left"] == 0
+    assert not path.exists()
+    async with session_scope() as s:
+        assert PURGE not in (await s.get(Asset, aid)).metadata_
+
+
+async def test_a_delete_waits_for_a_save_that_starts_using_the_asset(client):
+    import asyncio
+    from types import SimpleNamespace
+
+    from studio.api.routers.projects import _available
+    from studio.db.models import Project
+
+    aid = await _upload_picture(client)
+    project = (await client.post("/projects", json={"title": "Race", "document": {}})).json()
+    async with session_scope() as s:  # a save, part way: it has checked the asset and not committed yet
+        asset = await s.get(Asset, aid)
+        assert await _available(s, SimpleNamespace(id=asset.user_id), {aid}) == {aid}
+        deleting = asyncio.create_task(client.delete(f"/assets/{aid}"))
+        await asyncio.sleep(0.5)
+        assert not deleting.done()
+        (await s.get(Project, uuid.UUID(project["id"]))).document = {"picked": str(aid)}
+    r = await deleting
+    assert r.status_code == 409 and "the film race" in r.json()["detail"].lower()
+
+
 async def test_show_in_folder_only_for_a_browser_on_this_machine(client, monkeypatch):
     from studio.media import reveal
 
