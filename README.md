@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <a href="docs/demo/opsis-launch.mp4">Launch film</a> ·
+  <a href="https://github.com/user-attachments/assets/dbfe8017-43c7-4855-b677-b80629ac9910">Launch film</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#open-models-on-your-gpu">Your GPU</a> ·
   <a href="#how-it-works">How it works</a> ·
@@ -34,7 +34,7 @@ and the take lands in your library. You never wire a node graph. Open models suc
 run as real ComfyUI workflows, on your own GPU or your own RunPod endpoint. Add API keys and you also get hosted models from fal.ai, Google,
 Runway, ElevenLabs and others: more than 60 models in all, each take priced before it runs.
 
-The [launch film](docs/demo/opsis-launch.mp4) was made in Opsis: its characters, worlds, voices, score and the
+The launch film above was made in Opsis: its characters, worlds, voices, score and the
 three short films in it.
 
 ![Create video: LTX-2.5 on your own RunPod endpoint, with a start frame, the price before it runs, and recent takes](docs/screenshots/create.webp)
