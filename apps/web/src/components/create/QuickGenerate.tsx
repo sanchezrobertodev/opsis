@@ -93,12 +93,12 @@ export function QuickGenerate({ op, media: initialMedia = {}, promptPlaceholder,
 
   return (
     <form className="flex flex-col gap-5 text-chalk" onSubmit={(e) => { e.preventDefault(); void go(); }}>
-      {models.length > 1 && (
-        <Field label="Model" hint={current?.description} htmlFor={ids.model}>
+      <Field label="Model" hint={current?.description} htmlFor={models.length > 1 ? ids.model : undefined}>
+        {models.length > 1 ? (
           <Select id={ids.model} value={model.id} onChange={(v) => { setModelId(v); setModeId(undefined); }}
                   options={models.map((m) => ({ value: m.id, label: m.name }))} />
-        </Field>
-      )}
+        ) : <p className="text-sm text-chalk">{model.name}</p>}
+      </Field>
       {modes.length > 1 && (
         <Segmented label="From" value={mode.id} options={modes.map((m) => m.id)}
                    render={(id) => modes.find((m) => m.id === id)?.label} onChange={setModeId} />

@@ -1,5 +1,6 @@
 "use client";
 
+import { LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn, usd } from "@/lib/cn";
@@ -24,7 +25,9 @@ export function TopBar() {
 
       <div className="ml-auto flex items-center gap-2 text-xs text-muted">
         {running > 0 && (
-          <span className="tabular rounded-full border border-line-soft px-3 py-1 text-chalk">
+          <span role="status" title="Generations rendering now"
+                className="render-chip tabular inline-flex items-center gap-1.5 rounded-full border border-tungsten/40 px-3 py-1 text-chalk">
+            <LoaderCircle className="size-3.5 animate-spin text-tungsten" aria-hidden />
             {running} rendering
           </span>
         )}

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { api, type ModelDetail, mediaUrl, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { KIND_LABEL, useElements } from "@/lib/elements";
+import { useClaudeCost } from "@/components/llm/ClaudeCost";
 
 /** An `@partial` right before the caret (same rule as the server's mention parser). */
 const TRIGGER = /(?:^|[^\w@])@([A-Za-z0-9_-]{0,40})$/;
@@ -36,6 +37,7 @@ export function PromptBox({
   const { data: elements } = useElements();
   const max = model.prompt.max_chars;
   const near = value.length > max * 0.9;
+  const claude = useClaudeCost("enhance");
   const enhance = useMutation({
     mutationFn: () =>
       unwrap(api.POST("/llm/enhance", { body: { model_id: model.id, mode, prompt: value, direction: direction as never } })),
@@ -99,7 +101,7 @@ export function PromptBox({
             type="button"
             onClick={() => void improve()}
             disabled={!value.trim() || enhance.isPending}
-            title="Rewrite the prompt for this model with Claude. Your camera and look settings stay separate."
+            title={`Rewrite the prompt for this model with ${claude.name}. Your camera and look settings stay separate.`}
             className="inline-flex items-center gap-1 text-2xs text-muted hover:text-tungsten disabled:cursor-not-allowed disabled:opacity-45"
           >
             {enhance.isPending ? (
@@ -156,6 +158,7 @@ export function PromptBox({
         placeholder={placeholder}
         className="min-h-28 resize-y rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 py-2.5 text-sm leading-relaxed text-chalk outline-none placeholder:text-faint focus:border-tungsten/60"
       />
+      <p className="text-2xs text-faint">Enhance uses {claude.text}.</p>
       {open && (
         <ul
           id={`${id}-mentions`}

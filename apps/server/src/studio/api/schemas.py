@@ -502,6 +502,18 @@ class EnhanceOut(ApiModel):
     cost_usd: float
 
 
+class ClaudeCallOut(ApiModel):
+    model: str = Field(description="e.g. claude-sonnet-5-5")
+    name: str = Field(description="e.g. Claude Sonnet 5.5")
+    usd: float = Field(description="A typical call at live rates")
+
+
+class ClaudeCallsOut(ApiModel):
+    mode: Literal["mock", "live"] = Field(description="Claude's mode in effect: mock calls are free")
+    verified: str = Field(description="When the token prices were checked")
+    calls: dict[str, ClaudeCallOut] = Field(description="By the spend ledger's purpose (enhance, cinema.plan, ...)")
+
+
 # ---------------------------------------------------------------- pipelines
 
 
@@ -524,6 +536,7 @@ class RunEstimateOut(ApiModel):
     estimate_usd: float = Field(description="On the routes that would run now (mock routes are free)")
     live_estimate_usd: float | None = Field(None, description="On the cheapest paid routes")
     generations: int
+    models: list[str] = Field([], description="Names of the models it makes them with, in the order they're used")
     cap_usd: float
     by_key: dict[str, float] = Field({}, description="estimate_usd split by what each job is for (a Cinema shot's "
                                                      "id), where the recipe says")

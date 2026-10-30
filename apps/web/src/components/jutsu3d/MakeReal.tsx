@@ -11,6 +11,8 @@ import { realParams, type SceneDoc, useSceneProject } from "@/lib/jutsu3d";
 import { useRegistry } from "@/lib/queries";
 import { type RunCreate, useEstimateRun, useProjectRuns, useStartRun } from "@/lib/runs";
 import { Button, Field, Segmented, Select } from "@/components/ui/controls";
+import { useModelsFor } from "@/components/create/QuickGenerate";
+import { ModelSelect } from "@/components/runs/RunQuote";
 import { renderScene, renderTimes } from "./RenderPanel";
 import type { ViewportHandle } from "./Viewport";
 import { OpensFullSize } from "@/components/ui/PictureViewer";
@@ -22,6 +24,7 @@ const PREFERRED: Record<string, string> = {
   i2v: "kling-3.0", flf2v: "kling-3.0", depth_to_video: "wan-vace-depth", render_to_real: "ltx-2.3-render-to-real",
 };
 const PATH_LABEL: Record<Path, string> = { angles: "Angles", depth: "Depth", real: "Real" };
+const FRAME_MODEL = "nano-banana-2"; // the jutsu3d recipe's own default
 
 /**
  * Make the blocked scene real. Angles: stills at the camera's keys are redrawn as finished frames and animated
@@ -39,9 +42,11 @@ export function MakeReal({ doc, handleRef, projectId }: {
   const [prompt, setPrompt] = useState("");
   const [opening, setOpening] = useState(true);
   const [chosen, setChosen] = useState<string>();
+  const imageModels = useModelsFor("multi_ref").filter((m) => m.output_type === "image");
+  const [imageModel, setImageModel] = useState(FRAME_MODEL);
   const [confirm, setConfirm] = useState<number | null>(null);
   const start = useStartRun();
-  const ids = { prompt: useId(), model: useId() };
+  const ids = { prompt: useId(), model: useId(), image: useId() };
 
   const keys = renderTimes(doc, "stills");
   const ready = inputs?.path === path ? inputs : null;
@@ -55,7 +60,8 @@ export function MakeReal({ doc, handleRef, projectId }: {
   const body: RunCreate | null = ready && modelId && prompt.trim() ? {
     recipe: "jutsu3d",
     input: {
-      project_id: projectId, scene_version: ready.version, path, model_id: modelId, prompt: prompt.trim(),
+      project_id: projectId, scene_version: ready.version, path, model_id: modelId, image_model_id: imageModel,
+      prompt: prompt.trim(),
       // the scene's shape also sizes the redrawn opening frame; the recipe sends each model only what it takes
       params: { ...(path === "real" ? real.params : {}), aspect_ratio: doc.settings.aspect_ratio },
       stills: ready.stills.map((a) => ({ asset_id: a.id, time: Number(a.metadata?.time ?? 0) })),
@@ -105,6 +111,12 @@ export function MakeReal({ doc, handleRef, projectId }: {
   }
 
   const live = estimate.data?.live_estimate_usd;
+  const frames = ready ? ready.stills.length : stillCount;
+  const clips = path === "angles" && frames > 1 ? frames - 1 : 1;
+  const videoName = models.find((m) => m.id === modelId)?.name ?? modelId;
+  const imageName = imageModels.find((m) => m.id === imageModel)?.name ?? imageModel;
+  const makes = (frames ? `${frames} frame${frames === 1 ? "" : "s"} redrawn on ${imageName}, then ` : "")
+    + `${clips} clip${clips === 1 ? "" : "s"} on ${videoName}`;
   return (
     <section className="flex flex-col gap-3 border-t border-line-soft pt-4" aria-label="Make it real">
       <h3 className="text-xs text-muted">Make it real</h3>
@@ -157,10 +169,15 @@ export function MakeReal({ doc, handleRef, projectId }: {
           <Select id={ids.model} value={modelId} onChange={setChosen} options={models.map((m) => ({ value: m.id, label: m.name }))} />
         </Field>
       )}
+      {frames > 0 && (
+        <ModelSelect id={ids.image} label="Frames redrawn with" models={imageModels} recommended={FRAME_MODEL}
+                     value={imageModel} onChange={(id) => { setImageModel(id); setConfirm(null); }}
+                     tradeoff="Nano Banana 2 keeps the angle and poses at a low price; others differ in look and cost." />
+      )}
       <p className="text-2xs text-muted" aria-live="polite">
         {!ready ? "Render the inputs to see the cost." : !prompt.trim() ? "Describe what it should look like."
-          : problem ?? (estimate.data ? (estimate.data.estimate_usd ? `About ${usd(estimate.data.estimate_usd)}` : "Free mock run")
-            + (live ? `; live about ${usd(live)}` : "") : "")}
+          : problem ?? (estimate.data ? `${makes}: ` + (estimate.data.estimate_usd ? `about ${usd(estimate.data.estimate_usd)}` : "free mock run")
+            + (live && !estimate.data.estimate_usd ? `; live about ${usd(live)}` : "") : "")}
       </p>
       {confirm !== null ? (
         <Button tone="primary" size="sm" onClick={() => void go(confirm)} disabled={start.isPending}>Start for {usd(confirm)}</Button>

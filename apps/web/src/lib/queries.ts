@@ -13,6 +13,7 @@ export const keys = {
   lineage: (id: string) => ["lineage", id] as const,
   budget: ["budget"] as const,
   health: ["health"] as const,
+  claude: ["claude"] as const,
 };
 
 export type AssetFilter = {
@@ -27,6 +28,15 @@ export function useRegistry() {
   return useQuery({
     queryKey: keys.registry,
     queryFn: () => unwrap(api.GET("/registry")),
+    staleTime: 60_000,
+  });
+}
+
+/** The Claude model each kind of call uses and a typical call's live price, for the buttons that make one. */
+export function useClaudeCalls() {
+  return useQuery({
+    queryKey: keys.claude,
+    queryFn: () => unwrap(api.GET("/llm/calls")),
     staleTime: 60_000,
   });
 }
@@ -310,6 +320,7 @@ export function useUpdateBudget() {
       if (body.provider_mode || body.llm_mode) {
         void qc.invalidateQueries({ queryKey: keys.registry });
         void qc.invalidateQueries({ queryKey: keys.health });
+        void qc.invalidateQueries({ queryKey: keys.claude });
       }
     },
   });

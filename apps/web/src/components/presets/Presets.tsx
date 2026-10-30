@@ -2,12 +2,14 @@
 
 import { BookOpen, Package, Palette, Scissors, Smartphone, Sparkles, UserRound } from "lucide-react";
 import type { Schemas } from "@studio/api-client";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ApiError } from "@/lib/api";
+import { api, ApiError, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { type SlotAsset, useDraft } from "@/lib/draft";
+import { useDebounced } from "@/lib/hooks";
 import {
   CATEGORY_LABEL,
   type Preset,
@@ -23,6 +25,7 @@ import { useClonedVoices, useElements } from "@/lib/elements";
 import { useEstimateRun, useStartRun } from "@/lib/runs";
 import { glyphClass } from "@/components/create/DirectorPanel";
 import { MediaSlotField } from "@/components/create/MediaSlots";
+import { type Quote, quotePrice, quoteText, sameRequest, useRunQuote } from "@/components/runs/RunQuote";
 import { Button, Dialog, Segmented, Select } from "@/components/ui/controls";
 import { GLASS_CARD, Lit } from "@/components/ui/Glass";
 
@@ -205,6 +208,37 @@ function PresetCard({ preset, onOpen }: { preset: Preset; onOpen: () => void }) 
   );
 }
 
+/** A rendered request, free, once its answers stop changing; `null` until then. */
+function useRendered<A, T>(key: string, answers: A | null, render: (answers: A) => Promise<T>) {
+  const asked = useDebounced(answers, 400);
+  const q = useQuery({
+    queryKey: ["rendered", key, asked],
+    queryFn: () => render(asked!),
+    enabled: Boolean(asked),
+    retry: false,
+  });
+  const current = Boolean(asked) && sameRequest(asked, answers); // typed since: no answer until it's asked again
+  return { data: current ? (q.data ?? null) : null, error: current && q.error instanceof Error ? q.error.message : null };
+}
+
+/** What one take of a preset costs where it would run now (mock mode: what it would cost live), as a run's quote. */
+function usePresetQuote(req: Schemas["PresetRenderOut"] | null): Quote {
+  const est = useQuery({
+    queryKey: ["estimate", req],
+    queryFn: () => unwrap(api.POST("/registry/estimate", {
+      body: { ...req!, direction: req!.direction ?? null, route_policy: "cheapest_healthy" } })),
+    enabled: Boolean(req),
+    retry: false,
+  });
+  const d = req ? est.data : undefined;
+  const chosen = d?.candidates.find((c) => c.route_id === d.chosen_route_id);
+  const noRoute = d && !chosen ? (d.candidates.find((c) => !c.is_mock)?.reason ?? "No provider can run this right now.") : null;
+  const error = !req ? null : est.error instanceof Error ? est.error.message : noRoute;
+  const mock = chosen?.is_mock ?? false;
+  return { usd: chosen ? ((mock ? d?.live_reference?.estimate_usd : d?.estimate_usd) ?? null) : null,
+           charged: d?.estimate_usd ?? null, count: chosen ? 1 : null, mock, error };
+}
+
 function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) {
   const router = useRouter();
   const draft = useDraft();
@@ -222,13 +256,17 @@ function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) 
     ...preset.fields.filter((f) => f.required && !values[f.key]?.trim()).map((f) => f.label),
     ...preset.inputs.filter((i) => !media[i.role]?.length).map((i) => i.label),
   ];
+  const answers = {
+    fields: values,
+    media: Object.entries(media).flatMap(([role, list]) => list.map((a) => ({ role, asset_id: a.id }))),
+  };
+  const preview = useRendered(`preset:${preset.id}`, missing.length ? null : answers, (body) =>
+    unwrap(api.POST("/presets/{preset_id}/render", { params: { path: { preset_id: preset.id } }, body })));
+  const priced = usePresetQuote(preview.data);
+  const quote = preview.error ? { ...priced, error: preview.error } : priced;
 
   async function rendered() {
-    return renderPreset.mutateAsync({
-      id: preset.id,
-      fields: values,
-      media: Object.entries(media).flatMap(([role, list]) => list.map((a) => ({ role, asset_id: a.id }))),
-    });
+    return renderPreset.mutateAsync({ id: preset.id, ...answers });
   }
 
   async function generate(confirmCost?: number) {
@@ -320,7 +358,10 @@ function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) 
           )}
           <dt className="text-faint">Cost</dt>
           <dd className={cn(preset.local ? "text-done" : "text-chalk")}>
-            {preset.local ? "Free on this computer" : preset.live_price_usd != null ? `About ${usd(preset.live_price_usd)} live` : "Depends on your clip"}
+            {preview.data || quote.error ? quoteText(quote, ["take", "takes"])
+              : preset.local ? "Free on this computer"
+              : preset.live_price_usd != null ? `From ${usd(preset.live_price_usd)} live, exact once it's filled in`
+              : "Depends on your clip; shown once it's filled in"}
           </dd>
         </dl>
         <p className="leading-relaxed text-faint">
@@ -332,7 +373,7 @@ function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) 
         {missing.length > 0 && <p className="mr-auto text-xs text-faint">Add {missing.join(", ").toLowerCase()} to start.</p>}
         {confirm != null ? (
           <>
-            <p className="mr-auto text-xs text-chalk">This run is estimated at {usd(confirm)}.</p>
+            <p className="mr-auto text-xs text-chalk">The price changed: this take is now estimated at {usd(confirm)}.</p>
             <Button type="button" tone="ghost" onClick={() => setConfirm(null)}>
               Cancel
             </Button>
@@ -345,8 +386,9 @@ function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) 
             <Button type="button" tone="ghost" onClick={() => void openInCreate()} disabled={busy}>
               Open in Create
             </Button>
-            <Button type="button" tone="primary" onClick={() => void generate()} disabled={busy || missing.length > 0}>
-              Generate
+            <Button type="button" tone="primary" onClick={() => void generate(quote.charged ?? undefined)}
+                    disabled={busy || missing.length > 0 || quote.count == null || Boolean(quote.error)}>
+              Generate{quotePrice(quote) && ` · ${quotePrice(quote)}`}
             </Button>
           </>
         )}
@@ -390,16 +432,11 @@ function TemplateForm({ template }: { template: Template }) {
   const [media, setMedia] = useState<Record<string, SlotAsset[]>>({});
   const [picked, setPicked] = useState<Record<string, string>>({}); // saved characters' handles, by input key
   const [confirm, setConfirm] = useState<number | null>(null);
-  const [run, setRun] = useState<Schemas["RunCreate"] | null>(null);
-  const estimate = useEstimateRun(run);
   const { data: characters } = useElements("character");
   const cloned = useClonedVoices(); // listed in fields that take values beyond their options (voices)
   const busy = renderTemplate.isPending || start.isPending;
-  // an estimate or a confirmation was for the old answers and media
-  const changed = () => {
-    setRun(null);
-    setConfirm(null);
-  };
+  // a confirmation was for the old answers and media
+  const changed = () => setConfirm(null);
   const either = template.inputs.filter((i) => i.alternative);
   /** Set one input. Alternative inputs (a picture or a saved character), so choosing one clears the rest. */
   function choose(key: string, value: SlotAsset[] | string) {
@@ -422,22 +459,24 @@ function TemplateForm({ template }: { template: Template }) {
       : []),
   ];
 
-  async function rendered() {
-    const body = await renderTemplate.mutateAsync({
-      id: template.id,
-      fields: values,
-      media: {
-        ...Object.fromEntries(Object.entries(media).flatMap(([key, list]) => (list[0] ? [[key, list[0].id]] : []))),
-        ...Object.fromEntries(Object.entries(picked).filter(([, handle]) => handle)),
-      },
-    });
-    setRun(body);
-    return body;
-  }
+  const answers = {
+    fields: values,
+    media: {
+      ...Object.fromEntries(Object.entries(media).flatMap(([key, list]) => (list[0] ? [[key, list[0].id]] : []))),
+      ...Object.fromEntries(Object.entries(picked).filter(([, handle]) => handle)),
+    },
+  };
+  const preview = useRendered(`template:${template.id}`, missing.length ? null : answers, (body) =>
+    unwrap(api.POST("/templates/{template_id}/render", { params: { path: { template_id: template.id } }, body })));
+  const priced = useRunQuote(preview.data);
+  const quote = preview.error ? { ...priced, error: preview.error } : priced;
+  const est = useEstimateRun(preview.data).data; // the same estimate the quote reads: which models, and the cap
+  const models = preview.data ? (est?.models ?? []) : [];
 
   async function generate(confirmCost?: number) {
     try {
-      const body = await rendered();
+      // rendered afresh, so a quick press never starts the answers from before the last keystroke
+      const body = await renderTemplate.mutateAsync({ id: template.id, ...answers });
       const started = await start.mutateAsync({ ...body, confirm_cost_usd: confirmCost ?? null });
       toast(`${template.name} started`);
       router.push(`/runs/${started.id}`);
@@ -452,7 +491,6 @@ function TemplateForm({ template }: { template: Template }) {
 
   const field =
     "rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 py-2.5 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60";
-  const est = run ? estimate.data : undefined; // the query keeps its last data as a placeholder
 
   return (
     <div className="grid gap-6 md:grid-cols-[1.3fr_1fr]">
@@ -525,32 +563,18 @@ function TemplateForm({ template }: { template: Template }) {
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
           <dt className="text-faint">Runs</dt>
           <dd className="text-chalk">{template.recipe_name}</dd>
-          <dt className="text-faint">Cost</dt>
-          <dd className="text-chalk">
-            {est ? (
-              <>
-                {usd(est.estimate_usd)} now
-                {est.live_estimate_usd != null && est.live_estimate_usd !== est.estimate_usd && (
-                  <span className="text-faint">, {usd(est.live_estimate_usd)} live</span>
-                )}
-                <span className="text-faint">, capped at {usd(est.cap_usd)}</span>
-              </>
-            ) : missing.length > 0 ? (
-              <span className="text-faint">Shown once the form is filled in</span>
-            ) : run && estimate.isError ? (
-              <span className="text-faint">Couldn&rsquo;t work it out</span>
-            ) : run || busy ? (
-              <span className="text-faint">Working it out&hellip;</span>
-            ) : (
-              <button
-                type="button"
-                className="text-muted underline-offset-2 hover:underline"
-                onClick={() => void rendered().catch(() => undefined)}
-              >
-                Check the cost
-              </button>
-            )}
+          <dt className="text-faint">Models</dt>
+          <dd className={models.length ? "text-chalk" : "text-faint"}>
+            {models.length ? models.join(", ")
+              : missing.length > 0 ? "Shown once the form is filled in"
+              : quote.error ? "Couldn’t work them out" : "Working it out…"}
           </dd>
+          {est && preview.data && (
+            <>
+              <dt className="text-faint">Run cap</dt>
+              <dd className="text-chalk">{usd(est.cap_usd)}; it never spends more</dd>
+            </>
+          )}
         </dl>
         <p className="leading-relaxed text-faint">
           It runs step by step on the Runs page, and stops to ask you where the recipe has a checkpoint, like approving
@@ -559,10 +583,16 @@ function TemplateForm({ template }: { template: Template }) {
       </aside>
 
       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line-soft pt-4 md:col-span-2">
-        {missing.length > 0 && <p className="mr-auto text-xs text-faint">Add {missing.join(", ").toLowerCase()} to start.</p>}
+        {missing.length > 0 ? (
+          <p className="mr-auto text-xs text-faint">Add {missing.join(", ").toLowerCase()} to start.</p>
+        ) : confirm == null && (
+          <p className={cn("mr-auto text-xs", quote.error ? "text-fault" : "text-muted")}>
+            {quoteText(quote, ["generation", "generations"])}
+          </p>
+        )}
         {confirm != null ? (
           <>
-            <p className="mr-auto text-xs text-chalk">This run is estimated at {usd(confirm)}.</p>
+            <p className="mr-auto text-xs text-chalk">The price changed: this run is now estimated at {usd(confirm)}.</p>
             <Button type="button" tone="ghost" onClick={() => setConfirm(null)}>
               Cancel
             </Button>
@@ -571,8 +601,9 @@ function TemplateForm({ template }: { template: Template }) {
             </Button>
           </>
         ) : (
-          <Button type="button" tone="primary" onClick={() => void generate()} disabled={busy || missing.length > 0}>
-            Start
+          <Button type="button" tone="primary" onClick={() => void generate(quote.charged ?? undefined)}
+                  disabled={busy || missing.length > 0 || quote.count == null || Boolean(quote.error)}>
+            Start{quotePrice(quote) && ` · ${quotePrice(quote)}`}
           </Button>
         )}
       </div>

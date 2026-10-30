@@ -3,7 +3,7 @@
 import { Clock3, Coins, Download, FolderOpen, ImageUp, RotateCcw, Star, StepForward, Trash2, UserRoundPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { type Asset, type Generation, isActive, mediaUrl, viaOf } from "@/lib/api";
+import { ApiError, type Asset, type Generation, isActive, mediaUrl, viaOf } from "@/lib/api";
 import { cn, seconds, timecode, usd } from "@/lib/cn";
 import { useDraft } from "@/lib/draft";
 import {
@@ -227,6 +227,17 @@ function Slate({
   );
 }
 
+/** ", about $0.40" for another take like this one: its own estimate, or for a mock take what it would cost live. */
+function againPrice(gen: Generation): string {
+  const r = gen.routing as { chosen?: string; planned?: string; candidates?: { route_id: string; is_mock?: boolean }[];
+                             live_reference?: { estimate_usd?: number | null } | null };
+  const live = r.live_reference?.estimate_usd;
+  if (r.candidates?.find((c) => c.route_id === (r.chosen ?? r.planned))?.is_mock) {
+    return `, free as a mock run${live ? ` (about ${usd(live)} when live)` : ""}`;
+  }
+  return gen.estimated_cost_usd == null ? "" : `, ${gen.estimated_cost_usd ? `about ${usd(gen.estimated_cost_usd)}` : "free"}`;
+}
+
 function remainingText(seconds: number) {
   return seconds < 90 ? `${Math.max(5, Math.round(seconds / 5) * 5)} s` : `${Math.round(seconds / 60)} min`;
 }
@@ -304,7 +315,8 @@ function TakeFooter({
   const cost = gen.actual_cost_usd ?? gen.estimated_cost_usd;
   const duration = first?.duration_ms ? seconds(first.duration_ms) : null;
 
-  function retry() {
+  // priced like this take; pressing confirms that price, and a higher one over the threshold asks again
+  function retry(confirmCost = gen.estimated_cost_usd) {
     const r = gen.request as {
       model_id: string;
       mode: string;
@@ -317,8 +329,15 @@ function TakeFooter({
     const params = Object.fromEntries(Object.entries(r.params ?? {}).filter(([k]) => k !== "seed"));
     create.mutate(
       { model_id: r.model_id, mode: r.mode, prompt: r.prompt, negative_prompt: r.negative_prompt, params,
-        media: (r.media ?? []).map((m) => ({ role: m.role, asset_id: m.asset_id })) },
-      { onError: (e) => toast.error(e instanceof Error ? e.message : "Could not start the take") },
+        media: (r.media ?? []).map((m) => ({ role: m.role, asset_id: m.asset_id })), confirm_cost_usd: confirmCost },
+      { onError: (e) => {
+        if (e instanceof ApiError && e.status === 409) {
+          const now = (e.body as { estimate_usd: number }).estimate_usd;
+          toast(`Another take now costs about ${usd(now)}.`, { action: { label: "Start it", onClick: () => retry(now) } });
+          return;
+        }
+        toast.error(e instanceof Error ? e.message : "Could not start the take");
+      } },
     );
   }
 
@@ -390,7 +409,7 @@ function TakeFooter({
           </>
         )}
         {!isActive(gen.status) && (
-          <IconButton label="Generate another take with the same settings" onClick={retry}>
+          <IconButton label={`Generate another take with the same settings${againPrice(gen)}`} onClick={() => retry()}>
             <RotateCcw className="size-4" aria-hidden />
           </IconButton>
         )}

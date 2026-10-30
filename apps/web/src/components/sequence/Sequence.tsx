@@ -13,6 +13,7 @@ import { type RunCreate, useEstimateRun, useStartRun } from "@/lib/runs";
 import { type Direction, DirectorPanel, mentionSlugs } from "@/components/create/DirectorPanel";
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { ModelPicker } from "@/components/create/ModelPicker";
+import { useClaudeCost } from "@/components/llm/ClaudeCost";
 import { Button, Segmented, Select, Slider, Switch } from "@/components/ui/controls";
 
 type Shot = { id: number; prompt: string; duration: number | null };
@@ -127,6 +128,7 @@ export function Sequence() {
   }
 
   const patch = (id: number, p: Partial<Shot>) => setShots((all) => all.map((s) => (s.id === id ? { ...s, ...p } : s)));
+  const claude = useClaudeCost("enhance");
 
   async function enhance(shot: Shot) {
     if (!model || !enhanceMode) return;
@@ -255,10 +257,11 @@ export function Sequence() {
                       <div className="w-56 max-w-full">{lengthControl(shot, i + 1)}</div>
                     </div>
                   )}
+                  {enhanceMode && <span className="ml-auto text-2xs text-faint">{claude.text}</span>}
                   {enhanceMode && (
-                    <Button size="sm" tone="ghost" className="ml-auto" onClick={() => void enhance(shot)}
+                    <Button size="sm" tone="ghost" onClick={() => void enhance(shot)}
                             disabled={!shot.prompt.trim() || enhancing !== null}
-                            title="Rewrite this shot in the words the model follows best">
+                            title={`Rewrite this shot in the words the model follows best, with ${claude.name}`}>
                       {enhancing === shot.id
                         ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
                         : <Sparkles className="size-3.5" aria-hidden />}

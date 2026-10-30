@@ -122,6 +122,9 @@ async def test_a_failed_shot_fails_the_run_and_retry_redoes_only_it(client, in_m
     failed = await get(client, run["id"])
     assert failed["status"] == "failed" and failed["error"].startswith("Shot 2:")
     first_gen = failed["steps"][0]["generation_id"]
+    redo = (await client.get(f"/pipelines/{run['id']}/retry/estimate")).json()
+    assert redo["generations"] == 1 and redo["models"] == ["Kling 3.0"]  # only shot 2 is made again
+    assert redo["estimate_usd"] == 0 and redo["live_estimate_usd"] > 0
 
     r = await client.post(f"/pipelines/{run['id']}/retry")
     assert r.status_code == 200
@@ -154,6 +157,7 @@ async def test_bad_input_is_rejected_before_anything_runs(client):
         "model_id": "veo-3.1", "shots": [{"prompt": "x", "duration": 8}, {"prompt": "y", "duration": 8}]}})
     assert est.status_code == 200
     assert est.json()["generations"] == 2 and est.json()["live_estimate_usd"] == pytest.approx(2 * 3.2)
+    assert est.json()["models"] == ["Veo 3.1"]
 
 
 async def test_revising_a_shot_redoes_only_that_shot_and_the_cut(client, in_memory_queue):
