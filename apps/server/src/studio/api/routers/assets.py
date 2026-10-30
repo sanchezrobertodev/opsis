@@ -4,7 +4,7 @@ import base64
 import hashlib
 import mimetypes
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -17,10 +17,10 @@ from studio.api.deps import current_user, get_session
 from studio.api.schemas import AssetLineageOut, AssetOut, AssetPage, AssetPatch, FrameIn, LineageEdge
 from studio.api.serializers import asset_out
 from studio.db.base import uuid7
-from studio.db.models import Asset, AssetLineage, User
+from studio.db.models import Asset, AssetLineage, Generation, User
 from studio.domain import fsm
 from studio.domain.derived import frame_of
-from studio.domain.enums import AssetKind, AssetSource, AssetStatus
+from studio.domain.enums import ACTIVE_STATUSES, AssetKind, AssetSource, AssetStatus
 from studio.domain.removal import delete_files, remove_assets
 from studio.media import reveal
 from studio.media.derive import image_thumb
@@ -264,13 +264,23 @@ async def patch_asset(asset_id: uuid.UUID, body: AssetPatch, session: AsyncSessi
 @router.delete("/assets/{asset_id}", status_code=204)
 async def delete_asset(asset_id: uuid.UUID, session: AsyncSession = Depends(get_session),
                        user: User = Depends(current_user)) -> None:
-    """Remove from the library and delete its files from disk. Refused while a character or a project uses it."""
+    """Remove from the library and delete its files from disk. Refused while a character or a project uses it. A take
+    whose last file this was leaves history too."""
+    # the take before its file: the order a take's delete locks them in, so the two never wait on each other
+    gen_id = (await session.execute(select(Asset.generation_id).where(Asset.id == asset_id))).scalar_one_or_none()
+    gen = await session.get(Generation, gen_id, with_for_update=True) if gen_id else None
     asset = await _owned(session, user, asset_id, lock=True)
     removed, kept = await remove_assets(session, user.id, [asset])
     if kept:
         raise HTTPException(409, f"{kept[asset.id][0].upper()}{kept[asset.id][1:]} uses this, so it can't be deleted yet.")
     await fsm.emit(session, user_id=user.id, topic="asset", type="asset.deleted", subject_id=asset_id,
                    payload={"asset_id": str(asset_id)})
+    if gen is not None and gen.deleted_at is None and gen.status not in ACTIVE_STATUSES and (await session.execute(
+            select(Asset.id).where(Asset.generation_id == gen.id, Asset.deleted_at.is_(None), Asset.id != asset.id)
+            .limit(1))).first() is None:
+        gen.deleted_at = datetime.now(UTC)
+        await fsm.emit(session, user_id=user.id, topic="generation", type="generation.deleted", subject_id=gen.id,
+                       payload={"generation_id": str(gen.id)})
     await session.commit()
     await delete_files(user.id, removed)
 

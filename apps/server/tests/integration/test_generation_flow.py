@@ -301,6 +301,22 @@ async def test_deleting_a_take_removes_its_files_and_keeps_what_others_use(clien
         assert len((await s.execute(ledger)).all()) == spent  # what it cost stays on the books
 
 
+async def test_a_take_whose_last_file_is_deleted_leaves_history(client):
+    out = await create(client, model_id="nano-banana-2", mode="t2i", prompt="two of them", params={"num_images": 2})
+    await drive(uuid.UUID(out["id"]))
+    async with session_scope() as s:
+        first, second = (await s.execute(select(Asset.id).where(Asset.generation_id == uuid.UUID(out["id"]))
+                                         .order_by(Asset.output_index))).scalars().all()
+
+    def listed(page) -> bool:
+        return out["id"] in [g["id"] for g in page.json()["items"]]
+
+    assert (await client.delete(f"/assets/{first}")).status_code == 204
+    assert listed(await client.get("/generations"))  # one file left
+    assert (await client.delete(f"/assets/{second}")).status_code == 204
+    assert not listed(await client.get("/generations"))
+
+
 async def test_files_a_take_still_rendering_needs_are_kept(client):
     buf = io.BytesIO()
     Image.new("RGB", (640, 360), (90, 60, 30)).save(buf, "PNG")

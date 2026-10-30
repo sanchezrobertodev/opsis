@@ -1,9 +1,12 @@
 "use client";
 
 import { Check, ListChecks, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
+import { toast } from "sonner";
 import { cn } from "@/lib/cn";
-import { Button } from "./controls";
+import type { Removal } from "@/lib/queries";
+import { Button, Dialog } from "./controls";
 
 /** Picking several items of a grid at once (to delete them together). */
 export function useSelection() {
@@ -96,5 +99,69 @@ export function SelectMark({ selected }: { selected: boolean }) {
     >
       <Check className="size-4" strokeWidth={3} />
     </span>
+  );
+}
+
+/** Asks before deleting what's selected, which can't be undone. `noun` is [one, many]. */
+export function ConfirmDelete({ open, count, noun, pending, onConfirm, onClose, children }: {
+  open: boolean;
+  count: number;
+  noun: [string, string];
+  pending: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={`Delete ${count} ${count === 1 ? noun[0] : noun[1]}?`}
+      footer={
+        <>
+          <Button tone="ghost" onClick={onClose}>
+            {count === 1 ? "Keep it" : "Keep them"}
+          </Button>
+          <Button tone="danger" onClick={onConfirm} disabled={pending || count === 0}>
+            {pending ? "Deleting…" : `Delete ${count}`}
+          </Button>
+        </>
+      }
+    >
+      {children}
+    </Dialog>
+  );
+}
+
+export function reportRemoval(r: Removal, noun: [string, string]) {
+  if (r.deleted) toast(`Deleted ${r.deleted} ${r.deleted === 1 ? noun[0] : noun[1]}`);
+  if (r.kept.length) toast(r.kept.join(" "));
+  if (r.failed.length) toast.error(`${r.failed.length} couldn't be deleted: ${r.failed[0]}`);
+}
+
+/** A card that opens its page, or is picked while selecting. */
+export function PickableLink({ href, selecting, selected, onToggle, className, children }: {
+  href: string;
+  selecting: boolean;
+  selected: boolean;
+  onToggle: () => void;
+  className: string;
+  children: React.ReactNode;
+}) {
+  if (!selecting) {
+    return (
+      <Link href={href} className={className}>
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" onClick={onToggle} aria-pressed={selected}
+            className={cn(className, "relative w-full text-left", selected && "ring-2 ring-tungsten")}>
+      <span className="absolute left-2 top-2 z-10">
+        <SelectMark selected={selected} />
+      </span>
+      {children}
+    </button>
   );
 }

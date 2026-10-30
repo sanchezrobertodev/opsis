@@ -199,6 +199,39 @@ export function useDeleteAssets() {
   });
 }
 
+/** Deletes takes with their files, then single files, as one answer (leave out files of the takes given). */
+export function useRemove() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ generations = [], assets = [] }: { generations?: string[]; assets?: string[] }) => {
+      const takes = settle(await Promise.allSettled(generations.map((id) =>
+        unwrap(api.DELETE("/generations/{generation_id}", { params: { path: { generation_id: id } } }))
+          .then((r) => r.kept.map((what) => `Kept a file ${what} uses.`)),
+      )), false);
+      const files = settle(await Promise.allSettled(assets.map((id) =>
+        unwrap(api.DELETE("/assets/{asset_id}", { params: { path: { asset_id: id } } })).then(() => []),
+      )), true);
+      return { deleted: takes.deleted + files.deleted, kept: [...takes.kept, ...files.kept],
+               failed: [...takes.failed, ...files.failed] } satisfies Removal;
+    },
+    onSettled: () => {
+      for (const key of ["generations", "assets", "takes"]) void qc.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
+/** Deletes films or 3D scenes. Their takes and files stay in history and the library. */
+export function useDeleteProjects() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) =>
+      settle(await Promise.allSettled(ids.map((id) =>
+        unwrap(api.DELETE("/projects/{project_id}", { params: { path: { project_id: id } } })).then(() => []),
+      )), false),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ["projects"] }),
+  });
+}
+
 export function useResolveUnknown() {
   const qc = useQueryClient();
   return useMutation({
