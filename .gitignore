@@ -50,3 +50,4 @@ Thumbs.db
 .claude/settings.local.json
 # Personal notes for Claude Code on your machine (paths, hosts, how you deploy)
 CLAUDE.local.md
+.playwright-mcp/

@@ -439,8 +439,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   balance is billed to the card at month end: keep caps on.
 
 ## Local engine (ComfyUI)
-- `comfy_local` provider = your ComfyUI (0.34) at `COMFYUI_URL` (default http://127.0.0.1:8188; the README's "Run a
-  real video on your GPU" lists the model files). Local models: `wan-2.2-5b` (t2v/i2v) and `flux-2-klein-4b` (t2i).
+- `comfy_local` provider = your ComfyUI (0.34) at `COMFYUI_URL` (default http://127.0.0.1:8188; the README's "Open models on your
+  GPU" lists the model files). Local models: `wan-2.2-5b` (t2v/i2v) and `flux-2-klein-4b` (t2i).
 - Local routes are free and run in every PROVIDER_MODE. A model with a configured local route never falls back to
   the mock; if ComfyUI is off, routing reports "isn't running" instead.
 - Workflows live in `workflows/comfy/<name>.json` (API graph) + `<name>.map.yaml` (which node inputs to fill,
