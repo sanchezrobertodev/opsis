@@ -1,12 +1,15 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { Crosshair, LoaderCircle, Undo2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { type Asset, isActive, mediaUrl } from "@/lib/api";
-import { cn } from "@/lib/cn";
-import { useCreateGeneration, useGeneration, useGrabFrame } from "@/lib/queries";
+import { api, ApiError, type Asset, isActive, mediaUrl, unwrap } from "@/lib/api";
+import { cn, usd } from "@/lib/cn";
+import { useCreateGeneration, useGeneration, useGrabFrame, useRegistry } from "@/lib/queries";
 import { Button, Segmented } from "@/components/ui/controls";
+
+const SEGMENT_MODEL = "sam-3-image";
 
 type Point = [number, number, 0 | 1];
 /** The segmentation job for the object, and the frame it was drawn on. Its mask is the job's output. */
@@ -26,6 +29,19 @@ export function MaskEditor({ video, onChange }: { video: Asset; onChange: (s: Se
   const mask = job?.status === "succeeded" ? job.assets?.[0] : undefined;
   const running = Boolean(jobId) && (!job || isActive(job.status));
   const fps = video.fps ?? 24;
+  const modelName = useRegistry().data?.models.find((m) => m.id === SEGMENT_MODEL)?.name ?? SEGMENT_MODEL;
+  // one selection's price: the clicks don't change it, so it's asked once per frame
+  const priceBody = frame ? { model_id: SEGMENT_MODEL, mode: "segment", prompt: "", params: { points: [[0.5, 0.5, 1]] },
+                              media: [{ role: "input_image", asset_id: frame.asset.id }] } : null;
+  const { data: estimate } = useQuery({
+    queryKey: ["estimate", priceBody],
+    queryFn: () => unwrap(api.POST("/registry/estimate", { body: { route_policy: "cheapest_healthy", ...priceBody! } })),
+    enabled: Boolean(priceBody), retry: false,
+  });
+  const live = estimate?.live_reference?.estimate_usd;
+  const price = !estimate ? "" : estimate.candidates.find((c) => c.route_id === estimate.chosen_route_id)?.is_mock
+    ? `free as a mock run${live ? ` (about ${usd(live)} when live)` : ""}`
+    : estimate.estimate_usd ? `about ${usd(estimate.estimate_usd)}` : "free";
 
   function reset(next: Point[]) {
     setPoints(next);
@@ -54,16 +70,21 @@ export function MaskEditor({ video, onChange }: { video: Asset; onChange: (s: Se
     reset([...points, [Math.round(x * 1e4) / 1e4, Math.round(y * 1e4) / 1e4, label]]);
   }
 
-  async function find() {
+  async function find(confirmCost = estimate?.estimate_usd) {
     if (!frame) return;
     try {
       const gen = await segment.mutateAsync({
-        model_id: "sam-3-image", mode: "segment", prompt: name.trim(), params: { points },
-        media: [{ role: "input_image", asset_id: frame.asset.id }],
+        model_id: SEGMENT_MODEL, mode: "segment", prompt: name.trim(), params: { points },
+        media: [{ role: "input_image", asset_id: frame.asset.id }], confirm_cost_usd: confirmCost ?? null,
       });
       setJobId(gen.id);
       onChange({ jobId: gen.id, frameIndex: fpsFrame(frame.at) });
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const now = (err.body as { estimate_usd: number }).estimate_usd;
+        toast(`A selection now costs about ${usd(now)}.`, { action: { label: "Select it", onClick: () => void find(now) } });
+        return;
+      }
       toast.error(err instanceof Error ? err.message : "Couldn't start the selection");
     }
   }
@@ -130,6 +151,9 @@ export function MaskEditor({ video, onChange }: { video: Asset; onChange: (s: Se
               : mask ? "Highlighted is what will change. Add clicks and select again to refine it."
                 : positives ? "Click more of the object if it's large, then find it."
                   : "Click the object you want to change."}
+          </p>
+          <p className="text-2xs text-faint">
+            Each selection is a new job on {modelName}{price && `, ${price}`}.
           </p>
         </div>
       )}

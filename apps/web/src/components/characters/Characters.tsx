@@ -1,6 +1,6 @@
 "use client";
 
-import { AudioLines, Copy, Mic, Plus, Sparkles, Trash2 } from "lucide-react";
+import { AudioLines, Copy, Images, Mic, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -8,10 +8,9 @@ import { ApiError, type MediaSlot, mediaUrl } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import type { SlotAsset } from "@/lib/draft";
 import { useDraft } from "@/lib/draft";
-import { useDebounced } from "@/lib/hooks";
-import { uploadFile, useRegistry } from "@/lib/queries";
+import { uploadFile } from "@/lib/queries";
 import { STARTERS } from "@/lib/starters";
-import { type RunCreate, useEstimateRun, useStartRun } from "@/lib/runs";
+import { type RunCreate, useStartRun } from "@/lib/runs";
 import {
   type Element,
   type ElementKind,
@@ -27,7 +26,8 @@ import {
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { VOICE_MODEL, VoicePicker } from "@/components/voice/VoicePicker";
 import { useModelsFor } from "@/components/create/QuickGenerate";
-import { Button, Dialog, Field, Segmented, Select } from "@/components/ui/controls";
+import { ModelSelect, type Quote, quotePrice, quoteText, useRunQuote } from "@/components/runs/RunQuote";
+import { Button, Dialog, Segmented } from "@/components/ui/controls";
 import { OpensFullSize, ZoomButton } from "@/components/ui/PictureViewer";
 import { GLASS_CARD, Lit } from "@/components/ui/Glass";
 
@@ -344,21 +344,18 @@ function portraitRun(e: Pick<Element, "id" | "slug">, modelId: string): RunCreat
   return { recipe: "cinema_cast", input: { characters: [{ element_id: e.id, slug: e.slug }], image_model_id: modelId } };
 }
 
-/** Which image model draws a portrait, and what one costs on it. */
+/** Which image model draws a portrait, and what it costs on it. */
 function PortraitModel({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   const models = useModelsFor("t2i").filter((m) => m.output_type === "image");
-  const mock = useRegistry().data?.provider_mode === "mock";
   // the estimate needs no saved character: any id prices the same
-  const estimate = useEstimateRun(portraitRun({ id: "00000000-0000-0000-0000-000000000000", slug: "preview" }, value));
-  // what it costs where it would run now (a free route is free); in mock mode, what it would cost live
-  const cost = estimate.data ? (mock ? estimate.data.live_estimate_usd : estimate.data.estimate_usd) : null;
-  const options = models.map((m) => ({ value: m.id, label: m.id === PORTRAIT_MODEL ? `${m.name} (recommended)` : m.name }))
-    .sort((a, b) => Number(b.value === PORTRAIT_MODEL) - Number(a.value === PORTRAIT_MODEL));
+  const quote = useRunQuote(portraitRun({ id: "00000000-0000-0000-0000-000000000000", slug: "preview" }, value));
   return (
-    <Field label="Portrait drawn with" htmlFor="portrait-model"
-           hint={cost == null ? undefined : cost ? `About ${usd(cost)} a picture${mock ? " when live" : ""}` : "Free on this route"}>
-      <Select id="portrait-model" value={value} onChange={onChange} options={options} />
-    </Field>
+    <div className="space-y-1">
+      <ModelSelect id="portrait-model" label="Portrait drawn with" models={models} recommended={PORTRAIT_MODEL}
+                   value={value} onChange={onChange}
+                   tradeoff="Nano Banana 2 follows a description closely at a low price; others differ in look and cost." />
+      <p className="text-2xs text-faint">{quoteText(quote, ["portrait", "portraits"])}</p>
+    </div>
   );
 }
 
@@ -381,8 +378,6 @@ function useDrawPortrait() {
 }
 
 function ElementForm({ existing, newKind, onDone }: { existing: Element | null; newKind: ElementKind; onDone: () => void }) {
-  const router = useRouter();
-  const startSheet = useStartRun();
   const create = useCreateElement();
   const patch = usePatchElement();
   const remove = useDeleteElement();
@@ -396,6 +391,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
   const [pending, setPending] = useState<SlotAsset[]>([]);
   const [drawIt, setDrawIt] = useState(true);
   const [drawWith, setDrawWith] = useState(PORTRAIT_MODEL);
+  const [panel, setPanel] = useState<{ open: "sheet" | "more"; count?: number } | null>(null);
   const portrait = useDrawPortrait();
   const pictureless = kind === "character" && pending.length === 0 && !existing?.images.length;
 
@@ -433,25 +429,6 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
     }
   }
 
-  /** Draws it from every side on one picture, kept right after its main picture so prompts that mention it attach both. */
-  async function characterSheet(confirmCost?: number) {
-    if (!existing) return;
-    try {
-      const run = await startSheet.mutateAsync({
-        recipe: "character_sheet", input: { element_id: existing.id, slug: existing.slug }, confirm_cost_usd: confirmCost ?? null,
-      });
-      toast.success(`Drawing ${existing.handle} from every side. The sheet becomes their second picture.`);
-      router.push(`/runs/${run.id}`);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        const cost = (err.body as { estimate_usd: number }).estimate_usd;
-        toast(`A reference sheet costs about ${usd(cost)}.`, { action: { label: "Make it", onClick: () => void characterSheet(cost) } });
-        return;
-      }
-      toast.error(err instanceof Error ? err.message : "Could not start the reference sheet");
-    }
-  }
-
   return (
     <div className="grid gap-6 md:grid-cols-[1fr_1.2fr]">
       <div className="space-y-4">
@@ -465,11 +442,16 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
             className="h-10 rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60"
           />
         </label>
-        <div className="flex flex-col gap-1.5 text-xs text-muted">
-          Type
-          <Segmented label="Type" value={kind} options={["character", "location", "prop", "style"] as const}
-                     render={(k) => KIND_LABEL[k]} onChange={setKind} />
-        </div>
+        {existing ? (
+          // fixed once saved: only characters star in runs, speak or train an identity, and its mentions read as one
+          <p className="text-xs text-muted">Type <span className="ml-1 text-chalk">{KIND_LABEL[kind]}</span></p>
+        ) : (
+          <div className="flex flex-col gap-1.5 text-xs text-muted">
+            Type
+            <Segmented label="Type" value={kind} options={["character", "location", "prop", "style"] as const}
+                       render={(k) => KIND_LABEL[k]} onChange={setKind} />
+          </div>
+        )}
         <label className="flex flex-col gap-1.5 text-xs text-muted">
           Description
           <textarea
@@ -524,15 +506,31 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
           </label>
         )}
         {pictureless && (existing || drawIt) && <PortraitModel value={drawWith} onChange={setDrawWith} />}
-        {existing && existing.kind === "character" && <IdentityPanel element={existing} />}
+        {existing && existing.kind === "character" && (
+          <IdentityPanel element={existing} onMore={(count) => setPanel({ open: "more", count })} />
+        )}
       </div>
+
+      {existing && panel?.open === "sheet" && <SheetPanel element={existing} onClose={() => setPanel(null)} />}
+      {existing && panel?.open === "more" && (
+        <MorePictures key={panel.count} element={existing} count={panel.count} onClose={() => setPanel(null)} />
+      )}
 
       <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-4 md:col-span-2">
         {existing && existing.kind === "character" && (
-          <Button type="button" size="sm" onClick={() => void characterSheet()} disabled={!existing.images.length || startSheet.isPending}
-                  title="Draws it from every side on one picture and keeps it as its second reference">
-            Make a reference sheet
-          </Button>
+          <>
+            <Button type="button" size="sm" onClick={() => setPanel(panel?.open === "sheet" ? null : { open: "sheet" })}
+                    disabled={!existing.images.length} aria-expanded={panel?.open === "sheet"}
+                    title={existing.images.length ? "Draws it from every side on one picture" : "Add a picture first"}>
+              Make a reference sheet
+            </Button>
+            <Button type="button" size="sm" onClick={() => setPanel(panel?.open === "more" ? null : { open: "more" })}
+                    disabled={!existing.images.length} aria-expanded={panel?.open === "more"}
+                    title={existing.images.length ? "New pictures from other angles, with other expressions and light" : "Add a picture first"}>
+              <Images className="size-4" aria-hidden />
+              More pictures
+            </Button>
+          </>
         )}
         {existing && pictureless && (
           <Button type="button" size="sm" onClick={() => void portrait.draw(existing, drawWith)}
@@ -574,36 +572,18 @@ const DEPTH_LABEL: Record<(typeof DEPTHS)[number], string> = { 600: "Quick", 100
 
 type Identity = { trigger?: string; steps?: number; trained_at?: string; run_id?: string };
 
-function IdentityPanel({ element }: { element: Element }) {
-  const router = useRouter();
+function IdentityPanel({ element, onMore }: { element: Element; onMore: (count: number) => void }) {
   const identity = (element.lora ?? null) as Identity | null;
   const patch = usePatchElement();
-  const start = useStartRun();
   const [retrain, setRetrain] = useState(false);
   const [steps, setSteps] = useState<(typeof DEPTHS)[number]>(1000);
-  const [confirm, setConfirm] = useState<number | null>(null);
   const photos = element.images.map((i) => i.asset.id).slice(0, MAX_PHOTOS);
   const training = !identity || retrain;
   const body: RunCreate | null = training && photos.length >= MIN_PHOTOS
     ? { recipe: "lora_train", input: { element_id: element.id, slug: element.slug, photos, steps } }
     : null;
-  const estimate = useEstimateRun(useDebounced(body, 300));
-  const cost = estimate.data ? (estimate.data.estimate_usd || estimate.data.live_estimate_usd) : null;
-
-  async function train(confirmCost?: number) {
-    if (!body) return;
-    try {
-      const run = await start.mutateAsync({ ...body, confirm_cost_usd: confirmCost ?? null });
-      toast.success(`Training ${element.handle}. Their identity is ready when the run finishes.`);
-      router.push(`/runs/${run.id}`);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setConfirm((err.body as { estimate_usd: number }).estimate_usd);
-        return;
-      }
-      toast.error(err instanceof Error ? err.message : "Could not start training");
-    }
-  }
+  const quote = useRunQuote(body);
+  const start = useStartQuoted(`Training ${element.handle}. Their identity is ready when the run finishes.`);
 
   return (
     <section aria-labelledby="identity-title" className="space-y-3 rounded-[var(--radius-control)] border border-line-soft p-4">
@@ -635,37 +615,170 @@ function IdentityPanel({ element }: { element: Element }) {
             one person per photo. Afterwards, Wan 2.2 keeps it in every picture and clip that mentions {element.handle}.
           </p>
           {photos.length < MIN_PHOTOS ? (
-            <p className="text-xs text-faint">
-              {photos.length} of {MIN_PHOTOS} photos so far. Add {MIN_PHOTOS - photos.length} more on the right, then save.
-            </p>
+            <div className="space-y-2">
+              <p className="text-xs text-faint">
+                {photos.length} of {MIN_PHOTOS} photos so far. Add {MIN_PHOTOS - photos.length} more above and save, or
+                draw them from the ones it has.
+              </p>
+              {photos.length > 0 && (
+                <Button type="button" size="sm" onClick={() => onMore(Math.max(4, MIN_PHOTOS - photos.length))}>
+                  <Images className="size-4" aria-hidden />
+                  Make {Math.max(4, MIN_PHOTOS - photos.length)} more pictures
+                </Button>
+              )}
+            </div>
           ) : (
             <>
               <div className="flex flex-col gap-1.5 text-xs text-muted">
                 How closely to learn it
                 <Segmented label="Training depth" value={steps} options={DEPTHS} render={(d) => DEPTH_LABEL[d]}
-                           onChange={(d) => { setSteps(d); setConfirm(null); }} />
+                           onChange={setSteps} />
               </div>
               <p className="text-2xs text-faint">
-                {photos.length} photos, {steps.toLocaleString()} steps.{" "}
-                {cost == null ? "Estimating…" : estimate.data?.estimate_usd ? `About ${usd(cost)}.` : `Free on mock routes; about ${usd(cost)} live.`}
+                {photos.length} photos, {steps.toLocaleString()} steps on fal&rsquo;s Wan 2.2 trainer:{" "}
+                {quoteText(quote, ["training run", "training runs"])}.
               </p>
               <div className="flex gap-2">
                 {retrain && <Button type="button" size="sm" tone="ghost" onClick={() => setRetrain(false)}>Keep the current one</Button>}
-                {confirm != null ? (
-                  <Button type="button" size="sm" tone="primary" disabled={start.isPending} onClick={() => void train(confirm)}>
-                    Train for {usd(confirm)}
-                  </Button>
-                ) : (
-                  <Button type="button" size="sm" tone="primary" disabled={!body || start.isPending} onClick={() => void train()}>
-                    Train identity
-                  </Button>
-                )}
+                <Button type="button" size="sm" tone="primary" disabled={!body || quote.count == null || start.pending}
+                        onClick={() => body && void start.go(body, quote)}>
+                  Train identity{quotePrice(quote) && ` · ${quotePrice(quote)}`}
+                </Button>
               </div>
             </>
           )}
         </>
       )}
     </section>
+  );
+}
+
+/** Starts a run whose price the button showed, so pressing it confirms that spend, then opens the run. */
+function useStartQuoted(started: string) {
+  const router = useRouter();
+  const start = useStartRun();
+  async function go(body: RunCreate, quote: Quote) {
+    try {
+      const run = await start.mutateAsync({ ...body, confirm_cost_usd: quote.charged });
+      toast.success(started);
+      router.push(`/runs/${run.id}`);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const now = (err.body as { estimate_usd: number }).estimate_usd;
+        toast.error(`The price changed to about ${usd(now)}. Check it and press again.`);
+        return;
+      }
+      toast.error(err instanceof Error ? err.message : "Couldn't start it");
+    }
+  }
+  return { go, pending: start.isPending };
+}
+
+const REFS_MODEL = "nano-banana-pro"; // character_sheet's and character_photos' own default
+const REFS_TRADEOFF = "Nano Banana Pro keeps the face closest to the references; other models cost less or more but "
+  + "can drift from the likeness.";
+
+/** Models that draw from a character's pictures (their reference mode). */
+function useRefModels() {
+  return useModelsFor("multi_ref").filter((m) => m.output_type === "image");
+}
+
+function GeneratePanel({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+  return (
+    <section aria-label={title}
+             className="space-y-3 rounded-[var(--radius-control)] border border-tungsten/30 bg-bay/60 p-4 md:col-span-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm text-chalk">{title}</h3>
+        <button type="button" onClick={onClose} className="text-2xs text-muted hover:text-chalk">Close</button>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** One picture of the character from every side, kept right after its main picture so a mention attaches both. */
+function SheetPanel({ element, onClose }: { element: Element; onClose: () => void }) {
+  const models = useRefModels();
+  const [model, setModel] = useState(REFS_MODEL);
+  const body: RunCreate = { recipe: "character_sheet",
+                            input: { element_id: element.id, slug: element.slug, image_model_id: model } };
+  const quote = useRunQuote(body);
+  const start = useStartQuoted(`Drawing ${element.handle} from every side. The sheet becomes their second picture.`);
+  return (
+    <GeneratePanel title="Reference sheet" onClose={onClose}>
+      <p className="text-xs leading-relaxed text-muted">
+        One wide picture of {element.handle} five times, drawn from its pictures: side, front, three-quarter from
+        behind, limbs raised, and a close-up of the head. It&rsquo;s kept as their second picture, so every prompt
+        that mentions them shows the model their whole shape.
+      </p>
+      <div className="max-w-sm">
+        <ModelSelect id="sheet-model" models={models} recommended={REFS_MODEL} value={model} onChange={setModel}
+                     tradeoff={REFS_TRADEOFF} />
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" tone="primary" size="sm"
+                disabled={quote.count == null || Boolean(quote.error) || start.pending}
+                onClick={() => void start.go(body, quote)}>
+          Make the sheet{quotePrice(quote) && ` · ${quotePrice(quote)}`}
+        </Button>
+        <span className="text-2xs text-faint">{quoteText(quote, ["picture", "pictures"])}</span>
+      </div>
+    </GeneratePanel>
+  );
+}
+
+const VARY = [["angle", "Angles"], ["expression", "Expressions"], ["light", "Lighting"], ["framing", "Framing"]] as const;
+const COUNTS = [4, 8, 12, 16] as const;
+
+/** New pictures of the character from other angles, with other expressions, light and framing, added to its
+ * pictures: the varied photos a trained identity needs, made from the few it has. */
+function MorePictures({ element, count: wanted, onClose }: { element: Element; count?: number; onClose: () => void }) {
+  const models = useRefModels();
+  const [model, setModel] = useState(REFS_MODEL);
+  const [count, setCount] = useState<(typeof COUNTS)[number]>(COUNTS.find((c) => c >= (wanted ?? 8)) ?? 16);
+  const [vary, setVary] = useState<string[]>(VARY.map(([v]) => v));
+  const body: RunCreate = { recipe: "character_photos",
+                            input: { element_id: element.id, slug: element.slug, count, vary, image_model_id: model } };
+  const quote = useRunQuote(body);
+  const start = useStartQuoted(`Drawing ${count} more pictures of ${element.handle}. Each joins their pictures when it's done.`);
+  return (
+    <GeneratePanel title="More pictures" onClose={onClose}>
+      <p className="text-xs leading-relaxed text-muted">
+        {element.name} drawn from their pictures in new poses, each added to their pictures. A trained identity wants
+        10 or more varied photos. Remove any that don&rsquo;t look right afterwards.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5 text-xs text-muted">
+          How many
+          <Segmented label="How many pictures" value={count} options={COUNTS} render={(c) => String(c)} onChange={setCount} />
+        </div>
+        <ModelSelect id="more-model" models={models} recommended={REFS_MODEL} value={model} onChange={setModel}
+                     tradeoff={REFS_TRADEOFF} />
+      </div>
+      <fieldset className="flex flex-wrap items-center gap-2">
+        <legend className="mb-1.5 text-xs text-muted">Vary</legend>
+        {VARY.map(([v, label]) => {
+          const on = vary.includes(v);
+          return (
+            <button key={v} type="button" aria-pressed={on}
+                    onClick={() => setVary(on ? vary.filter((x) => x !== v) : [...vary, v])}
+                    className={cn("h-8 rounded-full border px-3 text-xs transition-colors",
+                                  on ? "border-tungsten/60 bg-tungsten/15 text-chalk" : "border-line-soft text-muted hover:text-chalk")}>
+              {label}
+            </button>
+          );
+        })}
+        {!vary.length && <span className="text-2xs text-faint">Nothing varied: every picture comes out alike.</span>}
+      </fieldset>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" tone="primary" size="sm"
+                disabled={quote.count == null || Boolean(quote.error) || start.pending}
+                onClick={() => void start.go(body, quote)}>
+          Make {count} pictures{quotePrice(quote) && ` · ${quotePrice(quote)}`}
+        </Button>
+        <span className="text-2xs text-faint">{quoteText(quote, ["picture", "pictures"])}</span>
+      </div>
+    </GeneratePanel>
   );
 }
 

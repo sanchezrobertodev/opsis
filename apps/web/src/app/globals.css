@@ -309,6 +309,17 @@
 }
 .lumen:has(> :disabled) > .ring-halo { opacity: 0.12; }
 
+/* The top bar's "N rendering" chip: warm light sweeps across it while anything renders (a 200% gradient moved one
+   width per loop, so it repeats seamlessly). Animations off: still glow, and the loader stops. */
+.render-chip {
+  background: linear-gradient(100deg, rgb(240 158 46 / 0.1) 0%, rgb(240 158 46 / 0.1) 30%, rgb(240 158 46 / 0.34) 45%,
+              rgb(124 28 4 / 0.3) 55%, rgb(240 158 46 / 0.1) 70%, rgb(240 158 46 / 0.1) 100%) 0 0 / 200% 100%;
+  box-shadow: 0 0 14px -4px rgb(240 158 46 / 0.45);
+}
+@keyframes render-sweep { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+:root:not([data-motion="off"]) .render-chip { animation: render-sweep 2.2s linear infinite; }
+:root[data-motion="off"] .render-chip svg { animation: none; }
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

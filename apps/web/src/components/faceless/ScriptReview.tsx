@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { type Run, type Step, useAnswerCheckpoint, useReviseRun } from "@/lib/runs";
+import { quoteText, useRunQuote } from "@/components/runs/RunQuote";
 import { Button } from "@/components/ui/controls";
 
 const WORDS_PER_MINUTE = 150;
@@ -28,9 +29,12 @@ export function ScriptReview({ run, step }: { run: Run; step: Step }) {
 
   const dirty = text.trim() !== current.trim() || title.trim() !== currentTitle.trim();
   const words = text.trim().split(/\s+/).filter(Boolean).length;
+  const revised = { ...run.input, script: text.trim(), title: title.trim() || null };
+  // past the length checkpoint the narration and pictures exist: saving pays for them again
+  const quote = useRunQuote(over && dirty && words >= 5 ? { recipe: run.recipe, input: revised } : null);
 
   function save() {
-    revise.mutate({ id: run.id, input: { ...run.input, script: text.trim(), title: title.trim() || null } }, {
+    revise.mutate({ id: run.id, input: revised }, {
       onSuccess: () => {
         setDraft(null);
         toast("Script saved. Approve it when you're happy.");
@@ -46,6 +50,12 @@ export function ScriptReview({ run, step }: { run: Run; step: Step }) {
           ? `${step.label}. Shorten the script and save it to voice it again (its pictures are drawn again too), or make it anyway.`
           : "Read it through. Nothing is narrated or illustrated until you approve it."}
       </p>
+      {over && dirty && words >= 5 && (
+        <p className="text-xs text-tungsten" aria-live="polite">
+          Saving voices the script and draws its pictures again, which is paid. The episode from here with this
+          script: {quoteText(quote, ["generation", "generations"])}
+        </p>
+      )}
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}

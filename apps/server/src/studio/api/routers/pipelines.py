@@ -48,9 +48,9 @@ from studio.pipelines.engine import (
     retry_run,
     run_spent,
 )
-from studio.pipelines.recipe import Recipe
+from studio.pipelines.recipe import PlannedJob, Recipe
 from studio.pipelines.recipes import RECIPES, get_recipe
-from studio.registry.loader import get_registry
+from studio.registry.loader import Registry, get_registry
 from studio.worker.tasks.pipeline import apply, defer_advance
 
 router = APIRouter(prefix="/pipelines", tags=["pipelines"])
@@ -80,10 +80,16 @@ async def _estimate(session: AsyncSession, user: User, body: RunCreate) -> tuple
     inp = await recipe.resolve(session, user.id, inp, reg)  # first, so validate sees what it filled in
     if errors := recipe.validate(inp, reg):
         raise GenerationRequestError(errors)
+    policy = await guard.get_policy(session, user.id)
+    cap = Decimal(str(body.cap_usd)) if body.cap_usd is not None else policy.default_run_cap_usd
+    return recipe, inp, await _priced(session, user, recipe.jobs(inp, reg), reg, cap)
+
+
+async def _priced(session: AsyncSession, user: User, jobs: list[PlannedJob], reg: Registry,
+                  cap: Decimal) -> RunEstimateOut:
     total, live, live_known = Decimal("0"), Decimal("0"), True
     by_key: dict[str, Decimal] = {}
     live_by_key: dict[str, Decimal] = {}
-    jobs = recipe.jobs(inp, reg)
     for job in jobs:
         known = await resolve_media_kinds(session, user.id, [{"role": r, "asset_id": a} for r, a in job.media])             if job.media else None
         usd, live_usd = await quick_estimate(session, job.model_id, job.mode, job.params, list(job.roles), reg,
@@ -98,11 +104,10 @@ async def _estimate(session: AsyncSession, user: User, body: RunCreate) -> tuple
             live += live_usd
             if job.key is not None:
                 live_by_key[job.key] = live_by_key.get(job.key, Decimal("0")) + live_usd
-    policy = await guard.get_policy(session, user.id)
-    cap = Decimal(str(body.cap_usd)) if body.cap_usd is not None else policy.default_run_cap_usd
-    return recipe, inp, RunEstimateOut(
+    models = dict.fromkeys(spec.name if (spec := reg.model(job.model_id)) else job.model_id for job in jobs)
+    return RunEstimateOut(
         estimate_usd=float(total), live_estimate_usd=float(live) if live_known else None, generations=len(jobs),
-        cap_usd=float(cap), by_key={k: float(v) for k, v in by_key.items()},
+        models=list(models), cap_usd=float(cap), by_key={k: float(v) for k, v in by_key.items()},
         live_by_key={k: float(v) for k, v in live_by_key.items()} if live_known else None)
 
 
@@ -247,6 +252,27 @@ async def cancel(run_id: uuid.UUID, session: AsyncSession = Depends(get_session)
     await session.commit()
     await apply(fx, run.id)
     return await run_out(session, run)
+
+
+@router.get("/{run_id}/retry/estimate", response_model=RunEstimateOut, responses={422: {"model": ValidationProblem}})
+async def retry_estimate(run_id: uuid.UUID, session: AsyncSession = Depends(get_session),
+                         user: User = Depends(current_user)) -> RunEstimateOut:
+    """What a retry makes: the takes of the failed and canceled steps, and of those that never started. Steps the
+    plan adds once those finish aren't known yet; they start only within the run's cap."""
+    run = await _owned(session, user, run_id)
+    steps = (await session.execute(select(PipelineStep).where(
+        PipelineStep.run_id == run.id, PipelineStep.kind == StepKind.generate,
+        PipelineStep.status.in_([StepStatus.failed, StepStatus.canceled, StepStatus.pending]))
+        .order_by(PipelineStep.sort))).scalars().all()
+    jobs = []
+    for st in steps:
+        media = [(m["role"], str(m["asset_id"])) for m in st.input.get("media") or []]
+        jobs.append(PlannedJob(st.input["model_id"], st.input["mode"], st.input.get("params") or {},
+                               tuple(r for r, _ in media), prompt_chars=len(st.input.get("prompt") or ""),
+                               media=tuple(media)))
+    policy = await guard.get_policy(session, user.id)
+    cap = run.cap_usd if run.cap_usd is not None else policy.default_run_cap_usd
+    return await _priced(session, user, jobs, get_registry(), cap)
 
 
 @router.post("/{run_id}/retry", response_model=RunOut)

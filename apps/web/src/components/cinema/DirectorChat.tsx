@@ -7,6 +7,7 @@ import { cn, usd } from "@/lib/cn";
 import { type CinemaDoc, type DirectorAnswer, type DirectorTurn, type Scene, type StoryboardChange, useDirector } from "@/lib/cinema";
 import { Button } from "@/components/ui/controls";
 import { useDirectorLibrary } from "@/components/create/DirectorPanel";
+import { useClaudeCost } from "@/components/llm/ClaudeCost";
 
 type Message =
   | { role: "user"; text: string }
@@ -26,6 +27,7 @@ export function DirectorChat({ projectId, doc, update, onClose }: {
   projectId: string; doc: CinemaDoc; update: (fn: (d: CinemaDoc) => CinemaDoc) => void; onClose: () => void;
 }) {
   const ask = useDirector(projectId);
+  const claude = useClaudeCost("cinema.director");
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const end = useRef<HTMLDivElement>(null);
@@ -114,6 +116,7 @@ export function DirectorChat({ projectId, doc, update, onClose }: {
             <ArrowUp className="size-4" aria-hidden />
           </Button>
         </div>
+        <p className="mt-1.5 text-2xs text-faint">Each message asks {claude.text}.</p>
       </form>
     </aside>
   );

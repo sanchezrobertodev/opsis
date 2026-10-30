@@ -488,3 +488,35 @@ async def test_a_reference_sheet_is_drawn_from_the_characters_pictures_and_attac
         spec = get_registry().models["nano-banana-2"]
         res = await resolve_mentions(s, get_settings().owner_user_id, spec, "edit", f"@{griffin['slug']} lands", [])
     assert [m["asset_id"] for m in res.media] == [pictures[0], sheet]
+
+
+async def test_more_pictures_of_a_character_vary_and_join_its_pictures(client, in_memory_queue):
+    """Each picture is drawn from the character's own pictures with its own angle, expression and light, and kept
+    after the ones it had, so a trained identity gets the varied photos it needs."""
+    griffin = await make_griffin(client)
+    r = await client.post("/pipelines/estimate", json={"recipe": "character_photos", "input": {
+        "element_id": griffin["id"], "slug": griffin["slug"], "count": 3}})
+    assert r.status_code == 200 and r.json()["generations"] == 3, r.text
+    run = await start(client, "character_photos", element_id=griffin["id"], slug=griffin["slug"], count=3,
+                      vary=["angle", "expression"])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    made = done["output"]["asset_ids"]
+    assert len(made) == 3
+    async with session_scope() as s:
+        from studio.db.models import Generation
+
+        drawn = [await s.get(Generation, uuid.UUID(st["generation_id"]))
+                 for k, st in steps_of(done).items() if k.startswith("pic[")]
+    prompts = [g.request["prompt"] for g in drawn if g is not None]
+    assert len(set(prompts)) == 3 and all("even studio light" in p for p in prompts)  # light wasn't varied
+    assert {g.mode for g in drawn if g is not None} == {"edit"}  # drawn from its pictures
+    pictures = [i["asset"]["id"] for i in (await client.get(f"/elements/{griffin['id']}")).json()["images"]]
+    assert pictures[:2] == [i["asset"]["id"] for i in griffin["images"]] and pictures[2:] == made
+
+
+async def make_griffin(client):
+    from test_elements import make_element
+
+    return await make_element(client, "Griffin", description="a lion with eagle wings", images=2)
