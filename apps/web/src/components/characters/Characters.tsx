@@ -9,7 +9,7 @@ import { cn, usd } from "@/lib/cn";
 import type { SlotAsset } from "@/lib/draft";
 import { useDraft } from "@/lib/draft";
 import { useDebounced } from "@/lib/hooks";
-import { uploadFile } from "@/lib/queries";
+import { uploadFile, useRegistry } from "@/lib/queries";
 import { STARTERS } from "@/lib/starters";
 import { type RunCreate, useEstimateRun, useStartRun } from "@/lib/runs";
 import {
@@ -93,9 +93,9 @@ export function Characters() {
           </p>
         </div>
       ) : (
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-4">
+        <ul className="columns-[190px] gap-4">
           {items.map((e) => (
-            <li key={e.id} className="group relative">
+            <li key={e.id} className="group relative mb-4 break-inside-avoid">
               {e.kind !== "voice" && e.cover && <ZoomButton src={mediaUrl(e.cover.url)} title={e.name} className="right-4 top-4" />}
               <button
                 type="button"
@@ -104,7 +104,9 @@ export function Characters() {
                 aria-label={`${e.name}, ${KIND_LABEL[e.kind]}`}
               >
                 <Lit picture={e.kind !== "voice" && e.cover ? mediaUrl(e.cover.thumb_url ?? e.cover.url) : undefined}>
-                  <div className="aspect-[3/4] overflow-hidden rounded-[var(--radius-frame)] bg-raised">
+                  <div className="overflow-hidden rounded-[var(--radius-frame)] bg-raised"
+                       style={{ aspectRatio: e.kind !== "voice" && e.cover?.width && e.cover.height
+                         ? `${e.cover.width} / ${e.cover.height}` : "3 / 4" }}>
                     {e.kind === "voice" ? (
                       <span className="grid size-full place-items-center text-tungsten">
                         <AudioLines className="size-8" aria-hidden />
@@ -345,14 +347,16 @@ function portraitRun(e: Pick<Element, "id" | "slug">, modelId: string): RunCreat
 /** Which image model draws a portrait, and what one costs on it. */
 function PortraitModel({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   const models = useModelsFor("t2i").filter((m) => m.output_type === "image");
+  const mock = useRegistry().data?.provider_mode === "mock";
   // the estimate needs no saved character: any id prices the same
   const estimate = useEstimateRun(portraitRun({ id: "00000000-0000-0000-0000-000000000000", slug: "preview" }, value));
-  const cost = estimate.data ? (estimate.data.estimate_usd || estimate.data.live_estimate_usd) : null;
+  // what it costs where it would run now (a free route is free); in mock mode, what it would cost live
+  const cost = estimate.data ? (mock ? estimate.data.live_estimate_usd : estimate.data.estimate_usd) : null;
   const options = models.map((m) => ({ value: m.id, label: m.id === PORTRAIT_MODEL ? `${m.name} (recommended)` : m.name }))
     .sort((a, b) => Number(b.value === PORTRAIT_MODEL) - Number(a.value === PORTRAIT_MODEL));
   return (
     <Field label="Portrait drawn with" htmlFor="portrait-model"
-           hint={cost == null ? undefined : cost ? `About ${usd(cost)} a picture` : "Free on this route"}>
+           hint={cost == null ? undefined : cost ? `About ${usd(cost)} a picture${mock ? " when live" : ""}` : "Free on this route"}>
       <Select id="portrait-model" value={value} onChange={onChange} options={options} />
     </Field>
   );

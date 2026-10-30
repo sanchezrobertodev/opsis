@@ -19,6 +19,9 @@ Environment=QUEUE_DATABASE_URL=postgresql://studio:studio@127.0.0.1:5432/studio
 Environment=WEB_ORIGIN=@WEB_ORIGIN@
 Environment=PGHOST=127.0.0.1 PGPASSWORD=studio DB_EXEC=
 Volume=@APP_DIR@/data:/app/data:z
+# The host's Codex CLI too, so Settings can check it runs and is signed in (the worker draws the pictures)
+Volume=%h/.codex:%h/.codex:z
+Environment=CODEX_HOME=%h/.codex
 PodmanArgs=--memory=768m
 HealthCmd=curl -fsS http://127.0.0.1:8400/health
 HealthInterval=60s
