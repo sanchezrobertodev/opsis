@@ -5,6 +5,13 @@ meaningful controls, watch the job progress, and get the clip in your library, w
 hand. Behind the forms, the studio runs real ComfyUI graphs on your own GPU (or on RunPod) and, when you add
 keys, hosted models from fal.ai, Google, Runway, ElevenLabs and others.
 
+[![Opsis launch film, 1:58. Click to play.](docs/demo/opsis-launch.jpg)](docs/demo/opsis-launch.mp4)
+
+**[Watch the launch film (1:58)](docs/demo/opsis-launch.mp4).** Everything generated in it (a documentary, a vlog
+and a short film, the characters and worlds, the model montage, the voices and the score) was made in Opsis; the rest
+is screen recordings of the app and of the ComfyUI graph behind an open model (LTX-2.5 on your own RunPod), plus a
+few stock sound effects (see [NOTICE](NOTICE)).
+
 ![Create video with Wan 2.2 5B running on a local GPU: the finished clip next to the form](docs/screenshots/finished.png)
 
 ```mermaid
