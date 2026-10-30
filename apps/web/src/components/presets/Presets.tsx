@@ -24,6 +24,7 @@ import { useEstimateRun, useStartRun } from "@/lib/runs";
 import { glyphClass } from "@/components/create/DirectorPanel";
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { Button, Dialog, Segmented, Select } from "@/components/ui/controls";
+import { GLASS_CARD, Lit } from "@/components/ui/Glass";
 
 const FILTERS = ["all", "guided", "camera", "effects", "look", "character", "product", "social", "edit"] as const;
 type Filter = (typeof FILTERS)[number];
@@ -138,15 +139,17 @@ function Cover({ id, live, children }: { id: string; live: boolean; children: Re
   if (missing) return <>{children}</>;
   const zoom = "size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]";
   return (
-    <div className={cn(FRAME, "relative")}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`/covers/${id}.webp`} alt="" loading="lazy" onError={() => setMissing(true)} className={zoom} />
-      {live && !noClip && !animationsOff() && (
-        // the poster is the picture under it, so nothing changes until the clip starts
-        <video src={`/covers/${id}.mp4`} poster={`/covers/${id}.webp`} autoPlay muted loop playsInline aria-hidden
-               onError={() => setNoClip(true)} className={cn(zoom, "absolute inset-0")} />
-      )}
-    </div>
+    <Lit picture={`/covers/${id}.webp`}>
+      <div className={cn(FRAME, "relative")}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`/covers/${id}.webp`} alt="" loading="lazy" onError={() => setMissing(true)} className={zoom} />
+        {live && !noClip && !animationsOff() && (
+          // the poster is the picture under it, so nothing changes until the clip starts
+          <video src={`/covers/${id}.mp4`} poster={`/covers/${id}.webp`} autoPlay muted loop playsInline aria-hidden
+                 onError={() => setNoClip(true)} className={cn(zoom, "absolute inset-0")} />
+        )}
+      </div>
+    </Lit>
   );
 }
 
@@ -187,13 +190,13 @@ function PresetCard({ preset, onOpen }: { preset: Preset; onOpen: () => void }) 
   const needs = preset.inputs.map((i) => i.label.toLowerCase());
   const [live, liveProps] = useLive();
   return (
-    <button type="button" onClick={onOpen} {...liveProps} className="group block w-full text-left outline-none">
+    <button type="button" onClick={onOpen} {...liveProps} className={cn(GLASS_CARD, "group block w-full pb-3 text-left outline-none")}>
       <Cover id={preset.id} live={live}>
         <Viewfinder preset={preset} />
       </Cover>
-      <p className="type-title mt-3 text-[15px] transition-colors group-hover:text-tungsten">{preset.name}</p>
-      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">{preset.summary}</p>
-      <p className="tabular mt-1.5 text-2xs text-faint">
+      <p className="type-title mt-3 px-1 text-[15px] transition-colors group-hover:text-tungsten">{preset.name}</p>
+      <p className="mt-1 line-clamp-2 px-1 text-xs leading-relaxed text-muted">{preset.summary}</p>
+      <p className="tabular mt-1.5 px-1 text-2xs text-faint">
         {preset.model_name}
         {priceText(preset) && <>, <span className={cn(preset.local && "text-done")}>{priceText(preset)}</span></>}
         {needs.length > 0 && <>. Needs {needs.join(" and ")}</>}
@@ -357,15 +360,15 @@ function TemplateCard({ template, onOpen }: { template: Template; onOpen: () => 
   const either = template.inputs.filter((i) => i.alternative).map((i) => i.label.toLowerCase().replace(/^or /, ""));
   const [live, liveProps] = useLive();
   return (
-    <button type="button" onClick={onOpen} {...liveProps} className="group block w-full text-left outline-none">
+    <button type="button" onClick={onOpen} {...liveProps} className={cn(GLASS_CARD, "group block w-full pb-3 text-left outline-none")}>
       <Cover id={template.id} live={live}>
         <div className={cn(FRAME, "grid place-items-center group-hover:bg-raised")}>
           <BookOpen aria-hidden className="size-6 text-tungsten" />
         </div>
       </Cover>
-      <p className="type-title mt-3 text-[15px] transition-colors group-hover:text-tungsten">{template.name}</p>
-      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">{template.summary}</p>
-      <p className="tabular mt-1.5 text-2xs text-faint">
+      <p className="type-title mt-3 px-1 text-[15px] transition-colors group-hover:text-tungsten">{template.name}</p>
+      <p className="mt-1 line-clamp-2 px-1 text-xs leading-relaxed text-muted">{template.summary}</p>
+      <p className="tabular mt-1.5 px-1 text-2xs text-faint">
         Guided, {template.recipe_name.toLowerCase()}
         {needs.length > 0 && <>. Needs {needs.join(" and ")}</>}
         {either.length > 0 && <>. Needs {either.join(" or ")}</>}
