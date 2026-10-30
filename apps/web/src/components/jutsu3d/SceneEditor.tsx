@@ -93,6 +93,7 @@ export function SceneEditor({ id }: { id: string }) {
     function onKey(e: KeyboardEvent) {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
+      if (document.querySelector("dialog:modal")) return; // a dialog on top (a picture, a form) has the keys, not the scene
       const ctrl = e.ctrlKey || e.metaKey;
       const sel = useScene.getState().selected;
       if (ctrl && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
