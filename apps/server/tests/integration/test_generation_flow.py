@@ -282,9 +282,9 @@ async def test_deleting_a_take_removes_its_files_and_keeps_what_others_use(clien
                                              ).where(GenerationAttempt.generation_id == gen_id)
         spent = len((await s.execute(ledger)).all())
     used, loose = assets
-    r = await client.post("/elements", json={"kind": "character", "name": "Mara Vale",
-                                             "images": [{"asset_id": str(used.id), "view": "front"}]})
-    assert r.status_code == 201, r.text
+    r_char = await client.post("/elements", json={"kind": "character", "name": "Mara Vale",
+                                                  "images": [{"asset_id": str(used.id), "view": "front"}]})
+    assert r_char.status_code == 201, r_char.text
     assert (await client.delete(f"/assets/{used.id}")).status_code == 409
 
     r = await client.delete(f"/generations/{out['id']}")
@@ -299,6 +299,13 @@ async def test_deleting_a_take_removes_its_files_and_keeps_what_others_use(clien
     assert out["id"] not in [g["id"] for g in listed["items"]]
     async with session_scope() as s:
         assert len((await s.execute(ledger)).all()) == spent  # what it cost stays on the books
+
+    # once the character is gone, deleting the take again takes the file it left
+    character = r_char.json()["id"]
+    assert (await client.delete(f"/elements/{character}")).status_code == 204
+    r = await client.delete(f"/generations/{out['id']}")
+    assert r.status_code == 200 and r.json() == {"files_removed": 1, "kept": []}
+    assert not storage.path_for(used.storage_key).exists()
 
 
 async def test_a_take_whose_last_file_is_deleted_leaves_history(client):

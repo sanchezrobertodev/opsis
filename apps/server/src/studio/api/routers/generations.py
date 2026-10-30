@@ -135,8 +135,9 @@ async def delete_generation(
     generation_id: uuid.UUID, session: AsyncSession = Depends(get_session), user: User = Depends(current_user)
 ) -> GenerationRemoved:
     """Remove a take from history and its files from disk. Spending records stay, and outputs a saved character or a
-    project still uses are kept (the answer says which)."""
-    gen = await _get_owned(session, user, generation_id, lock=True)
+    project still uses are kept (the answer says which). A take already removed can be deleted again: what it left
+    because something used it then goes once nothing does (a world whose 3D scene was deleted since)."""
+    gen = await _get_owned(session, user, generation_id, lock=True, deleted_ok=True)
     if gen.status in ACTIVE_STATUSES:
         raise HTTPException(409, "This take is still rendering. Cancel it first, or mark it failed if it's stuck.")
     run = await session.get(PipelineRun, gen.group_id) if gen.group_id else None
@@ -145,7 +146,7 @@ async def delete_generation(
     outputs = (await session.execute(select(Asset).where(
         Asset.generation_id == gen.id, Asset.deleted_at.is_(None)).with_for_update())).scalars().all()
     removed, kept = await remove_assets(session, user.id, list(outputs))
-    gen.deleted_at = datetime.now(UTC)
+    gen.deleted_at = gen.deleted_at or datetime.now(UTC)
     await fsm.emit(session, user_id=user.id, topic="generation", type="generation.deleted", subject_id=gen.id,
                    payload={"generation_id": str(gen.id)})
     await session.commit()
