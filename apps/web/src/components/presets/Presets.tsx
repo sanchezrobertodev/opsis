@@ -119,10 +119,14 @@ export function Presets() {
 
 /** Whether a card is hovered or has keyboard focus: its cover clip plays meanwhile. */
 function useLive() {
-  const [live, setLive] = useState(false);
-  const on = () => setLive(true);
-  const off = () => setLive(false);
-  return [live, { onPointerEnter: on, onPointerLeave: off, onFocus: on, onBlur: off }] as const;
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  return [hovered || focused, {
+    onPointerEnter: () => setHovered(true),
+    onPointerLeave: () => setHovered(false),
+    onFocus: () => setFocused(true),
+    onBlur: () => setFocused(false),
+  }] as const;
 }
 
 /** A card's picture: its cover (`public/covers/<id>.webp`, an example of what it makes) when there is one, else the
