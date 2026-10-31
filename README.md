@@ -259,6 +259,29 @@ the API and worker mount the host's `~/.codex`; point `CODEX_BIN` at
 
 </details>
 
+## Drive it from Claude
+
+The API serves an MCP server at `/mcp` (Streamable HTTP). With it, Claude can list templates, estimate a run,
+start it once you agree, follow it, answer its reviews and find results. Every spending check still applies. No tool
+can change the limits, the mode switch or keys. Like the API, it has no login, so keep it on your own network or
+tailnet.
+
+- **Claude Code** on a machine that can reach the API:
+  `claude mcp add --transport http opsis http://localhost:8400/mcp`. On the Linux server setup, use
+  `https://<host>.<tailnet>.ts.net:19444/mcp`.
+- **Claude Desktop:** add it as a local server in `claude_desktop_config.json`. The
+  [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge runs on your computer, so it reaches the tailnet:
+  ```json
+  { "mcpServers": { "opsis": { "command": "npx", "args": ["-y", "mcp-remote", "https://<host>.<tailnet>.ts.net:19444/mcp"] } } }
+  ```
+- **claude.ai, mobile and custom connectors** connect from
+  [Anthropic's cloud](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp),
+  not from your device. They need a public address, so they can't reach a tailnet-only studio. Don't expose `/mcp`
+  publicly: it has no login.
+
+Ask something like "make a history short about the Titanic's band, tell me what it costs first". In live mode Claude
+shows the estimate before starting. Above your confirmation limit, the run starts only with that estimate sent back.
+
 ## Troubleshooting
 
 | Symptom | Fix |

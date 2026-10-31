@@ -210,6 +210,10 @@ uv run python scripts/restore_db.py --check        # restore the newest dump int
 uv run python scripts/fetch_provider_schemas.py    # provider schema drift report (free; --update re-baselines)
 ```
 - The API runs on **8400**, not 8000 (other local containers publish 8000). Web reads `NEXT_PUBLIC_API_URL`.
+- The API also serves an MCP server at `/mcp` (`studio/api/mcp_tools.py`; Streamable HTTP, stateless; README "Drive
+  it from Claude"). Its tools call the API's own routes in-process (`httpx.ASGITransport`), so validation, caps and
+  confirmation apply as over HTTP. Never add a tool that changes budget policies, the mode switch or keys. Host and
+  Origin are checked (this machine and `WEB_ORIGIN`'s host). Tests: `tests/integration/test_mcp.py` (in-process `mcp.Client`).
 - Run the API via `python -m studio.api`, not bare uvicorn: on Windows it must use `asyncio:SelectorEventLoop`.
   `pnpm dev` adds `--reload`, so saving server code restarts the API and drops requests in flight (`/health`
   reports `reloads_on_change`). For a long live run, start it without `--reload` or don't edit `apps/server/src`
