@@ -1,5 +1,5 @@
 {
-  "name": "@studio/web",
+  "name": "@opsis/web",
   "version": "0.1.0",
   "private": true,
   "license": "Apache-2.0",
@@ -20,7 +20,7 @@
     "@remotion/player": "^4.0.534",
     "@remotion/transitions": "^4.0.534",
     "@sparkjsdev/spark": "2.3.1",
-    "@studio/api-client": "workspace:^",
+    "@opsis/api-client": "workspace:^",
     "@tanstack/react-query": "^5.104.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.52.0",

@@ -4,15 +4,16 @@
 
 .DESCRIPTION
   Taildrop saves incoming files to the Downloads folder.
-  - ams-media-*.tar: bundles of media files. Each is extracted into <Dest>\media (a mirror of the server's
+  - opsis-media-*.tar: bundles of media files. Each is extracted into <Dest>\media (a mirror of the server's
     data\media that never deletes anything) once it reads to the end, then removed. A bundle still arriving, or
     damaged, is left in place and tried again next run.
-  - ams-*.dump: database dumps (pg_dump custom format). They move into <Dest>\db once complete, and the newest
+  - opsis-*.dump: database dumps (pg_dump custom format). They move into <Dest>\db once complete, and the newest
     -KeepDays days are kept, judged by the date in the file name.
+  Files named ams-* (what the server sent before the rename to Opsis) are collected the same way.
   Run hourly and at logon by the scheduled task install-backup-task.ps1 registers; a log is kept in <Dest>.
 
   Restore: copy <Dest>\media back over the server's data/media, put a dump in data/backups and run
-  `podman exec ams-worker python scripts/restore_db.py --replace --file data/backups/<dump> --yes` with the API and
+  `podman exec opsis-worker python scripts/restore_db.py --replace --file data/backups/<dump> --yes` with the API and
   worker stopped (infra/server/README.md).
 #>
 param(
@@ -36,7 +37,7 @@ function Test-Settled([IO.FileInfo]$file) {
     return ((Get-Date) - $file.LastWriteTime).TotalMinutes -ge 2
 }
 
-foreach ($bundle in Get-ChildItem -Path $Source -Filter "ams-media-*.tar" -File -ErrorAction SilentlyContinue | Sort-Object Name) {
+foreach ($bundle in Get-ChildItem -Path (Join-Path $Source '*') -Include 'opsis-media-*.tar', 'ams-media-*.tar' -File -ErrorAction SilentlyContinue | Sort-Object Name) {
     if (-not (Test-Settled $bundle)) { continue }
     $count = (& $tar -tf $bundle.FullName | Measure-Object).Count
     if ($LASTEXITCODE -ne 0 -or $count -eq 0) {
@@ -52,7 +53,7 @@ foreach ($bundle in Get-ChildItem -Path $Source -Filter "ams-media-*.tar" -File 
     Write-Log "extracted $($bundle.Name): $count files ($([math]::Round($bundle.Length / 1MB)) MB)"
 }
 
-foreach ($dump in Get-ChildItem -Path $Source -Filter "ams-*.dump" -File -ErrorAction SilentlyContinue) {
+foreach ($dump in Get-ChildItem -Path (Join-Path $Source '*') -Include 'opsis-*.dump', 'ams-*.dump' -File -ErrorAction SilentlyContinue) {
     if (-not (Test-Settled $dump)) { continue }
     $head = New-Object byte[] 5
     $stream = [IO.File]::OpenRead($dump.FullName)
@@ -66,7 +67,7 @@ foreach ($dump in Get-ChildItem -Path $Source -Filter "ams-*.dump" -File -ErrorA
 }
 
 function Get-DumpDate([IO.FileInfo]$file) {
-    # ams-studio-YYYYMMDD-HHMMSS.dump; fall back to the file time
+    # opsis-studio-YYYYMMDD-HHMMSS.dump; fall back to the file time
     if ($file.Name -match '-(\d{8})-(\d{6})\.dump$') {
         return [datetime]::ParseExact("$($Matches[1])$($Matches[2])", 'yyyyMMddHHmmss', $null)
     }
@@ -74,7 +75,7 @@ function Get-DumpDate([IO.FileInfo]$file) {
 }
 
 $cutoff = (Get-Date).AddDays(-$KeepDays)
-foreach ($old in Get-ChildItem -Path $db -Filter "ams-*.dump" -File | Where-Object { (Get-DumpDate $_) -lt $cutoff }) {
+foreach ($old in Get-ChildItem -Path (Join-Path $db '*') -Include 'opsis-*.dump', 'ams-*.dump' -File | Where-Object { (Get-DumpDate $_) -lt $cutoff }) {
     Remove-Item -LiteralPath $old.FullName
     Write-Log "pruned $($old.Name) (older than $KeepDays days)"
 }

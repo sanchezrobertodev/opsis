@@ -1,4 +1,4 @@
-name: ai-media-studio
+name: opsis
 
 services:
   postgres:

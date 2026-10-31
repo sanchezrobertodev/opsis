@@ -1,7 +1,7 @@
 "use client";
 
 import { ExternalLink } from "lucide-react";
-import type { Schemas } from "@studio/api-client";
+import type { Schemas } from "@opsis/api-client";
 import { cn, usd } from "@/lib/cn";
 import { useBalances, useBudget } from "@/lib/queries";
 

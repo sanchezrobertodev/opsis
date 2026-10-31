@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { Schemas } from "@studio/api-client";
+import type { Schemas } from "@opsis/api-client";
 import { api, unwrap } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { Dialog, Segmented } from "@/components/ui/controls";

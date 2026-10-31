@@ -5,9 +5,9 @@
 .DESCRIPTION
   A per-user task (no administrator rights needed) that runs while you are signed in, which is also when Taildrop
   delivers. Re-run to update it; remove it with
-  Unregister-ScheduledTask -TaskName "AI Media Studio backup collect".
+  Unregister-ScheduledTask -TaskName "Opsis backup collect".
 #>
-param([string]$Dest = "E:\Backups\ai-media-studio", [int]$KeepDays = 60)
+param([string]$Dest = (Join-Path $HOME "Backups\opsis"), [int]$KeepDays = 60)
 $ErrorActionPreference = "Stop"
 $script = Join-Path $PSScriptRoot "collect-backups.ps1"
 $arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`" -Dest `"$Dest`" -KeepDays $KeepDays"
@@ -16,7 +16,9 @@ $hourly = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval
 $logon = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName "AI Media Studio backup collect" -Action $action -Trigger $hourly, $logon `
-    -Settings $settings -Description "Files the AI Media Studio backups the home server sends with Taildrop into $Dest" `
+# the task's name before the rename to Opsis
+Unregister-ScheduledTask -TaskName "AI Media Studio backup collect" -Confirm:$false -ErrorAction SilentlyContinue
+Register-ScheduledTask -TaskName "Opsis backup collect" -Action $action -Trigger $hourly, $logon `
+    -Settings $settings -Description "Files the Opsis backups your server sends with Taildrop into $Dest" `
     -Force | Out-Null
-Write-Output "Registered: AI Media Studio backup collect -> $Dest"
+Write-Output "Registered: Opsis backup collect -> $Dest"

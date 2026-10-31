@@ -1,6 +1,6 @@
 # Opsis on a Linux server: one pod, so the containers share localhost (Postgres on 5432 stays inside).
 # deploy.sh fills in the @...@ values and installs this into ~/.config/containers/systemd/.
 [Pod]
-PodName=ams
+PodName=opsis
 PublishPort=127.0.0.1:@WEB_PORT@:3000
 PublishPort=127.0.0.1:@API_PORT@:8400

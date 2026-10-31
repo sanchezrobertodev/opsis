@@ -232,6 +232,7 @@ the API and worker mount the host's `~/.codex`; point `CODEX_BIN` at
 | "ComfyUI is missing ..." on a model | Run `fetch_models.py --local` with the groups it names and `--dest` set to ComfyUI's `models` folder. |
 | Out of memory on a local job | Use Draft quality or close other GPU apps. One local job runs at a time. |
 | The API won't start on Windows | Run it as `python -m studio.api` (what `pnpm dev` does), not bare uvicorn. |
+| The library is empty after updating | Before the rename to Opsis the database volume was `ai-media-studio_pgdata`. Stop both databases (`docker compose -p ai-media-studio -f infra/docker-compose.yml down`, then the same with `-p opsis`), remove the new empty volume (`docker volume rm opsis_pgdata`), copy the old one with `docker run --rm -v ai-media-studio_pgdata:/from -v opsis_pgdata:/to postgres:18 cp -a /from/. /to/`, then `pnpm db:up`. |
 
 ## Limitations
 
@@ -254,7 +255,7 @@ pnpm gen     # regenerate the TypeScript API client after an API change
 ```
 
 `pnpm test` needs `pnpm db:up` and uses a separate `studio_test` database. Install the e2e browser once with
-`pnpm --filter @studio/web exec playwright install chromium`. `pnpm e2e` reuses a running `pnpm dev`, so stop a dev
+`pnpm --filter @opsis/web exec playwright install chromium`. `pnpm e2e` reuses a running `pnpm dev`, so stop a dev
 server that is in Live mode first.
 
 Adding a model, a preset or a template is mostly YAML; [CLAUDE.md](CLAUDE.md) lists the conventions.

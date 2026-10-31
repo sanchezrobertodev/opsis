@@ -1,6 +1,6 @@
 "use client";
 
-import type { Schemas } from "@studio/api-client";
+import type { Schemas } from "@opsis/api-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import type { Direction } from "@/components/create/DirectorPanel";

@@ -1,10 +1,10 @@
 [Unit]
 Description=Opsis provider schema check (report in data/reports/)
-Requires=ams-worker.service
-After=ams-worker.service
+Requires=opsis-worker.service
+After=opsis-worker.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/podman exec ams-worker python scripts/fetch_provider_schemas.py
+ExecStart=/usr/bin/podman exec opsis-worker python scripts/fetch_provider_schemas.py
 StandardOutput=append:@APP_DIR@/data/logs/schema-drift.log
 StandardError=append:@APP_DIR@/data/logs/schema-drift.log

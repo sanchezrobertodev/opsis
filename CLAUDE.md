@@ -239,7 +239,7 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 
 ## Self-hosting on a Linux server
 - `infra/server/` (README there) is an example deployment:
-  - **Containers:** rootless Podman with Quadlet runs the pod `ams` with Postgres 18, the API, the worker and the web app.
+  - **Containers:** rootless Podman with Quadlet runs the pod `opsis` with Postgres 18, the API, the worker and the web app.
   - **Addresses:** `tailscale serve` publishes the web app on `https://<host>.<tailnet>.ts.net:19443/` and the API on
     `:19444`, tailnet only.
   - **Files:** the server's checkout holds its `.env` and `data/`.
@@ -251,8 +251,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   Tailscale). When it's off, the route says it isn't running.
 - **Backups:** `DB_EXEC` says how backups reach the Postgres tools. Unset is `docker compose exec` (the compose setup);
   empty runs them in place (the worker container has the Postgres 18 client). systemd timers replace the Windows tasks.
-- **Off-site copy:** the hourly `ams-offsite.timer` (`infra/server/offsite.sh`) sends new media, as tar bundles, and
-  new dumps with Taildrop to `AMS_OFFSITE_TARGET`. On a Windows PC, `infra/server/windows/install-backup-task.ps1`
+- **Off-site copy:** the hourly `opsis-offsite.timer` (`infra/server/offsite.sh`) sends new media, as tar bundles, and
+  new dumps with Taildrop to `OPSIS_OFFSITE_TARGET`. On a Windows PC, `infra/server/windows/install-backup-task.ps1`
   registers a task that files them in a folder of your choice (`-Dest`): a media mirror plus 60 days of dumps.
 - The server's caption fonts are open stand-ins (`infra/server/fonts.conf`).
 

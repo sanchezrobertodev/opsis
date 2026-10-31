@@ -1,30 +1,31 @@
 [Unit]
-Description=Opsis worker (generations, recipe runs, ffmpeg)
-Requires=ams-postgres.service
-After=ams-postgres.service
+Description=Opsis API
+Requires=opsis-postgres.service
+After=opsis-postgres.service
 
 [Container]
-ContainerName=ams-worker
-Image=localhost/ams-server:latest
-Pod=ams.pod
+ContainerName=opsis-api
+Image=localhost/opsis-server:latest
+Pod=opsis.pod
 # The server's clock, so backup names and logs read in local time
 Timezone=local
 # A real init as PID 1, so SIGTERM stops Python promptly on restart
 RunInit=true
-Exec=python -m studio.worker
+Exec=python -m studio.api --host 0.0.0.0 --port 8400
+# Keys and modes from the studio's .env; the addresses below win over anything it says
 EnvironmentFile=@APP_DIR@/.env
 Environment=DATABASE_URL=postgresql+asyncpg://studio:studio@127.0.0.1:5432/studio
 Environment=QUEUE_DATABASE_URL=postgresql://studio:studio@127.0.0.1:5432/studio
 Environment=WEB_ORIGIN=@WEB_ORIGIN@
 Environment=PGHOST=127.0.0.1 PGPASSWORD=studio DB_EXEC=
 Volume=@APP_DIR@/data:/app/data:z
-# The host's Codex CLI and its ChatGPT sign-in (GPT Image through the plan, providers/codex.py). It runs read-only
-# here; set CODEX_BIN in .env to %h/.codex/packages/standalone/current/bin/codex to turn the route on.
+# The host's Codex CLI too, so Settings can check it runs and is signed in (the worker draws the pictures)
 Volume=%h/.codex:%h/.codex:z
 Environment=CODEX_HOME=%h/.codex
-# ffmpeg assembly is the peak; the cap keeps a runaway render from taking the server down
-PodmanArgs=--memory=1536m
-StopTimeout=30
+PodmanArgs=--memory=768m
+HealthCmd=curl -fsS http://127.0.0.1:8400/health
+HealthInterval=60s
+HealthStartPeriod=60s
 
 [Service]
 Restart=always

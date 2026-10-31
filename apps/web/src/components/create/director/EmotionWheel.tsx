@@ -1,6 +1,6 @@
 "use client";
 
-import type { Schemas } from "@studio/api-client";
+import type { Schemas } from "@opsis/api-client";
 import { cn } from "@/lib/cn";
 
 type Emotion = Schemas["EmotionItem"];
