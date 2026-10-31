@@ -49,6 +49,7 @@ from studio.pipelines.engine import (
     resolve_checkpoint,
     retry_run,
     run_spent,
+    runs_spent,
 )
 from studio.pipelines.recipe import PlannedJob, Recipe
 from studio.pipelines.recipes import RECIPES, get_recipe
@@ -166,7 +167,8 @@ async def list_runs(limit: int = Query(30, ge=1, le=100), recipe: str | None = N
                func.count().filter(PipelineStep.status != StepStatus.skipped))
         .where(PipelineStep.run_id.in_([r.id for r in runs])).group_by(PipelineStep.run_id))).all()}
     outputs = await _assets(session, user.id, [r.output.get("asset_id") for r in runs])
-    return [_summary(r, outputs, counts.get(r.id, (0, 0))) for r in runs]
+    spent = await runs_spent(session, [r.id for r in runs])
+    return [_summary(r, outputs, counts.get(r.id, (0, 0)), spent[r.id]) for r in runs]
 
 
 async def _assets(session: AsyncSession, user_id: uuid.UUID, ids: list[str | None]) -> dict[str, Asset]:
@@ -177,7 +179,7 @@ async def _assets(session: AsyncSession, user_id: uuid.UUID, ids: list[str | Non
         Asset.id.in_(wanted), Asset.user_id == user_id, Asset.deleted_at.is_(None)))).scalars()}
 
 
-def _summary(run: PipelineRun, assets: dict[str, Asset], counts: tuple[int, int]) -> RunSummary:
+def _summary(run: PipelineRun, assets: dict[str, Asset], counts: tuple[int, int], spent: Decimal) -> RunSummary:
     recipe = get_recipe(run.recipe)
     out = assets.get(run.output.get("asset_id") or "")
     return RunSummary(
@@ -186,7 +188,7 @@ def _summary(run: PipelineRun, assets: dict[str, Asset], counts: tuple[int, int]
         estimate_usd=float(run.estimate_usd) if run.estimate_usd is not None else None,
         cap_usd=float(run.cap_usd) if run.cap_usd is not None else None, created_at=run.created_at,
         finished_at=run.finished_at, output_asset=asset_out(out) if out else None,
-        steps_done=counts[0], steps_total=counts[1],
+        steps_done=counts[0], steps_total=counts[1], spent_usd=float(spent),
     )
 
 
@@ -227,9 +229,8 @@ async def run_out(session: AsyncSession, run: PipelineRun) -> RunOut:
 
     visible = [st for st in steps if st.status != StepStatus.skipped]
     done = sum(st.status == StepStatus.succeeded for st in visible)
-    base = _summary(run, assets, (done, len(visible)))
-    return RunOut(**base.model_dump(), input=run.input, output=run.output,
-                  spent_usd=float(await run_spent(session, run)), steps=[step_out(st) for st in visible])
+    base = _summary(run, assets, (done, len(visible)), await run_spent(session, run))
+    return RunOut(**base.model_dump(), input=run.input, output=run.output, steps=[step_out(st) for st in visible])
 
 
 async def _owned(session: AsyncSession, user: User, run_id: uuid.UUID, lock: bool = False) -> PipelineRun:

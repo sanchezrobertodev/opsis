@@ -102,22 +102,31 @@ async def run_spent(session: AsyncSession, run: PipelineRun) -> Decimal:
     """What the run's generations have cost so far: every charge the ledger holds for their attempts (a provider can
     bill an attempt that then failed), plus the estimate of each one still going (`unknown` too, since it may yet be
     billed). A finished generation nobody charged for costs nothing, so a rejected request doesn't use up the cap."""
-    charged = (await session.execute(
-        select(func.coalesce(func.sum(SpendLedger.amount_usd), 0))
-        .join(GenerationAttempt, SpendLedger.generation_attempt_id == GenerationAttempt.id)
-        .join(Generation, GenerationAttempt.generation_id == Generation.id)
-        .where(Generation.group_id == run.id, SpendLedger.entry_type.in_(SPENT))
-    )).scalar_one()
-    pending = (await session.execute(
-        select(func.coalesce(func.sum(Generation.estimated_cost_usd), 0))
-        .where(Generation.group_id == run.id, Generation.status.in_(ACTIVE_STATUSES))
-    )).scalar_one()
-    claude = (await session.execute(  # its Claude steps (scripts, plans, rewording)
-        select(func.coalesce(func.sum(SpendLedger.amount_usd), 0))
-        .where(SpendLedger.pipeline_run_id == run.id, SpendLedger.generation_attempt_id.is_(None),
-               SpendLedger.entry_type.in_(SPENT))
-    )).scalar_one()
-    return Decimal(charged) + Decimal(pending) + Decimal(claude)
+    return (await runs_spent(session, [run.id]))[run.id]
+
+
+async def runs_spent(session: AsyncSession, run_ids: list[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
+    """run_spent for several runs, three queries in all."""
+    spent = {rid: Decimal(0) for rid in run_ids}
+    for rid, amount in [
+        *(await session.execute(
+            select(Generation.group_id, func.sum(SpendLedger.amount_usd))
+            .join(GenerationAttempt, SpendLedger.generation_attempt_id == GenerationAttempt.id)
+            .join(Generation, GenerationAttempt.generation_id == Generation.id)
+            .where(Generation.group_id.in_(run_ids), SpendLedger.entry_type.in_(SPENT))
+            .group_by(Generation.group_id))).all(),
+        *(await session.execute(
+            select(Generation.group_id, func.sum(Generation.estimated_cost_usd))
+            .where(Generation.group_id.in_(run_ids), Generation.status.in_(ACTIVE_STATUSES))
+            .group_by(Generation.group_id))).all(),
+        *(await session.execute(  # its Claude steps (scripts, plans, rewording)
+            select(SpendLedger.pipeline_run_id, func.sum(SpendLedger.amount_usd))
+            .where(SpendLedger.pipeline_run_id.in_(run_ids), SpendLedger.generation_attempt_id.is_(None),
+                   SpendLedger.entry_type.in_(SPENT))
+            .group_by(SpendLedger.pipeline_run_id))).all(),
+    ]:
+        spent[rid] += Decimal(amount or 0)
+    return spent
 
 
 def _texts(step: PipelineStep) -> list[tuple[str, int | None, str]]:

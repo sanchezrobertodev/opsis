@@ -576,12 +576,12 @@ class RunSummary(ApiModel):
     output_asset: AssetOut | None = None
     steps_done: int = 0
     steps_total: int = 0
+    spent_usd: float
 
 
 class RunOut(RunSummary):
     input: dict[str, Any]
     output: dict[str, Any]
-    spent_usd: float
     steps: list[StepOut]
 
 

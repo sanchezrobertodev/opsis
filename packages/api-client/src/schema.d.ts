@@ -3450,6 +3450,8 @@ export interface components {
              * @default 0
              */
             steps_total: number;
+            /** Spent Usd */
+            spent_usd: number;
             /** Input */
             input: {
                 [key: string]: unknown;
@@ -3458,8 +3460,6 @@ export interface components {
             output: {
                 [key: string]: unknown;
             };
-            /** Spent Usd */
-            spent_usd: number;
             /** Steps */
             steps: components["schemas"]["StepOut"][];
         };
@@ -3514,6 +3514,8 @@ export interface components {
              * @default 0
              */
             steps_total: number;
+            /** Spent Usd */
+            spent_usd: number;
         };
         /**
          * SectionsParam
