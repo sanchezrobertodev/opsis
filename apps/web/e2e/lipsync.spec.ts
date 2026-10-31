@@ -15,14 +15,14 @@ test("Lipsync: a picture speaks a script, compared on two models, then side by s
 
   const who = page.getByRole("group", { name: "Who speaks: a picture or a clip" });
   await who.locator('input[type="file"]').setInputFiles(path.join(FIXTURES, "images", "keyframe.png"));
-  await expect(who.getByRole("img")).toBeVisible();
+  await expect(who.locator("img")).toBeVisible();  // decorative inside its full-size button
 
   await page.getByLabel("What they say").fill("The lamp has burned every night for forty years. Tonight it goes dark.");
   await expect(page.getByRole("combobox", { name: "Voice" })).toBeVisible();
   // the first talking-portrait model is picked; add a second to compare
   await expect(page.getByRole("button", { name: /^InfiniteTalk/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: /^Kling Avatar 2.0/ }).click();
-  await expect(page.getByText(/^Free mock run/)).toBeVisible();
+  await expect(page.getByText(/free mock run/i)).toBeVisible();
   await page.getByRole("button", { name: "Make it speak" }).click();
 
   await expect(page.getByRole("heading", { name: "Pick the take you like" })).toBeVisible({ timeout: 90_000 });

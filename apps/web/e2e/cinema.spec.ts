@@ -139,15 +139,15 @@ test("Cinema: pick an opening and a closing frame, then film from one to the oth
   await expect(page.getByText("Saved, version 2")).toBeVisible();
 
   await page.getByRole("button", { name: /A kite lifts off the beach\./ }).click();
-  await page.getByRole("button", { name: /^Make 4$/ }).first().click();
-  await page.getByRole("button", { name: "Opening frame option" }).first().click({ timeout: 60_000 });
+  await page.getByRole("button", { name: /^Make 4( ·|$)/ }).first().click();
+  await page.getByRole("button", { name: "Opening frame option", exact: true }).first().click({ timeout: 60_000 });
   const closing = page.getByRole("region", { name: "Closing frame" });
-  await closing.getByRole("button", { name: /^Make 4$/ }).click();
-  await closing.getByRole("button", { name: "Closing frame option" }).first().click({ timeout: 60_000 });
-  await expect(closing.getByRole("button", { name: "Closing frame option" })).toHaveCount(4);
+  await closing.getByRole("button", { name: /^Make 4( ·|$)/ }).click();
+  await closing.getByRole("button", { name: "Closing frame option", exact: true }).first().click({ timeout: 60_000 });
+  await expect(closing.getByRole("button", { name: "Closing frame option", exact: true })).toHaveCount(4);
   await expect(page.getByText("Ends on the picked closing frame.")).toBeVisible();
 
-  await page.getByRole("button", { name: /^Film \d$/ }).click();
+  await page.getByRole("button", { name: /^Film \d( ·|$)/ }).click();
   await expect(page.getByRole("button", { name: "Use this take" }).first()).toBeVisible({ timeout: 90_000 });
 });
 
