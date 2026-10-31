@@ -19,9 +19,10 @@ from studio.budget import modes
 from studio.config import get_settings
 from studio.db.models import User
 from studio.domain.generations import CreateRequest, plan, routing_env
+from studio.providers.local_status import local_state
 from studio.registry.loader import MOCK_PROVIDER, Registry, get_registry
 from studio.registry.pricing import estimate
-from studio.registry.routing import candidates
+from studio.registry.routing import RoutingEnv, candidates, local_only, runs_locally
 from studio.registry.schema import Mode, ModelSpec
 from studio.registry.validate import NormalizedRequest
 
@@ -39,7 +40,7 @@ def _wrapped(reg: Registry, spec: ModelSpec) -> list[ModelSpec]:
 
 # Part of the summary's ETag: bump it when what the summary computes changes (from-prices), so browsers holding the
 # last copy fetch it again even though the registry files didn't change.
-SUMMARY_VERSION = 4
+SUMMARY_VERSION = 5
 STAND_IN_SECONDS = 5  # a typical input clip or sound, for modes priced by input length (video edits)
 STAND_IN_PROMPT = "x" * 300  # a short script, for routes priced by the text (speech)
 
@@ -58,24 +59,29 @@ def _stand_ins(mode: Mode) -> list[dict]:
     return out
 
 
-def _from_price(reg: Registry, spec: ModelSpec) -> float | None:
+def _from_price(reg: Registry, spec: ModelSpec, env: RoutingEnv | None = None) -> float | None:
     if spec.kind == "virtual":
-        prices = [p for m in _wrapped(reg, spec) if (p := _from_price(reg, m)) is not None]
+        prices = [p for m in _wrapped(reg, spec) if (p := _from_price(reg, m, env)) is not None]
         return min(prices) if prices else None
     settings = get_settings()
     prices, usable = [], []
+    only_local = local_only(reg, spec)
     for mode in spec.modes:
         params = _defaults(spec, mode.id)
         media = _stand_ins(mode)
+        here = env is not None and runs_locally(reg, spec, mode.id, env)
         for route in spec.routes:
             if route.provider == MOCK_PROVIDER or not route.enabled or mode.id not in route.modes:
                 continue
+            provider = reg.providers.get(route.provider)
+            if provider and provider.kind == "local" and not only_local and not here:
+                continue  # a free local route for a model that also runs elsewhere counts once it can run here
             try:
                 usd = float(estimate(route.pricing, params, STAND_IN_PROMPT, media=media, mode=mode.id).usd)
             except ValueError:
                 continue
             prices.append(usd)
-            if (provider := reg.providers.get(route.provider)) and provider.configured(settings):
+            if provider and provider.configured(settings):
                 usable.append(usd)
     # routes that are set up, so a free route that isn't (Codex without CODEX_BIN) doesn't make the model look free;
     # every route on a fresh install with no keys yet
@@ -87,18 +93,20 @@ def _from_price(reg: Registry, spec: ModelSpec) -> float | None:
 RUNS_ON = ("local", "cloud_gpu", "hosted")
 
 
-def _runs_on(reg: Registry, spec: ModelSpec) -> str:
+def _runs_on(reg: Registry, spec: ModelSpec, env: RoutingEnv) -> str:
     if spec.kind == "virtual":
-        found = [_runs_on(reg, m) for m in _wrapped(reg, spec)]
+        found = [_runs_on(reg, m, env) for m in _wrapped(reg, spec)]
         return min(found, key=RUNS_ON.index) if found else "hosted"
+    # a model that also runs elsewhere counts as yours once this machine's engine can run it
+    if local_only(reg, spec) or any(runs_locally(reg, spec, m.id, env) for m in spec.modes):
+        return "local"
     kinds = {p.kind for r in spec.routes if r.provider != MOCK_PROVIDER and (p := reg.providers.get(r.provider))}
-    return "local" if "local" in kinds else "cloud_gpu" if "selfhosted" in kinds else "hosted"
+    return "cloud_gpu" if "selfhosted" in kinds else "hosted"
 
 
-async def _runnable(session: AsyncSession, reg: Registry, spec: ModelSpec) -> bool:
+async def _runnable(reg: Registry, spec: ModelSpec, env: RoutingEnv) -> bool:
     if spec.kind == "virtual":
-        return any([await _runnable(session, reg, m) for m in _wrapped(reg, spec)])
-    env = await routing_env(session, reg)
+        return any([await _runnable(reg, m, env) for m in _wrapped(reg, spec)])
     for mode in spec.modes:
         req = NormalizedRequest(spec.id, mode.id, "", None, _defaults(spec, mode.id), [])
         if any(c.eligible for c in candidates(reg, spec, req, env)):
@@ -114,10 +122,14 @@ async def get_registry_summary(
     mode = (await modes.current(session)).provider  # the Settings switch changes what's runnable
     settings = get_settings()
     ready = ",".join(sorted(p.id for p in reg.providers.values() if p.configured(settings)))
+    # what the local engines can run changes what's runnable, where models run and their "from" prices
+    reach, blocked = await local_state(reg)
+    ready += repr((sorted(reach.items()), sorted(blocked)))
     etag = f'"{reg.hash}-{mode}-{SUMMARY_VERSION}-{hashlib.sha1(ready.encode()).hexdigest()[:8]}"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304)
     response.headers["ETag"] = etag
+    env = await routing_env(session, reg)
     models = []
     for spec in sorted(reg.models.values(), key=lambda m: (m.output_type != "video", m.name)):
         models.append(ModelSummary(
@@ -125,8 +137,8 @@ async def get_registry_summary(
             description=spec.description,
             output_type=spec.output_type, status=spec.status, license_tier=spec.license_tier, tags=spec.tags,
             modes=[ModeSummary(id=m.id, label=m.label, ops=list(m.ops)) for m in spec.modes],
-            from_price_usd=_from_price(reg, spec), runnable=await _runnable(session, reg, spec),
-            runs_on=_runs_on(reg, spec),
+            from_price_usd=_from_price(reg, spec, env), runnable=await _runnable(reg, spec, env),
+            runs_on=_runs_on(reg, spec, env),
         ))
     return RegistryOut(hash=reg.hash, provider_mode=mode, models=models,
                        warnings=reg.warnings)

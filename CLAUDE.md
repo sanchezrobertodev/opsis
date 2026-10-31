@@ -49,7 +49,7 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 - OpenMontage is AGPL-3.0. Borrow ideas only; never copy its code.
 
 ## Adding a model
-1. Draft YAML in `registry/models/<type>/<id>.yaml` (or run `scripts/import_catalog.py`). Include `status`,
+1. Draft YAML in `registry/models/<type>/<id>.yaml` (copy a similar model). Include `status`,
    `license_tier`, modes with media slots, params, and ≥1 route with a pricing `verified` date and `source`.
 2. Add at least one `examples:` entry, marking the cheapest one `smoke: true`.
 3. Run `uv run pytest apps/server/tests/contract -k <id>` and the registry lint.
@@ -281,7 +281,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   (`wan-uni3c`, high-noise expert only). Clip inputs are re-timed to 16 fps before upload (route `media_fps`, hosted
   afresh, not from the per-asset upload cache), so 81 frames cover 5 s of any clip; clip-driven ones size the output
   from the clip (`transforms/comfy.py:wan_clip_size`). New weights go in `models.yaml` with exact sizes; the
-  graphs travel with each request, so adding a workflow needs no image rebuild.
+  graphs travel with each request, so adding a workflow needs no image rebuild. Each of these models also has a
+  `comfy_local` route (YAML merge `<<: *wan_core`) for your own ComfyUI.
   Results over 5 MB go to a fal storage upload slot the adapter makes per output at submit (`uploads`, kept a day)
   and are ingested from its link; smaller ones, and any whose upload fails (up to 20 MB), come back inline as base64.
 
@@ -440,9 +441,16 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 
 ## Local engine (ComfyUI)
 - `comfy_local` provider = your ComfyUI (0.34) at `COMFYUI_URL` (default http://127.0.0.1:8188; the README's "Open models on your
-  GPU" lists the model files). Local models: `wan-2.2-5b` (t2v/i2v) and `flux-2-klein-4b` (t2i).
-- Local routes are free and run in every PROVIDER_MODE. A model with a configured local route never falls back to
-  the mock; if ComfyUI is off, routing reports "isn't running" instead.
+  GPU" lists the model files). Local-only models: `wan-2.2-5b` (t2v/i2v) and `flux-2-klein-4b` (t2i). The wan-core
+  graphs (LTX-2.5, the Wan 14B ones) have local routes too, with `min_vram_gb` (an estimate).
+- Local routes are free and run in every PROVIDER_MODE. Before routing, `adapter.unavailable()` checks an up ComfyUI
+  can run the route (`local_status.local_blockers`): GPU memory from `/system_stats`, node classes and model files
+  from `/object_info` (60 s cache), naming the missing file and the `fetch_models.py --local --group ...` that gets
+  it (groups from `infra/runpod/wan-core/models.yaml`; `local_only` entries never go on the RunPod volume). A blocked
+  route is left out with that reason. The mock gives way to a local route only when it can run, or when the model is
+  local-only and ComfyUI is configured (then "isn't running" or the blocker shows instead of a mock result).
+- Both ComfyUI adapters draw a fresh seed per take unless one is given (`comfy_workflows.fresh_seed`) and re-time
+  clips for `media_fps` routes (`retime_clip`).
 - Workflows live in `workflows/comfy/<name>.json` (API graph) + `<name>.map.yaml` (which node inputs to fill,
   optional nodes, outputs). Routes name the template as their endpoint; `transform` hooks in
   `studio/providers/transforms/` map quality/aspect to pixel sizes. Route `eta` expressions drive time estimates.

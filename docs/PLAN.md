@@ -123,7 +123,7 @@ packages/api-client/              generated TS types + typed hooks
 registry/{models,providers,director,presets}/*.yaml   single source of truth (Pydantic-validated, JSON Schema)
 workflows/comfy/*.json + *.map.yaml                   ComfyUI API workflows + node-injection maps
 infra/docker-compose.yml          postgres:18   ·   infra/runpod/wan-core/ (Dockerfile, handler.py, models.yaml)
-scripts/                          smoke_live.py, import_catalog.py, fetch_provider_schemas.py, make_mock_media.py
+scripts/                          smoke_live.py, fetch_provider_schemas.py, backup_db.py, restore_db.py
 docs/research/                    research reports from this planning session
 CLAUDE.md                         conventions + "how to add a model" checklist
 ```

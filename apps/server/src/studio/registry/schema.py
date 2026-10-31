@@ -327,6 +327,8 @@ class Route(_Strict):
     # inputs re-timed to this frame rate before sending, keeping their duration (role -> fps): a model that takes
     # a fixed number of frames then covers the whole clip, not its first second or two (wan-core: Wan runs at 16)
     media_fps: dict[str, float] = {}
+    # local engines: the GPU memory (GB) it needs; a smaller card leaves the route out instead of running out of memory
+    min_vram_gb: float | None = None
     constraints: dict[str, dict[str, Any]] = {}  # param -> {options|min|max}
     unsupported_params: list[str] = []
     pricing: Pricing

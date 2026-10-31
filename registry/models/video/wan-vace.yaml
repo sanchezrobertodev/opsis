@@ -29,7 +29,8 @@ modes:
       - {role: image_references, kinds: [image], label: Looks like, max: 1}
 
 routes:
-  - id: wan-vace@wan_core
+  - &wan_core
+    id: wan-vace@wan_core
     provider: runpod_wan_core
     modes:
       masked_edit: {endpoint: runpod_wan21_vace_edit}
@@ -55,6 +56,16 @@ routes:
     output: {path: output.outputs, kind: video}
     # Wan works at 16 fps: clips are re-timed to it, so its 81 frames cover up to 5 s of them
     media_fps: {input_video: 16, mask: 16}
+
+  # The same graph on your own ComfyUI, free and picked first once it has the model files and enough GPU
+  # memory. The memory floor and the run time (twice the RTX PRO 6000's) are estimates, not measured.
+  - <<: *wan_core
+    id: wan-vace@comfy_local
+    provider: comfy_local
+    min_vram_gb: 24
+    pricing: {basis: per_request, rates: [{usd: 0}], verified: 2026-10-30, source: your own GPU}
+    eta: "2 * ((60 if quality == '480p' else 160) * min(input_video_seconds * 16 + 1, 81) / 81)"
+    output: {path: outputs, kind: video}
 
 examples:
   - name: masked_edit_smoke

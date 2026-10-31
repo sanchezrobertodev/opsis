@@ -24,7 +24,6 @@ import hashlib
 import json
 import logging
 import mimetypes
-import secrets
 import tempfile
 import time
 from pathlib import Path
@@ -35,7 +34,6 @@ import httpx
 
 from studio.config import get_settings
 from studio.domain.enums import ErrorClass
-from studio.media.ffmpeg import ffmpeg
 from studio.providers.base import (
     AmbiguousSubmitError,
     PollResult,
@@ -44,7 +42,7 @@ from studio.providers.base import (
     ResolvedMedia,
     SubmitResult,
 )
-from studio.providers.comfy_workflows import load_template
+from studio.providers.comfy_workflows import fresh_seed, load_template, retime_clip
 from studio.providers.common import (
     best_mime,
     download_url,
@@ -124,8 +122,7 @@ class RunPodComfyAdapter(RunPodAdapter):
         name = f"{m.asset_id}-{fps:g}fps.mp4"
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / name
-            await ffmpeg("-y", "-i", str(m.path), "-vf", f"fps={fps:g}", "-an", "-c:v", "libx264", "-crf", "12",
-                         "-pix_fmt", "yuv420p", str(out))
+            await retime_clip(m.path, fps, out)
             try:
                 url = await get_adapter("fal").client.upload_file(out)
             except Exception as exc:
@@ -137,8 +134,7 @@ class RunPodComfyAdapter(RunPodAdapter):
         inputs: list[dict[str, str]] = []
         values = {k: _to_file(v, inputs) for k, v in payload.items()}
         values["filename_prefix"] = f"opsis/{time.strftime('%Y-%m-%d')}/{client_ref[:8]}"
-        if "seed" in template.map.inputs and values.get("seed") is None:
-            values["seed"] = secrets.randbelow(2**32)  # a fresh take each time unless the user pinned a seed
+        fresh_seed(template, values)
         graph, warnings = template.render(values)
         runpod_endpoint = self._endpoint(route)
         uploads = await _upload_slots([o.kind for o in template.map.outputs], client_ref)

@@ -32,7 +32,8 @@ modes:
       - {role: video_references, kinds: [video], label: Camera move to copy, required: true, max_duration_s: 5}
 
 routes:
-  - id: wan-uni3c@wan_core
+  - &wan_core
+    id: wan-uni3c@wan_core
     provider: runpod_wan_core
     modes:
       i2v: {endpoint: runpod_wan22_uni3c}
@@ -59,6 +60,16 @@ routes:
     output: {path: output.outputs, kind: video}
     # Wan works at 16 fps: clips are re-timed to it, so its 81 frames cover up to 5 s of them
     media_fps: {video_references: 16}
+
+  # The same graph on your own ComfyUI, free and picked first once it has the model files and enough GPU
+  # memory. The memory floor and the run time (twice the RTX PRO 6000's) are estimates, not measured.
+  - <<: *wan_core
+    id: wan-uni3c@comfy_local
+    provider: comfy_local
+    min_vram_gb: 16
+    pricing: {basis: per_request, rates: [{usd: 0}], verified: 2026-10-30, source: your own GPU}
+    eta: "2 * ((15 + 6 * duration) if quality == '480p' else (30 + 15 * duration))"
+    output: {path: outputs, kind: video}
 
 examples:
   - name: camera_copy_smoke

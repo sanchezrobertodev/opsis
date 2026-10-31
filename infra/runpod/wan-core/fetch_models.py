@@ -1,9 +1,11 @@
-"""Download the wan-core model files onto the network volume (models.yaml lists them).
+"""Download the wan-core model files onto the network volume, or into your own ComfyUI (models.yaml lists them).
 
-Runs three ways, all idempotent (files already present at the right size are skipped):
+Runs these ways, all idempotent (files already present at the right size are skipped):
   - as a worker job: {"input": {"action": "fetch_models", "groups": ["core"]}}  (bills GPU time while it downloads)
   - on a CPU pod with the volume at /workspace:  python /fetch_models.py --dest /workspace/models
-  - locally, to see what would be fetched:       python fetch_models.py --dry-run
+  - into your own ComfyUI, one group at a time:  uv run python infra/runpod/wan-core/fetch_models.py --local \
+        --dest <ComfyUI>/models --group ltx        (--local lists the groups and their sizes when none is given)
+  - to see what would be fetched:                python fetch_models.py --dry-run [--local --group ...]
 """
 
 from __future__ import annotations
@@ -24,14 +26,31 @@ MANIFEST = Path(os.environ.get("WAN_CORE_MANIFEST", Path(__file__).with_name("mo
 PARALLEL = int(os.environ.get("WAN_CORE_FETCH_PARALLEL", "4"))
 
 
-def load(manifest: Path, groups: list[str] | None = None) -> list[dict[str, Any]]:
-    files = yaml.safe_load(manifest.read_text(encoding="utf-8"))["files"]
-    return [f for f in files if not groups or f.get("group", "core") in groups]
+def load(manifest: Path, groups: list[str] | None = None, local: bool = False) -> list[dict[str, Any]]:
+    """The files in `groups` (all when None), each once though several groups may list it. `local_only` files (models
+    only a local ComfyUI runs) are left out unless `local`."""
+    files, seen = [], set()
+    for f in yaml.safe_load(manifest.read_text(encoding="utf-8"))["files"]:
+        key = (f["folder"], f["name"])
+        if (f.get("local_only") and not local) or (groups and f.get("group", "core") not in groups) or key in seen:
+            continue
+        seen.add(key)
+        files.append(f)
+    return files
 
 
-def status(manifest: Path, dest: Path, groups: list[str] | None = None) -> dict[str, Any]:
+def group_sizes(manifest: Path, local: bool = False) -> dict[str, float]:
+    """group -> GB, every file it lists."""
+    out: dict[str, float] = {}
+    for f in yaml.safe_load(manifest.read_text(encoding="utf-8"))["files"]:
+        if local or not f.get("local_only"):
+            out[f.get("group", "core")] = out.get(f.get("group", "core"), 0) + f.get("bytes", 0) / 1e9
+    return out
+
+
+def status(manifest: Path, dest: Path, groups: list[str] | None = None, local: bool = False) -> dict[str, Any]:
     present, missing = [], []
-    for f in load(manifest, groups):
+    for f in load(manifest, groups, local):
         path = dest / f["folder"] / f["name"]
         ok = path.is_file() and (not f.get("bytes") or path.stat().st_size == f["bytes"])
         (present if ok else missing).append(f"{f['folder']}/{f['name']}")
@@ -73,8 +92,8 @@ def _download(f: dict[str, Any], dest: Path) -> str:
     return f"got {path.name} ({size / 1e9:.1f} GB at {mb_s:.0f} MB/s)"
 
 
-def fetch_all(manifest: Path, dest: Path, groups: list[str] | None = None) -> dict[str, Any]:
-    files = load(manifest, groups)
+def fetch_all(manifest: Path, dest: Path, groups: list[str] | None = None, local: bool = False) -> dict[str, Any]:
+    files = load(manifest, groups, local)
     done, failed = [], []
     with ThreadPoolExecutor(PARALLEL) as pool:
         futures = {pool.submit(_download, f, dest): f for f in files}
@@ -86,22 +105,32 @@ def fetch_all(manifest: Path, dest: Path, groups: list[str] | None = None) -> di
                 msg = f"FAILED {exc}"
                 failed.append(msg)
             print(f"fetch_models | {msg}", flush=True)
-    return {"done": done, "failed": failed, **status(manifest, dest, groups)}
+    return {"done": done, "failed": failed, **status(manifest, dest, groups, local)}
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dest", default=os.environ.get("WAN_CORE_MODELS", "/runpod-volume/models"))
+    ap.add_argument("--dest", help="the models folder (default: $WAN_CORE_MODELS or /runpod-volume/models)")
     ap.add_argument("--group", action="append", help="only these manifest groups (default: all)")
+    ap.add_argument("--local", action="store_true",
+                    help="for your own ComfyUI: needs --dest (its models folder) and --group; adds the local-only groups")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+    if args.local and not args.group:  # every group together is over 200 GB: never the default on a PC
+        print("Pick one or more groups with --group (a model's error message names them):")
+        for name, gb in group_sizes(MANIFEST, local=True).items():
+            print(f"  {name:<12} {gb:6.1f} GB")
+        return 2
     if args.dry_run:
-        files = load(MANIFEST, args.group)
+        files = load(MANIFEST, args.group, args.local)
         for f in files:
             print(f"{f['folder']}/{f['name']}  {f.get('bytes', 0) / 1e9:.1f} GB  [{f.get('group', 'core')}]")
         print(f"total {sum(f.get('bytes', 0) for f in files) / 1e9:.1f} GB in {len(files)} files")
         return 0
-    result = fetch_all(MANIFEST, Path(args.dest), args.group)
+    if args.local and not args.dest:
+        ap.error("--local needs --dest: your ComfyUI's models folder")
+    dest = Path(args.dest or os.environ.get("WAN_CORE_MODELS", "/runpod-volume/models"))
+    result = fetch_all(MANIFEST, dest, args.group, args.local)
     print(json.dumps({k: v for k, v in result.items() if k != "present"}, indent=2))
     return 1 if result["failed"] or result["missing"] else 0
 

@@ -9,6 +9,7 @@ from studio.domain.generations import GenerationRequestError
 from studio.registry.loader import Registry, get_registry
 from studio.registry.presets import PresetError, render
 from studio.registry.pricing import estimate
+from studio.registry.routing import local_only
 from studio.registry.schema import ModelSpec, PresetSpec
 
 router = APIRouter(prefix="/presets", tags=["presets"])
@@ -39,7 +40,7 @@ def _out(reg: Registry, preset: PresetSpec) -> PresetOut:
             if (item := library.look(section, getattr(direction, name)))]
     ar_param = spec.param("aspect_ratio")
     aspect = str(preset.params.get("aspect_ratio") or (ar_param.default if ar_param else None) or "16:9")
-    local = any(reg.providers[r.provider].kind == "local" for r in spec.routes if r.provider in reg.providers)
+    local = local_only(reg, spec)  # a model that also runs on RunPod or a hosted API shows its live price
     return PresetOut(
         id=preset.id, name=preset.name, category=preset.category, summary=preset.summary, tags=preset.tags,
         model_id=spec.id, model_name=spec.name, output_type=spec.output_type, mode=mode.id, mode_label=mode.label,

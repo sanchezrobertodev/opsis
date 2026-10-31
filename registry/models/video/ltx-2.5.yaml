@@ -8,8 +8,8 @@ name: LTX-2.5
 family: ltx
 vendor: lightricks
 description: >-
-  Lightricks' open 22B audio-video model on your own RunPod endpoint: text, a start frame, or a first and last frame
-  to video at 720p or 1080p, with sound and spoken lines made in the same pass. Distilled, so a warm 5 s 720p clip
+  Lightricks' open 22B audio-video model on your own RunPod endpoint or GPU: text, a start frame, or a first and
+  last frame to video at 720p or 1080p, with sound and spoken lines made in the same pass. Distilled, so a warm 5 s 720p clip
   takes well under a minute; the first clip after a pause also loads the model (about a minute and a half more).
 output_type: video
 status: active
@@ -53,7 +53,8 @@ modes:
       - {role: end_image, kinds: [image], label: Last frame, required: true}
 
 routes:
-  - id: ltx-2.5@wan_core
+  - &wan_core
+    id: ltx-2.5@wan_core
     provider: runpod_wan_core
     modes:
       t2v: {endpoint: runpod_ltx25_t2v}
@@ -89,6 +90,16 @@ routes:
       else (20 + (15 if mode == 'flf2v' else 10) * duration)
     timeout_s: 3600
     output: {path: output.outputs, kind: video}
+
+  # The same graph on your own ComfyUI, free and picked first once it has the model files and enough GPU
+  # memory. The memory floor and the run time (twice the RTX PRO 6000's) are estimates, not measured.
+  - <<: *wan_core
+    id: ltx-2.5@comfy_local
+    provider: comfy_local
+    min_vram_gb: 24
+    pricing: {basis: per_request, rates: [{usd: 0}], verified: 2026-10-30, source: your own GPU}
+    eta: "2 * ((10 + (6 if mode == 'flf2v' else 4) * duration) if resolution == '720p' else (20 + (15 if mode == 'flf2v' else 10) * duration))"
+    output: {path: outputs, kind: video}
 
   - id: ltx-2.5@fal
     provider: fal

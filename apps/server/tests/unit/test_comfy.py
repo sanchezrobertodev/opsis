@@ -15,7 +15,7 @@ from studio.providers.comfy_local import ComfyLocalAdapter
 from studio.providers.comfy_workflows import load_template
 from studio.registry.loader import load_registry
 from studio.registry.mapping import build_payload
-from studio.registry.routing import RoutingEnv, candidates
+from studio.registry.routing import RoutingEnv, candidates, cheapest_live_estimate
 from studio.registry.validate import MediaRef, normalize
 
 WORKFLOWS = get_settings().comfyui_workflows_dir
@@ -433,3 +433,149 @@ def test_ltx_fal_fallback_rounds_up_to_its_lengths_and_skips_square():
     square = normalize(spec, "t2v", "dusk", {"aspect_ratio": "1:1"}, [])
     fal = next(c for c in candidates(REG, spec, square, env) if c.route.id == "ltx-2.5@fal")
     assert not fal.eligible and "aspect_ratio" in (fal.reason or "")
+
+
+# ---------------------------------------------------------------- the wan-core graphs on your own ComfyUI
+
+
+def test_missing_model_files_and_nodes_are_found_from_object_info():
+    """Fixed choices the graph makes that this ComfyUI doesn't offer are model files it hasn't got; inputs the map
+    fills (the clips) are the user's, never flagged."""
+    from studio.providers.comfy_workflows import model_files, unavailable_choices
+
+    template = load_template(WORKFLOWS, "runpod_wan21_vace_edit")
+    have = {"wan2.1_vace_14B_fp16.safetensors", "umt5_xxl_fp8_e4m3fn_scaled.safetensors"}
+    info = {}
+    for node in template.graph.values():
+        inputs = {name: ([sorted(have)] if isinstance(v, str) and v.endswith(".safetensors") else ["STRING", {}])
+                  for name, v in node["inputs"].items()}
+        info[node["class_type"]] = {"input": {"required": inputs}}
+    classes, missing = unavailable_choices(template, info, model_files())
+    assert classes == []
+    assert sorted(missing) == ["Wan21_CausVid_14B_T2V_lora_rank32.safetensors", "wan_2.1_vae.safetensors"]
+    info.pop("LoadVideo")
+    assert unavailable_choices(template, info, model_files())[0] == ["LoadVideo"]
+    # the newer COMBO format lists its options the same way
+    info["LoadVideo"] = {"input": {"required": {"file": ["COMBO", {"options": []}]}}}
+    assert unavailable_choices(template, info, model_files())[0] == []
+
+
+def test_download_groups_skip_the_14b_experts_a_graph_doesnt_use():
+    from studio.providers.comfy_workflows import download_groups, model_files
+
+    files = model_files()
+    vae, encoder = "wan_2.1_vae.safetensors", "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+    assert download_groups(["wan2.1_vace_14B_fp16.safetensors", vae, encoder], files) == ["vace", "wan-shared"]
+    assert download_groups(["wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors", vae, encoder], files) == ["core"]
+    assert download_groups(["wan2.2_ti2v_5B_fp16.safetensors", encoder], files) == ["wan5b"]
+
+
+def test_every_model_file_a_workflow_names_can_be_downloaded():
+    from studio.providers.comfy_workflows import model_files
+
+    files = model_files()
+    named = {v for path in WORKFLOWS.glob("*.json") for node in json.loads(path.read_text(encoding="utf-8")).values()
+             for v in node.get("inputs", {}).values()
+             if isinstance(v, str) and v.endswith((".safetensors", ".pth", ".ckpt", ".gguf"))}
+    assert named and named <= set(files), sorted(named - set(files))
+
+
+def test_fetcher_keeps_local_only_files_off_the_volume_and_fetches_shared_files_once():
+    import importlib.util
+
+    from studio.config import REPO_ROOT
+
+    path = REPO_ROOT / "infra" / "runpod" / "wan-core" / "fetch_models.py"
+    module_spec = importlib.util.spec_from_file_location("fetch_models", path)
+    fetch = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(fetch)
+    volume = fetch.load(fetch.MANIFEST)
+    assert not any(f.get("local_only") for f in volume)
+    assert {f.get("group", "core") for f in volume} == {"core", "camera", "move", "vace", "animate2", "uni3c", "ltx"}
+    pc = fetch.load(fetch.MANIFEST, ["core", "wan5b", "wan-shared"], local=True)
+    names = [f["name"] for f in pc]
+    assert len(names) == len(set(names)) and "wan2.2_ti2v_5B_fp16.safetensors" in names
+
+
+async def test_a_small_gpu_or_missing_files_keep_a_local_route_out(monkeypatch):
+    from studio.providers import local_status
+
+    spec = REG.models["ltx-2.5"]
+    route = spec.route("ltx-2.5@comfy_local")
+    a = adapter()
+
+    async def stats(_url):
+        return {"devices": [{"vram_total": int(11.9 * 2**30)}]}
+
+    monkeypatch.setattr(local_status, "comfy_stats", stats)
+    assert await a.unavailable(route, "t2v") == "needs a GPU with 24 GB of memory; ComfyUI's has 12 GB"
+
+    async def big(_url):
+        return {"devices": [{"vram_total": int(23.99 * 2**30)}]}  # a 24 GB card reports a little under
+
+    async def info(classes):
+        return {c: {"input": {"required": {}}} for c in classes} | {
+            "UNETLoader": {"input": {"required": {"unet_name": [[], {}]}}}}
+
+    monkeypatch.setattr(local_status, "comfy_stats", big)
+    monkeypatch.setattr(a, "_object_info", info)
+    why = await a.unavailable(route, "t2v")
+    assert why.startswith("ComfyUI is missing ltx-2.5-22b-distilled") and "--group ltx" in why
+    monkeypatch.setattr(a, "_object_info", lambda classes: _done({c: {"input": {"required": {}}} for c in classes}))
+    assert await a.unavailable(route, "t2v") is None
+
+
+async def _done(value):
+    return value
+
+
+async def test_local_runs_re_time_clips_and_take_a_fresh_seed(fake, monkeypatch, tmp_path):
+    from studio.providers import comfy_local
+
+    retimed = []
+
+    async def retime(src, fps, dest):
+        retimed.append((src.name, fps))
+        dest.write_bytes(b"mp4")
+
+    monkeypatch.setattr(comfy_local, "retime_clip", retime)
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"mp4")
+    route = REG.models["wan-vace"].route("wan-vace@comfy_local")
+    staged = await adapter().stage_inputs(route, [ResolvedMedia("input_video", "v1", clip, "video/mp4", "video")])
+    assert retimed == [("clip.mp4", 16)] and staged == {"input_video": ["opsis/abc.png"]} and fake.uploads
+
+    a = adapter()
+    seeds = set()
+    for _ in range(2):
+        res = await a.submit(ROUTE, "wan22_ti2v_5b", {"prompt": "x"}, client_ref="r")
+        seeds.add(fake.prompts[res.job_id]["prompt"]["3"]["inputs"]["seed"])
+        assert res.raw["seed"] in seeds
+    assert len(seeds) == 2 and 50702026 not in seeds  # not the seed the template was saved with
+    res = await a.submit(ROUTE, "wan22_ti2v_5b", {"prompt": "x", "seed": 7}, client_ref="r")
+    assert fake.prompts[res.job_id]["prompt"]["3"]["inputs"]["seed"] == 7
+
+
+def ltx_env(*, online: bool, blocked: str | None, mode="mock") -> RoutingEnv:
+    return RoutingEnv(provider_mode=mode, live_allowlist=set(), has_key=lambda p: p == "comfy_local" or mode == "live",
+                      has_adapter=lambda a: True, reachable=lambda p: online,
+                      blocked=lambda r, m: blocked if r.provider == "comfy_local" else None)
+
+
+def test_a_model_that_also_runs_elsewhere_uses_the_local_engine_only_when_it_can():
+    spec = REG.models["ltx-2.5"]
+    req = normalize(spec, "t2v", "x", {}, [])
+
+    def cands(e):
+        return {c.route.id: c for c in candidates(REG, spec, req, e)}
+
+    ready = cands(ltx_env(online=True, blocked=None))
+    assert [k for k, c in ready.items() if c.eligible] == ["ltx-2.5@comfy_local"]  # mock mode: the real thing, free
+    live = [c.route.id for c in candidates(REG, spec, req, ltx_env(online=True, blocked=None, mode="live")) if c.eligible]
+    assert live[0] == "ltx-2.5@comfy_local" and "ltx-2.5@wan_core" in live  # free first, RunPod behind it
+
+    missing = cands(ltx_env(online=True, blocked="ComfyUI is missing ltx.safetensors"))
+    assert missing["ltx-2.5@comfy_local"].reason == "ComfyUI is missing ltx.safetensors"
+    assert missing["ltx-2.5@mock"].eligible  # unlike Wan 2.2 5B, it has somewhere else to run: the mock stands in
+    assert cands(ltx_env(online=False, blocked=None))["ltx-2.5@mock"].eligible
+    assert cheapest_live_estimate(list(missing.values())).route.id != "ltx-2.5@comfy_local"
