@@ -234,6 +234,7 @@ def test_progress_counts_every_sampler_and_previews_find_their_job():
              "4": {"class_type": "KSamplerAdvanced", "inputs": {"latent_image": ["3", 0]}},
              "8": {"class_type": "VAEDecode", "inputs": {"samples": ["4", 0]}}}
     assert comfy_events.samplers(graph) == ["3", "4"]
+    assert comfy_events.samplers(load_template(WORKFLOWS, "video_upscale_esrgan").graph) == ["4"]
     events.jobs["p1"] = comfy_events._Job(samplers=["3", "4"])
     events.jobs["p2"] = comfy_events._Job(samplers=[])  # queued by another process: whatever reports counts
     events.handle(json.dumps({"type": "execution_cached", "data": {"nodes": ["3"], "prompt_id": "p1"}}))

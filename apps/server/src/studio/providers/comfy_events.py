@@ -2,7 +2,7 @@
 
 ComfyUI sends a job's events only to the client id it was queued under, so each process queues under its own id and
 keeps one connection per ComfyUI open while it follows jobs there (it closes after IDLE_S without one). Progress
-counts the graph's samplers (nodes that take a `latent_image`) equally up to 90 %; decoding and saving are the rest.
+counts the graph's slow nodes (samplers and model upscales) equally up to 90 %; decoding and saving are the rest.
 Previews are a sampler's latest frame, which ComfyUI sends when the job asks for them (`extra_data.preview_method`).
 """
 
@@ -29,8 +29,9 @@ PREVIEW_IMAGE, PREVIEW_IMAGE_WITH_METADATA = 1, 4  # ComfyUI's binary event type
 
 
 def samplers(graph: dict[str, Any]) -> list[str]:
-    """The nodes that sample (KSampler, SamplerCustomAdvanced, ...): every one takes a latent_image."""
-    return [nid for nid, node in graph.items() if "latent_image" in (node.get("inputs") or {})]
+    """The nodes whose steps make up a job: samplers (KSampler, SamplerCustomAdvanced... take a latent_image) and
+    model upscales (ImageUpscaleWithModel takes an upscale_model)."""
+    return [nid for nid, node in graph.items() if {"latent_image", "upscale_model"} & set(node.get("inputs") or {})]
 
 
 @dataclass

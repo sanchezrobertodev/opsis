@@ -149,10 +149,17 @@ seven minutes. The first job after ComfyUI starts also loads the model, about 40
 | `4x_NMKD-Siax_200k.pth` | `upscale_models/` | [uwg/upscaler](https://huggingface.co/uwg/upscaler/tree/main/ESRGAN) |
 
 Sample prompt: *A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.*
-([what Wan 2.2 5B made from it](docs/demo/wan22-5b-sailboat.mp4) on a 12 GB card.) Progress
-shows on the form and the job card, and a queued or running job can be canceled from its card. To see what runs,
-read [`workflows/comfy/wan22_ti2v_5b.json`](workflows/comfy/wan22_ti2v_5b.json) and its
+([what Wan 2.2 5B made from it](docs/demo/wan22-5b-sailboat.mp4) on a 12 GB card.) While a take renders, its card
+shows ComfyUI's own progress and the sampler's latest frame, and a queued or running job can be canceled from its
+card. To see what runs, read [`workflows/comfy/wan22_ti2v_5b.json`](workflows/comfy/wan22_ti2v_5b.json) and its
 [`.map.yaml`](workflows/comfy/wan22_ti2v_5b.map.yaml).
+
+**LoRAs**: put a LoRA file in ComfyUI's `models/loras/` and pick it under **More settings** with Wan 2.2 5B or
+FLUX.2 klein, with a strength. The list is read from ComfyUI each time the form opens.
+
+**ESRGAN upscale (local)**: a clip of up to 5 s and 720p made 2 to 4 times bigger, frame by frame, with any model in
+`upscale_models/` (the Siax one above by default), keeping its frame rate and sound. Pick it under Upscale in Edit
+video. Three seconds of 480p take about two minutes on a 12 GB card.
 
 ### Bigger open models on a bigger GPU
 

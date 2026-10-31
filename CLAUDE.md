@@ -441,7 +441,9 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 
 ## Local engine (ComfyUI)
 - `comfy_local` provider = your ComfyUI (0.34) at `COMFYUI_URL` (default http://127.0.0.1:8188; the README's "Open models on your
-  GPU" lists the model files). Local-only models: `wan-2.2-5b` (t2v/i2v) and `flux-2-klein-4b` (t2i). The wan-core
+  GPU" lists the model files). Local-only models: `wan-2.2-5b` (t2v/i2v), `flux-2-klein-4b` (t2i) and
+  `esrgan-video` (op `upscale`: every frame through an upscale model, then scaled to the clip's size times `scale` by
+  `transforms/comfy.py:upscaled_size`; clips up to 5 s and 720p, since every frame is held at 4x in RAM). The wan-core
   graphs (LTX-2.5, the Wan 14B ones) have local routes too, with `min_vram_gb` (an estimate).
 - Local routes are free and run in every PROVIDER_MODE. Before routing, `adapter.unavailable()` checks an up ComfyUI
   can run the route (`local_status.local_blockers`): GPU memory from `/system_stats`, node classes and model files
@@ -457,8 +459,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   `studio/providers/transforms/` map quality/aspect to pixel sizes. Route `eta` expressions drive time estimates.
 - One job at a time (sized for 12 GB of VRAM). On a 12 GB card, draft Wan ≈ 70–90 s, standard ≈ 7 min.
 - Live progress and previews: each process queues under its own client id and follows its jobs on ComfyUI's websocket
-  (`providers/comfy_events.py`, `extra_data.preview_method: auto`). Progress counts the graph's samplers (nodes with a
-  `latent_image`) up to 90 %; until one steps, and for a job queued before a restart, the ETA estimate shows. Each
+  (`providers/comfy_events.py`, `extra_data.preview_method: auto`). Progress counts the graph's slow nodes (with a
+  `latent_image` or an `upscale_model` input) up to 90 %; until one steps, and for a job queued before a restart, the ETA estimate shows. Each
   preview frame is kept at `u/{user}/previews/{generation}/` (`generations.preview_key`, `preview_url` on the take)
   and dropped when the take leaves `in_progress`. The provider's `poll_max_seconds: 3` keeps them live.
 - LoRAs: enum params with `comfy_choices: <Node>.<input>` take their options from your ComfyUI when the form opens

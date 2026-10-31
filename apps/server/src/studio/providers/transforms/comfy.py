@@ -169,3 +169,12 @@ def wan_clip_size(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -
     n = min(max(frames, 5), MAX_CLIP_FRAMES)
     payload["length"] = (n - 1) // 4 * 4 + 1  # Wan wants 4k + 1 frames
     return payload
+
+
+def upscaled_size(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    """The clip's own size times `scale`, in even pixels (ESRGAN upscales, then the graph scales down to this)."""
+    clip = next((m for m in req.media if m.role == "input_video"), None)
+    w, h = (clip.width, clip.height) if clip is not None and clip.width and clip.height else (1280, 720)
+    factor = float(req.params.get("scale", 2))
+    payload["width"], payload["height"] = round(w * factor / 2) * 2, round(h * factor / 2) * 2
+    return payload
