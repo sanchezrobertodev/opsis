@@ -167,12 +167,26 @@
     "inputs": {
       "shift": 8,
       "model": [
-        "37",
+        "90",
         0
       ]
     },
     "_meta": {
       "title": "ModelSamplingSD3"
+    }
+  },
+  "90": {
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA (optional)"
+    },
+    "inputs": {
+      "model": [
+        "37",
+        0
+      ],
+      "lora_name": "",
+      "strength_model": 1.0
     }
   }
 }

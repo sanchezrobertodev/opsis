@@ -461,3 +461,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   `latent_image`) up to 90 %; until one steps, and for a job queued before a restart, the ETA estimate shows. Each
   preview frame is kept at `u/{user}/previews/{generation}/` (`generations.preview_key`, `preview_url` on the take)
   and dropped when the take leaves `in_progress`. The provider's `poll_max_seconds: 3` keeps them live.
+- LoRAs: enum params with `comfy_choices: <Node>.<input>` take their options from your ComfyUI when the form opens
+  (`GET /local-engine/choices`, the adapter's `choices()`); any value passes validation. Wan 2.2 5B and FLUX.2 klein
+  carry `lora` and `lora_strength`; their graphs' `LoraLoaderModelOnly` (node 90) is `optional` with
+  `bypass: [model]`, so with no LoRA it drops out and its strength is ignored. The importer drafts the same for a
+  graph with one LoRA loader.

@@ -34,6 +34,7 @@ from studio.providers.base import (
     SubmitResult,
 )
 from studio.providers.comfy_workflows import (
+    combo_options,
     download_groups,
     fresh_seed,
     load_template,
@@ -103,6 +104,14 @@ class ComfyLocalAdapter(ProviderAdapter):
         except (httpx.HTTPError, ValueError, AttributeError):
             return None
         return out
+
+    async def choices(self, node: str, input_: str) -> list[Any] | None:
+        """What this ComfyUI offers for a node's choice input (its LoRA files, say); None if it didn't say."""
+        info = await self._object_info({node})
+        if info is None or node not in info:
+            return None
+        spec = info[node].get("input", {})
+        return combo_options({**spec.get("required", {}), **spec.get("optional", {})}.get(input_))
 
     # ------------------------------------------------------------------ adapter
 

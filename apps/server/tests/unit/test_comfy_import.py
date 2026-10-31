@@ -57,3 +57,16 @@ def test_drafted_model_loads_and_its_route_fits_the_map(tmp_path, monkeypatch):
     assert load_template(tmp_path, "mine").map.outputs[0].kind == "video"
     monkeypatch.setattr(get_settings(), "comfyui_workflows_dir", tmp_path)
     assert _check_workflows(spec, spec.routes[0], "mine") == []
+    # its one LoRA loader is a pick from your ComfyUI's files, and drops out when none is picked
+    lora = next(p for p in spec.parameters if p.name == "lora")
+    assert lora.comfy_choices == "LoraLoaderModelOnly.lora_name" and lora.default is None
+    graph, _ = load_template(tmp_path, "mine").render({"prompt": "x", "lora_strength": 1.0})
+    assert "90" not in graph and graph["48"]["inputs"]["model"] == ["37", 0]
+
+
+def test_several_lora_loaders_stay_as_saved():
+    graph = _graph("flux2_klein_4b")
+    graph["91"] = {**graph["90"], "inputs": {**graph["90"]["inputs"], "model": ["90", 0]}}
+    draft = comfy_import.analyze(graph)
+    assert "lora" not in draft.inputs and not draft.optional
+    assert any("LoRA loaders 90, 91" in n for n in draft.notes)

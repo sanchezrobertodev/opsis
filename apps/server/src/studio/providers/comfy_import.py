@@ -19,6 +19,7 @@ TEXT_INPUTS = ("text", "prompt")
 SEED_INPUTS = ("seed", "noise_seed")
 LENGTH_INPUTS = ("length", "frames_number", "num_frames", "video_length")
 FPS_INPUTS = ("fps", "frame_rate")
+LORA_LOADERS = {"LoraLoaderModelOnly": ["model"], "LoraLoader": ["model", "clip"]}  # what each output passes on
 # loader class -> (the input that names the file, what it loads)
 LOADERS = {
     "LoadImage": ("image", "image"),
@@ -63,6 +64,7 @@ class Draft:
     outputs: list[dict[str, str]] = field(default_factory=list)
     slots: list[dict[str, Any]] = field(default_factory=list)
     defaults: dict[str, Any] = field(default_factory=dict)
+    optional: dict[str, dict[str, Any]] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
     output_type: str = "video"
 
@@ -204,6 +206,21 @@ def analyze(graph: dict[str, Any]) -> Draft:
         taken.add(role)
         d.add(role, nid, field_)
         d.slots.append({"role": role, "kinds": kinds, "label": LABELS.get(role, role), "required": True})
+
+    # one LoRA loader: pick its file from your ComfyUI's list, or none (the loader then drops out of the chain)
+    loras = [nid for nid, n in nodes.items() if n["class_type"] in LORA_LOADERS]
+    passes = LORA_LOADERS[nodes[loras[0]]["class_type"]] if loras else []
+    if len(loras) == 1 and all(isinstance(nodes[loras[0]]["inputs"].get(i), list) for i in passes):
+        nid, ins = loras[0], nodes[loras[0]]["inputs"]
+        d.add("lora", nid, "lora_name")
+        for name in ("strength_model", "strength_clip"):
+            if name in ins:
+                d.add("lora_strength", nid, name)
+        d.optional["lora"] = {"node": nid, "bypass": passes}
+        d.defaults |= {"lora": ins.get("lora_name") or None, "lora_strength": ins.get("strength_model", 1.0),
+                       "lora_node": nodes[nid]["class_type"]}
+    elif loras:
+        d.notes.append(f"LoRA loaders {', '.join(loras)} stay as saved; with one, it would be a choice in the form")
     return d
 
 
@@ -226,7 +243,8 @@ def map_yaml(d: Draft, name: str) -> str:
     head = [f"# Drafted from a ComfyUI workflow by scripts/import_comfy_workflow.py on {date.today().isoformat()}.",
             "# Review it: each key below fills these node inputs (docs/comfy-workflows.md)."]
     head += [f"# - {note}" for note in d.notes]
-    body = {"description": f"{name} (your own ComfyUI workflow)", "inputs": d.inputs, "outputs": d.outputs}
+    body = {"description": f"{name} (your own ComfyUI workflow)", "inputs": d.inputs,
+            **({"optional": d.optional} if d.optional else {}), "outputs": d.outputs}
     return "\n".join(head) + "\n" + yaml.safe_dump(body, sort_keys=False, default_flow_style=None, allow_unicode=True,
                                                    width=118)
 
@@ -259,6 +277,12 @@ def model_yaml(d: Draft, model_id: str, name: str, template: str, min_vram_gb: f
                        "group": "advanced"})
     if "seed" in d.inputs:
         params.append({"name": "seed", "type": "seed", "group": "advanced"})
+    if "lora" in d.inputs:
+        params.append({"name": "lora", "label": "LoRA", "type": "enum",
+                       "comfy_choices": f"{d.defaults['lora_node']}.lora_name", "default": d.defaults["lora"],
+                       "group": "advanced", "help": "A LoRA file from your ComfyUI's loras folder."})
+        params.append({"name": "lora_strength", "label": "LoRA strength", "type": "float", "min": 0, "max": 2,
+                       "step": 0.05, "default": float(d.defaults["lora_strength"]), "group": "advanced"})
 
     has_prompt = "prompt" in d.inputs
     mode: dict[str, Any] = {"id": mode_id, "label": label, "ops": ops}

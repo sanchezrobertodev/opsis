@@ -17,6 +17,7 @@ from studio.api.routers import (
     faceless,
     generations,
     llm,
+    local_engine,
     misc,
     model_storage,
     pipelines,
@@ -130,3 +131,4 @@ app.include_router(generations.router)
 app.include_router(assets.router)
 app.include_router(misc.router)
 app.include_router(model_storage.router)
+app.include_router(local_engine.router)

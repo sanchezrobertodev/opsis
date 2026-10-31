@@ -74,6 +74,8 @@ class EnumParam(_ParamBase):
     director: str | None = None
     # also takes values that aren't listed (ids made per account, like cloned voices); the options are suggestions
     open: bool = False
+    # "Node.input": the form lists what your ComfyUI offers for that node input (its LoRA files); takes any value
+    comfy_choices: str | None = Field(default=None, pattern=r"^\w+\.\w+$")
 
 
 class IntParam(_ParamBase):

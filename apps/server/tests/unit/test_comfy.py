@@ -75,6 +75,45 @@ def test_registry_maps_canonical_params_onto_the_template():
     assert "quality" not in payload and "aspect_ratio" not in payload
 
 
+
+def test_a_lora_from_comfyui_is_optional_and_drops_out_of_the_chain():
+    klein = REG.models["flux-2-klein-4b"]
+    route = klein.route("flux-2-klein-4b@comfy_local")
+    template = load_template(WORKFLOWS, "flux2_klein_4b")
+    req = normalize(klein, "t2i", "harbor", {}, [])
+    _, payload, _ = build_payload(klein, route, req, {})
+    graph, warnings = template.render(payload)
+    assert "90" not in graph and graph["7"]["inputs"]["model"] == ["1", 0] and not warnings
+    # any file name passes (the form lists your ComfyUI's); its strength goes with it
+    req = normalize(klein, "t2i", "harbor", {"lora": "pixel-art.safetensors", "lora_strength": 0.7}, [])
+    _, payload, _ = build_payload(klein, route, req, {})
+    graph, _ = template.render(payload)
+    assert graph["7"]["inputs"]["model"] == ["90", 0]
+    assert graph["90"]["inputs"] == {"model": ["1", 0], "lora_name": "pixel-art.safetensors", "strength_model": 0.7}
+
+
+def test_a_bypass_must_name_a_link(tmp_path):
+    (tmp_path / "w.json").write_text(json.dumps({"1": {"class_type": "LoraLoaderModelOnly", "inputs": {
+        "model": "not a link", "lora_name": ""}}, "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 0]}}}))
+    (tmp_path / "w.map.yaml").write_text("inputs: {lora: [{node: '1', input: lora_name}]}\n"
+                                         "optional: {lora: {node: '1', bypass: [model]}}\n"
+                                         "outputs: [{node: '2', kind: image}]\n")
+    with pytest.raises(ValueError, match="bypasses 'model'"):
+        load_template(tmp_path, "w")
+
+
+async def test_lora_choices_come_from_comfyui(monkeypatch):
+    info = {"LoraLoaderModelOnly": {"input": {"required": {"lora_name": [["a.safetensors", "b.safetensors"]]}}}}
+
+    async def object_info(self, classes):
+        return {c: info[c] for c in classes if c in info}
+
+    monkeypatch.setattr(ComfyLocalAdapter, "_object_info", object_info)
+    a = adapter()
+    assert await a.choices("LoraLoaderModelOnly", "lora_name") == ["a.safetensors", "b.safetensors"]
+    assert await a.choices("NoSuchNode", "lora_name") is None
+
+
 # ---------------------------------------------------------------- adapter against a fake ComfyUI
 
 
@@ -642,3 +681,27 @@ def test_each_preview_frame_replaces_the_last_and_leaves_with_the_take():
     assert fsm.preview_url(gen) == storage.url_for(second)
     fsm.drop_preview(gen)
     assert gen.preview_key is None and not storage.exists(fsm.preview_prefix(gen))
+
+
+def test_choices_endpoint_says_when_comfyui_is_off(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from studio.api.deps import current_user
+    from studio.api.routers import local_engine
+
+    async def choices(self, node, input_):
+        return ["a.safetensors"] if self.base == "http://up.test" else None
+
+    monkeypatch.setattr(ComfyLocalAdapter, "choices", choices)
+    app = FastAPI()
+    app.include_router(local_engine.router)
+    app.dependency_overrides[current_user] = lambda: object()
+    client = TestClient(app)
+    monkeypatch.setattr(get_settings(), "comfyui_url", "http://up.test")
+    assert client.get("/local-engine/choices", params={"field": "LoraLoaderModelOnly.lora_name"}).json() == {
+        "available": True, "options": ["a.safetensors"], "message": None}
+    monkeypatch.setattr(get_settings(), "comfyui_url", "http://down.test")
+    off = client.get("/local-engine/choices", params={"field": "LoraLoaderModelOnly.lora_name"}).json()
+    assert not off["available"] and "Is it running?" in off["message"]
+    assert client.get("/local-engine/choices", params={"field": "../etc"}).status_code == 422

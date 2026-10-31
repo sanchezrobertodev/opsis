@@ -90,7 +90,7 @@ def _coerce(param: Param, value: Any) -> Any:
         for opt in param.options:
             if str(opt) == str(value):
                 return opt
-        if param.open and str(value).strip():
+        if (param.open or param.comfy_choices) and str(value).strip():
             return str(value)
         raise ValueError(f"must be one of {param.options}")
     return str(value)

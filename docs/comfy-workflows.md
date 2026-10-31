@@ -50,12 +50,15 @@ printed and kept at the top of the map, say what it guessed by order.
 | `fps` | Frame rate | `CreateVideo` or `VHS_VideoCombine` and its repeats |
 | `start_image`, `end_image`, `input_video`, `mask`, ... | An uploaded file | A loader, named by the input it feeds, else by order; `mask` when the file name says so |
 | `filename_prefix` | Where ComfyUI saves the result | Save nodes |
+| `lora`, `lora_strength` | A LoRA file picked in the form, and its strength | The graph's one `LoraLoaderModelOnly` or `LoraLoader` |
 
 Fix a wrong guess by editing the node ids. Two more things the map can say:
 
 - `optional:` drops a node when its input is missing, and unlinks it from the nodes it feeds. The built-in Wan 5B
   graph uses this to run text-to-video without its start frame:
-  `optional: {start_image: {node: "56", unlink: [{node: "55", input: start_image}]}}`.
+  `optional: {start_image: {node: "56", unlink: [{node: "55", input: start_image}]}}`. A node in the middle of a
+  chain uses `bypass` instead: with no LoRA picked, `optional: {lora: {node: "90", bypass: [model]}}` drops the
+  loader and links what it fed to its own `model` input (a `LoraLoader` passes `[model, clip]`).
 - `outputs:` lists the save nodes and what they make.
 
 **The model** (`registry/models/.../<id>.yaml`):
@@ -66,8 +69,10 @@ Fix a wrong guess by editing the node ids. Two more things the map can say:
 - The mode's `ops` decide where it shows: `t2v`, `i2v` and `flf2v` in Create video, `t2i` and `i2i` in Create
   image, `restyle` and the other edit ops in Edit video, `motion_transfer` in Motion transfer
   (`apps/web/src/lib/studioKinds.ts`). Video in, video out is drafted as `restyle`.
-- Parameters: the draft exposes duration (turned into frames at the graph's frame rate), width, height, steps and
-  seed. Rename labels, change ranges, or swap width and height for an aspect ratio with a transform, as the
+- Parameters: the draft exposes duration (turned into frames at the graph's frame rate), width, height, steps,
+  seed, and a LoRA when the graph has one loader. The LoRA field (`comfy_choices: LoraLoaderModelOnly.lora_name`)
+  lists the files in your ComfyUI's `loras` folder when the form opens, and defaults to the one the graph was saved
+  with; graphs with several loaders keep them as saved. Rename labels, change ranges, or swap width and height for an aspect ratio with a transform, as the
   built-in models do (`studio/providers/transforms/comfy.py`).
 - `eta` is the expected run time in seconds; time a run and replace the draft's guess. It can use the params, e.g.
   `"40 * duration * steps / 20"`.
