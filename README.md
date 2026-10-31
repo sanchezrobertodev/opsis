@@ -182,6 +182,18 @@ RunPod's 96 GB card and haven't been measured on a consumer one. Weights larger 
 RAM, which is slower, so 64 GB of RAM helps. LTX-2.5 and Animate-2 use int8 files made for the comfy-kitchen kernels
 that ComfyUI 0.34's CUDA 13 build (the portable download) turns on.
 
+### Your own workflows
+
+Any graph that runs in your ComfyUI can be a model in Opsis. Export it with Workflow > Export (API), then draft
+the model from it:
+
+```bash
+uv run python scripts/import_comfy_workflow.py my_workflow_api.json --id my-model --name "My model"
+```
+
+It guesses which node inputs the prompt, seed, size, length and media fill, writes the graph, its map and a model
+YAML, and checks they load. [docs/comfy-workflows.md](docs/comfy-workflows.md) says what to review.
+
 ### Larger open models on your RunPod
 
 [`infra/runpod/wan-core/`](infra/runpod/wan-core/) sets up a RunPod serverless endpoint running the same ComfyUI 0.34,

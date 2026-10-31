@@ -452,6 +452,7 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 - Both ComfyUI adapters draw a fresh seed per take unless one is given (`comfy_workflows.fresh_seed`) and re-time
   clips for `media_fps` routes (`retime_clip`).
 - Workflows live in `workflows/comfy/<name>.json` (API graph) + `<name>.map.yaml` (which node inputs to fill,
-  optional nodes, outputs). Routes name the template as their endpoint; `transform` hooks in
+  optional nodes, outputs). `scripts/import_comfy_workflow.py <api.json> --id <id>` drafts both plus a model YAML from
+  your own graph (`providers/comfy_import.py`: guesses by input names and links, never by model; `docs/comfy-workflows.md`). Routes name the template as their endpoint; `transform` hooks in
   `studio/providers/transforms/` map quality/aspect to pixel sizes. Route `eta` expressions drive time estimates.
 - One job at a time (sized for 12 GB of VRAM). On a 12 GB card, draft Wan ≈ 70–90 s, standard ≈ 7 min.
