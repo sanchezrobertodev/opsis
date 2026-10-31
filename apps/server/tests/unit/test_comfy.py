@@ -92,6 +92,43 @@ def test_a_lora_from_comfyui_is_optional_and_drops_out_of_the_chain():
     assert graph["90"]["inputs"] == {"model": ["1", 0], "lora_name": "pixel-art.safetensors", "strength_model": 0.7}
 
 
+def test_none_beats_a_lora_the_workflow_was_saved_with():
+    """An imported graph's LoRA is the param's default; picking None sends "", which must drop the loader."""
+    klein = REG.models["flux-2-klein-4b"]
+    klein = klein.model_copy(update={"parameters": [
+        p.model_copy(update={"default": "pixel-art.safetensors"}) if p.name == "lora" else p for p in klein.parameters]})
+    route = klein.route("flux-2-klein-4b@comfy_local")
+    template = load_template(WORKFLOWS, "flux2_klein_4b")
+    assert normalize(klein, "t2i", "harbor", {}, []).params["lora"] == "pixel-art.safetensors"
+    req = normalize(klein, "t2i", "harbor", {"lora": ""}, [])
+    assert req.params["lora"] == ""
+    _, payload, _ = build_payload(klein, route, req, {})
+    graph, _ = template.render(payload)
+    assert "90" not in graph and graph["7"]["inputs"]["model"] == ["1", 0]
+
+
+def test_a_picked_upscale_model_doesnt_need_the_saved_one(monkeypatch):
+    """ESRGAN's upscale model is picked from what ComfyUI lists, so the graph's Siax is only missing when it has none."""
+    from studio.providers import comfy_local
+    from studio.providers.comfy_workflows import model_files, unavailable_choices
+
+    monkeypatch.setattr("studio.registry.loader.get_registry", lambda: REG)
+    template = load_template(WORKFLOWS, "video_upscale_esrgan")
+    picked = comfy_local._picked(REG.models["esrgan-video"].route("esrgan-video@comfy_local"), "upscale", template)
+    assert picked == {("3", "model_name")}
+
+    def info(upscalers):
+        out = {n["class_type"]: {"input": {"required": {k: ["STRING", {}] for k in n["inputs"]}}}
+               for n in template.graph.values()}
+        out["UpscaleModelLoader"]["input"]["required"]["model_name"] = [upscalers]
+        return out
+
+    files = model_files()
+    assert unavailable_choices(template, info(["RealESRGAN_x4plus.pth"]), files, picked)[1] == []
+    assert unavailable_choices(template, info([]), files, picked)[1] == ["4x_NMKD-Siax_200k.pth"]
+    assert unavailable_choices(template, info(["RealESRGAN_x4plus.pth"]), files)[1] == ["4x_NMKD-Siax_200k.pth"]
+
+
 def test_a_bypass_must_name_a_link(tmp_path):
     (tmp_path / "w.json").write_text(json.dumps({"1": {"class_type": "LoraLoaderModelOnly", "inputs": {
         "model": "not a link", "lora_name": ""}}, "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 0]}}}))

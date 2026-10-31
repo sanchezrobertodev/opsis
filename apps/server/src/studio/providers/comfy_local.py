@@ -34,6 +34,7 @@ from studio.providers.base import (
     SubmitResult,
 )
 from studio.providers.comfy_workflows import (
+    WorkflowTemplate,
     combo_options,
     download_groups,
     fresh_seed,
@@ -42,7 +43,7 @@ from studio.providers.comfy_workflows import (
     retime_clip,
     unavailable_choices,
 )
-from studio.registry.schema import Route
+from studio.registry.schema import EnumParam, Route
 
 INPUT_SUBFOLDER = "opsis"
 OUTPUT_KEYS = ("images", "gifs", "videos", "video", "audio")
@@ -133,7 +134,7 @@ class ComfyLocalAdapter(ProviderAdapter):
         if info is None:
             return None
         files = model_files()
-        classes, missing = unavailable_choices(template, info, files)
+        classes, missing = unavailable_choices(template, info, files, _picked(route, mode, template))
         if classes:
             return f"ComfyUI has no {', '.join(classes)} node; update ComfyUI to 0.34 or newer"
         if not missing:
@@ -295,3 +296,21 @@ def _node_errors(r: httpx.Response) -> str:
         for e in info.get("errors", []):
             parts.append(f"node {node_id} ({info.get('class_type')}): {e.get('message')} {e.get('details', '')}".strip())
     return "; ".join(parts)[:1500] or "invalid workflow"
+
+
+def _picked(route: Route, mode: str, template: WorkflowTemplate) -> frozenset[tuple[str, str]]:
+    """The template inputs (node, input) a `comfy_choices` param of the route's model fills: the form picks them from
+    what this ComfyUI lists (ESRGAN's upscale model), so the graph's saved file isn't needed."""
+    from studio.registry.loader import get_registry
+
+    spec = next((m for m in get_registry().models.values() if m.route(route.id)), None)
+    if spec is None:
+        return frozenset()
+    picked: set[tuple[str, str]] = set()
+    for p in spec.params_for(mode):
+        if not (isinstance(p, EnumParam) and p.comfy_choices):
+            continue
+        entry = route.map.params.get(p.name, p.name if route.map.passthrough else None)
+        key = entry if isinstance(entry, str) or entry is None else entry.to
+        picked |= {(t.node, t.input) for t in template.map.inputs.get(key or "", [])}
+    return frozenset(picked)

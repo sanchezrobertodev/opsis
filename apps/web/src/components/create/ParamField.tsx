@@ -149,7 +149,8 @@ export function ParamField({
   }
 }
 
-/** A choice your ComfyUI lists (its LoRA files), read when the form opens; a value it no longer lists stays shown. */
+/** A choice your ComfyUI lists (its LoRA files), read when the form opens; a value it no longer lists stays shown.
+ * None is sent as "", so it wins over a LoRA the workflow was saved with. */
 function ComfyChoiceField({ field, label, help, value, onChange }: {
   field: string; label: string; help?: string | null; value: unknown; onChange: (v: unknown) => void;
 }) {
@@ -169,7 +170,7 @@ function ComfyChoiceField({ field, label, help, value, onChange }: {
         id={id}
         value={current}
         options={[{ value: "", label: "None" }, ...options.map((o) => ({ value: o, label: o.replace(/\.safetensors$/, "") }))]}
-        onChange={(v) => onChange(v === "" ? undefined : v)}
+        onChange={onChange}
       />
     </Field>
   );

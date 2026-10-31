@@ -194,11 +194,12 @@ def combo_options(spec: Any) -> list[Any] | None:
     return None
 
 
-def unavailable_choices(template: WorkflowTemplate, object_info: dict[str, Any],
-                        files: dict[str, Any]) -> tuple[list[str], list[str]]:
+def unavailable_choices(template: WorkflowTemplate, object_info: dict[str, Any], files: dict[str, Any],
+                        picked: frozenset[tuple[str, str]] = frozenset()) -> tuple[list[str], list[str]]:
     """(node classes this ComfyUI lacks, fixed choices it doesn't offer): the second is mostly model files it hasn't
     got. Inputs the map fills are skipped, unless their saved value is a model file a parameter can switch on (LTX's
-    audio VAE)."""
+    audio VAE). `picked` inputs (node, input) are chosen from what this ComfyUI lists (`comfy_choices`), so their
+    saved file is only missing when it lists none."""
     filled = {(t.node, t.input) for targets in template.map.inputs.values() for t in targets}
     classes: set[str] = set()
     values: list[str] = []
@@ -212,6 +213,6 @@ def unavailable_choices(template: WorkflowTemplate, object_info: dict[str, Any],
             if not isinstance(value, str) or ((node_id, name) in filled and value not in files):
                 continue
             options = combo_options(specs.get(name))
-            if options is not None and value not in options and value not in values:
+            if options is not None and value not in options and value not in values                     and not ((node_id, name) in picked and options):
                 values.append(value)
     return sorted(classes), values
