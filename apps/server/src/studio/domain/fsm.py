@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from studio.db.models import Generation, JobEvent
 from studio.domain.enums import ErrorClass, GenStatus
 from studio.pipelines.hooks import mark_run
+from studio.storage.local import get_storage
 
 CHANNEL = "studio_events"
 NOTIFY_LIMIT = 7000  # Postgres caps NOTIFY payloads at 8000 bytes
@@ -56,6 +57,8 @@ def generation_event_payload(gen: Generation) -> dict[str, Any]:
         "status": gen.status.value,
         "status_reason": gen.status_reason,
         "progress": gen.progress,
+        "progress_is_estimated": gen.progress_is_estimated,
+        "preview_url": preview_url(gen),
         "model_id": gen.model_id,
         "mode": gen.mode,
         "estimated_cost_usd": float(gen.estimated_cost_usd) if gen.estimated_cost_usd is not None else None,
@@ -64,6 +67,19 @@ def generation_event_payload(gen: Generation) -> dict[str, Any]:
         "error_code": gen.error_code.value if gen.error_code else None,
         "error_message": (gen.error_message or "")[:300] or None,
     }
+
+
+def preview_url(gen: Generation) -> str | None:
+    return get_storage().url_for(gen.preview_key) if gen.preview_key else None
+
+
+def preview_prefix(gen: Generation) -> str:
+    return f"u/{gen.user_id}/previews/{gen.id}"
+
+
+def drop_preview(gen: Generation) -> None:
+    get_storage().delete_prefix(preview_prefix(gen))
+    gen.preview_key = None
 
 
 async def notify(session: AsyncSession, message: dict[str, Any]) -> None:
@@ -132,6 +148,8 @@ async def transition(
         gen.progress = 1.0
     if new.terminal:
         gen.finished_at = now
+    if new != S.in_progress and gen.preview_key:
+        drop_preview(gen)
     if (new.terminal or new == S.blocked_budget) and gen.pipeline_step_id and gen.group_id:
         mark_run(session.sync_session, gen.group_id)  # its run advances (or stops at the cap) once this commits
 

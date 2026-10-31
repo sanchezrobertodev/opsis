@@ -4,7 +4,8 @@ Route endpoints name a workflow template in workflows/comfy. The canonical paylo
 registry/mapping.py) is injected into the template; inputs (pictures, clips, mattes) are uploaded through
 /upload/image, clips first re-timed when the route says so (`media_fps`). Before routing picks it, `unavailable`
 checks the card's memory against the route's `min_vram_gb` and the graph's model files against /object_info.
-ComfyUI's HTTP API has no progress percentage, so the worker estimates progress from the route ETA.
+Progress and preview frames come from ComfyUI's websocket (`comfy_events`); until a sampler reports, or for a job
+another process queued, the worker estimates progress from the route ETA.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import httpx
 
 from studio.config import get_settings
 from studio.domain.enums import ErrorClass
+from studio.providers import comfy_events
 from studio.providers.base import (
     AmbiguousSubmitError,
     PollResult,
@@ -41,7 +43,6 @@ from studio.providers.comfy_workflows import (
 )
 from studio.registry.schema import Route
 
-CLIENT_ID = "opsis"
 INPUT_SUBFOLDER = "opsis"
 OUTPUT_KEYS = ("images", "gifs", "videos", "video", "audio")
 INFO_TTL_S = 60.0  # node info per class; a model file downloaded meanwhile shows up within a minute
@@ -173,7 +174,8 @@ class ComfyLocalAdapter(ProviderAdapter):
         graph, warnings = template.render(values)
         try:
             async with self._client(timeout=30) as c:
-                r = await c.post("/prompt", json={"prompt": graph, "client_id": CLIENT_ID})
+                r = await c.post("/prompt", json={"prompt": graph, "client_id": comfy_events.CLIENT_ID,
+                                                  "extra_data": {"preview_method": "auto"}})
         except httpx.ConnectError:
             raise self._offline() from None
         except httpx.TimeoutException as exc:
@@ -183,22 +185,27 @@ class ComfyLocalAdapter(ProviderAdapter):
         if r.status_code != 200:
             raise ProviderError(ErrorClass.transient, f"ComfyUI /prompt returned {r.status_code}")
         body = r.json()
+        comfy_events.listener(self.base).follow(body["prompt_id"], comfy_events.samplers(graph))
         return SubmitResult(job_id=body["prompt_id"], raw={"number": body.get("number"), "warnings": warnings,
                                                            "template": endpoint, "seed": values.get("seed")})
 
     async def poll(self, route: Route, job_id: str) -> PollResult:
+        events = comfy_events.listener(self.base)
         done = await self._history(job_id)
         if done is not None:
+            events.forget(job_id)
             return self._finished(route, job_id, done)
         q = (await self._get("/queue")).json()
         running = [item[1] for item in q.get("queue_running", [])]
         pending = sorted(q.get("queue_pending", []), key=lambda item: item[0])
+        progress, preview = events.take(job_id)
         if job_id in running:
-            return PollResult(status="running", progress=None, raw={"running": True})
+            return PollResult(status="running", progress=progress, preview=preview, raw={"running": True})
         for pos, item in enumerate(pending, start=1):
             if item[1] == job_id:
                 return PollResult(status="queued", queue_position=pos, raw={"queue_position": pos})
         # It may have finished between the two calls.
+        events.forget(job_id)
         done = await self._history(job_id)
         if done is not None:
             return self._finished(route, job_id, done)

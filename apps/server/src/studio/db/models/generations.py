@@ -39,6 +39,8 @@ class Generation(IdMixin, TimestampMixin, Base):
     status_reason: Mapped[str | None] = mapped_column(String(80))
     progress: Mapped[float] = mapped_column(default=0.0)
     progress_is_estimated: Mapped[bool] = mapped_column(default=True)
+    # the provider's latest preview frame while it renders (local ComfyUI); dropped when the take ends
+    preview_key: Mapped[str | None] = mapped_column(String(300))
 
     # Canonical request as posted: {prompt, params, media: [{role, asset_id}], route_policy}
     request: Mapped[dict[str, Any]] = mapped_column(default=dict)

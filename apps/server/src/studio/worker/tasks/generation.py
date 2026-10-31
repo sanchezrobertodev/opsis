@@ -134,11 +134,26 @@ def _scrub(value: Any) -> Any:
     return value
 
 
-def _poll_delay(attempt: GenerationAttempt, output_type: str, floor: float | None = None) -> float:
+def _poll_delay(attempt: GenerationAttempt, output_type: str, floor: float | None = None,
+                ceiling: float | None = None) -> float:
     s = get_settings()
-    cap = 5.0 if output_type == "image" else s.poll_max_seconds
+    cap = min(5.0 if output_type == "image" else s.poll_max_seconds, ceiling or float("inf"))
     delay = min(s.poll_initial_seconds * (1.5 ** max(0, attempt.poll_count - 1)), cap)
     return max(delay, floor or 0.0)  # some providers (Runway: 5 s) ask not to be polled faster
+
+
+
+def _store_preview(prefix: str, old_key: str | None, data: bytes, mime: str) -> str:
+    """Store the provider's latest preview frame for the take card in place of the one before; returns its key.
+    Each frame gets a new name, since /media is cached as immutable per key."""
+    storage = get_storage()
+    key = f"{prefix}/{uuid.uuid4().hex[:8]}{'.png' if mime == 'image/png' else '.jpg'}"
+    dest = storage.path_for(key)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(data)
+    if old_key:
+        storage.path_for(old_key).unlink(missing_ok=True)
+    return key
 
 
 async def _resolve_media(req: NormalizedRequest, user_id: uuid.UUID) -> list[ResolvedMedia]:
@@ -476,8 +491,11 @@ async def run_poll(attempt_id: uuid.UUID) -> None:
                     reason = "provider_queue" if res.status == "queued" else None
                     if reason != gen.status_reason:
                         await fsm.transition(s, gen, GenStatus.in_progress, reason=reason)
+                    if res.preview is not None:
+                        gen.preview_key = await anyio.to_thread.run_sync(
+                            _store_preview, fsm.preview_prefix(gen), gen.preview_key, *res.preview)
                     if res.progress is not None:
-                        if abs(res.progress - gen.progress) >= 0.01:
+                        if abs(res.progress - gen.progress) >= 0.01 or res.preview is not None:
                             await fsm.report_progress(s, gen, res.progress, estimated=False)
                     elif res.status == "running":
                         await fsm.report_progress(
@@ -486,7 +504,8 @@ async def run_poll(attempt_id: uuid.UUID) -> None:
                         )
                 else:
                     log.warning("poll %s transient error: %s", attempt_id, transient_error)
-                next_poll = _poll_delay(attempt, gen.output_type, provider.poll_min_seconds)
+                next_poll = _poll_delay(attempt, gen.output_type, provider.poll_min_seconds,
+                                        provider.poll_max_seconds)
                 attempt.next_poll_at = now + timedelta(seconds=next_poll)
         elif res.status == "succeeded":
             attempt.status = AttemptStatus.succeeded

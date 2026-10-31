@@ -4,6 +4,7 @@ kind: local
 adapter: comfy_local
 key_setting: comfyui_url   # the ComfyUI address; empty turns the local route off
 concurrency: 1             # one job at a time on a 12 GB GPU
+poll_max_seconds: 3        # free to ask; keeps the progress bar and preview frames live
 docs: https://github.com/comfyanonymous/ComfyUI
 notes: >-
   Your own ComfyUI at COMFYUI_URL (Wan 2.2 TI2V 5B, FLUX.2 klein 4B). Free and offline.

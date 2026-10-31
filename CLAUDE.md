@@ -456,3 +456,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   your own graph (`providers/comfy_import.py`: guesses by input names and links, never by model; `docs/comfy-workflows.md`). Routes name the template as their endpoint; `transform` hooks in
   `studio/providers/transforms/` map quality/aspect to pixel sizes. Route `eta` expressions drive time estimates.
 - One job at a time (sized for 12 GB of VRAM). On a 12 GB card, draft Wan ≈ 70–90 s, standard ≈ 7 min.
+- Live progress and previews: each process queues under its own client id and follows its jobs on ComfyUI's websocket
+  (`providers/comfy_events.py`, `extra_data.preview_method: auto`). Progress counts the graph's samplers (nodes with a
+  `latent_image`) up to 90 %; until one steps, and for a job queued before a restart, the ETA estimate shows. Each
+  preview frame is kept at `u/{user}/previews/{generation}/` (`generations.preview_key`, `preview_url` on the take)
+  and dropped when the take leaves `in_progress`. The provider's `poll_max_seconds: 3` keeps them live.

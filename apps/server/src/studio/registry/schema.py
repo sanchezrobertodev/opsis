@@ -425,6 +425,7 @@ class ProviderSpec(_Strict):
     key_setting: str | list[str] | None = None
     concurrency: int = 2
     poll_min_seconds: float | None = None  # provider asks clients not to poll faster than this
+    poll_max_seconds: float | None = None  # poll at least this often (local engines: live progress and previews)
     docs: str | None = None
     notes: str | None = None
     # Self-hosted endpoints (our own RunPod workers): the Settings attribute holding the endpoint id, and

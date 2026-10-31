@@ -61,6 +61,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           status: p.status,
           status_reason: p.status_reason ?? null,
           progress: p.progress,
+          progress_is_estimated: p.progress_is_estimated,
+          preview_url: p.preview_url ?? null,
           estimated_cost_usd: p.estimated_cost_usd ?? null,
           actual_cost_usd: p.actual_cost_usd ?? null,
           error_code: p.error_code ?? null,

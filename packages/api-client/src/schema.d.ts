@@ -2265,6 +2265,8 @@ export interface components {
             progress: number;
             /** Progress Is Estimated */
             progress_is_estimated: boolean;
+            /** Preview Url */
+            preview_url?: string | null;
             /** Request */
             request: {
                 [key: string]: unknown;
