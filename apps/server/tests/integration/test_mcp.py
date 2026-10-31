@@ -74,7 +74,8 @@ async def _template_run(mcp, in_memory_queue):
     run = await call(mcp, "get_run", run_id=run["id"])
     assert run["status"] == "succeeded", (run["failed_steps"], run["waiting_for_you"])
     assert run["result"]["kind"] == "video" and run["result"]["url"].startswith("/media/")
-    assert (await call(mcp, "list_runs", limit=1))[0]["id"] == run["id"]
+    latest = (await call(mcp, "list_runs", limit=1))[0]
+    assert latest["id"] == run["id"] and latest["spent_usd"] == run["spent_usd"]
     assert (await call(mcp, "spend"))["mode"] == "mock"
 
 

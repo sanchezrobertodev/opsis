@@ -222,7 +222,7 @@ async def list_runs(ctx: Context, limit: int = 10,
         params["status"] = status
     base = _base(ctx)
     return [{"id": r["id"], "title": r["title"], "recipe": r["recipe_name"], "status": r["status"],
-             "created_at": r["created_at"], "result": _media(r.get("output_asset"), base)}
+             "spent_usd": r["spent_usd"], "created_at": r["created_at"], "result": _media(r.get("output_asset"), base)}
             for r in await _api("GET", "/pipelines", params=params)]
 
 
