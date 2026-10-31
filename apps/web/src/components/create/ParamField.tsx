@@ -1,8 +1,9 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { Dices } from "lucide-react";
 import { useId } from "react";
-import type { Param } from "@/lib/api";
+import { api, type Param, unwrap } from "@/lib/api";
 import { AspectPicker, Field, Segmented, Select, Slider, Switch } from "@/components/ui/controls";
 import { ShotsField } from "./ShotsField";
 
@@ -39,6 +40,9 @@ export function ParamField({
 
   switch (param.type) {
     case "enum": {
+      if (param.comfy_choices) {
+        return <ComfyChoiceField field={param.comfy_choices} label={label} help={param.help} value={value} onChange={onChange} />;
+      }
       const options = param.options as (string | number)[];
       const labels = (param.labels ?? {}) as Record<string, string>;
       const show = (o: string | number) => labels[String(o)] ?? String(o);
@@ -143,4 +147,31 @@ export function ParamField({
     default:
       return null;
   }
+}
+
+/** A choice your ComfyUI lists (its LoRA files), read when the form opens; a value it no longer lists stays shown.
+ * None is sent as "", so it wins over a LoRA the workflow was saved with. */
+function ComfyChoiceField({ field, label, help, value, onChange }: {
+  field: string; label: string; help?: string | null; value: unknown; onChange: (v: unknown) => void;
+}) {
+  const id = useId();
+  const { data } = useQuery({
+    queryKey: ["comfy-choices", field],
+    queryFn: () => unwrap(api.GET("/local-engine/choices", { params: { query: { field } } })),
+    staleTime: 30_000,
+  });
+  const current = value ? String(value) : "";
+  const listed = data?.options ?? [];
+  const options = current && !listed.includes(current) ? [current, ...listed] : listed;
+  const hint = data && !data.available ? data.message : data && !listed.length ? `${help ?? ""} Your ComfyUI has none yet.` : help;
+  return (
+    <Field label={label} htmlFor={id} hint={hint?.trim() || undefined}>
+      <Select
+        id={id}
+        value={current}
+        options={[{ value: "", label: "None" }, ...options.map((o) => ({ value: o, label: o.replace(/\.safetensors$/, "") }))]}
+        onChange={onChange}
+      />
+    </Field>
+  );
 }

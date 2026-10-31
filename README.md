@@ -116,6 +116,22 @@ pnpm dev          # API on :8400, the worker, and the web app on :3000
 
 Open http://localhost:3000. Settings shows whether the database, ffmpeg and the local engine are found.
 
+### Or all of it in Docker
+
+With only Docker installed, one command builds and starts the database, the API, the worker and the web app
+(`compose.yaml`; it runs the migrations first):
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Open http://localhost:3000. ComfyUI stays on your machine, next to the GPU: the containers reach it at
+`host.docker.internal:8188` (set `OPSIS_COMFYUI_URL` for another address; on Linux start ComfyUI with `--listen`).
+Media is kept in `./data` and the database is the same one `pnpm db:up` starts, so you can switch between this and
+`pnpm dev` (not both at once: they use the same ports). `OPSIS_WEB_PORT`, `OPSIS_API_PORT` and `OPSIS_DB_PORT`
+change the ports; rebuild after changing the API's, since the web app is built for it.
+
 ## Open models on your GPU
 
 Local routes are free, work offline and run in every mode, mock included. You need
@@ -149,10 +165,17 @@ seven minutes. The first job after ComfyUI starts also loads the model, about 40
 | `4x_NMKD-Siax_200k.pth` | `upscale_models/` | [uwg/upscaler](https://huggingface.co/uwg/upscaler/tree/main/ESRGAN) |
 
 Sample prompt: *A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.*
-([what Wan 2.2 5B made from it](docs/demo/wan22-5b-sailboat.mp4) on a 12 GB card.) Progress
-shows on the form and the job card, and a queued or running job can be canceled from its card. To see what runs,
-read [`workflows/comfy/wan22_ti2v_5b.json`](workflows/comfy/wan22_ti2v_5b.json) and its
+([what Wan 2.2 5B made from it](docs/demo/wan22-5b-sailboat.mp4) on a 12 GB card.) While a take renders, its card
+shows ComfyUI's own progress and the sampler's latest frame, and a queued or running job can be canceled from its
+card. To see what runs, read [`workflows/comfy/wan22_ti2v_5b.json`](workflows/comfy/wan22_ti2v_5b.json) and its
 [`.map.yaml`](workflows/comfy/wan22_ti2v_5b.map.yaml).
+
+**LoRAs**: put a LoRA file in ComfyUI's `models/loras/` and pick it under **More settings** with Wan 2.2 5B or
+FLUX.2 klein, with a strength. The list is read from ComfyUI each time the form opens.
+
+**ESRGAN upscale (local)**: a clip of up to 5 s and 720p made 2 to 4 times bigger, frame by frame, with any model in
+`upscale_models/` (the Siax one above by default), keeping its frame rate and sound. Pick it under Upscale in Edit
+video. Three seconds of 480p take about two minutes on a 12 GB card.
 
 ### Bigger open models on a bigger GPU
 
@@ -181,6 +204,18 @@ ComfyUI notices new files within a minute. The memory figures and run times are 
 RunPod's 96 GB card and haven't been measured on a consumer one. Weights larger than the card are streamed from system
 RAM, which is slower, so 64 GB of RAM helps. LTX-2.5 and Animate-2 use int8 files made for the comfy-kitchen kernels
 that ComfyUI 0.34's CUDA 13 build (the portable download) turns on.
+
+### Your own workflows
+
+Any graph that runs in your ComfyUI can be a model in Opsis. Export it with Workflow > Export (API), then draft
+the model from it:
+
+```bash
+uv run python scripts/import_comfy_workflow.py my_workflow_api.json --id my-model --name "My model"
+```
+
+It guesses which node inputs the prompt, seed, size, length and media fill, writes the graph, its map and a model
+YAML, and checks they load. [docs/comfy-workflows.md](docs/comfy-workflows.md) says what to review.
 
 ### Larger open models on your RunPod
 
@@ -228,10 +263,11 @@ the API and worker mount the host's `~/.codex`; point `CODEX_BIN` at
 
 | Symptom | Fix |
 |---|---|
-| "Local ComfyUI isn't running" | ComfyUI isn't reachable at `COMFYUI_URL`. Start it, or check the port. |
+| "Local ComfyUI isn't running" | ComfyUI isn't reachable at `COMFYUI_URL`. Start it, or check the port. In Docker, the address is `OPSIS_COMFYUI_URL` (default `http://host.docker.internal:8188`); on Linux, ComfyUI must listen beyond 127.0.0.1 (`--listen`). |
 | "ComfyUI is missing ..." on a model | Run `fetch_models.py --local` with the groups it names and `--dest` set to ComfyUI's `models` folder. |
 | Out of memory on a local job | Use Draft quality or close other GPU apps. One local job runs at a time. |
 | The API won't start on Windows | Run it as `python -m studio.api` (what `pnpm dev` does), not bare uvicorn. |
+| The library is empty after updating | Before the rename to Opsis the database volume was `ai-media-studio_pgdata`. Stop both databases (`docker compose -p ai-media-studio -f infra/docker-compose.yml down`, then the same with `-p opsis`), remove the new empty volume (`docker volume rm opsis_pgdata`), copy the old one with `docker run --rm -v ai-media-studio_pgdata:/from -v opsis_pgdata:/to postgres:18 cp -a /from/. /to/`, then `pnpm db:up`. |
 
 ## Limitations
 
@@ -254,7 +290,7 @@ pnpm gen     # regenerate the TypeScript API client after an API change
 ```
 
 `pnpm test` needs `pnpm db:up` and uses a separate `studio_test` database. Install the e2e browser once with
-`pnpm --filter @studio/web exec playwright install chromium`. `pnpm e2e` reuses a running `pnpm dev`, so stop a dev
+`pnpm --filter @opsis/web exec playwright install chromium`. `pnpm e2e` reuses a running `pnpm dev`, so stop a dev
 server that is in Live mode first.
 
 Adding a model, a preset or a template is mostly YAML; [CLAUDE.md](CLAUDE.md) lists the conventions.

@@ -69,7 +69,7 @@
     "inputs": {
       "cfg": 5.0,
       "model": [
-        "1",
+        "90",
         0
       ],
       "positive": [
@@ -210,6 +210,20 @@
     },
     "_meta": {
       "title": "Save final image"
+    }
+  },
+  "90": {
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA (optional)"
+    },
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "lora_name": "",
+      "strength_model": 1.0
     }
   }
 }

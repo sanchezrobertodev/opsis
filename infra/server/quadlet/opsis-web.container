@@ -1,12 +1,12 @@
 [Unit]
 Description=Opsis web app
-Wants=ams-api.service
-After=ams-api.service
+Wants=opsis-api.service
+After=opsis-api.service
 
 [Container]
-ContainerName=ams-web
-Image=localhost/ams-web:latest
-Pod=ams.pod
+ContainerName=opsis-web
+Image=localhost/opsis-web:latest
+Pod=opsis.pod
 PodmanArgs=--memory=512m
 
 [Service]

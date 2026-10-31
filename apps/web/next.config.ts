@@ -7,7 +7,7 @@ const standalone = process.env.NEXT_OUTPUT === "standalone";
 
 const nextConfig: NextConfig = {
   // The API client is a TypeScript workspace package; Next compiles it with the app.
-  transpilePackages: ["@studio/api-client"],
+  transpilePackages: ["@opsis/api-client"],
   reactStrictMode: true,
   // the dev badge sits over the Director's Send button; build and runtime errors still show
   devIndicators: false,

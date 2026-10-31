@@ -159,7 +159,13 @@ function Slate({
   const statusText =
     gen.status === "in_progress" && !waiting
       ? local
-        ? `Working on this computer${remaining != null && remaining > 5 ? `, about ${remainingText(remaining)} left` : ""}`
+        ? `Working on this computer${
+            !gen.progress_is_estimated && pct > 0
+              ? `, ${pct}%`
+              : remaining != null && remaining > 5
+                ? `, about ${remainingText(remaining)} left`
+                : ""
+          }`
         : `${STATUS_TEXT.in_progress}${pct > 0 ? ` ${pct}%` : ""}`
       : gen.status_reason === "provider_concurrency"
         ? "Waiting for a free provider slot"
@@ -174,9 +180,17 @@ function Slate({
       className="relative flex flex-col justify-between overflow-hidden rounded-[var(--radius-frame)] bg-panel p-4"
       style={{ aspectRatio: aspect, minHeight: 180 }}
     >
+      {gen.preview_url && (
+        <>
+          {/* the sampler's latest frame (local ComfyUI), dimmed so the slate stays readable */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={mediaUrl(gen.preview_url)} alt="" aria-hidden className="absolute inset-0 size-full object-cover" />
+          <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-panel via-panel/60 to-panel/30" />
+        </>
+      )}
       {/* clapper stripes */}
       <div aria-hidden className="absolute inset-x-0 top-0 h-2.5 bg-[repeating-linear-gradient(115deg,var(--color-chalk)_0_14px,var(--color-bay)_14px_28px)] opacity-80" />
-      <div className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+      <div className="relative mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
         <span className="text-faint">Take</span>
         <span className="readout text-chalk">{String(takeNumber).padStart(2, "0")}</span>
         <span className="text-faint">Model</span>
@@ -185,7 +199,7 @@ function Slate({
         <span className="truncate text-muted">{gen.mode}</span>
       </div>
 
-      <div className="flex items-end justify-between gap-3">
+      <div className="relative flex items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-xs text-muted" aria-live="polite">
             {statusText}

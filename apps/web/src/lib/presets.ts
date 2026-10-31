@@ -1,6 +1,6 @@
 "use client";
 
-import type { Schemas } from "@studio/api-client";
+import type { Schemas } from "@opsis/api-client";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, unwrap } from "./api";
 

@@ -56,6 +56,7 @@ class PollResult:
     error_message: str | None = None
     usage: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
+    preview: tuple[bytes, str] | None = None  # a new preview frame while it runs: (image bytes, mime)
 
 
 class ProviderError(Exception):

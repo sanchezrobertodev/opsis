@@ -1178,6 +1178,23 @@ export interface paths {
         patch: operations["update_model_storage_local_engine_model_storage_patch"];
         trace?: never;
     };
+    "/local-engine/choices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Choices */
+        get: operations["choices_local_engine_choices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1642,6 +1659,15 @@ export interface components {
             /** Choice */
             choice: string;
         };
+        /** ChoicesOut */
+        ChoicesOut: {
+            /** Available */
+            available: boolean;
+            /** Options */
+            options?: string[];
+            /** Message */
+            message?: string | null;
+        };
         /** ClaudeCallOut */
         ClaudeCallOut: {
             /**
@@ -2102,6 +2128,8 @@ export interface components {
              * @default false
              */
             open: boolean;
+            /** Comfy Choices */
+            comfy_choices?: string | null;
         };
         /** EstimateOut */
         EstimateOut: {
@@ -2265,6 +2293,8 @@ export interface components {
             progress: number;
             /** Progress Is Estimated */
             progress_is_estimated: boolean;
+            /** Preview Url */
+            preview_url?: string | null;
             /** Request */
             request: {
                 [key: string]: unknown;
@@ -6674,6 +6704,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelStorageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    choices_local_engine_choices_get: {
+        parameters: {
+            query: {
+                /** @description Node.input, e.g. LoraLoaderModelOnly.lora_name */
+                field: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChoicesOut"];
                 };
             };
             /** @description Validation Error */

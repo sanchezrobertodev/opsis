@@ -1,0 +1,3 @@
+# The database volume keeps its name from before the rename to Opsis (pod ams), so an existing server keeps its data.
+[Volume]
+VolumeName=ams-pgdata

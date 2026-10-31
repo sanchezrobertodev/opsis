@@ -1,5 +1,5 @@
 {
-  "name": "ai-media-studio",
+  "name": "opsis",
   "private": true,
   "license": "Apache-2.0",
   "packageManager": "pnpm@9.14.4",
@@ -7,13 +7,13 @@
     "dev": "concurrently -k -n api,worker,web -c blue,magenta,green \"pnpm dev:api\" \"pnpm dev:worker\" \"pnpm dev:web\"",
     "dev:api": "uv run python -m studio.api --reload",
     "dev:worker": "uv run python -m studio.worker",
-    "dev:web": "pnpm --filter @studio/web dev",
+    "dev:web": "pnpm --filter @opsis/web dev",
     "db:up": "docker compose -f infra/docker-compose.yml up -d --wait",
     "db:migrate": "uv run --directory apps/server alembic upgrade head",
-    "gen": "uv run python -m studio.api.export_openapi > packages/api-client/openapi.json && pnpm --filter @studio/api-client gen",
+    "gen": "uv run python -m studio.api.export_openapi > packages/api-client/openapi.json && pnpm --filter @opsis/api-client gen",
     "test": "uv run --directory apps/server pytest -q",
-    "e2e": "pnpm --filter @studio/web e2e",
-    "lint": "uv run ruff check apps/server && pnpm --filter @studio/web lint && pnpm --filter @studio/web typecheck"
+    "e2e": "pnpm --filter @opsis/web e2e",
+    "lint": "uv run ruff check apps/server && pnpm --filter @opsis/web lint && pnpm --filter @opsis/web typecheck"
   },
   "devDependencies": {
     "concurrently": "^9.2.0"

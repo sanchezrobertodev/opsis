@@ -1,0 +1,13 @@
+# A clip upscaled frame by frame with an ESRGAN-style model (4x NMKD Siax by default, the one FLUX.2 klein uses),
+# then scaled down to the size asked (the transform: the clip's size times the factor). Keeps the clip's frame rate
+# and sound. The model upscales every frame before the scale down, so a 5 s 720p clip holds about 20 GB of frames in
+# RAM at 4x; the mode caps clips at 5 s and 720p. Checked against ComfyUI 0.34 on a 12 GB GPU.
+description: ESRGAN video upscale (any upscale model in ComfyUI's upscale_models)
+inputs:
+  input_video: [{node: "1", input: file}]
+  upscale_model: [{node: "3", input: model_name}]
+  width: [{node: "5", input: width}]
+  height: [{node: "5", input: height}]
+  filename_prefix: [{node: "7", input: filename_prefix}]
+outputs:
+  - {node: "7", kind: video}

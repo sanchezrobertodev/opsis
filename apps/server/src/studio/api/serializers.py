@@ -25,9 +25,11 @@ def asset_out(a: Asset) -> AssetOut:
 
 
 def generation_out(g: Generation, assets: list[Asset] | None = None) -> GenerationOut:
+    storage = get_storage()
     return GenerationOut(
         id=g.id, model_id=g.model_id, mode=g.mode, output_type=g.output_type, status=g.status.value,
         status_reason=g.status_reason, progress=g.progress, progress_is_estimated=g.progress_is_estimated,
+        preview_url=storage.url_for(g.preview_key) if g.preview_key else None,
         request=g.request or {}, routing=g.routing or {},
         estimated_cost_usd=float(g.estimated_cost_usd) if g.estimated_cost_usd is not None else None,
         actual_cost_usd=float(g.actual_cost_usd) if g.actual_cost_usd is not None else None,

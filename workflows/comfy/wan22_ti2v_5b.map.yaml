@@ -14,8 +14,12 @@ inputs:
   fps: [{node: "57", input: fps}]
   start_image: [{node: "56", input: image}]
   filename_prefix: [{node: "58", input: filename_prefix}]
+  lora: [{node: "90", input: lora_name}]
+  lora_strength: [{node: "90", input: strength_model}]
 optional:
   # Text-to-video: no start image, so drop the loader and its link into the latent.
   start_image: {node: "56", unlink: [{node: "55", input: start_image}]}
+  # No LoRA picked: drop the loader and feed the model straight on.
+  lora: {node: "90", bypass: [model]}
 outputs:
   - {node: "58", kind: video}

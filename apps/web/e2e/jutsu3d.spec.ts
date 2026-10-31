@@ -27,9 +27,9 @@ test("3D blocking: a new scene is edited, saved, rendered and made real from its
   await page.keyboard.press("Escape"); // nothing selected: the scene's own panels show
   const real = page.getByRole("region", { name: "Make it real" });
   await real.getByRole("button", { name: "Render the angles" }).click();
-  await expect(real.getByRole("list", { name: "Inputs" }).getByRole("img")).toHaveCount(1, { timeout: 30_000 });
+  await expect(real.getByRole("list", { name: "Inputs" }).locator("img")).toHaveCount(1, { timeout: 30_000 });
   await real.getByLabel("What it looks like").fill("A rain-soaked rooftop at night, a courier in a yellow jacket");
-  await expect(real.getByText(/^Free mock run/)).toBeVisible();
+  await expect(real.getByText(/free mock run/i)).toBeVisible();
   await real.getByRole("button", { name: "Make it real" }).click();
   const made = real.getByRole("list", { name: "Made from this scene" });
   await expect(made.locator("video")).toHaveCount(1, { timeout: 90_000 });

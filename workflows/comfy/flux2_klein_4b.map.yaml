@@ -10,5 +10,10 @@ inputs:
   height: [{node: "9", input: height}, {node: "10", input: height}]
   num_images: [{node: "10", input: batch_size}]
   filename_prefix: [{node: "16", input: filename_prefix}]
+  lora: [{node: "90", input: lora_name}]
+  lora_strength: [{node: "90", input: strength_model}]
+optional:
+  # No LoRA picked: drop the loader and feed the model straight on.
+  lora: {node: "90", bypass: [model]}
 outputs:
   - {node: "16", kind: image}

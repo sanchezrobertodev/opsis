@@ -1,4 +1,4 @@
-import { createApiClient, type Schemas } from "@studio/api-client";
+import { createApiClient, type Schemas } from "@opsis/api-client";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8400";
 

@@ -21,6 +21,10 @@ parameters:
   - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16"], default: "16:9", ui: aspect}
   - {name: steps, type: int, min: 8, max: 30, default: 20, group: advanced, help: Fewer steps render faster and look rougher.}
   - {name: seed, type: seed, group: advanced}
+  - {name: lora, label: LoRA, type: enum, comfy_choices: LoraLoaderModelOnly.lora_name, group: advanced,
+     help: "A LoRA file from your ComfyUI's loras folder, made for Wan 2.2 5B."}
+  - {name: lora_strength, label: LoRA strength, type: float, min: 0, max: 2, step: 0.05, default: 1, group: advanced,
+     help: How strongly the LoRA pulls; 1 is as trained.}
 
 modes:
   - id: t2v

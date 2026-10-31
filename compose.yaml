@@ -1,0 +1,65 @@
+# The whole studio in containers: `docker compose up --build`, then open http://localhost:3000.
+# Postgres is the one `pnpm db:up` starts for development (infra/docker-compose.yml), so both share a database.
+# Keys and modes come from .env; the addresses below win over the ones it has for running on this machine.
+# ComfyUI stays on the host, where the GPU is: the containers reach it at host.docker.internal:8188 (on Linux, start
+# ComfyUI with --listen so it answers there). Media lands in ./data as with `pnpm dev`.
+# Other ports: OPSIS_WEB_PORT, OPSIS_API_PORT (the web image is built for the API's port, so --build after a change).
+name: opsis
+
+include:
+  - infra/docker-compose.yml
+
+x-server: &server
+  image: opsis-server
+  build: {context: ., dockerfile: infra/server/Containerfile.server}
+  env_file: [{path: .env, required: false}]
+  environment:
+    DATABASE_URL: postgresql+asyncpg://studio:studio@postgres:5432/studio
+    QUEUE_DATABASE_URL: postgresql://studio:studio@postgres:5432/studio
+    WEB_ORIGIN: http://localhost:${OPSIS_WEB_PORT:-3000}
+    COMFYUI_URL: ${OPSIS_COMFYUI_URL:-http://host.docker.internal:8188}
+    # backups run the Postgres 18 client in the worker itself
+    PGHOST: postgres
+    PGPASSWORD: studio
+    DB_EXEC: ""
+  extra_hosts: ["host.docker.internal:host-gateway"]
+  volumes: ["./data:/app/data"]
+  restart: unless-stopped
+  depends_on:
+    migrate: {condition: service_completed_successfully}
+
+services:
+  migrate:
+    <<: *server
+    working_dir: /app/apps/server
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    <<: *server
+    command: ["python", "-m", "studio.api", "--host", "0.0.0.0", "--port", "8400"]
+    ports: ["127.0.0.1:${OPSIS_API_PORT:-8400}:8400"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8400/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+
+  worker:
+    <<: *server
+    command: ["python", "-m", "studio.worker"]
+    stop_grace_period: 30s
+
+  web:
+    image: opsis-web
+    build:
+      context: .
+      dockerfile: infra/server/Containerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:${OPSIS_API_PORT:-8400}
+    ports: ["127.0.0.1:${OPSIS_WEB_PORT:-3000}:3000"]
+    restart: unless-stopped
+    depends_on:
+      api: {condition: service_healthy}

@@ -2,7 +2,7 @@
 
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
-import type { Schemas } from "@studio/api-client";
+import type { Schemas } from "@opsis/api-client";
 import { cn } from "@/lib/cn";
 import { Segmented } from "@/components/ui/controls";
 

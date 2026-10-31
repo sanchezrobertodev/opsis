@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: esrgan-video
+name: ESRGAN upscale (local)
+family: esrgan
+vendor: community
+description: >-
+  Sharper, larger clips on your own GPU: every frame goes through an ESRGAN upscale model in your ComfyUI
+  (4x NMKD Siax by default), keeping the frame rate and sound. Free; clips up to 5 s at 720p.
+output_type: video
+status: preview
+license_tier: open_restricted   # depends on the upscale model; check its card (NMKD Siax: non-commercial)
+tags: [local, free, upscale]
+prompt: {max_chars: 10}
+
+parameters:
+  - {name: scale, label: Factor, type: enum, options: [2, 3, 4], default: 2, ui: segmented,
+     help: The clip's size times this.}
+  - {name: upscale_model, label: Upscale model, type: enum, comfy_choices: UpscaleModelLoader.model_name,
+     default: 4x_NMKD-Siax_200k.pth, group: advanced,
+     help: "Any model in your ComfyUI's upscale_models folder; its own factor doesn't matter, the result is scaled to the factor above."}
+
+modes:
+  - id: upscale
+    label: Upscale
+    ops: [upscale]
+    prompt: none
+    medias:
+      # every frame is held at the model's 4x in RAM: about 20 GB for 5 s of 720p
+      - {role: input_video, kinds: [video], label: Clip to upscale, required: true, max_duration_s: 5, max_pixels: 921600}
+
+routes:
+  - id: esrgan-video@comfy_local
+    provider: comfy_local
+    modes:
+      upscale: {endpoint: video_upscale_esrgan}
+    transform: studio.providers.transforms.comfy:upscaled_size
+    map:
+      params:
+        scale: {to: null}
+      media: {input_video: input_video}
+    pricing:
+      basis: per_request
+      rates: [{usd: 0}]
+      verified: 2026-10-30
+      source: local GPU, measured on a 12 GB card
+    # 3 s of 480p (72 frames) took 128 s with 4x NMKD Siax; 720p frames take about twice as long.
+    eta: "10 + input_video_frames * 2.5"
+    min_vram_gb: 6
+    timeout_s: 3600
+    output: {path: outputs, kind: video}
+
+examples:
+  - name: upscale_2x
+    mode: upscale
+    params: {scale: 2}
+    media: {input_video: "fixture:videos/clip_3s.mp4"}
+    smoke: true
+    expect: {cost_usd_range: [0, 0]}

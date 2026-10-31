@@ -4,7 +4,8 @@ Route endpoints name a workflow template in workflows/comfy. The canonical paylo
 registry/mapping.py) is injected into the template; inputs (pictures, clips, mattes) are uploaded through
 /upload/image, clips first re-timed when the route says so (`media_fps`). Before routing picks it, `unavailable`
 checks the card's memory against the route's `min_vram_gb` and the graph's model files against /object_info.
-ComfyUI's HTTP API has no progress percentage, so the worker estimates progress from the route ETA.
+Progress and preview frames come from ComfyUI's websocket (`comfy_events`); until a sampler reports, or for a job
+another process queued, the worker estimates progress from the route ETA.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import httpx
 
 from studio.config import get_settings
 from studio.domain.enums import ErrorClass
+from studio.providers import comfy_events
 from studio.providers.base import (
     AmbiguousSubmitError,
     PollResult,
@@ -32,6 +34,8 @@ from studio.providers.base import (
     SubmitResult,
 )
 from studio.providers.comfy_workflows import (
+    WorkflowTemplate,
+    combo_options,
     download_groups,
     fresh_seed,
     load_template,
@@ -39,9 +43,8 @@ from studio.providers.comfy_workflows import (
     retime_clip,
     unavailable_choices,
 )
-from studio.registry.schema import Route
+from studio.registry.schema import EnumParam, Route
 
-CLIENT_ID = "opsis"
 INPUT_SUBFOLDER = "opsis"
 OUTPUT_KEYS = ("images", "gifs", "videos", "video", "audio")
 INFO_TTL_S = 60.0  # node info per class; a model file downloaded meanwhile shows up within a minute
@@ -103,6 +106,14 @@ class ComfyLocalAdapter(ProviderAdapter):
             return None
         return out
 
+    async def choices(self, node: str, input_: str) -> list[Any] | None:
+        """What this ComfyUI offers for a node's choice input (its LoRA files, say); None if it didn't say."""
+        info = await self._object_info({node})
+        if info is None or node not in info:
+            return None
+        spec = info[node].get("input", {})
+        return combo_options({**spec.get("required", {}), **spec.get("optional", {})}.get(input_))
+
     # ------------------------------------------------------------------ adapter
 
     async def unavailable(self, route: Route, mode: str) -> str | None:
@@ -123,7 +134,7 @@ class ComfyLocalAdapter(ProviderAdapter):
         if info is None:
             return None
         files = model_files()
-        classes, missing = unavailable_choices(template, info, files)
+        classes, missing = unavailable_choices(template, info, files, _picked(route, mode, template))
         if classes:
             return f"ComfyUI has no {', '.join(classes)} node; update ComfyUI to 0.34 or newer"
         if not missing:
@@ -173,7 +184,8 @@ class ComfyLocalAdapter(ProviderAdapter):
         graph, warnings = template.render(values)
         try:
             async with self._client(timeout=30) as c:
-                r = await c.post("/prompt", json={"prompt": graph, "client_id": CLIENT_ID})
+                r = await c.post("/prompt", json={"prompt": graph, "client_id": comfy_events.CLIENT_ID,
+                                                  "extra_data": {"preview_method": "auto"}})
         except httpx.ConnectError:
             raise self._offline() from None
         except httpx.TimeoutException as exc:
@@ -183,22 +195,27 @@ class ComfyLocalAdapter(ProviderAdapter):
         if r.status_code != 200:
             raise ProviderError(ErrorClass.transient, f"ComfyUI /prompt returned {r.status_code}")
         body = r.json()
+        comfy_events.listener(self.base).follow(body["prompt_id"], comfy_events.samplers(graph))
         return SubmitResult(job_id=body["prompt_id"], raw={"number": body.get("number"), "warnings": warnings,
                                                            "template": endpoint, "seed": values.get("seed")})
 
     async def poll(self, route: Route, job_id: str) -> PollResult:
+        events = comfy_events.listener(self.base)
         done = await self._history(job_id)
         if done is not None:
+            events.forget(job_id)
             return self._finished(route, job_id, done)
         q = (await self._get("/queue")).json()
         running = [item[1] for item in q.get("queue_running", [])]
         pending = sorted(q.get("queue_pending", []), key=lambda item: item[0])
+        progress, preview = events.take(job_id)
         if job_id in running:
-            return PollResult(status="running", progress=None, raw={"running": True})
+            return PollResult(status="running", progress=progress, preview=preview, raw={"running": True})
         for pos, item in enumerate(pending, start=1):
             if item[1] == job_id:
                 return PollResult(status="queued", queue_position=pos, raw={"queue_position": pos})
         # It may have finished between the two calls.
+        events.forget(job_id)
         done = await self._history(job_id)
         if done is not None:
             return self._finished(route, job_id, done)
@@ -279,3 +296,21 @@ def _node_errors(r: httpx.Response) -> str:
         for e in info.get("errors", []):
             parts.append(f"node {node_id} ({info.get('class_type')}): {e.get('message')} {e.get('details', '')}".strip())
     return "; ".join(parts)[:1500] or "invalid workflow"
+
+
+def _picked(route: Route, mode: str, template: WorkflowTemplate) -> frozenset[tuple[str, str]]:
+    """The template inputs (node, input) a `comfy_choices` param of the route's model fills: the form picks them from
+    what this ComfyUI lists (ESRGAN's upscale model), so the graph's saved file isn't needed."""
+    from studio.registry.loader import get_registry
+
+    spec = next((m for m in get_registry().models.values() if m.route(route.id)), None)
+    if spec is None:
+        return frozenset()
+    picked: set[tuple[str, str]] = set()
+    for p in spec.params_for(mode):
+        if not (isinstance(p, EnumParam) and p.comfy_choices):
+            continue
+        entry = route.map.params.get(p.name, p.name if route.map.passthrough else None)
+        key = entry if isinstance(entry, str) or entry is None else entry.to
+        picked |= {(t.node, t.input) for t in template.map.inputs.get(key or "", [])}
+    return frozenset(picked)

@@ -217,6 +217,7 @@ class GenerationOut(ApiModel):
     status_reason: str | None
     progress: float
     progress_is_estimated: bool
+    preview_url: str | None = None  # the latest frame while it renders (local ComfyUI)
     request: dict[str, Any]
     routing: dict[str, Any]
     estimated_cost_usd: float | None

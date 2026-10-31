@@ -30,8 +30,8 @@ def test_db_exec_says_how_the_postgres_tools_run(monkeypatch):
     assert backups._prefix()[:2] == ["docker", "compose"] and backups._prefix()[-1] == "postgres"
     monkeypatch.setattr(settings, "db_exec", "")  # infra/server's pod: the tools sit next to the app
     assert backups._prefix() == []
-    monkeypatch.setattr(settings, "db_exec", "podman exec -i 'ams postgres'")
-    assert backups._prefix() == ["podman", "exec", "-i", "ams postgres"]
+    monkeypatch.setattr(settings, "db_exec", "podman exec -i 'opsis postgres'")
+    assert backups._prefix() == ["podman", "exec", "-i", "opsis postgres"]
     monkeypatch.setattr(settings, "db_exec", "no-such-tool-here")
     with pytest.raises(backups.BackupError, match="no-such-tool-here isn't on PATH"):
         backups._psql(backups.Database("u", "d"), "select 1")

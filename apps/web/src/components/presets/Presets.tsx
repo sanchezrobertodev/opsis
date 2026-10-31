@@ -1,7 +1,7 @@
 "use client";
 
 import { BookOpen, Package, Palette, Scissors, Smartphone, Sparkles, UserRound } from "lucide-react";
-import type { Schemas } from "@studio/api-client";
+import type { Schemas } from "@opsis/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";

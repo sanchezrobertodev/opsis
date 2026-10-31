@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import struct
 from pathlib import Path
 
 import httpx
@@ -10,6 +11,7 @@ import pytest
 
 from studio.config import get_settings
 from studio.domain.enums import ErrorClass
+from studio.providers import comfy_events
 from studio.providers.base import ProviderError, ProviderOutput, ResolvedMedia
 from studio.providers.comfy_local import ComfyLocalAdapter
 from studio.providers.comfy_workflows import load_template
@@ -71,6 +73,82 @@ def test_registry_maps_canonical_params_onto_the_template():
     assert payload["length"] == 121  # 5 s at 24 fps, plus Wan's extra frame
     assert (payload["width"], payload["height"]) == (704, 1280)
     assert "quality" not in payload and "aspect_ratio" not in payload
+
+
+
+def test_a_lora_from_comfyui_is_optional_and_drops_out_of_the_chain():
+    klein = REG.models["flux-2-klein-4b"]
+    route = klein.route("flux-2-klein-4b@comfy_local")
+    template = load_template(WORKFLOWS, "flux2_klein_4b")
+    req = normalize(klein, "t2i", "harbor", {}, [])
+    _, payload, _ = build_payload(klein, route, req, {})
+    graph, warnings = template.render(payload)
+    assert "90" not in graph and graph["7"]["inputs"]["model"] == ["1", 0] and not warnings
+    # any file name passes (the form lists your ComfyUI's); its strength goes with it
+    req = normalize(klein, "t2i", "harbor", {"lora": "pixel-art.safetensors", "lora_strength": 0.7}, [])
+    _, payload, _ = build_payload(klein, route, req, {})
+    graph, _ = template.render(payload)
+    assert graph["7"]["inputs"]["model"] == ["90", 0]
+    assert graph["90"]["inputs"] == {"model": ["1", 0], "lora_name": "pixel-art.safetensors", "strength_model": 0.7}
+
+
+def test_none_beats_a_lora_the_workflow_was_saved_with():
+    """An imported graph's LoRA is the param's default; picking None sends "", which must drop the loader."""
+    klein = REG.models["flux-2-klein-4b"]
+    klein = klein.model_copy(update={"parameters": [
+        p.model_copy(update={"default": "pixel-art.safetensors"}) if p.name == "lora" else p for p in klein.parameters]})
+    route = klein.route("flux-2-klein-4b@comfy_local")
+    template = load_template(WORKFLOWS, "flux2_klein_4b")
+    assert normalize(klein, "t2i", "harbor", {}, []).params["lora"] == "pixel-art.safetensors"
+    req = normalize(klein, "t2i", "harbor", {"lora": ""}, [])
+    assert req.params["lora"] == ""
+    _, payload, _ = build_payload(klein, route, req, {})
+    graph, _ = template.render(payload)
+    assert "90" not in graph and graph["7"]["inputs"]["model"] == ["1", 0]
+
+
+def test_a_picked_upscale_model_doesnt_need_the_saved_one(monkeypatch):
+    """ESRGAN's upscale model is picked from what ComfyUI lists, so the graph's Siax is only missing when it has none."""
+    from studio.providers import comfy_local
+    from studio.providers.comfy_workflows import model_files, unavailable_choices
+
+    monkeypatch.setattr("studio.registry.loader.get_registry", lambda: REG)
+    template = load_template(WORKFLOWS, "video_upscale_esrgan")
+    picked = comfy_local._picked(REG.models["esrgan-video"].route("esrgan-video@comfy_local"), "upscale", template)
+    assert picked == {("3", "model_name")}
+
+    def info(upscalers):
+        out = {n["class_type"]: {"input": {"required": {k: ["STRING", {}] for k in n["inputs"]}}}
+               for n in template.graph.values()}
+        out["UpscaleModelLoader"]["input"]["required"]["model_name"] = [upscalers]
+        return out
+
+    files = model_files()
+    assert unavailable_choices(template, info(["RealESRGAN_x4plus.pth"]), files, picked)[1] == []
+    assert unavailable_choices(template, info([]), files, picked)[1] == ["4x_NMKD-Siax_200k.pth"]
+    assert unavailable_choices(template, info(["RealESRGAN_x4plus.pth"]), files)[1] == ["4x_NMKD-Siax_200k.pth"]
+
+
+def test_a_bypass_must_name_a_link(tmp_path):
+    (tmp_path / "w.json").write_text(json.dumps({"1": {"class_type": "LoraLoaderModelOnly", "inputs": {
+        "model": "not a link", "lora_name": ""}}, "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 0]}}}))
+    (tmp_path / "w.map.yaml").write_text("inputs: {lora: [{node: '1', input: lora_name}]}\n"
+                                         "optional: {lora: {node: '1', bypass: [model]}}\n"
+                                         "outputs: [{node: '2', kind: image}]\n")
+    with pytest.raises(ValueError, match="bypasses 'model'"):
+        load_template(tmp_path, "w")
+
+
+async def test_lora_choices_come_from_comfyui(monkeypatch):
+    info = {"LoraLoaderModelOnly": {"input": {"required": {"lora_name": [["a.safetensors", "b.safetensors"]]}}}}
+
+    async def object_info(self, classes):
+        return {c: info[c] for c in classes if c in info}
+
+    monkeypatch.setattr(ComfyLocalAdapter, "_object_info", object_info)
+    a = adapter()
+    assert await a.choices("LoraLoaderModelOnly", "lora_name") == ["a.safetensors", "b.safetensors"]
+    assert await a.choices("NoSuchNode", "lora_name") is None
 
 
 # ---------------------------------------------------------------- adapter against a fake ComfyUI
@@ -136,7 +214,12 @@ def fake(monkeypatch):
     def client(self, timeout: float = 30.0):
         return httpx.AsyncClient(base_url="http://comfy.test", transport=httpx.MockTransport(fake.handler))
 
+    async def no_socket(self):  # tests feed the listener's events themselves
+        return None
+
     monkeypatch.setattr(ComfyLocalAdapter, "_client", client)
+    monkeypatch.setattr(comfy_events.Listener, "_run", no_socket)
+    monkeypatch.setattr(comfy_events, "_listeners", {})
     return fake
 
 
@@ -154,22 +237,59 @@ async def test_full_job_lifecycle(fake, tmp_path):
     res = await a.submit(ROUTE, "wan22_ti2v_5b", {"prompt": "x", "start_image": staged["start_image"][0]},
                          client_ref="0123456789")
     queued = fake.prompts[res.job_id]
-    assert queued["client_id"] == "opsis"
+    assert queued["client_id"] == comfy_events.CLIENT_ID and queued["extra_data"] == {"preview_method": "auto"}
     assert queued["prompt"]["58"]["inputs"]["filename_prefix"].endswith("/01234567")
 
     poll = await a.poll(ROUTE, res.job_id)
     assert poll.status == "queued" and poll.queue_position == 1
     fake.state[res.job_id] = "running"
-    assert (await a.poll(ROUTE, res.job_id)).status == "running"
+    running = await a.poll(ROUTE, res.job_id)
+    assert running.status == "running" and running.progress is None  # no sampler has reported yet: estimated
+    events = comfy_events.listener("http://comfy.test")
+    (sampler,) = events.jobs[res.job_id].samplers
+    events.handle(json.dumps({"type": "progress", "data": {"value": 15, "max": 30, "prompt_id": res.job_id,
+                                                           "node": sampler}}))
+    meta = json.dumps({"prompt_id": res.job_id, "image_type": "image/jpeg"}).encode()
+    events.handle(struct.pack(">II", 4, len(meta)) + meta + b"jpeg-bytes")
+    running = await a.poll(ROUTE, res.job_id)
+    assert running.progress == 0.45 and running.preview == (b"jpeg-bytes", "image/jpeg")
+    assert (await a.poll(ROUTE, res.job_id)).preview is None  # each frame is handed out once
     fake.state[res.job_id] = "done"
     done = await a.poll(ROUTE, res.job_id)
-    assert done.status == "succeeded"
+    assert done.status == "succeeded" and res.job_id not in events.jobs
     (out,) = done.outputs
     assert out.kind == "video" and out.mime == "video/mp4"
 
     dest = tmp_path / "out.mp4"
     assert await a.download(ROUTE, out, dest, tmp_path) == "video/mp4"
     assert dest.read_bytes().startswith(b"\x00\x00\x00 ftyp")
+
+
+def test_progress_counts_every_sampler_and_previews_find_their_job():
+    events = comfy_events.Listener("http://comfy.test")
+    graph = {"3": {"class_type": "KSamplerAdvanced", "inputs": {"latent_image": ["5", 0]}},
+             "4": {"class_type": "KSamplerAdvanced", "inputs": {"latent_image": ["3", 0]}},
+             "8": {"class_type": "VAEDecode", "inputs": {"samples": ["4", 0]}}}
+    assert comfy_events.samplers(graph) == ["3", "4"]
+    assert comfy_events.samplers(load_template(WORKFLOWS, "video_upscale_esrgan").graph) == ["4"]
+    events.jobs["p1"] = comfy_events._Job(samplers=["3", "4"])
+    events.jobs["p2"] = comfy_events._Job(samplers=[])  # queued by another process: whatever reports counts
+    events.handle(json.dumps({"type": "execution_cached", "data": {"nodes": ["3"], "prompt_id": "p1"}}))
+    assert events.take("p1")[0] == 0.45
+    events.handle(json.dumps({"type": "progress_state", "data": {"prompt_id": "p1", "nodes": {
+        "4": {"value": 5, "max": 10, "state": "running"}, "8": {"value": 1, "max": 1}}}}))
+    assert events.take("p1")[0] == 0.675  # the decoder's own progress doesn't count
+    events.handle(json.dumps({"type": "progress", "data": {"value": 2, "max": 10, "prompt_id": "p1", "node": "4"}}))
+    assert events.take("p1")[0] == 0.675  # never goes back
+    events.handle(json.dumps({"type": "progress", "data": {"value": 4, "max": 8, "prompt_id": "p2", "node": "9"}}))
+    assert events.take("p2")[0] == 0.45
+    # an old-style preview names no job: it belongs to the one running now
+    events.handle(json.dumps({"type": "executing", "data": {"node": "4", "prompt_id": "p1"}}))
+    events.handle(struct.pack(">II", 1, 2) + b"png")
+    assert events.take("p1") == (0.675, (b"png", "image/png"))
+    events.handle(struct.pack(">II", 4, 3) + b"{x}" + b"bad metadata")
+    events.handle(b"\x00")
+    assert events.take("p1")[1] is None and events.take("nobody") == (None, None)
 
 
 async def test_out_of_memory_explains_what_to_do(fake):
@@ -579,3 +699,47 @@ def test_a_model_that_also_runs_elsewhere_uses_the_local_engine_only_when_it_can
     assert missing["ltx-2.5@mock"].eligible  # unlike Wan 2.2 5B, it has somewhere else to run: the mock stands in
     assert cands(ltx_env(online=False, blocked=None))["ltx-2.5@mock"].eligible
     assert cheapest_live_estimate(list(missing.values())).route.id != "ltx-2.5@comfy_local"
+
+
+def test_each_preview_frame_replaces_the_last_and_leaves_with_the_take():
+    import uuid
+
+    from studio.db.models import Generation
+    from studio.domain import fsm
+    from studio.storage.local import get_storage
+    from studio.worker.tasks.generation import _store_preview
+
+    gen = Generation(id=uuid.uuid4(), user_id=uuid.uuid4())
+    storage = get_storage()
+    first = _store_preview(fsm.preview_prefix(gen), None, b"one", "image/jpeg")
+    second = _store_preview(fsm.preview_prefix(gen), first, b"two", "image/png")
+    assert first != second and second.endswith(".png")  # a new name each time: /media is cached per key
+    assert not storage.exists(first) and storage.path_for(second).read_bytes() == b"two"
+    gen.preview_key = second
+    assert fsm.preview_url(gen) == storage.url_for(second)
+    fsm.drop_preview(gen)
+    assert gen.preview_key is None and not storage.exists(fsm.preview_prefix(gen))
+
+
+def test_choices_endpoint_says_when_comfyui_is_off(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from studio.api.deps import current_user
+    from studio.api.routers import local_engine
+
+    async def choices(self, node, input_):
+        return ["a.safetensors"] if self.base == "http://up.test" else None
+
+    monkeypatch.setattr(ComfyLocalAdapter, "choices", choices)
+    app = FastAPI()
+    app.include_router(local_engine.router)
+    app.dependency_overrides[current_user] = lambda: object()
+    client = TestClient(app)
+    monkeypatch.setattr(get_settings(), "comfyui_url", "http://up.test")
+    assert client.get("/local-engine/choices", params={"field": "LoraLoaderModelOnly.lora_name"}).json() == {
+        "available": True, "options": ["a.safetensors"], "message": None}
+    monkeypatch.setattr(get_settings(), "comfyui_url", "http://down.test")
+    off = client.get("/local-engine/choices", params={"field": "LoraLoaderModelOnly.lora_name"}).json()
+    assert not off["available"] and "Is it running?" in off["message"]
+    assert client.get("/local-engine/choices", params={"field": "../etc"}).status_code == 422

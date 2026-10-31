@@ -43,6 +43,8 @@ class Unlink(_Strict):
 class Optional_(_Strict):
     node: str
     unlink: list[Unlink] = []
+    # a node in the middle of a chain (a LoRA loader): links out of it go to what fed it, output i to input bypass[i]
+    bypass: list[str] = []
 
 
 class OutputTarget(_Strict):
@@ -70,18 +72,27 @@ class WorkflowTemplate:
         warnings: list[str] = []
         present = {k: v for k, v in values.items() if v is not None and v != ""}
 
+        dropped: set[str] = set()
         for key, opt in self.map.optional.items():
             if key in present:
                 continue
-            graph.pop(opt.node, None)
+            node = graph.pop(opt.node, None)
+            dropped.add(opt.node)
             for u in opt.unlink:
                 graph.get(u.node, {}).get("inputs", {}).pop(u.input, None)
+            if node and opt.bypass:
+                for other in graph.values():
+                    for name, link in other.get("inputs", {}).items():
+                        if isinstance(link, list) and len(link) == 2 and link[0] == opt.node and link[1] < len(opt.bypass):
+                            other["inputs"][name] = node["inputs"][opt.bypass[link[1]]]
 
         for key, value in present.items():
             targets = self.map.inputs.get(key)
             if not targets:
                 warnings.append(f"workflow {self.name} has no input for {key!r}")
                 continue
+            if all(t.node in dropped for t in targets):
+                continue  # a setting of a part that's off (the LoRA's strength with no LoRA picked)
             if isinstance(value, list):
                 value = value[0] if len(value) == 1 else value
             for t in targets:
@@ -107,6 +118,10 @@ def _load(directory: Path, name: str, mtime_key: tuple[float, float]) -> Workflo
                 raise ValueError(f"{name}.map.yaml: input {key!r} points at missing node {t.node}")
             if t.input not in graph[t.node].get("inputs", {}):
                 raise ValueError(f"{name}.map.yaml: node {t.node} has no input {t.input!r}")
+    for key, opt in spec.optional.items():
+        for name_ in opt.bypass:
+            if not isinstance(graph.get(opt.node, {}).get("inputs", {}).get(name_), list):
+                raise ValueError(f"{name}.map.yaml: optional {key!r} bypasses {name_!r}, not a link into node {opt.node}")
     for o in spec.outputs:
         if o.node not in graph:
             raise ValueError(f"{name}.map.yaml: output node {o.node} missing")
@@ -168,7 +183,7 @@ def download_groups(names: list[str], files: dict[str, dict[str, Any]]) -> list[
     return sorted(groups)
 
 
-def _choices(spec: Any) -> list[Any] | None:
+def combo_options(spec: Any) -> list[Any] | None:
     """The options of a choice input in ComfyUI's /object_info, in either of its formats."""
     if not isinstance(spec, list) or not spec:
         return None
@@ -179,11 +194,12 @@ def _choices(spec: Any) -> list[Any] | None:
     return None
 
 
-def unavailable_choices(template: WorkflowTemplate, object_info: dict[str, Any],
-                        files: dict[str, Any]) -> tuple[list[str], list[str]]:
+def unavailable_choices(template: WorkflowTemplate, object_info: dict[str, Any], files: dict[str, Any],
+                        picked: frozenset[tuple[str, str]] = frozenset()) -> tuple[list[str], list[str]]:
     """(node classes this ComfyUI lacks, fixed choices it doesn't offer): the second is mostly model files it hasn't
     got. Inputs the map fills are skipped, unless their saved value is a model file a parameter can switch on (LTX's
-    audio VAE)."""
+    audio VAE). `picked` inputs (node, input) are chosen from what this ComfyUI lists (`comfy_choices`), so their
+    saved file is only missing when it lists none."""
     filled = {(t.node, t.input) for targets in template.map.inputs.values() for t in targets}
     classes: set[str] = set()
     values: list[str] = []
@@ -196,7 +212,7 @@ def unavailable_choices(template: WorkflowTemplate, object_info: dict[str, Any],
         for name, value in node.get("inputs", {}).items():
             if not isinstance(value, str) or ((node_id, name) in filled and value not in files):
                 continue
-            options = _choices(specs.get(name))
-            if options is not None and value not in options and value not in values:
+            options = combo_options(specs.get(name))
+            if options is not None and value not in options and value not in values                     and not ((node_id, name) in picked and options):
                 values.append(value)
     return sorted(classes), values

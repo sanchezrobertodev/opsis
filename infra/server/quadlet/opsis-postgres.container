@@ -4,10 +4,10 @@ Wants=network-online.target
 After=network-online.target
 
 [Container]
-ContainerName=ams-postgres
+ContainerName=opsis-postgres
 Image=docker.io/library/postgres:18
-Pod=ams.pod
-Volume=ams-pgdata.volume:/var/lib/postgresql
+Pod=opsis.pod
+Volume=opsis-pgdata.volume:/var/lib/postgresql
 # Reachable only inside the pod, so the dev credentials stay
 Environment=POSTGRES_USER=studio POSTGRES_PASSWORD=studio POSTGRES_DB=studio
 PodmanArgs=--memory=512m

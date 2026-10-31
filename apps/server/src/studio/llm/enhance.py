@@ -39,7 +39,7 @@ DIALECT_STYLE = {
 }
 DEFAULT_STYLE = "Clear, concrete description of what is visible: subject, action, setting, light."
 
-SYSTEM = """You write prompts for AI video and image generation models in a personal film studio.
+SYSTEM = """You write prompts for AI video and image generation models in Opsis, a self-hosted video studio.
 
 You receive a rough idea from the user plus facts about the target model. Rewrite the idea into one prompt
 that the model will render well:

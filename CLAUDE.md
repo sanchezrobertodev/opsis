@@ -200,6 +200,7 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 pnpm db:up      # Postgres 18 in Docker on :5433
 uv sync && pnpm i && pnpm db:migrate
 pnpm dev        # API :8400 (reload), worker, web :3000
+docker compose up --build   # or all of it in containers (compose.yaml: db, migrate, API, worker, web; ComfyUI stays on the host)
 pnpm gen        # OpenAPI -> packages/api-client/src/schema.d.ts (run after API schema changes)
 pnpm test       # pytest: unit, registry contract, DB integration (uses a separate studio_test database)
 pnpm e2e        # Playwright against the mock provider (reuses a running `pnpm dev`)
@@ -239,7 +240,7 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 
 ## Self-hosting on a Linux server
 - `infra/server/` (README there) is an example deployment:
-  - **Containers:** rootless Podman with Quadlet runs the pod `ams` with Postgres 18, the API, the worker and the web app.
+  - **Containers:** rootless Podman with Quadlet runs the pod `opsis` with Postgres 18, the API, the worker and the web app.
   - **Addresses:** `tailscale serve` publishes the web app on `https://<host>.<tailnet>.ts.net:19443/` and the API on
     `:19444`, tailnet only.
   - **Files:** the server's checkout holds its `.env` and `data/`.
@@ -251,8 +252,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   Tailscale). When it's off, the route says it isn't running.
 - **Backups:** `DB_EXEC` says how backups reach the Postgres tools. Unset is `docker compose exec` (the compose setup);
   empty runs them in place (the worker container has the Postgres 18 client). systemd timers replace the Windows tasks.
-- **Off-site copy:** the hourly `ams-offsite.timer` (`infra/server/offsite.sh`) sends new media, as tar bundles, and
-  new dumps with Taildrop to `AMS_OFFSITE_TARGET`. On a Windows PC, `infra/server/windows/install-backup-task.ps1`
+- **Off-site copy:** the hourly `opsis-offsite.timer` (`infra/server/offsite.sh`) sends new media, as tar bundles, and
+  new dumps with Taildrop to `OPSIS_OFFSITE_TARGET`. On a Windows PC, `infra/server/windows/install-backup-task.ps1`
   registers a task that files them in a folder of your choice (`-Dest`): a media mirror plus 60 days of dumps.
 - The server's caption fonts are open stand-ins (`infra/server/fonts.conf`).
 
@@ -441,7 +442,9 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 
 ## Local engine (ComfyUI)
 - `comfy_local` provider = your ComfyUI (0.34) at `COMFYUI_URL` (default http://127.0.0.1:8188; the README's "Open models on your
-  GPU" lists the model files). Local-only models: `wan-2.2-5b` (t2v/i2v) and `flux-2-klein-4b` (t2i). The wan-core
+  GPU" lists the model files). Local-only models: `wan-2.2-5b` (t2v/i2v), `flux-2-klein-4b` (t2i) and
+  `esrgan-video` (op `upscale`: every frame through an upscale model, then scaled to the clip's size times `scale` by
+  `transforms/comfy.py:upscaled_size`; clips up to 5 s and 720p, since every frame is held at 4x in RAM). The wan-core
   graphs (LTX-2.5, the Wan 14B ones) have local routes too, with `min_vram_gb` (an estimate).
 - Local routes are free and run in every PROVIDER_MODE. Before routing, `adapter.unavailable()` checks an up ComfyUI
   can run the route (`local_status.local_blockers`): GPU memory from `/system_stats`, node classes and model files
@@ -452,6 +455,17 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 - Both ComfyUI adapters draw a fresh seed per take unless one is given (`comfy_workflows.fresh_seed`) and re-time
   clips for `media_fps` routes (`retime_clip`).
 - Workflows live in `workflows/comfy/<name>.json` (API graph) + `<name>.map.yaml` (which node inputs to fill,
-  optional nodes, outputs). Routes name the template as their endpoint; `transform` hooks in
+  optional nodes, outputs). `scripts/import_comfy_workflow.py <api.json> --id <id>` drafts both plus a model YAML from
+  your own graph (`providers/comfy_import.py`: guesses by input names and links, never by model; `docs/comfy-workflows.md`). Routes name the template as their endpoint; `transform` hooks in
   `studio/providers/transforms/` map quality/aspect to pixel sizes. Route `eta` expressions drive time estimates.
 - One job at a time (sized for 12 GB of VRAM). On a 12 GB card, draft Wan ≈ 70–90 s, standard ≈ 7 min.
+- Live progress and previews: each process queues under its own client id and follows its jobs on ComfyUI's websocket
+  (`providers/comfy_events.py`, `extra_data.preview_method: auto`). Progress counts the graph's slow nodes (with a
+  `latent_image` or an `upscale_model` input) up to 90 %; until one steps, and for a job queued before a restart, the ETA estimate shows. Each
+  preview frame is kept at `u/{user}/previews/{generation}/` (`generations.preview_key`, `preview_url` on the take)
+  and dropped when the take leaves `in_progress`. The provider's `poll_max_seconds: 3` keeps them live.
+- LoRAs: enum params with `comfy_choices: <Node>.<input>` take their options from your ComfyUI when the form opens
+  (`GET /local-engine/choices`, the adapter's `choices()`); any value passes validation. Wan 2.2 5B and FLUX.2 klein
+  carry `lora` and `lora_strength`; their graphs' `LoraLoaderModelOnly` (node 90) is `optional` with
+  `bypass: [model]`, so with no LoRA it drops out and its strength is ignored. The importer drafts the same for a
+  graph with one LoRA loader.

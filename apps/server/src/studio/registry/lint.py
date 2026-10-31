@@ -100,9 +100,9 @@ def lint(reg: Registry) -> tuple[list[str], list[str]]:
         for p in spec.parameters:
             if p.modes and not set(p.modes) <= mode_ids:
                 errors.append(f"{where}: param {p.name} references unknown modes {set(p.modes) - mode_ids}")
-            if isinstance(p, EnumParam) and not p.options:
+            if isinstance(p, EnumParam) and not p.options and not p.comfy_choices:  # those come from your ComfyUI
                 errors.append(f"{where}: param {p.name} has no options")
-            if isinstance(p, EnumParam) and p.default is not None and p.default not in p.options:
+            if isinstance(p, EnumParam) and p.default is not None and p.default not in p.options and not p.comfy_choices:
                 errors.append(f"{where}: param {p.name} default {p.default!r} not in options")
             if isinstance(p, EnumParam) and (extra := set(p.labels) - {str(o) for o in p.options}):
                 errors.append(f"{where}: param {p.name} labels unknown options {sorted(extra)}")

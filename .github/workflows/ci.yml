@@ -36,6 +36,6 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm i --frozen-lockfile
-      - run: pnpm --filter @studio/web lint
-      - run: pnpm --filter @studio/web typecheck
-      - run: pnpm --filter @studio/web build
+      - run: pnpm --filter @opsis/web lint
+      - run: pnpm --filter @opsis/web typecheck
+      - run: pnpm --filter @opsis/web build

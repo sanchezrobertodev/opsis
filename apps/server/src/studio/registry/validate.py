@@ -90,6 +90,8 @@ def _coerce(param: Param, value: Any) -> Any:
         for opt in param.options:
             if str(opt) == str(value):
                 return opt
+        if param.comfy_choices:
+            return str(value).strip()  # "" is an explicit none: the optional node it fills drops out
         if param.open and str(value).strip():
             return str(value)
         raise ValueError(f"must be one of {param.options}")
@@ -241,7 +243,8 @@ def normalize(
             given.pop(name)
     for name, param in allowed.items():
         raw = given.get(name)
-        if raw is None or raw == "":
+        # "" picks none for a ComfyUI choice, which must beat a default (a LoRA the workflow was saved with)
+        if raw is None or (raw == "" and not (isinstance(param, EnumParam) and param.comfy_choices)):
             if isinstance(param, SeedParam):
                 out[name] = random.randint(0, 2**31 - 1)
                 continue

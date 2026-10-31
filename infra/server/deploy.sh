@@ -52,9 +52,19 @@ wait_for_memory() {
 wait_for_memory
 
 echo "==> building images (API address $API_URL)"
-podman build -q -t localhost/ams-server:latest -f "$HERE/Containerfile.server" --ignorefile "$HERE/.containerignore" .
-podman build -q -t localhost/ams-web:latest -f "$HERE/Containerfile.web" --ignorefile "$HERE/.containerignore" \
+podman build -q -t localhost/opsis-server:latest -f "$HERE/Containerfile.server" --ignorefile .dockerignore .
+podman build -q -t localhost/opsis-web:latest -f "$HERE/Containerfile.web" --ignorefile .dockerignore \
   --build-arg NEXT_PUBLIC_API_URL="$API_URL" .
+
+# Before the rename to Opsis the pod and its units were called ams. Stop and remove those, so the new pod can take
+# the ports; the database volume keeps its old name (opsis-pgdata.volume), so the data stays.
+if [ -e "$UNIT_DIR/ams.pod" ]; then
+  echo "==> replacing the ams units with opsis ones"
+  systemctl --user disable --now ams-backup.timer ams-schema-check.timer ams-offsite.timer >/dev/null 2>&1 || true
+  systemctl --user stop ams-web.service ams-worker.service ams-api.service ams-postgres.service ams-pod.service || true
+  rm -f "$UNIT_DIR"/ams.pod "$UNIT_DIR"/ams-* "$USER_UNIT_DIR"/ams-*
+  podman rmi -i localhost/ams-server:latest localhost/ams-web:latest >/dev/null || true
+fi
 
 echo "==> installing units"
 mkdir -p "$UNIT_DIR" "$USER_UNIT_DIR"
@@ -65,14 +75,14 @@ for f in "$HERE"/systemd/*; do fill "$f" > "$USER_UNIT_DIR/$(basename "$f")"; do
 systemctl --user daemon-reload
 
 echo "==> database"
-systemctl --user start ams-pod.service ams-postgres.service  # waits until Postgres answers
-podman run --rm --pod ams --env-file .env \
+systemctl --user start opsis-pod.service opsis-postgres.service  # waits until Postgres answers
+podman run --rm --pod opsis --env-file .env \
   -e DATABASE_URL=postgresql+asyncpg://studio:studio@127.0.0.1:5432/studio \
-  -w /app/apps/server localhost/ams-server:latest alembic upgrade head
+  -w /app/apps/server localhost/opsis-server:latest alembic upgrade head
 
 echo "==> restarting the API, worker and web app"
-systemctl --user restart ams-api.service ams-worker.service ams-web.service
-systemctl --user enable --now ams-backup.timer ams-schema-check.timer ams-offsite.timer >/dev/null
+systemctl --user restart opsis-api.service opsis-worker.service opsis-web.service
+systemctl --user enable --now opsis-backup.timer opsis-schema-check.timer opsis-offsite.timer >/dev/null
 
 # HTTPS on the tailnet (tailnet only). Set on every deploy: it replaces the port's mapping, so a changed local port
 # is picked up too.
@@ -85,8 +95,8 @@ for _ in $(seq 1 90); do
   if curl -fsS "$health" >/dev/null 2>&1 && curl -fsS -o /dev/null "http://127.0.0.1:$WEB_PORT/"; then echo " ok"; break; fi
   echo -n "."; sleep 2
 done
-curl -fsS "$health" >/dev/null || { echo; echo "API not healthy: journalctl --user -u ams-api -e"; exit 1; }
-curl -fsS -o /dev/null "http://127.0.0.1:$WEB_PORT/" || { echo; echo "web not up: journalctl --user -u ams-web -e"; exit 1; }
+curl -fsS "$health" >/dev/null || { echo; echo "API not healthy: journalctl --user -u opsis-api -e"; exit 1; }
+curl -fsS -o /dev/null "http://127.0.0.1:$WEB_PORT/" || { echo; echo "web not up: journalctl --user -u opsis-web -e"; exit 1; }
 
 podman image prune -f >/dev/null
 echo "Studio: $WEB_ORIGIN  (API $API_URL)"
