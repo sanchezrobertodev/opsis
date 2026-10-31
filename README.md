@@ -116,6 +116,22 @@ pnpm dev          # API on :8400, the worker, and the web app on :3000
 
 Open http://localhost:3000. Settings shows whether the database, ffmpeg and the local engine are found.
 
+### Or all of it in Docker
+
+With only Docker installed, one command builds and starts the database, the API, the worker and the web app
+(`compose.yaml`; it runs the migrations first):
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Open http://localhost:3000. ComfyUI stays on your machine, next to the GPU: the containers reach it at
+`host.docker.internal:8188` (set `OPSIS_COMFYUI_URL` for another address; on Linux start ComfyUI with `--listen`).
+Media is kept in `./data` and the database is the same one `pnpm db:up` starts, so you can switch between this and
+`pnpm dev` (not both at once: they use the same ports). `OPSIS_WEB_PORT`, `OPSIS_API_PORT` and `OPSIS_DB_PORT`
+change the ports; rebuild after changing the API's, since the web app is built for it.
+
 ## Open models on your GPU
 
 Local routes are free, work offline and run in every mode, mock included. You need
@@ -247,7 +263,7 @@ the API and worker mount the host's `~/.codex`; point `CODEX_BIN` at
 
 | Symptom | Fix |
 |---|---|
-| "Local ComfyUI isn't running" | ComfyUI isn't reachable at `COMFYUI_URL`. Start it, or check the port. |
+| "Local ComfyUI isn't running" | ComfyUI isn't reachable at `COMFYUI_URL`. Start it, or check the port. In Docker, the address is `OPSIS_COMFYUI_URL` (default `http://host.docker.internal:8188`); on Linux, ComfyUI must listen beyond 127.0.0.1 (`--listen`). |
 | "ComfyUI is missing ..." on a model | Run `fetch_models.py --local` with the groups it names and `--dest` set to ComfyUI's `models` folder. |
 | Out of memory on a local job | Use Draft quality or close other GPU apps. One local job runs at a time. |
 | The API won't start on Windows | Run it as `python -m studio.api` (what `pnpm dev` does), not bare uvicorn. |

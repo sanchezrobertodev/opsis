@@ -52,8 +52,8 @@ wait_for_memory() {
 wait_for_memory
 
 echo "==> building images (API address $API_URL)"
-podman build -q -t localhost/opsis-server:latest -f "$HERE/Containerfile.server" --ignorefile "$HERE/.containerignore" .
-podman build -q -t localhost/opsis-web:latest -f "$HERE/Containerfile.web" --ignorefile "$HERE/.containerignore" \
+podman build -q -t localhost/opsis-server:latest -f "$HERE/Containerfile.server" --ignorefile .dockerignore .
+podman build -q -t localhost/opsis-web:latest -f "$HERE/Containerfile.web" --ignorefile .dockerignore \
   --build-arg NEXT_PUBLIC_API_URL="$API_URL" .
 
 # Before the rename to Opsis the pod and its units were called ams. Stop and remove those, so the new pod can take

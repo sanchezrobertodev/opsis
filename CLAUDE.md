@@ -200,6 +200,7 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 pnpm db:up      # Postgres 18 in Docker on :5433
 uv sync && pnpm i && pnpm db:migrate
 pnpm dev        # API :8400 (reload), worker, web :3000
+docker compose up --build   # or all of it in containers (compose.yaml: db, migrate, API, worker, web; ComfyUI stays on the host)
 pnpm gen        # OpenAPI -> packages/api-client/src/schema.d.ts (run after API schema changes)
 pnpm test       # pytest: unit, registry contract, DB integration (uses a separate studio_test database)
 pnpm e2e        # Playwright against the mock provider (reuses a running `pnpm dev`)
