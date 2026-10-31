@@ -53,7 +53,7 @@ async def _template_run(mcp, in_memory_queue):
     args = {"template_id": "history-short", "fields": {"topic": "the night the Titanic's band kept playing"}}
     est = await call(mcp, "estimate_run", **args)
     assert est["mode"] == "mock" and est["estimate_usd"] == 0 and est["live_estimate_usd"] > 0
-    assert est["needs_confirmation"] is False and est["models"]
+    assert est["billed"] is False and est["needs_confirmation"] is False and est["models"]
 
     run = await call(mcp, "start_run", **args)
     await drain(in_memory_queue)
@@ -102,6 +102,34 @@ async def _uploads(mcp):
     assert asset["id"] in {a["id"] for a in await call(mcp, "find_media", kind="image", source="upload")}
     svg = base64.b64encode(b"<svg xmlns='http://www.w3.org/2000/svg'/>").decode()
     assert "svg" in (await refused(mcp, "upload", filename="x.svg", content_base64=svg)).lower()
+
+
+@pytest.mark.parametrize(("provider", "llm", "billed"), [
+    ("mock", "mock", False), ("mixed", "mock", True), ("mock", "live", True), ("live", "live", True)])
+async def test_a_run_counts_as_billed_when_either_side_can_spend(monkeypatch, provider, llm, billed):
+    async def fake_api(method, path, **kw):
+        if path == "/budget":
+            return {"provider_mode": provider, "llm_mode": llm, "confirm_over_usd": 5.0, "daily_cap_usd": 20.0,
+                    "today_usd": 0.0, "reserved_usd": 0.0, "monthly_cap_usd": 100.0, "month_usd": 0.0}
+        return {"estimate_usd": 0.0, "live_estimate_usd": 1.2, "generations": 3, "models": ["Veo 3.1"], "cap_usd": 5}
+
+    monkeypatch.setattr(mcp_tools, "_api", fake_api)
+    est = await mcp_tools.estimate_run(recipe="faceless")
+    assert est["billed"] is billed and est["claude_mode"] == llm
+
+
+def test_a_mask_review_shows_the_tracked_mask():
+    mask = {"id": "m1", "kind": "mask_video", "url": "/media/u/1/mask.mp4", "duration_ms": 5000}
+    step = {"key": "track", "kind": "generate", "label": "Track", "status": "succeeded", "depends_on": [],
+            "output": {"asset_id": "m1"}, "options": [], "assets": [mask], "error": None}
+    review = {"key": "mask", "kind": "checkpoint", "label": "Check the tracked mask", "status": "waiting",
+              "depends_on": ["track"], "output": {}, "options": [{"value": "approve", "label": "Follows"}],
+              "assets": [], "error": None}
+    run = {"id": "r", "title": "Swap", "recipe_name": "Object swap", "status": "waiting", "error": None,
+           "spent_usd": 0, "estimate_usd": 0, "cap_usd": 5, "steps_done": 1, "steps_total": 4, "steps": [step, review]}
+    shown = mcp_tools._run(run, "https://box.tail.ts.net:19444")["waiting_for_you"][0]
+    assert shown["media"][0]["url"] == "https://box.tail.ts.net:19444/media/u/1/mask.mp4"
+    assert shown["context"] == {}
 
 
 def test_an_expensive_run_asks_for_the_estimate_back():

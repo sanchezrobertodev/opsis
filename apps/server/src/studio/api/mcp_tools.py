@@ -27,12 +27,13 @@ from studio.config import get_settings
 INSTRUCTIONS = """Opsis is the user's own AI video studio. Runs make videos, pictures and sound from a recipe or a
 template (a recipe with most choices made). Start from catalog(kind="templates").
 
-Money: always call estimate_run first and tell the user what it costs and with which models. When the mode is
-"live" the run spends real money: start it only after the user agrees. When the estimate says needs_confirmation,
-pass its confirm_cost_usd to start_run. In "mock" mode nothing is billed and results are stand-ins.
+Money: always call estimate_run first and tell the user what it costs and with which models. When the estimate says
+billed (generation in "mixed" or "live", or Claude "live"; Claude's writing isn't in estimate_usd), the run may
+spend real money: start it only after the user agrees. When it says needs_confirmation, pass its confirm_cost_usd to
+start_run. With both modes "mock" nothing is billed and results are stand-ins.
 
 Runs take minutes. Check them with get_run; a run waiting_for_you needs an answer (answer_review): show the user the
-question and the options first. Media inputs are asset ids (from upload or find_media) or a saved character's
+question, the media it's about and the options first. Media inputs are asset ids (from upload or find_media) or a saved character's
 @handle. Links point at the studio, which opens only on the user's tailnet."""
 
 server = MCPServer(name="opsis", title="Opsis studio", instructions=INSTRUCTIONS)
@@ -96,13 +97,20 @@ def _media(asset: dict[str, Any] | None, base: str) -> dict[str, Any] | None:
 def _run(r: dict[str, Any], base: str) -> dict[str, Any]:
     steps = r["steps"]
     by_key = {s["key"]: s for s in steps}
-    waiting = [{
-        "key": s["key"], "question": s["label"],
-        "options": [{"value": o["value"], "label": o.get("label"), "media": _media(o.get("asset"), base)}
-                    for o in s["options"]],
-        # what to read before answering: the script or lyrics Claude wrote for this review
-        "context": {d: by_key[d]["output"] for d in s["depends_on"] if by_key.get(d, {}).get("kind") == "llm"},
-    } for s in steps if s["kind"] == "checkpoint" and s["status"] == "waiting"]
+
+    def review(s: dict[str, Any]) -> dict[str, Any]:
+        deps = [by_key[d] for d in s["depends_on"] if d in by_key]
+        shown = {o["asset"]["id"] for o in s["options"] if o.get("asset")}
+        return {
+            "key": s["key"], "question": s["label"],
+            "options": [{"value": o["value"], "label": o.get("label"), "media": _media(o.get("asset"), base)}
+                        for o in s["options"]],
+            # what to read or look at before answering: the script Claude wrote, the tracked mask
+            "context": {d["key"]: d["output"] for d in deps if d["kind"] == "llm"},
+            "media": [_media(a, base) for d in deps for a in d.get("assets") or [] if a["id"] not in shown],
+        }
+
+    waiting = [review(s) for s in steps if s["kind"] == "checkpoint" and s["status"] == "waiting"]
     return {
         "id": r["id"], "title": r["title"], "recipe": r["recipe_name"], "status": r["status"], "error": r["error"],
         "spent_usd": r["spent_usd"], "estimate_usd": r["estimate_usd"], "cap_usd": r["cap_usd"],
@@ -164,8 +172,9 @@ async def estimate_run(template_id: str | None = None, fields: dict[str, str] | 
     """What a run would cost, without starting it (free). Give a template_id with its fields and inputs, or a recipe
     with its recipe_input. cap_usd is the most the run may spend (defaults to the user's run cap).
 
-    Returns the estimate in the mode in effect (mock costs nothing), what it would cost live, the models, whether
-    start_run needs confirm_cost_usd, and what's left of today's and this month's caps.
+    Returns the estimate in the mode in effect (mock costs nothing), what it would cost live, the modes, whether it
+    may be billed (then ask the user first), whether start_run needs confirm_cost_usd, and what's left of today's and
+    this month's caps.
     """
     body = await _run_body(template_id, fields, inputs, recipe, recipe_input, title, cap_usd)
     est = await _api("POST", "/pipelines/estimate", json=body)
@@ -173,7 +182,9 @@ async def estimate_run(template_id: str | None = None, fields: dict[str, str] | 
     needs = est["estimate_usd"] > budget["confirm_over_usd"]
     return {
         "estimate_usd": est["estimate_usd"], "live_estimate_usd": est["live_estimate_usd"],
-        "mode": budget["provider_mode"], "generations": est["generations"], "models": est["models"],
+        "mode": budget["provider_mode"], "claude_mode": budget["llm_mode"],
+        "billed": budget["provider_mode"] != "mock" or budget["llm_mode"] != "mock",
+        "generations": est["generations"], "models": est["models"],
         "cap_usd": est["cap_usd"], "needs_confirmation": needs,
         "confirm_cost_usd": est["estimate_usd"] if needs else None,
         "left_today_usd": round(budget["daily_cap_usd"] - budget["today_usd"] - budget["reserved_usd"], 2),
@@ -186,8 +197,8 @@ async def start_run(ctx: Context, template_id: str | None = None, fields: dict[s
                     inputs: dict[str, str] | None = None, recipe: str | None = None,
                     recipe_input: dict[str, Any] | None = None, title: str | None = None,
                     cap_usd: float | None = None, confirm_cost_usd: float | None = None) -> dict[str, Any]:
-    """Start a run (the same arguments as estimate_run). Only after the user agreed to the estimate when the mode is
-    live. Over the confirmation threshold it's refused unless confirm_cost_usd covers the current estimate."""
+    """Start a run (the same arguments as estimate_run). Only after the user agreed to the estimate when it says
+    billed. Over the confirmation threshold it's refused unless confirm_cost_usd covers the current estimate."""
     body = await _run_body(template_id, fields, inputs, recipe, recipe_input, title, cap_usd)
     if confirm_cost_usd is not None:
         body["confirm_cost_usd"] = confirm_cost_usd

@@ -279,8 +279,8 @@ tailnet.
   not from your device. They need a public address, so they can't reach a tailnet-only studio. Don't expose `/mcp`
   publicly: it has no login.
 
-Ask something like "make a history short about the Titanic's band, tell me what it costs first". In live mode Claude
-shows the estimate before starting. Above your confirmation limit, the run starts only with that estimate sent back.
+Ask something like "make a history short about the Titanic's band, tell me what it costs first". When the run can be
+billed (generation Mixed or Live, or Claude Live), Claude shows the estimate and waits for your yes. Above your confirmation limit, the run starts only with that estimate sent back.
 
 ## Troubleshooting
 
