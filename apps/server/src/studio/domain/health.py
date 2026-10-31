@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import ProviderRouteHealth
@@ -18,11 +19,13 @@ ROUTE_FAULTS = {ErrorClass.transient, ErrorClass.route_unavailable, ErrorClass.t
 
 
 async def _row(session: AsyncSession, route_id: str, provider: str) -> ProviderRouteHealth:
-    row = await session.get(ProviderRouteHealth, route_id, with_for_update=True)
-    if row is None:
-        row = ProviderRouteHealth(route_id=route_id, provider=provider, consecutive_failures=0,
-                                  success_24h=0, failure_24h=0, breaker_state=BreakerState.closed)
-        session.add(row)
+    # FOR UPDATE locks nothing until the row exists, so make it first: two takes finishing at once on a new route
+    # would both insert it, and the loser's whole transaction (settle, succeeded) would roll back
+    await session.execute(insert(ProviderRouteHealth).values(
+        route_id=route_id, provider=provider, consecutive_failures=0, success_24h=0, failure_24h=0,
+        breaker_state=BreakerState.closed).on_conflict_do_nothing(index_elements=["route_id"]))
+    row = await session.get(ProviderRouteHealth, route_id, with_for_update=True, populate_existing=True)
+    assert row is not None
     return row
 
 
