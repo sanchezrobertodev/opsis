@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     reactor_api_key: str = Field(default="", repr=False)
     pika_api_key: str = Field(default="", repr=False)
     worldlabs_api_key: str = Field(default="", repr=False)
+    # Encrypts the keys pasted in Settings (studio/keys.py). Empty: data/keys.secret, made on first use.
+    keys_secret: str = Field(default="", repr=False)
     # Our own RunPod serverless endpoint running infra/runpod/wan-core (empty turns its routes off)
     runpod_wan_core_endpoint: str = ""
 

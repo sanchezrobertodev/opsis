@@ -8,6 +8,7 @@ import { api, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { useBudget, useHealth, useRegistry, useUpdateBudget } from "@/lib/queries";
 import { Button, Field, Segmented, Switch } from "@/components/ui/controls";
+import { Keys } from "@/components/shell/Keys";
 import { ModelStorage } from "@/components/shell/ModelStorage";
 
 const MODE_TEXT: Record<string, string> = {
@@ -132,7 +133,7 @@ export function Settings() {
                   ? "Mock writer"
                   : health.llm_key_set
                     ? "Live. Enhancements are billed to your budget."
-                    : "Live mode, but ANTHROPIC_API_KEY is missing from .env"}
+                    : "Live mode, but there is no Claude key yet. Add one under Keys."}
               </dd>
               <dt className="text-muted">Media folder</dt>
               <dd className="truncate text-xs" title={health.media_root}>
@@ -152,6 +153,7 @@ export function Settings() {
           )}
         </section>
 
+        <Keys />
         <Balances />
         <ModelStorage />
         <Appearance />
@@ -227,8 +229,7 @@ function Balances() {
         <p className="text-sm text-muted">Asking the providers&hellip;</p>
       ) : data.length === 0 ? (
         <p className="text-sm text-muted">
-          No provider keys yet. Add the ones you have to .env (.env.example says where to get each), then restart the
-          API and worker.
+          No provider keys yet. Add the ones you have under Keys above.
         </p>
       ) : (
         <ul className="grid gap-2 sm:grid-cols-2">

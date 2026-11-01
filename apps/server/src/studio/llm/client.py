@@ -64,15 +64,16 @@ class LLMResult[T: BaseModel]:
 
 
 _client: anthropic.AsyncAnthropic | None = None
+_client_key = ""
 
 
 def get_client() -> anthropic.AsyncAnthropic:
-    global _client
+    global _client, _client_key
     key = get_settings().anthropic_api_key
     if not key:
-        raise LLMUnavailable("Add ANTHROPIC_API_KEY to .env to use Claude, or set LLM_MODE=mock.")
-    if _client is None:
-        _client = anthropic.AsyncAnthropic(api_key=key, timeout=90.0, max_retries=2)
+        raise LLMUnavailable("Add a Claude key in Settings > Keys to use Claude, or switch Claude to Mock.")
+    if _client is None or key != _client_key:  # a key saved in Settings since
+        _client, _client_key = anthropic.AsyncAnthropic(api_key=key, timeout=90.0, max_retries=2), key
     return _client
 
 
@@ -130,7 +131,7 @@ async def structured[T: BaseModel](
             fallbacks="default",
         )
     except anthropic.AuthenticationError as exc:
-        raise LLMUnavailable("Anthropic rejected the API key in .env.") from exc
+        raise LLMUnavailable("Anthropic rejected the Claude key (Settings > Keys).") from exc
     except anthropic.PermissionDeniedError as exc:
         raise LLMUnavailable(f"This Anthropic key can't use {model}.") from exc
     except anthropic.RateLimitError as exc:

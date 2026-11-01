@@ -191,8 +191,17 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   attempt; sum spend with `domain.enums.SPENT` (charge + adjustment), never `charge` alone. Google, ElevenLabs and
   Replicate report no per-request cost and stay estimates. A provider's `idle_seconds` is added to its run time.
 
+## Provider keys
+- Keys pasted in **Settings > Keys** (`/keys`, `api/routers/keys.py`) are stored encrypted in `provider_keys`
+  (Fernet, `KEYS_SECRET` or `data/keys.secret`; `studio/keys.py`) and never returned (status + last four only). Each
+  process puts the owner's saved keys into its cached settings (`keys.apply`): the API at once on a save, the API and
+  the worker every 5 s, so code keeps reading `get_settings().fal_key`. A saved key beats `.env`'s; removing it brings
+  `.env`'s back. A client built from a key (fal, Google, Anthropic) is rebuilt when the key changes. A new provider
+  key goes in `keys.KEYS` too. Never add an MCP tool that reads or writes keys.
+
 ## Claude
-- `LLM_MODE=mock` (default) returns canned results and never bills; `live` needs `ANTHROPIC_API_KEY`.
+- `LLM_MODE=mock` (default) returns canned results and never bills; `live` needs a Claude key (Settings or
+  `ANTHROPIC_API_KEY`).
 - Call Claude only through `studio/llm/client.structured()`: Pydantic structured output, refusal fallback,
   a budget pre-check, and a `spend_ledger` charge per call (prices in `llm/pricing.py`, with a verified date).
 

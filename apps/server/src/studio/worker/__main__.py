@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import logging
 import sys
 
+from studio import keys
 from studio.registry.loader import get_registry
 from studio.worker.app import app
 
@@ -19,13 +21,19 @@ from studio.worker.app import app
 async def _main(concurrency: int, queues: list[str] | None) -> None:
     reg = get_registry()  # fail fast on a broken registry
     logging.getLogger("studio").info("registry %s loaded: %d models", reg.hash, len(reg.models))
-    async with app.open_async():
-        await app.run_worker_async(
-            queues=queues,
-            concurrency=concurrency,
-            name="studio-worker",
-            delete_jobs="successful",
-        )
+    key_refresh = asyncio.create_task(keys.refresh_forever(), name="key-refresh")  # keys saved in Settings
+    try:
+        async with app.open_async():
+            await app.run_worker_async(
+                queues=queues,
+                concurrency=concurrency,
+                name="studio-worker",
+                delete_jobs="successful",
+            )
+    finally:
+        key_refresh.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await key_refresh
 
 
 def main() -> None:

@@ -15,6 +15,8 @@ in the server's `.env` at that machine's ComfyUI (over Tailscale, for example).
 - **Pod:** all four containers run in the pod `opsis`, so they reach each other on localhost.
 - **Files:** the units run from your checkout of this repository. Its `.env` (mode 600, never committed) holds the
   keys and modes, and its `data/` (media, backups, logs, reports) is bind-mounted into the API and worker at `/app/data`.
+  Keys pasted in Settings are encrypted with `data/keys.secret` (or `KEYS_SECRET`); the off-site copy doesn't send it,
+  so keep your own copy, or be ready to paste the keys again after a restore.
 - **Settings the units fill in:** the database address, `WEB_ORIGIN` (CORS) and `DB_EXEC=` (backups run the
   Postgres 18 client in the worker container). These win over the `.env`.
 - **Building:** `opsis-server` is Python 3.12, uv, Debian's ffmpeg (x264, libass) and the PGDG Postgres 18 client.

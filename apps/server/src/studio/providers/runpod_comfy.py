@@ -118,7 +118,7 @@ class RunPodComfyAdapter(RunPodAdapter):
         from studio.providers.factory import get_adapter
 
         if not get_settings().fal_key:
-            raise ProviderError(ErrorClass.invalid_request, "RunPod needs a web link for this clip. Add FAL_KEY to .env.")
+            raise ProviderError(ErrorClass.invalid_request, "RunPod needs a web link for this clip. Add a fal.ai key in Settings > Keys.")
         name = f"{m.asset_id}-{fps:g}fps.mp4"
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / name
