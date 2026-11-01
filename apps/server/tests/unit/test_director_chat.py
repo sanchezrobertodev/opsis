@@ -184,7 +184,11 @@ async def test_long_storyboards_and_histories_are_bounded(monkeypatch):
         from studio.llm.client import LLMResult
         return LLMResult(output=kw["mock"](), model="m", mock=True)
 
+    async def opus(session, user_id, tier):
+        return "claude-opus-5-5"
+
     monkeypatch.setattr(dc, "structured", fake_structured)
+    monkeypatch.setattr(dc, "model_for", opus)  # no database here to read the Settings choice from
     doc = CinemaDocument(scenes=board())
     history = [dc.Turn(role="user", text=f"turn {i} " + "x" * 3000) for i in range(12)]
     await dc.revise(None, None, doc=doc, message="make shot 1 tighter", history=history, cast=[])
