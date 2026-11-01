@@ -17,7 +17,7 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   Next 16 differs from older versions: read `apps/web/node_modules/next/dist/docs/` before using a new API.
 - `apps/server`: one Python 3.12 package `studio` (uv) with two entrypoints: `api` (FastAPI) and `worker`
   (procrastinate). SQLAlchemy 2 (asyncpg) + Alembic on Postgres 18.
-- `apps/gpu-worker`: stub only. Do not install local models unless the user asks.
+- Local models run only on your own ComfyUI (`comfy_local`). Do not install local models unless the user asks.
 - `registry/`: YAML model, provider, director and preset specs. **This is the main extension point.**
 - `workflows/comfy/`: ComfyUI API-format workflows + `.map.yaml` injection maps (shared by RunPod and local).
 - Storage: **local disk** (`data/media/`) behind a `Storage` interface. Provider inputs go through the InputStager,

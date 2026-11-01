@@ -118,7 +118,6 @@ apps/server/src/studio/           api/ (routers, sse), worker/ (tasks), db/ (mod
                                   comfy_local, local_tools, higgsfield, mock), director/ (shot_spec, compiler,
                                   dialects/), llm/, pipelines/ (engine, recipes/), media/ (ffmpeg, probe,
                                   assemble, captions), storage/ (local, stager), budget/
-apps/gpu-worker/                  stub only (SAM 2, WhisperX, TTS…); not installed in this plan
 packages/api-client/              generated TS types + typed hooks
 registry/{models,providers,director,presets}/*.yaml   single source of truth (Pydantic-validated, JSON Schema)
 workflows/comfy/*.json + *.map.yaml                   ComfyUI API workflows + node-injection maps
@@ -288,7 +287,8 @@ landed 2026-10-09. A normals-guided route was dropped: no hosted video model tak
 IC-LoRA and Cosmos Transfer take depth, edges, pose or segmentation), so the normals pass stays an export.
 P8 started: nightly database backups (pg_dump in the container, 14 days kept, restores that never drop anything;
 media needs its own copy) and a weekly provider schema check against saved baselines, which the contract tests also
-use offline. Character identities: a `lora_train` recipe trains a Wan 2.2 LoRA from a character's photos on fal and stores it on the Element; Wan 2.2 stills and video on fal load it when the character is mentioned. Still to come: the local gpu-worker (optional), auth and R2.
+use offline. Character identities: a `lora_train` recipe trains a Wan 2.2 LoRA from a character's photos on fal and stores it on the Element; Wan 2.2 stills and video on fal load it when the character is mentioned. Still to come: auth and R2. The local gpu-worker was dropped (2026-10-31): hosted routes (SAM 3, Scribe, ElevenLabs) and
+local ffmpeg cover its models, and open models run on your ComfyUI.
 - **Step 0 — Handoff:**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.
@@ -333,8 +333,8 @@ use offline. Character identities: a `lora_train` recipe trains a Wan 2.2 LoRA f
     angles → animate, or depth video → VACE.
   - Scope: panoramas, Marble API splat worlds + Spark viewer + camera-path renders shared with 3D Jutsu.
 - **P8 — Local GPU, Soul ID, hardening (later):**
-  - Scope: install the gpu-worker (SAM 2, DWPose, depth, WhisperX, Kokoro/Chatterbox, RIFE); LoRA training; nightly
-    `pg_dump`; auth hook; R2 storage option.
+  - Scope: LoRA training; nightly `pg_dump`; auth hook; R2 storage option. (A local gpu-worker for SAM 2, DWPose,
+    depth, WhisperX, Kokoro/Chatterbox and RIFE was dropped: hosted routes, ffmpeg and ComfyUI cover them.)
 
 ## Verification
 - **Unit tests:** state-machine table, pricing (hypothesis: never negative, monotonic in duration), param mapping,
