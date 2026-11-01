@@ -14,6 +14,7 @@ from test_pipelines import drain, get, start
 from test_talking import PICTURE, upload
 
 from studio.api.main import app as api
+from studio.config import get_settings
 from studio.db.models import Asset, Generation, PipelineStep
 from studio.db.session import session_scope
 from studio.media.mock_media import make_audio
@@ -181,7 +182,7 @@ async def test_the_shot_plan_sees_the_songs_brief(db, monkeypatch):
 
     monkeypatch.setattr(music_video, "structured", capture)
     async with session_scope() as s:
-        await music_video.plan_shots(s, uuid.uuid4(), sections=["la la"], idea="film grain", star=False,
+        await music_video.plan_shots(s, get_settings().owner_user_id, sections=["la la"], idea="film grain", star=False,
                                      brief="two friends driving to the coast")
     assert "The song's brief (what it's about): two friends driving to the coast" in seen["prompt"]
     assert "friends stay\n  friends" in music_video.PLAN_SYSTEM

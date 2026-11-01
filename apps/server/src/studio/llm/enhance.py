@@ -15,10 +15,9 @@ from collections import OrderedDict
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from studio.config import get_settings
 from studio.director.compiler import ShotDirection
 from studio.director.elements import mentions
-from studio.llm.client import LLMResult, structured
+from studio.llm.client import LLMResult, model_for, structured
 from studio.registry.schema import ModelSpec
 
 # How each prompt dialect likes to be written. Keys match `prompt.dialect` in registry/models/*.yaml.
@@ -126,7 +125,7 @@ async def enhance(
     direction: ShotDirection | None = None,
 ) -> tuple[LLMResult[EnhancedPrompt], list[str]]:
     """Returns the result and warnings (e.g. a dropped @mention)."""
-    model = get_settings().llm_fast_model
+    model = await model_for(session, user_id, "fast")
     key = _key(model, spec, mode_id, prompt, direction)
     if key in _cache:
         _cache.move_to_end(key)

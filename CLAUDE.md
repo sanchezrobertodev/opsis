@@ -46,7 +46,7 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `anyio.to_thread.run_sync`, never `asyncio.create_subprocess_exec`.
 - Sora 2 is shut down (2026-09-24). Do not add it.
 - Before writing `studio/llm/*`, load the `claude-api` skill. Default models: `claude-opus-5-5` (scripts, shot
-  plans) and `claude-sonnet-5-5` (enhance, vision review).
+  plans) and `claude-sonnet-5-5` (enhance, vision review); Settings can pick another (see Claude below).
 - OpenMontage is AGPL-3.0. Borrow ideas only; never copy its code.
 
 ## Adding a model
@@ -177,6 +177,10 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 - A `PlannedJob` can name inputs that already exist (`media=((role, asset_id), ...)`), so the run estimate prices
   them at their real length. Narration is estimated from `prompt_chars`; inputs a run makes first (speech from a
   script) are priced at a guessed length with `planned_seconds=((role, seconds), ...)`.
+- A recipe's `claude_calls(input)` names the Claude calls a run makes (ledger purposes); the estimate prices each at
+  its typical size (`llm/pricing.py:TYPICAL_CALLS`) on the model Settings picks. That's in `estimate_usd` only while
+  Claude is live (its charges count against the run cap), always in `live_estimate_usd`, and shown as `claude_usd` /
+  `claude_live_usd`. A new Claude step needs its purpose in `TYPICAL_CALLS` and in its recipe's `claude_calls`.
 - Revising a run while a checkpoint waits updates that checkpoint's question in place; it keeps waiting.
 
 ## Spending
@@ -204,6 +208,11 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `ANTHROPIC_API_KEY`).
 - Call Claude only through `studio/llm/client.structured()`: Pydantic structured output, refusal fallback,
   a budget pre-check, and a `spend_ledger` charge per call (prices in `llm/pricing.py`, with a verified date).
+- Which model: Settings > Providers picks one for scripts and plans (`smart`) and one for prompt help (`fast`):
+  `budget_policies.llm_smart_model` / `llm_fast_model`, NULL = `LLM_SMART_MODEL` / `LLM_FAST_MODEL` in `.env`. Offered:
+  `pricing.CHOICES` (Opus 5.5, Sonnet 5.5, Haiku 5.5) plus `.env`'s. Call sites take
+  `await llm.client.model_for(session, user_id, "smart" | "fast")`, never the setting. Haiku 5.5 has no server-side
+  refusal fallback (`client.NO_FALLBACK`: no `fallbacks`/beta sent) and a dearer rate card past 100K prompt tokens.
 
 ## Commands
 ```

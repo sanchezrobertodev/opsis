@@ -1,0 +1,99 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names and prices verified 2026-11-01 against fal's OpenAPI and model pages (tripo3d/h3.1/*).
+id: tripo-h3.1
+name: Tripo H3.1
+family: tripo
+vendor: tripo
+description: >-
+  A textured 3D model (GLB) from one picture, two to four views of the same object, or a description. Cheaper and
+  newer than P2, with HD textures and detailed geometry as options.
+output_type: 3d
+status: active
+license_tier: commercial_api
+tags: [3d, image-to-3d, text-to-3d, multiview, pbr]
+prompt: {max_chars: 1024, dialect: default}
+
+# quad meshes aren't offered: Tripo can return them as FBX, and the studio keeps GLBs
+parameters:
+  - {name: texture, label: Texture, type: bool, default: true}
+  - {name: texture_quality, label: Texture quality, type: enum, options: [standard, detailed], default: standard,
+     labels: {standard: Standard, detailed: HD}, ui: segmented, visible_if: {texture: true}}
+  - {name: pbr, label: PBR materials, type: bool, default: true, help: PBR materials come with a texture.}
+  - {name: geometry_quality, label: Geometry, type: enum, options: [standard, detailed], default: standard,
+     labels: {standard: Standard, detailed: Detailed}, ui: segmented, help: Detailed geometry adds $0.20.}
+  - {name: orientation, label: Orientation, type: enum, options: [default, align_image], default: default,
+     labels: {default: Upright, align_image: As in the picture}, group: advanced, modes: [image_to_3d, multiview_to_3d]}
+  - {name: texture_alignment, label: Texture follows, type: enum, options: [original_image, geometry],
+     default: original_image, labels: {original_image: The picture, geometry: The shape}, group: advanced,
+     modes: [image_to_3d, multiview_to_3d]}
+  - {name: auto_size, label: Real-world size, type: bool, default: false, group: advanced,
+     help: Scales the model to its real size in meters.}
+  - {name: face_limit, label: Face limit, type: int, min: 1000, max: 2000000, group: advanced}
+
+modes:
+  - id: image_to_3d
+    label: Picture to 3D
+    ops: [to_3d]
+    prompt: none
+    medias:
+      - {role: input_image, kinds: [image], label: Picture, required: true}
+  - id: multiview_to_3d
+    label: Views to 3D
+    ops: [to_3d]
+    prompt: none
+    medias:
+      - {role: image_references, kinds: [image], label: "Views of one object: front first, then left, back, right",
+         required: true, min: 2, max: 4}
+  - id: text_to_3d
+    label: Description to 3D
+    ops: [to_3d]
+    prompt: required
+
+routes:
+  - id: tripo-h3.1@fal
+    provider: fal
+    modes:
+      image_to_3d: {endpoint: tripo3d/h3.1/image-to-3d}
+      multiview_to_3d: {endpoint: tripo3d/h3.1/multiview-to-3d}
+      text_to_3d: {endpoint: tripo3d/h3.1/text-to-3d}
+    map:
+      prompt: prompt
+      params:
+        texture: texture
+        texture_quality: texture_quality
+        pbr: pbr
+        geometry_quality: geometry_quality
+        orientation: orientation
+        texture_alignment: texture_alignment
+        auto_size: auto_size
+        face_limit: face_limit
+      media: {input_image: image_url, image_references: "image_urls[]"}
+    pricing:
+      basis: formula
+      # a picture or views: $0.20 bare, $0.30 textured, $0.40 HD; a description $0.10 less; detailed geometry +$0.20.
+      # PBR turns the texture on.
+      formula: >-
+        (0.1 if mode == 'text_to_3d' else 0.2)
+        + ((0.2 if texture_quality == 'detailed' else 0.1) if texture or pbr else 0)
+        + (0.2 if geometry_quality == 'detailed' else 0)
+      verified: 2026-11-01
+      source: https://fal.ai/models/tripo3d/h3.1/image-to-3d
+    timeout_s: 1800
+    output: {path: "model_urls.glb.url | model_mesh.url", kind: model3d}
+
+examples:
+  - name: text_to_3d_smoke
+    mode: text_to_3d
+    prompt: a small wooden treasure chest with iron bands
+    params: {texture: false, pbr: false}
+    smoke: true
+    expect: {cost_usd_range: [0.1, 0.1]}
+  - name: image_to_3d_hd
+    mode: image_to_3d
+    params: {texture_quality: detailed, geometry_quality: detailed}
+    media: {input_image: "fixture:images/keyframe.png"}
+    expect: {cost_usd_range: [0.6, 0.6]}
+  - name: multiview_to_3d
+    mode: multiview_to_3d
+    media: {image_references: ["fixture:images/keyframe.png", "fixture:images/keyframe.png"]}
+    expect: {cost_usd_range: [0.3, 0.3]}

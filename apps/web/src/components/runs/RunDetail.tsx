@@ -95,7 +95,8 @@ function useRetryQuote(run: Run): { quote: Quote; models: string[]; cap: number 
   });
   const d = retryable ? est.data : undefined;
   return {
-    quote: { usd: d ? ((mock ? d.live_estimate_usd : d.estimate_usd) ?? null) : null, charged: d?.estimate_usd ?? null,
+    quote: { usd: d ? ((mock ? d.live_estimate_usd : d.estimate_usd) ?? null) : null, claude: null,
+             charged: d?.estimate_usd ?? null,
              count: d?.generations ?? null, mock, error: retryable && est.error instanceof Error ? est.error.message : null },
     models: d?.models ?? [],
     cap: d?.cap_usd ?? null,
