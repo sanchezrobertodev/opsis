@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,7 +23,8 @@ from studio.api.schemas import (
     ValidationProblem,
 )
 from studio.api.serializers import asset_out
-from studio.budget import guard
+from studio.budget import guard, modes
+from studio.budget.features import claude_name
 from studio.db.models import (
     Asset,
     Generation,
@@ -41,6 +43,7 @@ from studio.domain.generations import (
     quick_estimate,
     resolve_media_kinds,
 )
+from studio.llm import pricing
 from studio.pipelines.engine import (
     RUN_DONE,
     Effects,
@@ -85,12 +88,18 @@ async def _estimate(session: AsyncSession, user: User, body: RunCreate) -> tuple
         raise GenerationRequestError(errors)
     policy = await guard.get_policy(session, user.id)
     cap = Decimal(str(body.cap_usd)) if body.cap_usd is not None else policy.default_run_cap_usd
-    return recipe, inp, await _priced(session, user, recipe.jobs(inp, reg), reg, cap)
+    return recipe, inp, await _priced(session, user, recipe.jobs(inp, reg), reg, cap, recipe.claude_calls(inp))
 
 
 async def _priced(session: AsyncSession, user: User, jobs: list[PlannedJob], reg: Registry,
-                  cap: Decimal) -> RunEstimateOut:
-    total, live, live_known = Decimal("0"), Decimal("0"), True
+                  cap: Decimal, claude: Sequence[str] = ()) -> RunEstimateOut:
+    # Claude writes first: a typical call per step on the model chosen for it, billed only when Claude is live
+    m = await modes.current(session, user.id)
+    picked = [m.claude(pricing.TYPICAL_CALLS[purpose][0]) for purpose in claude]
+    claude_live = sum((pricing.typical_cost(purpose, model) for purpose, model in zip(claude, picked, strict=True)),
+                      Decimal("0"))
+    claude_usd = claude_live if m.llm == "live" else Decimal("0")
+    total, live, live_known = claude_usd, claude_live, True
     by_key: dict[str, Decimal] = {}
     live_by_key: dict[str, Decimal] = {}
     for job in jobs:
@@ -107,9 +116,11 @@ async def _priced(session: AsyncSession, user: User, jobs: list[PlannedJob], reg
             live += live_usd
             if job.key is not None:
                 live_by_key[job.key] = live_by_key.get(job.key, Decimal("0")) + live_usd
-    models = dict.fromkeys(spec.name if (spec := reg.model(job.model_id)) else job.model_id for job in jobs)
+    models = dict.fromkeys([*map(claude_name, picked),
+                            *(spec.name if (spec := reg.model(job.model_id)) else job.model_id for job in jobs)])
     return RunEstimateOut(
         estimate_usd=float(total), live_estimate_usd=float(live) if live_known else None, generations=len(jobs),
+        claude_usd=float(claude_usd), claude_live_usd=float(claude_live),
         models=list(models), cap_usd=float(cap), by_key={k: float(v) for k, v in by_key.items()},
         live_by_key={k: float(v) for k, v in live_by_key.items()} if live_known else None)
 

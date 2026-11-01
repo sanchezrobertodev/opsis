@@ -219,6 +219,11 @@ class FacelessRecipe(Recipe):
         seconds = chars / CHARS_PER_SECOND
         return max(1, math.ceil(seconds / block_seconds(inp.format))), chars
 
+    def claude_calls(self, inp: FacelessInput) -> list[str]:
+        song = inp.format == "song"
+        written = [] if inp.script and inp.script.strip() else ["faceless.song" if song else "faceless.script"]
+        return written if song else [*written, "faceless.plan"]  # a song's pictures come with its lyrics
+
     def jobs(self, inp: FacelessInput, reg: Registry) -> list[PlannedJob]:
         if inp.format == "song":
             return self._song_jobs(inp, reg)

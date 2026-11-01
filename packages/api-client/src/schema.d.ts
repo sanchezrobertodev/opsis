@@ -1451,6 +1451,21 @@ export interface components {
             /** Llm Modes */
             llm_modes: string[];
             /**
+             * Llm Smart Model
+             * @description The Claude that writes scripts and shot plans
+             */
+            llm_smart_model: string;
+            /**
+             * Llm Fast Model
+             * @description The Claude that helps with prompts and rewords refused ones
+             */
+            llm_fast_model: string;
+            /**
+             * Claude Models
+             * @description What either may be
+             */
+            claude_models: components["schemas"]["ClaudeModelOut"][];
+            /**
              * Live Route Allowlist
              * @description Routes that run for real in mixed mode (LIVE_ROUTE_ALLOWLIST)
              */
@@ -1476,6 +1491,16 @@ export interface components {
              * @description Within LLM_MODE in .env
              */
             llm_mode?: ("mock" | "live") | null;
+            /**
+             * Llm Smart Model
+             * @description One of the budget's claude_models
+             */
+            llm_smart_model?: string | null;
+            /**
+             * Llm Fast Model
+             * @description One of the budget's claude_models
+             */
+            llm_fast_model?: string | null;
         };
         /** CameraMove */
         CameraMove: {
@@ -1750,6 +1775,23 @@ export interface components {
             calls: {
                 [key: string]: components["schemas"]["ClaudeCallOut"];
             };
+        };
+        /** ClaudeModelOut */
+        ClaudeModelOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Input Usd
+             * @description Per million input tokens
+             */
+            input_usd: number;
+            /**
+             * Output Usd
+             * @description Per million output tokens
+             */
+            output_usd: number;
         };
         /** CloneVoiceIn */
         CloneVoiceIn: {
@@ -3449,19 +3491,31 @@ export interface components {
         RunEstimateOut: {
             /**
              * Estimate Usd
-             * @description On the routes that would run now (mock routes are free)
+             * @description On the routes that would run now (mock routes are free), with Claude's writing when Claude is live
              */
             estimate_usd: number;
             /**
              * Live Estimate Usd
-             * @description On the cheapest paid routes
+             * @description On the cheapest paid routes, with Claude live
              */
             live_estimate_usd?: number | null;
             /** Generations */
             generations: number;
             /**
+             * Claude Usd
+             * @description Claude's part of estimate_usd: a typical call per writing step
+             * @default 0
+             */
+            claude_usd: number;
+            /**
+             * Claude Live Usd
+             * @description What Claude's writing would cost live
+             * @default 0
+             */
+            claude_live_usd: number;
+            /**
              * Models
-             * @description Names of the models it makes them with, in the order they're used
+             * @description Names of the models it uses (Claude first), in the order they're used
              * @default []
              */
             models: string[];

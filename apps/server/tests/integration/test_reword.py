@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import select
 
 from studio.api.main import app as api
+from studio.config import get_settings
 from studio.db.models import Generation, PipelineStep
 from studio.db.session import session_scope
 from studio.pipelines.llm_ops import Reworded
@@ -89,8 +90,9 @@ async def test_rewordings_stay_within_their_originals_length(db):
     from studio.pipelines.llm_ops import _within, reword
 
     assert _within("a much gentler and longer wording", 20) == "a much gentler and"
-    run = SimpleNamespace(user_id=uuid.uuid4())
-    out = await reword(None, run, [f"a fall {REFUSED}", "@mara waits"], "refused")  # type: ignore[arg-type]
-    assert out.prompts == ["a fall Gently worded.", "@mara waits"]  # the mock's rewording, cut to fit
-    with pytest.raises(StepFailed, match="kept the prompt"):
-        await reword(None, run, ["@mara waits"], "refused")  # type: ignore[arg-type]
+    run = SimpleNamespace(user_id=get_settings().owner_user_id)
+    async with session_scope() as s:
+        out = await reword(s, run, [f"a fall {REFUSED}", "@mara waits"], "refused")  # type: ignore[arg-type]
+        assert out.prompts == ["a fall Gently worded.", "@mara waits"]  # the mock's rewording, cut to fit
+        with pytest.raises(StepFailed, match="kept the prompt"):
+            await reword(s, run, ["@mara waits"], "refused")  # type: ignore[arg-type]

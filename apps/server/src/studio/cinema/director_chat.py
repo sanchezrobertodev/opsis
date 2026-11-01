@@ -26,10 +26,9 @@ from studio.cinema.planner import (
     _vocabulary,
     to_scenes,
 )
-from studio.config import get_settings
 from studio.director.compiler import MoveChoice
 from studio.director.library import DirectorLibrary, get_library
-from studio.llm.client import LLMResult, structured
+from studio.llm.client import LLMResult, model_for, structured
 
 MAX_TURNS = 12  # earlier turns of the conversation sent back to Claude
 MAX_HISTORY_CHARS = 16000  # and at most this much of them, newest first
@@ -176,7 +175,8 @@ async def revise(session: AsyncSession, user_id: uuid.UUID, *, doc: CinemaDocume
         raise DirectorTooLong("this storyboard is too long for the director to read in one go; shorten some shots' "
                               "actions or lines")
     wire = await structured(
-        session, user_id, purpose="cinema.director", model=get_settings().llm_smart_model, system=SYSTEM,
+        session, user_id, purpose="cinema.director",
+        model=await model_for(session, user_id, "smart"), system=SYSTEM,
         prompt=prompt, output=WireReply, mock=lambda: mock_reply(doc, message), effort="medium", max_tokens=12000)
     output = wire.output if isinstance(wire.output, DirectorReply) else _from_wire(wire.output)
     result = LLMResult(output=output, model=wire.model, mock=wire.mock, cost_usd=wire.cost_usd, usage=wire.usage)

@@ -95,6 +95,9 @@ export function Faceless() {
     };
   }, [ready, s, tier, voiceTouched, voiceId, theme, style, channelId, writeOwn, topic, script, title]);
   const estimate = useEstimateRun(useDebounced(body, 400));
+  // Claude's share of the price shown below: of the live price while the estimate is free
+  const writing = !estimate.data ? 0
+    : estimate.data.estimate_usd === 0 ? estimate.data.claude_live_usd : estimate.data.claude_usd;
   const problem = estimate.error instanceof ApiError
     ? ((estimate.error.body as { errors?: string[] })?.errors ?? [estimate.error.message]).join(" ")
     : null;
@@ -311,6 +314,7 @@ export function Faceless() {
                 {estimate.data.estimate_usd === 0 ? ", free on mock routes." : `, about ${usd(estimate.data.estimate_usd)}.`}
                 {estimate.data.live_estimate_usd != null && estimate.data.estimate_usd === 0 &&
                   ` Live it would cost about ${usd(estimate.data.live_estimate_usd)}.`}
+                {writing > 0 && ` Claude’s writing is about ${usd(writing)} of that.`}
               </>
             ) : (
               "Estimating…"

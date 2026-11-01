@@ -293,6 +293,13 @@ class ConfirmationProblem(ApiModel):
 # ------------------------------------------------------------------ budget / health
 
 
+class ClaudeModelOut(ApiModel):
+    id: str
+    name: str
+    input_usd: float = Field(description="Per million input tokens")
+    output_usd: float = Field(description="Per million output tokens")
+
+
 class BudgetOut(ApiModel):
     today_usd: float
     month_usd: float
@@ -305,6 +312,9 @@ class BudgetOut(ApiModel):
     provider_modes: list[str] = Field(description="What the switch may choose: PROVIDER_MODE in .env and safer")
     llm_mode: Literal["mock", "live"] = Field(description="Claude's mode in effect, the same way")
     llm_modes: list[str]
+    llm_smart_model: str = Field(description="The Claude that writes scripts and shot plans")
+    llm_fast_model: str = Field(description="The Claude that helps with prompts and rewords refused ones")
+    claude_models: list[ClaudeModelOut] = Field(description="What either may be")
     live_route_allowlist: list[str] = Field(description="Routes that run for real in mixed mode (LIVE_ROUTE_ALLOWLIST)")
 
 
@@ -385,6 +395,8 @@ class BudgetUpdate(ApiModel):
     live_enabled: bool | None = None
     provider_mode: Literal["mock", "mixed", "live"] | None = Field(None, description="Within PROVIDER_MODE in .env")
     llm_mode: Literal["mock", "live"] | None = Field(None, description="Within LLM_MODE in .env")
+    llm_smart_model: str | None = Field(None, description="One of the budget's claude_models")
+    llm_fast_model: str | None = Field(None, description="One of the budget's claude_models")
 
 
 class LocalEngineOut(ApiModel):
@@ -535,10 +547,13 @@ class RunCreate(ApiModel):
 
 
 class RunEstimateOut(ApiModel):
-    estimate_usd: float = Field(description="On the routes that would run now (mock routes are free)")
-    live_estimate_usd: float | None = Field(None, description="On the cheapest paid routes")
+    estimate_usd: float = Field(description="On the routes that would run now (mock routes are free), with Claude's "
+                                            "writing when Claude is live")
+    live_estimate_usd: float | None = Field(None, description="On the cheapest paid routes, with Claude live")
     generations: int
-    models: list[str] = Field([], description="Names of the models it makes them with, in the order they're used")
+    claude_usd: float = Field(0, description="Claude's part of estimate_usd: a typical call per writing step")
+    claude_live_usd: float = Field(0, description="What Claude's writing would cost live")
+    models: list[str] = Field([], description="Names of the models it uses (Claude first), in the order they're used")
     cap_usd: float
     by_key: dict[str, float] = Field({}, description="estimate_usd split by what each job is for (a Cinema shot's "
                                                      "id), where the recipe says")

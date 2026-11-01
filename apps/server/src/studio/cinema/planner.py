@@ -17,7 +17,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.cinema.document import Scene, Shot, ShotLine
-from studio.config import get_settings
 from studio.director.compiler import (
     MAX_CAST_EMOTIONS,
     MAX_LINES,
@@ -27,7 +26,7 @@ from studio.director.compiler import (
 )
 from studio.director.elements import MENTION
 from studio.director.library import DirectorLibrary, get_library
-from studio.llm.client import LLMResult, structured
+from studio.llm.client import LLMResult, model_for, structured
 
 MAX_SHOTS = 40
 
@@ -128,7 +127,8 @@ async def plan_shots(session: AsyncSession, user_id: uuid.UUID, *, script: str, 
         f"\nScript:\n{script or logline}",
     ] if line)
     result = await structured(
-        session, user_id, purpose="cinema.plan", model=get_settings().llm_smart_model, system=SYSTEM, prompt=prompt,
+        session, user_id, purpose="cinema.plan",
+        model=await model_for(session, user_id, "smart"), system=SYSTEM, prompt=prompt,
         output=ShotPlan, mock=lambda: mock_plan(script or logline, [slug for slug, _ in cast], max_shots),
         effort="medium", max_tokens=16000)
     scenes, warnings = to_scenes(result.output, lib, max_shots)

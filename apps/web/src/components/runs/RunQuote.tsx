@@ -7,11 +7,19 @@ import { useRegistry } from "@/lib/queries";
 import { type RunCreate, useEstimateRun } from "@/lib/runs";
 import { Field, Select } from "@/components/ui/controls";
 
-export type Quote = { usd: number | null; charged: number | null; count: number | null; mock: boolean; error: string | null };
+export type Quote = {
+  usd: number | null;
+  claude: number | null;
+  charged: number | null;
+  count: number | null;
+  mock: boolean;
+  error: string | null;
+};
 
 /** What a run will make and cost before it starts: the price where it would run now (a free route is free), or in
- * mock mode what it would cost live, and how many generations it makes. Start it with `confirm_cost_usd: charged`:
- * the button showed the price, so pressing it confirms the spend. */
+ * mock mode what it would cost live, and how many generations it makes; `claude` is the part of `usd` that is
+ * Claude's writing. Start it with `confirm_cost_usd: charged`: the button showed the price, so pressing it confirms
+ * the spend. */
 export function useRunQuote(body: RunCreate | null): Quote {
   const mock = useRegistry().data?.provider_mode === "mock";
   const asked = useDebounced(body, 250);
@@ -21,6 +29,7 @@ export function useRunQuote(body: RunCreate | null): Quote {
   const d = current ? estimate.data : undefined;
   return {
     usd: d ? ((mock ? d.live_estimate_usd : d.estimate_usd) ?? null) : null,
+    claude: d ? (mock ? d.claude_live_usd : d.claude_usd) : null,
     charged: d?.estimate_usd ?? null,
     count: d?.generations ?? null,
     mock,
@@ -31,13 +40,14 @@ export function useRunQuote(body: RunCreate | null): Quote {
 /** Whether two requests are the same, field for field (they're rebuilt on every render). */
 export const sameRequest = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** "8 pictures, about $1.20"; `noun` is [one, many]. */
+/** "8 pictures, about $1.20" (", $0.10 of it Claude's writing" when a run has some); `noun` is [one, many]. */
 export function quoteText(q: Quote, noun: [string, string]): string {
   if (q.error) return q.error;
   if (q.count == null || q.usd == null) return "Working out the cost…";
   const what = `${q.count} ${q.count === 1 ? noun[0] : noun[1]}`;
   if (!q.usd) return `${what}, free on this route`;
-  return `${what}, about ${usd(q.usd)}${q.mock ? " when live" : ""}`;
+  const writing = q.claude ? `, ${usd(q.claude)} of it Claude’s writing` : "";
+  return `${what}, about ${usd(q.usd)}${q.mock ? " when live" : ""}${writing}`;
 }
 
 /** The price for a button's label: "$1.20", "free", or "" until it's known. */

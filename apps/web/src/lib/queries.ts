@@ -313,14 +313,19 @@ export function useUpdateBudget() {
       live_enabled?: boolean;
       provider_mode?: "mock" | "mixed" | "live";
       llm_mode?: "mock" | "live";
+      llm_smart_model?: string;
+      llm_fast_model?: string;
     }) => unwrap(api.PATCH("/budget", { body })),
     onSuccess: (b, body) => {
       qc.setQueryData(keys.budget, b);
-      // the mode switch changes which models can run and what the top bar says
+      // the mode switch changes which models can run and what the top bar says; both change what Claude costs
       if (body.provider_mode || body.llm_mode) {
         void qc.invalidateQueries({ queryKey: keys.registry });
         void qc.invalidateQueries({ queryKey: keys.health });
+      }
+      if (body.provider_mode || body.llm_mode || body.llm_smart_model || body.llm_fast_model) {
         void qc.invalidateQueries({ queryKey: keys.claude });
+        void qc.invalidateQueries({ queryKey: ["run-estimate"] });
       }
     },
   });

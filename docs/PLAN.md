@@ -273,7 +273,7 @@ lip-synced as a new take; a shot's speech can sit on the cut's dialogue track. N
 new routes.
 P7 merged (PR #5, mock-tested): 3D blocking (/jutsu3d) with versioned scene
 documents; an R3F editor with primitives, a posable figure with pose presets, GLB import (thumbnails drawn in the
-browser), image-to-3D (TRELLIS.2, Hunyuan3D 3.1, Meshy 7.1 with rigging, Tripo P2), lights, cameras with focal
+browser), image-to-3D (TRELLIS.2, Hunyuan3D 3.1, Meshy 7.1 with rigging, Tripo P2, Tripo H3.1 from a picture, views or a description), lights, cameras with focal
 lengths, keyframes and undo; picture, depth and normal passes drawn in the browser and assembled by ffmpeg; and a
 `jutsu3d` recipe: angles (stills at the camera's keys redrawn on an image model, animated from one to the next with
 start+end-frame models, cut together) or depth (the depth pass drives Wan VACE depth, optionally opening on a
