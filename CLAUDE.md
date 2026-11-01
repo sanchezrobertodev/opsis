@@ -4,6 +4,7 @@ A self-hosted, Higgsfield-class AI video studio: Create/Edit Video, Motion Contr
 Character Creation, World Creation, Faceless Studio, Cinema Studio, 3D Jutsu, Lipsync. It orchestrates third-party
 model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and an opt-in local ComfyUI.
 
+- **Setting it up for someone:** `AGENTS.md` (a runbook for agents: steps, checks, ports, what to leave to the person).
 - **Plan and roadmap:** `docs/PLAN.md` (source of truth; check which phase we're in before starting work).
 - **Detailed design:** `docs/research/06-architecture-blueprint.md`.
 - **Research:** `docs/research/01–05` (Higgsfield features, commercial APIs and pricing, open models and RunPod,
