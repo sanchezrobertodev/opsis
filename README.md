@@ -116,6 +116,9 @@ pnpm dev          # API on :8400, the worker, and the web app on :3000
 
 Open http://localhost:3000. Settings shows whether the database, ffmpeg and the local engine are found.
 
+Asking an AI agent to set it up? Point it at [`AGENTS.md`](AGENTS.md): the same steps with a check after each
+one, the ports, and what it should leave to you (keys and spending).
+
 ### Or all of it in Docker
 
 With only Docker installed, one command builds and starts the database, the API, the worker and the web app

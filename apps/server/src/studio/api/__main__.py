@@ -14,13 +14,15 @@ from pathlib import Path
 
 import uvicorn
 
+from studio.config import get_settings
+
 RELOAD_ENV = "STUDIO_API_RELOAD"
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="studio.api")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8400)
+    parser.add_argument("--port", type=int, default=get_settings().api_port)
     parser.add_argument("--reload", action="store_true")
     args = parser.parse_args()
     src = Path(__file__).resolve().parents[2]
