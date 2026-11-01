@@ -230,8 +230,10 @@ endpoint and a network volume for the 180 GB of model files (about $14 a month);
 
 ## Hosted models and spending
 
-1. Add the keys you have to `.env`. [`.env.example`](.env.example) says where to get each one. A model whose provider
-   has no key is simply unavailable.
+1. Paste the keys you have in **Settings > Keys**; each one links to where you get it. They're stored encrypted in the
+   database (with `KEYS_SECRET`, or `data/keys.secret`, made on first start: keep a copy, since a lost secret means
+   pasting the keys again) and used at once, with no restart. Keys in `.env` work too; a key saved in Settings wins. A
+   model whose provider has no key is simply unavailable.
 2. Raise `PROVIDER_MODE` to `mixed` or `live`, and `LLM_MODE` to `live` for Claude. This is a ceiling: the switch in
    Settings can pick that mode or a safer one, never more.
 3. Restart `pnpm dev`, set your daily and monthly limits in **Settings > Spending**, and pick the mode in

@@ -1160,6 +1160,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Keys
+         * @description Which provider keys are set and where from. The keys themselves are never returned.
+         */
+        get: operations["list_keys_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/keys/{setting}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Key
+         * @description Save a key; it replaces the same key in .env, here and in the worker, within seconds.
+         */
+        put: operations["save_key_keys__setting__put"];
+        post?: never;
+        /**
+         * Remove Key
+         * @description Forget a saved key; .env's, if it has one, applies again.
+         */
+        delete: operations["remove_key_keys__setting__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/local-engine/model-storage": {
         parameters: {
             query?: never;
@@ -2439,6 +2483,34 @@ export interface components {
             step: number;
             /** Default */
             default?: number | null;
+        };
+        /** KeyOut */
+        KeyOut: {
+            /** Setting */
+            setting: string;
+            /** Label */
+            label: string;
+            /** Link */
+            link: string;
+            /** What */
+            what: string;
+            /**
+             * Source
+             * @description app: saved here; env: from .env; null: not set
+             */
+            source: ("app" | "env") | null;
+            /** Last4 */
+            last4: string | null;
+            /**
+             * Unreadable
+             * @description saved, but the key secret can't decrypt it (.env applies)
+             */
+            unreadable: boolean;
+        };
+        /** KeyUpdate */
+        KeyUpdate: {
+            /** Value */
+            value: string;
         };
         /**
          * LightChoice
@@ -6662,6 +6734,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthOut"];
+                };
+            };
+        };
+    };
+    list_keys_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyOut"][];
+                };
+            };
+        };
+    };
+    save_key_keys__setting__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setting: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_key_keys__setting__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                setting: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

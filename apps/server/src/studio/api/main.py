@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from studio import keys as provider_keys
 from studio.api import mcp_tools
 from studio.api.routers import (
     assets,
@@ -17,6 +18,7 @@ from studio.api.routers import (
     elements,
     faceless,
     generations,
+    keys,
     llm,
     local_engine,
     misc,
@@ -60,11 +62,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     log.info("registry %s: %d models, provider mode %s", reg.hash, len(reg.models), get_settings().provider_mode)
     await hub.start()
     watcher = asyncio.create_task(_watch_registry(), name="registry-watch")
+    key_refresh = asyncio.create_task(provider_keys.refresh_forever(), name="key-refresh")
     async with queue_app.open_async(), mcp_tools.running():
         yield
-    watcher.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await watcher
+    for task in (watcher, key_refresh):
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
     await hub.stop()
 
 
@@ -131,6 +135,7 @@ app.include_router(renders.router)
 app.include_router(generations.router)
 app.include_router(assets.router)
 app.include_router(misc.router)
+app.include_router(keys.router)
 app.include_router(model_storage.router)
 app.include_router(local_engine.router)
 app.router.routes.append(mcp_tools.route)  # the MCP server, for the Claude apps

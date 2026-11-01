@@ -158,4 +158,4 @@ async def test_missing_key_explains_itself(client, monkeypatch):
     monkeypatch.setattr(get_settings(), "llm_mode", "live")
     monkeypatch.setattr(llm_client, "_client", None)
     r = await client.post("/llm/enhance", json={"model_id": "veo-3.1", "mode": "t2v", "prompt": "x"})
-    assert r.status_code == 503 and "ANTHROPIC_API_KEY" in r.json()["detail"]
+    assert r.status_code == 503 and "Settings > Keys" in r.json()["detail"]

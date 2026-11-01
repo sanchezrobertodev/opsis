@@ -463,7 +463,7 @@ async def test_runpod_hosts_inputs_on_fal_or_inlines_small_images(runpod_key, tm
     monkeypatch.setattr(get_settings(), "fal_key", "")
     staged = await RunPodAdapter().stage_inputs(route(), [ResolvedMedia("start_image", "a", img, "image/png", "image")])
     assert staged["start_image"][0].startswith("data:image/png;base64,")
-    with pytest.raises(ProviderError, match="FAL_KEY"):
+    with pytest.raises(ProviderError, match=r"fal.ai key"):
         await RunPodAdapter().stage_inputs(route(), [ResolvedMedia("input_video", "v", clip, "video/mp4", "video")])
 
     class FakeFal:

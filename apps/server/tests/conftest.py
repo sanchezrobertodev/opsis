@@ -13,6 +13,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from cryptography.fernet import Fernet
+
 # Must be set before any studio import reads settings.
 _MEDIA = Path(tempfile.mkdtemp(prefix="studio-test-media-"))
 # The compose Postgres (:5433); STUDIO_TEST_PG points elsewhere (infra/server's pod: 127.0.0.1:5432)
@@ -34,6 +36,8 @@ os.environ.update({
     **{k: "" for k in ("ANTHROPIC_API_KEY", "FAL_KEY", "GEMINI_API_KEY", "RUNWAY_API_KEY", "REPLICATE_API_TOKEN",
                        "RUNPOD_API_KEY", "RUNPOD_WAN_CORE_ENDPOINT", "ELEVENLABS_API_KEY", "REACTOR_API_KEY",
                        "PIKA_API_KEY", "WORLDLABS_API_KEY", "CODEX_BIN")},
+    # Keys saved in tests are encrypted with a throwaway secret, never the repo's data/keys.secret
+    "KEYS_SECRET": Fernet.generate_key().decode(),
 })
 
 import pytest  # noqa: E402

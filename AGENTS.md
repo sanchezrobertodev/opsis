@@ -11,8 +11,8 @@ extend the studio. The person-facing guide is [`README.md`](README.md).
 
 Never do these yourself. Explain the step and let the person do it.
 
-- **Keys.** Never paste, invent, print or commit API keys. The person adds them to `.env`; `.env.example` says where
-  each one comes from. Don't read `.env` back to them.
+- **Keys.** Never paste, invent, print or commit API keys. The person pastes them in **Settings > Keys** (or puts
+  them in `.env`); each key there links to where it comes from. Don't read `.env` back to them.
 - **Money.** Never raise `PROVIDER_MODE` or `LLM_MODE` above `mock`, fill `LIVE_ROUTE_ALLOWLIST`, or press Generate
   (or start a run) while the studio is in Mixed or Live mode.
 - **Models and GPUs.** Don't download local model weights, install ComfyUI or create cloud endpoints unless asked.
@@ -69,7 +69,7 @@ Don't run 2a and 2b at once: they use the same ports and database.
 Tell the person:
 
 - Open http://localhost:3000. **Settings** shows the database, ffmpeg, the local engine and the mode.
-- Everything runs on the mock provider until they add keys and raise the mode; `README.md` > *Hosted models and
+- Everything runs on the mock provider until they add keys (**Settings > Keys**) and raise the mode; `README.md` > *Hosted models and
   spending* has the steps, which are theirs to do.
 - Optional, on request: open models on their own GPU (`README.md` > *Open models on your GPU*), and driving the
   studio from Claude over MCP (`README.md` > *Drive it from Claude*).

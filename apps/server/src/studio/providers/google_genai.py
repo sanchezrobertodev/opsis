@@ -51,12 +51,15 @@ class GoogleGenAIAdapter(ProviderAdapter):
 
     def __init__(self, client: Any | None = None) -> None:
         self._client = client
+        self._client_key: str | None = None  # the key it was made with; None for a client passed in
         self.store = ResultStore("google")
 
     @property
     def client(self) -> Any:
-        if self._client is None:
-            self._client = genai.Client(api_key=require_key("Google Gemini API", get_settings().gemini_api_key))
+        key = get_settings().gemini_api_key
+        if self._client is None or self._client_key not in (None, key):  # a key saved in Settings since
+            self._client = genai.Client(api_key=require_key("Google Gemini API", key))
+            self._client_key = key
         return self._client
 
     def _error(self, exc: Exception, action: str) -> ProviderError:

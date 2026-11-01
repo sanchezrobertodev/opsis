@@ -67,7 +67,7 @@ class RunPodAdapter(ProviderAdapter):
             data = await anyio.Path(m.path).read_bytes()
             return f"data:{m.mime};base64,{base64.b64encode(data).decode()}"
         raise ProviderError(ErrorClass.invalid_request,
-                            "RunPod needs a web link for this file. Add FAL_KEY to .env; it's only used to host "
+                            "RunPod needs a web link for this file. Add a fal.ai key in Settings > Keys; it's only used to host "
                             "input files for providers that can't take uploads.")
 
     async def stage_inputs(self, route: Route, media: list[ResolvedMedia]) -> dict[str, Any]:
