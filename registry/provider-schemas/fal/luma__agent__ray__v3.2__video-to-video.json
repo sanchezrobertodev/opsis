@@ -30,6 +30,10 @@
     "reimagine_3"
    ]
   },
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
   "exr_export": {
    "type": "boolean"
   },

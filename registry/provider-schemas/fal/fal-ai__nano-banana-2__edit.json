@@ -26,15 +26,32 @@
   "audio_url": {
    "type": "null|string"
   },
+  "context": {
+   "type": "array<object<GeminiDocumentPart>|object<GeminiImagePart>|object<GeminiSignaturePart>|object<GeminiTextPart>|object<GeminiVideoPart>>"
+  },
+  "enable_image_search": {
+   "type": "boolean"
+  },
   "enable_web_search": {
    "type": "boolean"
+  },
+  "history": {
+   "type": "array<object<GeminiVideoMessage>>"
   },
   "image_urls": {
    "type": "array<string>"
   },
+  "include_thoughts": {
+   "type": "boolean|null"
+  },
   "limit_generations": {
    "type": "boolean",
    "default": true
+  },
+  "max_output_tokens": {
+   "type": "integer|null",
+   "minimum": 1,
+   "maximum": 32768
   },
   "num_images": {
    "type": "integer",
@@ -67,6 +84,9 @@
    ],
    "default": "1K"
   },
+  "return_history": {
+   "type": "boolean"
+  },
   "safety_tolerance": {
    "type": "string",
    "enum": [
@@ -89,12 +109,22 @@
    "type": "string",
    "default": ""
   },
+  "temperature": {
+   "type": "null|number",
+   "minimum": 0,
+   "maximum": 2
+  },
   "thinking_level": {
    "type": "null|string",
    "enum": [
     "minimal",
     "high"
    ]
+  },
+  "top_p": {
+   "type": "null|number",
+   "minimum": 0,
+   "maximum": 1
   },
   "video_url": {
    "type": "null|string"
@@ -104,7 +134,9 @@
   "prompt"
  ],
  "output": [
+  "conversations",
   "description",
+  "grounding_metadata",
   "images"
  ],
  "deprecated": false

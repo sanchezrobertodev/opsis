@@ -42,7 +42,10 @@
  ],
  "output": [
   "boundingbox_frames_zip",
-  "video"
+  "boxes",
+  "metadata",
+  "rle",
+  "scores"
  ],
  "deprecated": false
 }

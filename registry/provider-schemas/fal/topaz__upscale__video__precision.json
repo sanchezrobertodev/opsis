@@ -10,6 +10,10 @@
    "minimum": 0,
    "maximum": 1
   },
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
   "grain": {
    "type": "null|number",
    "minimum": 0,

@@ -7,7 +7,7 @@
    "default": true
   },
   "image_size": {
-   "type": "object<ImageSize>|string",
+   "type": "object<SeedreamLiteImageSize>|string",
    "enum": [
     "square_hd",
     "square",
@@ -25,7 +25,7 @@
    "type": "integer",
    "default": 1,
    "minimum": 1,
-   "maximum": 6
+   "maximum": 15
   },
   "num_images": {
    "type": "integer",
@@ -33,13 +33,31 @@
    "minimum": 1,
    "maximum": 6
   },
+  "output_format": {
+   "type": "string",
+   "enum": [
+    "jpeg",
+    "png"
+   ],
+   "default": "jpeg"
+  },
   "prompt": {
    "type": "string"
   },
   "return_byteplus_urls": {
    "type": "boolean"
   },
+  "sequential_image_generation": {
+   "type": "null|string",
+   "enum": [
+    "auto",
+    "disabled"
+   ]
+  },
   "sync_mode": {
+   "type": "boolean"
+  },
+  "watermark": {
    "type": "boolean"
   }
  },

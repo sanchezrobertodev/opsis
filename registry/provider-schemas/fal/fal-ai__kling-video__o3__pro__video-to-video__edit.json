@@ -5,6 +5,10 @@
   "elements": {
    "type": "array<object<KlingV3ImageElementInput>>|null"
   },
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
   "image_urls": {
    "type": "array<string>|null"
   },

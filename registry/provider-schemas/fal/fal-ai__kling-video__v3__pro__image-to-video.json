@@ -30,6 +30,10 @@
   "elements": {
    "type": "array<object<KlingV3ComboElementInput>>|null"
   },
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
   "end_image_url": {
    "type": "null|string"
   },

@@ -9,6 +9,10 @@
    "type": "null|string",
    "default": "intense car race"
   },
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
   "sound_effect_prompt": {
    "type": "null|string",
    "default": "Car tires screech as they accelerate in a drag race"

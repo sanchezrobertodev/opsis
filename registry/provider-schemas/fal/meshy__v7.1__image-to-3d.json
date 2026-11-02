@@ -39,7 +39,8 @@
    "enum": [
     "standard",
     "lowpoly",
-    "smart-topology"
+    "smart-topology",
+    "smart-topology-t2"
    ],
    "default": "standard"
   },

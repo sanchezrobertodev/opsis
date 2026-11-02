@@ -82,6 +82,7 @@
  ],
  "output": [
   "expanded_prompt",
+  "reference_tokens",
   "seed",
   "timings",
   "video"

@@ -15,16 +15,34 @@
     "4:5",
     "3:4",
     "2:3",
-    "9:16"
+    "9:16",
+    "4:1",
+    "1:4",
+    "8:1",
+    "1:8"
    ],
    "default": "1:1"
+  },
+  "context": {
+   "type": "array<object<GeminiDocumentPart>|object<GeminiImagePart>|object<GeminiSignaturePart>|object<GeminiTextPart>>"
   },
   "enable_web_search": {
    "type": "boolean"
   },
+  "history": {
+   "type": "array<object<GeminiMessage>>"
+  },
+  "include_thoughts": {
+   "type": "boolean|null"
+  },
   "limit_generations": {
    "type": "boolean",
    "default": true
+  },
+  "max_output_tokens": {
+   "type": "integer|null",
+   "minimum": 1,
+   "maximum": 32768
   },
   "num_images": {
    "type": "integer",
@@ -53,6 +71,9 @@
    ],
    "default": "1K"
   },
+  "return_history": {
+   "type": "boolean"
+  },
   "safety_tolerance": {
    "type": "string",
    "enum": [
@@ -74,13 +95,31 @@
   "system_prompt": {
    "type": "string",
    "default": ""
+  },
+  "temperature": {
+   "type": "null|number",
+   "minimum": 0,
+   "maximum": 2
+  },
+  "thinking_level": {
+   "type": "null|str",
+   "enum": [
+    "high"
+   ]
+  },
+  "top_p": {
+   "type": "null|number",
+   "minimum": 0,
+   "maximum": 1
   }
  },
  "required": [
   "prompt"
  ],
  "output": [
+  "conversations",
   "description",
+  "grounding_metadata",
   "images"
  ],
  "deprecated": false

@@ -2,6 +2,10 @@
  "endpoint": "fal-ai/hunyuan_world",
  "variant": null,
  "input": {
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
   "image_url": {
    "type": "string"
   },
