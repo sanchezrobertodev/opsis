@@ -241,3 +241,56 @@ async def test_a_job_still_being_saved_is_compared_once_it_is_charged(client, ke
     async with session_scope() as s:
         later = {r.provider: r for r in await reconcile(s, days=1, now=now)}["fal"]
     assert later.booked_usd == pytest.approx(0.02)  # the bill less the charge, once
+
+
+@respx.mock
+async def test_a_held_jobs_bill_takes_the_place_of_its_hold(client, keys):
+    """A take stopped while it may still bill keeps its hold; once fal's bill for it is booked, that counts instead,
+    once, and marking it checked later changes nothing."""
+    from studio.budget.guard import summary
+
+    user, now = get_settings().owner_user_id, long_ago()
+    rid = str(uuid.uuid4())
+    async with session_scope() as s:
+        before = (await summary(s, user)).reserved_usd
+        held = await attempt(s, user, provider="fal", route="kling-3.0@fal", job=f"fal-ai/kling::{rid}",
+                             when=now - timedelta(hours=2), status=GenStatus.canceled)
+        (await s.get(GenerationAttempt, held.id)).status = AttemptStatus.unknown
+        s.add(SpendLedger(user_id=user, entry_type=LedgerEntry.reservation, amount_usd=Decimal("0.40"), provider="fal",
+                          route_id="kling-3.0@fal", generation_attempt_id=held.id, estimated=True))
+    async with session_scope() as s:
+        assert (await summary(s, user)).reserved_usd - before == Decimal("0.40")
+    respx.get("https://api.fal.ai/v1/models/billing-events").respond(200, json={"next_cursor": None, "billing_events": [
+        {"request_id": rid, "endpoint_id": "fal-ai/kling-video/v3", "cost_total": 0.42}]})
+    respx.get("https://api.runpod.io/v2/billing/serverless").respond(200, json={"records": []})
+    async with session_scope() as s:
+        res = {r.provider: r for r in await reconcile(s, days=1, now=now)}["fal"]
+    assert res.booked_usd == pytest.approx(0.42)
+    async with session_scope() as s:
+        assert (await summary(s, user)).reserved_usd == before  # the bill counts now, not the hold as well
+
+
+@respx.mock
+async def test_a_held_runpod_job_takes_its_share_of_the_hours_it_ran(client, keys):
+    """Parked unknown while it ran: its hours aren't put on the other jobs or booked as idle."""
+    user, now = get_settings().owner_user_id, long_ago()
+    hour = now - timedelta(hours=4)
+    hour = hour.replace(minute=0)
+    async with session_scope() as s:
+        done = await attempt(s, user, provider="runpod_wan_core", route="ltx-2.5@runpod_wan_core", usd="0.10",
+                             when=hour, ran=(hour + timedelta(minutes=5), hour + timedelta(minutes=10)))
+        held = await attempt(s, user, provider="runpod_wan_core", route="ltx-2.5@runpod_wan_core",
+                             when=hour, ran=(hour + timedelta(minutes=30), None))
+        a = await s.get(GenerationAttempt, held.id)
+        a.status, a.updated_at = AttemptStatus.unknown, hour + timedelta(minutes=35)  # parked, last seen running
+    respx.get("https://api.fal.ai/v1/models/billing-events").respond(200, json={"next_cursor": None, "billing_events": []})
+    respx.get("https://api.runpod.io/v2/billing/serverless").respond(200, json={"records": [
+        {"startTime": iso(hour), "totalAmount": 1.0}]})
+    async with session_scope() as s:
+        await reconcile(s, days=1, now=now)
+        mine = {b.generation_attempt_id: b.amount_usd for b in await booked(s, provider="runpod_wan_core")
+                if b.generation_attempt_id in (done.id, held.id)}
+        idle = [b for b in await booked(s, provider="runpod_wan_core", generation_attempt_id=None)
+                if b.basis.get("bucket") == hour.isoformat()]
+    assert set(mine) == {done.id, held.id} and not idle  # each its own share; nothing booked as idle
+    assert sum(mine.values()) + Decimal("0.10") == pytest.approx(Decimal("1.0"))

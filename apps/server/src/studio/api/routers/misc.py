@@ -6,7 +6,7 @@ import asyncio
 import json
 import os
 import shutil
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -201,7 +201,7 @@ async def spend_history(
             provider=e.provider, route_id=e.route_id, estimated=e.estimated, kind=kind, label=label[:160],
             model_id=model_id, generation_id=gen_id,
         ))
-    month = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month = guard.windows()[1]
     totals = (await session.execute(
         # corrections add to the sum but aren't more charges
         select(SpendLedger.provider, func.sum(SpendLedger.amount_usd),
@@ -239,12 +239,8 @@ async def reconcile(days: int = Query(3, ge=1, le=30), session: AsyncSession = D
 
 
 def _since(period: str) -> datetime | None:
-    now = datetime.now(UTC)
-    if period == "today":
-        return now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if period == "month":
-        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    return None
+    day, month = guard.windows()
+    return {"today": day, "month": month}.get(period)
 
 
 @router.get("/budget/breakdown", response_model=SpendBreakdownOut, tags=["budget"])

@@ -75,7 +75,9 @@ def get_client() -> anthropic.AsyncAnthropic:
     if not key:
         raise LLMUnavailable("Add a Claude key in Settings > Keys to use Claude, or switch Claude to Mock.")
     if _client is None or key != _client_key:  # a key saved in Settings since
-        _client, _client_key = anthropic.AsyncAnthropic(api_key=key, timeout=90.0, max_retries=2), key
+        # the SDK's default timeout (10 min, checked against max_tokens): an Opus plan can take minutes, and a
+        # shorter one cut it off and sent it again
+        _client, _client_key = anthropic.AsyncAnthropic(api_key=key, max_retries=2), key
     return _client
 
 

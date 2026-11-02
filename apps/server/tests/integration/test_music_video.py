@@ -109,6 +109,15 @@ def test_an_instrumental_gets_no_captions_and_a_refused_clip_shows_its_picture()
     assert recipe.result(inp, settled) == {"asset_id": "cut", "master_asset_id": "cut", "captions_asset_id": None}
 
 
+def test_the_estimate_counts_the_shots_a_short_clip_model_is_cut_into():
+    recipe, reg = MusicVideoRecipe(), get_registry()
+    inp = MusicVideoRecipe.Input(brief="a paper boat", minutes=1, video_model="wan-2.2-5b")
+    clips = [j for j in recipe.jobs(inp, reg) if j.model_id == "wan-2.2-5b"]
+    assert len(clips) == 12  # 5 s clips cover a minute in 12 shots, as lyric_shots cuts it
+    veo = MusicVideoRecipe.Input(song=uuid.uuid4(), video_model="veo-3.1")
+    assert recipe._max_s(veo, reg) == 8  # fixed lengths (4, 6, 8): the longest is the cap
+
+
 async def test_models_that_cant_do_their_part_are_refused(client, tmp_path):
     song = await a_song(client, tmp_path, seconds=4.0)
     r = await client.post("/pipelines", json={"recipe": "music_video", "input": {

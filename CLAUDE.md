@@ -36,6 +36,11 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `providers/common.py:submit_failure` / `submit_error`: only a connection that never opened is retried; a dropped,
   reset or timed-out exchange, or a 502/504, may have started paid work. fal submits are one plain POST (its SDK
   retries submits). A status call that fails on an accepted job (401, 404) parks it in `unknown`, never failover.
+  A paid take past its route's `timeout_s` is asked to stop there and fails over only once a poll says it stopped
+  (fal's 202 only asks); until then it's still watched (a result is ingested), and past twice its limit it goes to
+  `unknown` with its money held. A take stopped (canceled or failed) while its send was ambiguous keeps its hold too:
+  `held` on the take and its run step, released by "Mark checked" (`resolve-unknown`); it can't be deleted until then.
+  A held take's hold stops counting once the provider's bill for it is booked (`budget/reconcile.py`).
 - **Ingest every provider output to disk immediately.** Veo deletes after 2 days, Replicate after 1 hour.
 - **Status changes go through `domain/fsm.transition()` only.** It writes the status, a `job_events` row and
   `pg_notify` in one transaction.
@@ -136,9 +141,12 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 - `studio/pipelines/`: a recipe is a **pure planner**. `plan(input, settled_outputs)` returns every step it can
   define now (`generate`, `local`, `llm`, `checkpoint`), keyed by stable keys like `shot[02]`. The engine
   (`engine.reconcile`) diffs that against stored `pipeline_steps` by input hash: new keys are added, changed
-  inputs are redone, finished work is kept. Editing a run (`POST /pipelines/{id}/revise`) reruns only what changed. A finished
-  step is redone only when the run's input changed since it was planned (`_run` in its input) or a step it depends
-  on was redone after it, so a deploy that changes the registry or a catalog never pays for finished work again.
+  inputs are redone, finished work is kept. Editing a run (`POST /pipelines/{id}/revise`, `engine.revise_run`) reruns
+  only what changed. A finished step is redone only when the run's input changed since it was planned (`_run` in its
+  input) or a step it depends on was redone after it started, so a deploy that changes the registry or a catalog never
+  pays for finished work again (`_adopt_moved_plans`; `revise_run` keeps a take still rendering through a deploy too).
+  A step never starts while something upstream of it is being redone. `pipeline.advance` has a queueing lock only and
+  serializes on the run row; failovers of a run's takes are re-checked against what's left of its cap at submit.
 - Generate steps are normal Generations (`group_id` = run id, `pipeline_step_id` set), capped by the run's
   `cap_usd` (every take must fit in what's left, however cheap: `CreateRequest.max_cost_usd`). When one finishes, `fsm.transition()` marks the run and `pipeline.advance` is deferred after commit
   (`pipelines/hooks.py`); the reaper re-advances runs that look stuck. When a step fails the run ends, but takes
@@ -188,6 +196,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   ElevenLabs report one; free reads kept for a minute; the others link to their billing pages) and where the money
   went (`GET /budget/breakdown`): ledger charges by studio feature (`studio/budget/features.py`: the run's recipe, the
   project, else the mode's op tags; a new op tag must join a feature, a test checks) and by model.
+- The caps' day and month start at midnight in `TIMEZONE` (an IANA name, default UTC; `guard.windows()`, which
+  Spending's today and month use too).
 - Bills correct the estimates (`studio/budget/reconcile.py`, hourly in the worker and `POST /budget/reconcile`, reads
   only): fal per request (`/v1/models/billing-events`, admin key; matched by the request id in `provider_job_id`), our
   RunPod endpoints per settled hour (`/v2/billing/serverless`; the hour's difference spread over its charges, idle
@@ -221,7 +231,7 @@ uv sync && pnpm i && pnpm db:migrate
 pnpm dev        # API :8400 (reload), worker, web :3000
 docker compose up --build   # or all of it in containers (compose.yaml: db, migrate, API, worker, web; ComfyUI stays on the host)
 pnpm gen        # OpenAPI -> packages/api-client/src/schema.d.ts (run after API schema changes)
-pnpm test       # pytest: unit, registry contract, DB integration (uses a separate studio_test database)
+pnpm test       # pytest: unit, registry contract, DB integration (a separate studio_test database; STUDIO_TEST_DB names another)
 pnpm e2e        # Playwright against the mock provider (reuses a running `pnpm dev`)
 pnpm lint       # ruff + eslint + tsc
 uv run python scripts/backup_db.py                 # dump the database to data/backups/ (14 days kept)
@@ -231,8 +241,11 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 - The API runs on **8400**, not 8000 (other local containers publish 8000). Web reads `NEXT_PUBLIC_API_URL`.
 - The API also serves an MCP server at `/mcp` (`studio/api/mcp_tools.py`; Streamable HTTP, stateless; README "Drive
   it from Claude"). Its tools call the API's own routes in-process (`httpx.ASGITransport`), so validation, caps and
-  confirmation apply as over HTTP. Never add a tool that changes budget policies, the mode switch or keys. Host and
-  Origin are checked (this machine and `WEB_ORIGIN`'s host). Tests: `tests/integration/test_mcp.py` (in-process `mcp.Client`).
+  confirmation apply as over HTTP. Never add a tool that changes budget policies, the mode switch or keys. Tests:
+  `tests/integration/test_mcp.py` (in-process `mcp.Client`).
+- Every route checks the Host (this machine and `WEB_ORIGIN`'s host, against DNS rebinding; the integration tests add
+  `test` in their conftest) and POST/PUT/PATCH/DELETE check the Origin. Bodies over 16 MB are refused, except
+  multipart uploads on the file routes (`main.py:FILE_ROUTES`: a new route taking files goes there); chunked bodies get 411.
 - Run the API via `python -m studio.api`, not bare uvicorn: on Windows it must use `asyncio:SelectorEventLoop`.
   `pnpm dev` adds `--reload`, so saving server code restarts the API and drops requests in flight (`/health`
   reports `reloads_on_change`). For a long live run, start it without `--reload` or don't edit `apps/server/src`
@@ -285,7 +298,9 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   pictures come from the plan's allowance ($0, about 90 s each). The agent never writes: Codex keeps what its image
   tool draws in `$CODEX_HOME/generated_images/<session id>/` (the `thread.started` event), which the adapter crops to
   the asked shape and clears. No picture (a refusal, the usage limit) fails as `route_unavailable`, so fal takes over.
-  Kind `direct`, so it follows the mock/mixed/live switch. The server's worker mounts the host's `~/.codex`.
+  Kind `direct`, so it follows the mock/mixed/live switch. The server's worker mounts the host's `~/.codex`. Codex runs
+  without the studio's settings and secret-named environment variables, with its shell, browser and connectors off
+  (`codex.py:NO_TOOLS`; `unified_exec` stays on, so it may still read files the worker can).
   `local_tools` and `codex` share `local_tools.BackgroundJobAdapter` (a background task, heartbeat and cancel files).
 - `local_tools`: the `video-tools` model's modes (reframe, trim, retime, reverse, loop, interpolate, upscale,
   stabilize) run on this machine's ffmpeg (`studio/media/tools.py`). Free; local routes check
@@ -312,8 +327,9 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 
 - `elevenlabs`: Eleven v4 TTS (with word timings), sound effects, music and the voice changer (speech to speech,
   `eleven-voice-changer`, op `voice_change`, $0.12/min) (`ELEVENLABS_API_KEY`). The API is synchronous, so submit
-  parks the audio in a ResultStore (like Gemini images). A route that takes a recording gets it staged as a random
-  `staged-file:` token the adapter issued (never a path-like string) and sent as a multipart upload.
+  parks the audio in a ResultStore (like Gemini images; `data/provider_results`, swept by the reaper after 2 days). A
+  route that takes a recording gets it staged as a random `staged-file:` token the adapter issued (never a path-like
+  string) and sent as a multipart upload.
 - Voice cloning (`POST /elements/clone-voice`: name, 1-5 recordings or clips, consent): an ElevenLabs instant clone
   kept as a `voice` Element (`voice.params.voice_id`, and the server-only `cloned_voice_id`); mock mode, or mixed without an
   `@elevenlabs` route allowlisted, makes a stand-in id. Deleting it frees the account's

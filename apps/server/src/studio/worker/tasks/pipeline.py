@@ -16,12 +16,16 @@ from studio.worker.tasks.assets import defer_derive
 from studio.worker.tasks.generation import defer_cancel_remote, defer_submit
 
 log = logging.getLogger(__name__)
+RUN_BUSY_RETRY_S = 5
 
 
-async def defer_advance(run_id: uuid.UUID) -> None:
+async def defer_advance(run_id: uuid.UUID, delay_s: float | None = None) -> None:
     try:
-        await pipeline_advance.configure(queueing_lock=f"advance:{run_id}", lock=f"run:{run_id}").defer_async(
-            run_id=str(run_id))
+        # no procrastinate `lock`: advance() takes the run row instead, and a lock held by the job of a killed
+        # worker (left `doing` forever) kept every later advance of the run waiting
+        await pipeline_advance.configure(queueing_lock=f"advance:{run_id}",
+                                         schedule_in={"seconds": delay_s} if delay_s else None,
+                                         ).defer_async(run_id=str(run_id))
     except AlreadyEnqueued:
         pass  # one queued advance per run is enough; it reads the latest state when it runs
 
@@ -52,14 +56,28 @@ async def pipeline_advance(run_id: str) -> None:
     await advance(uuid.UUID(run_id))
 
 
+class _RunBusy(Exception):
+    pass
+
+
 async def advance(run_id: uuid.UUID) -> None:
     fx = Effects()
     try:
         async with session_scope() as s:
-            run = await s.get(PipelineRun, run_id, with_for_update=True)
+            try:
+                run = await s.get(PipelineRun, run_id, with_for_update={"nowait": True})
+            except DBAPIError as exc:
+                if _lock_not_available(exc):
+                    raise _RunBusy from exc
+                raise
             if run is None:
                 return
             await reconcile(s, run, fx)
+    except _RunBusy:
+        # held by a request (a cancel waiting for a step) or another advance: come back soon rather than sit in a
+        # worker slot waiting for it, which every advance of the run would do
+        await defer_advance(run_id, RUN_BUSY_RETRY_S)
+        return
     except DBAPIError as exc:
         if _lock_not_available(exc):
             return  # one of its steps is running; that step advances the run when it finishes

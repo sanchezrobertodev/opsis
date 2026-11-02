@@ -26,12 +26,12 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 import httpx
-from sqlalchemy import select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.config import get_settings
 from studio.db.models import Generation, GenerationAttempt, SpendLedger
-from studio.domain.enums import SPENT, TERMINAL_STATUSES, LedgerEntry
+from studio.domain.enums import SPENT, TERMINAL_STATUSES, AttemptStatus, LedgerEntry
 from studio.registry.loader import get_registry
 
 log = logging.getLogger(__name__)
@@ -195,9 +195,11 @@ async def _runpod_endpoint(session: AsyncSession, c: httpx.AsyncClient, spec, si
         select(GenerationAttempt, Generation.user_id)
         .join(Generation, Generation.id == GenerationAttempt.generation_id)
         .where(GenerationAttempt.provider == spec.id, GenerationAttempt.submitted_at.is_not(None),
-               GenerationAttempt.finished_at.is_not(None), GenerationAttempt.submitted_at < until,
-               GenerationAttempt.finished_at >= since - idle))).all()
-    jobs = [(a, user, a.submitted_at, a.finished_at + idle) for a, user in rows]
+               # a held one (unknown) ran at least until it was last seen, when it was parked
+               or_(GenerationAttempt.finished_at.is_not(None), GenerationAttempt.status == AttemptStatus.unknown),
+               GenerationAttempt.submitted_at < until,
+               func.coalesce(GenerationAttempt.finished_at, GenerationAttempt.updated_at) >= since - idle))).all()
+    jobs = [(a, user, a.submitted_at, (a.finished_at or a.updated_at) + idle) for a, user in rows]
     ledger = await _ledger_by_attempt(session, [a.id for a, *_ in jobs])
     idle_done = set((await session.execute(select(SpendLedger.basis["bucket"].astext).where(
         SpendLedger.provider == spec.id, SpendLedger.entry_type == LedgerEntry.adjustment,
@@ -235,7 +237,8 @@ async def _runpod_endpoint(session: AsyncSession, c: httpx.AsyncClient, spec, si
         res.charged_usd += float(charged)
         session.add(SpendLedger(
             user_id=user, entry_type=LedgerEntry.adjustment, amount_usd=usd - charged, provider=spec.id,
-            route_id=a.route_id, generation_attempt_id=a.id, estimated=False, created_at=when or a.finished_at,
+            route_id=a.route_id, generation_attempt_id=a.id, estimated=False,
+            created_at=when or a.finished_at or a.updated_at,
             basis={"source": "runpod billing", "billed_usd": float(usd), "charged_usd": float(charged),
                    "hours": sorted(h.isoformat() for h in billed if _overlap(start, stop, h, h + timedelta(hours=1)))}))
         res.booked_usd += float(usd - charged)

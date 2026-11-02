@@ -79,8 +79,8 @@ class ComfyLocalAdapter(ProviderAdapter):
         try:
             async with self._client() as c:
                 r = await c.get(path, **kwargs)
-        except httpx.ConnectError:
-            raise self._offline() from None
+        except httpx.ConnectError:  # only polls and cancel read here: a blip (the PC asleep) is asked again later
+            raise ProviderError(ErrorClass.transient, self._offline().message) from None
         except httpx.TimeoutException as exc:
             raise ProviderError(ErrorClass.transient, f"ComfyUI timed out on {path}") from exc
         if r.status_code >= 500:

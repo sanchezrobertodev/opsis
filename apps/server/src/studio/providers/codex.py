@@ -22,7 +22,7 @@ from typing import Any
 
 import anyio
 
-from studio.config import get_settings
+from studio.config import Settings, get_settings
 from studio.domain.enums import ErrorClass
 from studio.media.ffmpeg import ffmpeg
 from studio.providers.base import ProviderError, ResolvedMedia, SubmitResult
@@ -33,6 +33,13 @@ log = logging.getLogger(__name__)
 
 TIMEOUT_S = 900  # a job past this is stopped (several pictures, a slow plan)
 PICTURES = (".png", ".jpg", ".jpeg", ".webp")
+SECRETS = ("KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIALS")  # env names never passed to Codex
+# only its image tool is wanted: turning off its shell, browser and connectors leaves a prompt (or a picture) fewer ways
+# to make it read a file such as `.env`. `-c`, not `--disable`, so a Codex without one of these features ignores it
+# rather than refusing to start. shortcut: Codex 0.160 keeps `unified_exec` on whatever it's told; only a separate
+# user or container for Codex keeps the worker's files from it.
+NO_TOOLS = tuple(a for f in ("shell_tool", "unified_exec", "browser_use", "in_app_browser", "computer_use", "apps")
+                 for a in ("-c", f"features.{f}=false"))
 
 ASK = """Generate {count} with your image generation tool. Aspect ratio {aspect}{quality}.{refs} Follow the prompt
 exactly; don't add text that it doesn't ask for. Don't run commands, write files or ask questions: if you can't make
@@ -70,8 +77,8 @@ class CodexAdapter(BackgroundJobAdapter):
             aspect=aspect, quality=f", {quality} quality" if quality else "",
             refs=(f" Use the {len(refs)} attached pictures as references, in order (Image 1 is the first)." if refs else ""),
             prompt=payload.get("prompt", ""))
-        cmd = [*self.command(), "exec", "--json", "--skip-git-repo-check", "-s", "read-only", "-C", str(workdir),
-               "-o", str(workdir / "answer.txt"), *(a for r in refs for a in ("-i", r)), ask]
+        cmd = [*self.command(), "exec", "--json", "--skip-git-repo-check", "-s", "read-only", *NO_TOOLS,
+               "-C", str(workdir), "-o", str(workdir / "answer.txt"), *(a for r in refs for a in ("-i", r)), ask]
         code = await anyio.to_thread.run_sync(self._exec, cmd, workdir)
         session = _session(workdir / "codex.log")
         folder = codex_home() / "generated_images" / session if session else None
@@ -102,7 +109,9 @@ class CodexAdapter(BackgroundJobAdapter):
         """Run Codex, stopping it when the job is canceled (the `cancel` file) or runs too long."""
         started = time.monotonic()
         with open(workdir / "codex.log", "wb") as out:
-            proc = subprocess.Popen(cmd, cwd=workdir, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+            proc = subprocess.Popen(
+                cmd, cwd=workdir, stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=_env()
+            )
             while True:
                 try:
                     return proc.wait(timeout=2)
@@ -113,6 +122,17 @@ class CodexAdapter(BackgroundJobAdapter):
                         if (workdir / "cancel").exists():
                             return -1
                         raise ProviderError(ErrorClass.timeout, f"Codex took longer than {TIMEOUT_S // 60} minutes") from None
+
+
+def _env() -> dict[str, str]:
+    """The worker's environment without the studio's settings and anything named like a secret, so the agent never
+    starts with a key or the database password (it keeps PATH, home, temp and proxy settings)."""
+    studio = {name.upper() for name in Settings.model_fields}
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if k.upper() not in studio and not k.upper().startswith("PG") and not k.upper().endswith(SECRETS)
+    }
 
 
 def codex_home() -> Path:

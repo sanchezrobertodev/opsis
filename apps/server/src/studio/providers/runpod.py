@@ -97,9 +97,9 @@ class RunPodAdapter(ProviderAdapter):
                 r = await c.get(f"/{endpoint}/status/{job}")
         except httpx.HTTPError as exc:
             raise ProviderError(ErrorClass.transient, f"RunPod status failed: {exc!r}") from exc
-        if r.status_code == 404:
-            return PollResult(status="failed", error_class=ErrorClass.internal,
-                              error_message="RunPod no longer has this job (results are kept 30 minutes)")
+        if r.status_code == 404:  # the job was taken and may have billed: unknown (a human checks), never failed
+            raise ProviderError(ErrorClass.route_unavailable, "RunPod no longer has this job (results are kept "
+                                                              "30 minutes); check the RunPod dashboard")
         if r.status_code != 200:
             raise http_error("RunPod", r)
         t = r.json()

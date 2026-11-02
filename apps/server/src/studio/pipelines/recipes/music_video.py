@@ -262,7 +262,9 @@ class MusicVideoRecipe(Recipe):
 
     def _max_s(self, inp: MusicVideoInput, reg: Registry) -> float:
         p = reg.models[inp.video_model].param("duration")
-        return min(MAX_SHOT_S, float(getattr(p, "max", None) or MAX_SHOT_S))
+        # an enum of fixed lengths (Veo 3.1: 4, 6, 8) has no max: its longest option is the cap
+        top = getattr(p, "max", None) or max((float(o) for o in getattr(p, "options", None) or ()), default=None)
+        return min(MAX_SHOT_S, float(top or MAX_SHOT_S))
 
     def _frame_params(self, inp: MusicVideoInput, reg: Registry) -> dict[str, Any]:
         spec = reg.models[inp.image_model]
@@ -278,7 +280,7 @@ class MusicVideoRecipe(Recipe):
         at its real length), or a new song of about `minutes`."""
         heard, image, video = (reg.models[m] for m in (inp.transcribe_model, inp.image_model, inp.video_model))
         length = SONG_GUESS_S if inp.song else inp.minutes * 60
-        target = max(TARGET_S, length / inp.max_shots)
+        target = min(max(TARGET_S, length / inp.max_shots), self._max_s(inp, reg))  # as lyric_shots cuts it
         n = min(inp.max_shots, math.ceil(length / target))
         pic = _picture_mode(image, inp.star)
         assert pic is not None

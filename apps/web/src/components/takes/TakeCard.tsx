@@ -103,12 +103,12 @@ export function TakeCard({
           role="checkbox"
           aria-checked={selected}
           aria-label={`Select take ${takeNumber}`}
-          title={active ? "Still rendering" : undefined}
-          disabled={active}
+          title={active ? "Still rendering" : gen.held ? "Its money is held: mark it checked first" : undefined}
+          disabled={active || gen.held}
           onClick={onToggle}
           className="absolute inset-0 z-10 flex items-start p-4 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-tungsten disabled:cursor-not-allowed"
         >
-          {!active && <SelectMark selected={selected} />}
+          {!active && !gen.held && <SelectMark selected={selected} />}
         </button>
       )}
       {gen.status === "succeeded" && assets.length > 0 ? (
@@ -258,6 +258,7 @@ function remainingText(seconds: number) {
 
 function Fault({ gen, aspect }: { gen: Generation; aspect: string }) {
   const canceled = gen.status === "canceled";
+  const resolve = useResolveUnknown();
   return (
     <div
       className="flex flex-col justify-end gap-1 rounded-[var(--radius-frame)] border border-line-soft p-4"
@@ -266,7 +267,22 @@ function Fault({ gen, aspect }: { gen: Generation; aspect: string }) {
       <p className={cn("text-sm", canceled ? "text-muted" : "text-fault")}>
         {canceled ? "Canceled" : gen.error_code === "moderation" ? "Blocked by the provider's content rules" : "Failed"}
       </p>
-      {!canceled && gen.error_message && <p className="line-clamp-3 text-xs text-muted">{gen.error_message}</p>}
+      {(!canceled || gen.held) && gen.error_message && (
+        <p className="line-clamp-3 text-xs text-muted">{gen.error_message}</p>
+      )}
+      {gen.held && (
+        <button
+          type="button"
+          disabled={resolve.isPending}
+          onClick={() =>
+            resolve.mutate(gen.id, { onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't mark it checked") })
+          }
+          className="mt-1 self-start rounded-[var(--radius-control)] bg-raised px-3 py-1.5 text-xs hover:bg-line"
+          title="Its send may have reached the provider, so its money is held. Check the provider's dashboard first; this releases it."
+        >
+          Mark checked
+        </button>
+      )}
     </div>
   );
 }
@@ -433,7 +449,7 @@ function TakeFooter({
         >
           <span className="text-2xs">Aa</span>
         </IconButton>
-        {!isActive(gen.status) && (
+        {!isActive(gen.status) && !gen.held && (
           <IconButton label="Delete this take" onClick={() => setDeleting(true)}>
             <Trash2 className="size-4" aria-hidden />
           </IconButton>

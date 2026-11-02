@@ -35,6 +35,7 @@ MAX_UPLOAD_BYTES = 4 * 1024**3
 # formats that are lists of other files: probing or converting one reads whatever it names on this machine
 POINTS_ELSEWHERE = {"hls", "dash", "concat", "applehttp"}
 CHUNK = 1 << 20
+PROBE_BYTES = 1 << 20  # how much of a file ffprobe reads to guess its format
 
 
 # files the studio keeps without reading them as media: the first bytes each must start with
@@ -68,14 +69,23 @@ def _extension(mime: str, filename: str) -> str:
     ext = ".jpg" if ext == ".jpe" else ext
     # /media picks the served type from the name: one that isn't media (".html") would be served as a web page
     named = _type_of_name(f"x{ext}") or ""
-    return ext if named.split("/")[0] in ("image", "video", "audio") or named == "model/gltf-binary" else ".bin"
+    return ext if named.split("/")[0] in ("image", "video", "audio") else ".bin"
 
 
 def _names_other_files(start: bytes) -> bool:
     """A playlist or file list (HLS, DASH, ffconcat): ffprobe would open the files it names, so it must be refused
-    before probing. These are text formats that announce themselves in their first lines."""
+    before probing. HLS and ffconcat announce themselves in their first line, after an ID3 tag too (ffmpeg probes
+    what follows one); ffprobe takes a file for DASH wherever `<MPD` and a DASH profile appear in what it reads to
+    guess the format: the bytes after an ID3 tag, or all of them when the tag is longer than what it reads."""
+    def dash(b: bytes) -> bool:
+        return b"<mpd" in b and (b"dash:profile" in b or b"3gpp:pss:profile:dash1" in b)
+
+    raw = start.lower()
+    if start[:3] == b"ID3" and len(start) > 10:  # an ID3v2 tag: 10 bytes, a syncsafe size, then a footer if flagged
+        size = 10 + sum((b & 0x7F) << shift for b, shift in zip(start[6:10], (21, 14, 7, 0), strict=True))
+        start = start[size + (10 if start[5] & 0x10 else 0):]
     text = start.lstrip(b"\xef\xbb\xbf \t\r\n").lower()
-    return text.startswith((b"#extm3u", b"ffconcat")) or (text.startswith(b"<") and b"<mpd" in text)
+    return text.startswith((b"#extm3u", b"ffconcat")) or dash(text) or dash(raw)
 
 
 def _kind_for(mime: str, filename: str = "") -> AssetKind:
@@ -101,14 +111,16 @@ async def upload(
 ) -> AssetOut:
     mime = _sent_or_guessed(file.content_type, file.filename or "")
     kind = _kind_for(mime, file.filename or "")
-    if kind in NOT_MEDIA:
-        mime = mimetypes.guess_type(file.filename or "")[0] or ("model/gltf-binary" if kind == AssetKind.model3d
-                                                                else "application/octet-stream")
+    # 3D files are stored as what their first bytes say (checked below), never under the name sent: ".html" is a page
+    if kind == AssetKind.model3d:
+        mime, ext = "model/gltf-binary", ".glb"
+    elif kind == AssetKind.splat:  # _kind_for took it for one by its .spz or .ply name
+        mime = mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
+        ext = ".ply" if (file.filename or "").lower().endswith(".ply") else ".spz"
+    else:
+        ext = _extension(mime, file.filename or "")
     storage = get_storage()
     asset_id = uuid7()
-    ext = _extension(mime, file.filename or "")
-    if kind == AssetKind.splat:
-        ext = Path(file.filename or "").suffix.lower() or ".spz"
     tmp = storage.temp_dir() / f"upload-{asset_id.hex}{ext}"
     digest = hashlib.sha256()
     size = 0
@@ -121,7 +133,7 @@ async def upload(
                 digest.update(chunk)
                 await out.write(chunk)
         async with await anyio.open_file(tmp, "rb") as fh:
-            start = await fh.read(4096)
+            start = await fh.read(PROBE_BYTES)
         if _names_other_files(start):
             raise HTTPException(415, "playlists and lists of other files can't be uploaded; upload the media itself")
         if kind in NOT_MEDIA:

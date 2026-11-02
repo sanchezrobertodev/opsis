@@ -4,6 +4,7 @@ import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,6 +31,8 @@ class Settings(BaseSettings):
     web_origin: str = "http://localhost:3000"
     api_port: int = 8400  # `python -m studio.api` listens here unless --port says otherwise
     owner_user_id: uuid.UUID = DEFAULT_OWNER_ID
+    # Where the studio's day and month begin (the daily and monthly caps): an IANA name such as America/Chicago
+    timezone: ZoneInfo = ZoneInfo("UTC")
 
     # Mock provider timing (seconds). Tests shrink these.
     mock_queue_seconds: float = 2.0

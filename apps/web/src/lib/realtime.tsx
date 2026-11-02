@@ -67,6 +67,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           actual_cost_usd: p.actual_cost_usd ?? null,
           error_code: p.error_code ?? null,
           error_message: p.error_message ?? null,
+          held: p.held ?? false, // stopped while its send may have gone through (generation.held)
         };
         const known = patchGeneration(qc, msg.subject_id, patch);
         if (!known || msg.type === "generation.succeeded") invalidate("generations");

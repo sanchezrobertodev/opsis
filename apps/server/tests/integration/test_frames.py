@@ -127,8 +127,15 @@ async def test_uploads_are_served_as_media_and_never_as_pages(client, tmp_path, 
 
     monkeypatch.setattr(assets, "probe", never)
     concat = f"ffconcat version 1.0\nfile '{near}'\n".encode()
-    mpd = b'<?xml version="1.0"?>\n<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"></MPD>'
-    for name, body in (("x.m3u8", playlist), ("list.txt", concat), ("x.mpd", mpd)):
+    mpd = b'<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-live:2011"></MPD>'
+    # ffprobe finds a manifest after anything, an ID3 tag or padding past the first few KB too, and a playlist or file
+    # list after an ID3 tag (with a footer too), then opens what they name
+    id3 = b"ID3\x03\x00\x00\x00\x00\x00\x00"
+    for name, body in (("x.m3u8", playlist), ("list.txt", concat), ("x.mpd", b'<?xml version="1.0"?>\n' + mpd),
+                       ("y.mpd", b"x" + mpd), ("z.mp3", id3 + mpd), ("w.mpd", b"<!--" + b" " * 20_000 + b"-->" + mpd),
+                       ("v.mp3", id3 + concat), ("u.mp3", b"ID3\x04\x00\x10\x00\x00\x00\x02" + b"\x00" * 12 + playlist),
+                       # a tag declared longer than what's read: ffmpeg can't skip it, so it finds a manifest inside
+                       ("t.mp3", b"ID3\x04\x01\x01\x01\x01\x01\x01" + mpd + b" " * 2_200_000 + mpd)):
         r = await client.post("/uploads", files={"file": (name, body, "video/x-anything")})
         assert r.status_code == 415 and "playlist" in r.text, name
     monkeypatch.undo()

@@ -377,6 +377,35 @@ async def test_nano_banana_is_synchronous_and_multi_image(tmp_path, monkeypatch)
     assert dest.read_bytes() == b"\x89PNGimg"
 
 
+async def test_a_google_gateway_error_on_submit_is_never_resent(tmp_path):
+    from google.genai import errors as genai_errors
+
+    async def gateway(*args, **kwargs):
+        raise genai_errors.ServerError(504, {"error": {"message": "Deadline exceeded", "status": "UNAVAILABLE"}})
+
+    fake = FakeGenAI(ops=[])
+    fake.aio.models.generate_videos = fake.aio.models.generate_content = gateway
+    a = GoogleGenAIAdapter(client=fake)
+    a.store.root = tmp_path / "results"
+    with pytest.raises(AmbiguousSubmitError):  # Veo may already be rendering (and billing) it
+        await a.submit(route(), "veo-3.1", {"prompt": "x"}, client_ref="c")
+    with pytest.raises(AmbiguousSubmitError):
+        await a.submit(route(kind="image", path="images"), "gemini-3.1-flash-image", {"prompt": "x"}, client_ref="c")
+    answers = iter([503, 504])
+
+    async def mixed(*args, **kwargs):  # an overloaded first call must not hide a later one that may have drawn
+        raise genai_errors.ServerError(next(answers), {"error": {"message": "busy", "status": "UNAVAILABLE"}})
+
+    fake.aio.models.generate_content = mixed
+    with pytest.raises(AmbiguousSubmitError):
+        await a.submit(route(kind="image", path="images"), "gemini-3.1-flash-image", {"prompt": "x", "num_images": 2},
+                       client_ref="c")
+    fake.aio.operations.get = gateway
+    with pytest.raises(ProviderError) as polled:  # a status read that hit a gateway is only asked again
+        await a.poll(route(), "models/veo/operations/x")
+    assert polled.value.error_class == ErrorClass.transient and not isinstance(polled.value, AmbiguousSubmitError)
+
+
 async def test_nano_banana_block_is_moderation(tmp_path):
     a, rt = GoogleGenAIAdapter(client=FakeGenAI(block="IMAGE_SAFETY")), route(kind="image", path="images")
     a.store.root = tmp_path / "results"
@@ -435,8 +464,9 @@ async def test_runpod_failures_and_cancel(runpod_key):
     respx.get(f"{RP}/e/status/j2").respond(200, json={"status": "TIMED_OUT"})
     assert (await a.poll(route(), "e::j2")).error_class == ErrorClass.timeout
     respx.get(f"{RP}/e/status/j3").respond(404)
-    gone = await a.poll(route(), "e::j3")
-    assert gone.status == "failed" and "30 minutes" in gone.error_message
+    with pytest.raises(ProviderError, match="30 minutes") as gone:  # the worker parks it in unknown, never failed
+        await a.poll(route(), "e::j3")
+    assert gone.value.error_class == ErrorClass.route_unavailable
     respx.get(f"{RP}/e/status/j4").respond(200, json={"status": "COMPLETED", "output": {"cost": 0.1}})
     assert (await a.poll(route(path="output.video_url"), "e::j4")).error_class == ErrorClass.internal
     respx.post(f"{RP}/e/cancel/j5").respond(200, json={"id": "j5", "status": "CANCELLED"})
@@ -547,6 +577,10 @@ async def test_runpod_comfy_failures_still_report_gpu_time(wan_core, monkeypatch
     respx.get(f"{RP}/ep1/status/j3").respond(200, json={"status": "COMPLETED", "output": {
         "error": "ComfyUI rejected the workflow: node 4 missing"}})
     assert (await wan_core.poll(route(), "ep1::j3")).error_class == ErrorClass.invalid_request
+    respx.get(f"{RP}/ep1/status/j4").respond(404)  # a billed job whose result expired: unknown, not failed at $0
+    with pytest.raises(ProviderError, match="RunPod dashboard") as gone:
+        await wan_core.poll(route(), "ep1::j4")
+    assert gone.value.error_class == ErrorClass.route_unavailable
 
     monkeypatch.setattr(get_settings(), "runpod_wan_core_endpoint", "")
     with pytest.raises(ProviderError, match="RUNPOD_WAN_CORE_ENDPOINT"):
