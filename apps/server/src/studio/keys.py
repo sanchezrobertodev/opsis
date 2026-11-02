@@ -52,6 +52,8 @@ KEYS: dict[str, KeySpec] = {
                                   "Narration, sound effects, music, voice cloning and dubbing."),
     "reactor_api_key": KeySpec("Reactor", "https://reactor.inc/dashboard", "FastH3-Omni streaming sessions."),
     "pika_api_key": KeySpec("Pika", "https://dev.pika.art/", "The Seedance 2.5 route on Pika."),
+    "topview_api_key": KeySpec("Topview API Platform", "https://platform.topview.ai/",
+                               "Topview T1 text-to-video; needs a Platform workspace balance and model permissions."),
     "worldlabs_api_key": KeySpec("World Labs", "https://platform.worldlabs.ai/", "Marble explorable worlds."),
 }
 

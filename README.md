@@ -330,7 +330,7 @@ Adding a model, a preset or a template is mostly YAML; [CLAUDE.md](CLAUDE.md) li
 - [`infra/server/`](infra/server/): an example Linux deployment (rootless Podman, systemd timers, nightly backups)
 - [`infra/runpod/wan-core/`](infra/runpod/wan-core/): your own RunPod endpoint for the larger open models
 - [`docs/local-model-storage.md`](docs/local-model-storage.md): choosing ComfyUI's model folder from Settings
-- [`docs/pika.md`](docs/pika.md) and [`docs/reactor.md`](docs/reactor.md): two optional providers
+- [`docs/pika.md`](docs/pika.md), [`docs/reactor.md`](docs/reactor.md), and [`docs/topview.md`](docs/topview.md): optional providers
 
 ## License
 

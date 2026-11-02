@@ -1,0 +1,9 @@
+id: topview
+name: Topview API Platform
+kind: direct
+adapter: topview
+key_setting: topview_api_key
+concurrency: 1
+poll_min_seconds: 5
+docs: https://platform.topview.ai/docs/models/topview/topview-t1
+notes: Separate Platform workspace balance and key; requires models:generate and requests:read for T1 text-to-video.

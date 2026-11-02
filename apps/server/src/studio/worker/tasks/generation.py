@@ -185,6 +185,8 @@ def _reported_cost(usage: dict[str, Any], *, free_ok: bool = False) -> Decimal |
     """What the provider said the run cost, if it said so with a number. A finished job may have been free ($0);
     a failed one reporting $0 more likely didn't say, so the estimate stands there."""
     cost = (usage or {}).get("cost_usd")
+    # An explicit final charge is authoritative even when a failed task was fully refunded.
+    free_ok = free_ok or (usage or {}).get("cost_estimated") is False
     if isinstance(cost, bool) or not isinstance(cost, int | float) or cost < 0 or (cost == 0 and not free_ok):
         return None
     return Decimal(str(cost))
