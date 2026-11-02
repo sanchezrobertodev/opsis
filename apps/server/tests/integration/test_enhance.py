@@ -83,6 +83,8 @@ def test_token_pricing():
     assert cost("claude-sonnet-5-5", input_tokens=1_000_000, output_tokens=0) == Decimal("2")
     assert cost("claude-opus-5-5", input_tokens=0, output_tokens=1_000_000) == Decimal("20")
     assert cost("claude-sonnet-5-5", input_tokens=0, output_tokens=0, cache_read=1_000_000) == Decimal("0.2")
+    assert cost("claude-haiku-5-5", input_tokens=100_000, output_tokens=1_000_000) == Decimal("0.51")
+    assert cost("claude-haiku-5-5", input_tokens=200_000, output_tokens=0) == Decimal("0.1")  # the long-prompt card
 
 
 async def test_calls_name_the_model_and_a_typical_price(client):
@@ -91,9 +93,36 @@ async def test_calls_name_the_model_and_a_typical_price(client):
     body = r.json()
     assert body["mode"] == "mock"  # free now; the prices are what it would cost live
     assert body["calls"]["enhance"] == {"model": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5",
-                                        "usd": float(cost("claude-sonnet-5-5", input_tokens=1_500, output_tokens=800))}
+                                        "usd": float(cost("claude-sonnet-5-5", input_tokens=1_200, output_tokens=600))}
     assert body["calls"]["cinema.director"]["name"] == "Claude Opus 5.5"
     assert all(0 < c["usd"] < 1 for c in body["calls"].values())
+
+
+async def test_settings_pick_which_claude_writes(client, live):
+    messages = live(fake_response(model="claude-haiku-5-5"))
+    bad = await client.patch("/budget", json={"llm_fast_model": "gpt-5"})
+    assert bad.status_code == 422 and "isn't a Claude model" in bad.text
+    budget = await client.patch("/budget", json={"llm_fast_model": "claude-haiku-5-5"})
+    try:
+        assert budget.status_code == 200, budget.text
+        body = budget.json()
+        assert body["llm_fast_model"] == "claude-haiku-5-5" and body["llm_smart_model"] == "claude-opus-5-5"
+        assert [m["id"] for m in body["claude_models"]] == ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
+        calls = (await client.get("/llm/calls")).json()["calls"]
+        assert calls["enhance"]["model"] == "claude-haiku-5-5" and calls["faceless.script"]["model"] == "claude-opus-5-5"
+
+        r = await client.post("/llm/enhance", json={"model_id": "veo-3.1", "mode": "t2v", "prompt": "a kite, briefly"})
+        assert r.status_code == 200, r.text
+        call = messages.calls[0]
+        # Haiku has no server-side fallback, so the request must not ask for one
+        assert call["model"] == "claude-haiku-5-5" and "fallbacks" not in call and "betas" not in call
+
+        # with Claude live, its writing is part of what a run is charged
+        est = (await client.post("/pipelines/estimate", json={"recipe": "faceless", "input": {
+            "topic": "x", "minutes": 1, "format": "motion"}})).json()
+        assert est["claude_usd"] == est["claude_live_usd"] > 0 and est["estimate_usd"] >= est["claude_usd"]
+    finally:
+        await client.patch("/budget", json={"llm_fast_model": get_settings().llm_fast_model})
 
 
 async def test_mock_mode_is_free_and_keeps_mentions(client):

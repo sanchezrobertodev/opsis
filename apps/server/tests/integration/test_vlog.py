@@ -13,8 +13,10 @@ from test_pipelines import drain, get, start
 from test_talking import PICTURE, upload
 
 from studio.api.main import app as api
+from studio.config import get_settings
 from studio.db.models import Asset, Generation, PipelineStep
 from studio.db.session import session_scope
+from studio.llm.pricing import typical_cost
 from studio.pipelines.recipes.vlog import VlogRecipe
 from studio.registry.loader import get_registry
 
@@ -31,6 +33,9 @@ async def test_a_picture_and_an_idea_become_a_captioned_vlog(client, in_memory_q
            "aspect_ratio": "9:16", "resolution": "720p"}
     est = (await client.post("/pipelines/estimate", json={"recipe": "vlog", "input": inp})).json()
     assert est["generations"] == 4 + 4 + 2 + 2 + 1  # pictures, voices, talking, cutaways, music
+    # Claude's script is priced on the model Settings picks: free while Claude is mocked, in the live price always
+    assert est["claude_usd"] == 0 and est["claude_live_usd"] == float(typical_cost("vlog.script", "claude-opus-5-5"))
+    assert est["models"][0] == "Claude Opus 5.5"
 
     run = await start(client, "vlog", **inp)
     await drain(in_memory_queue)
@@ -105,7 +110,7 @@ async def test_a_script_short_of_shots_is_refused(db, monkeypatch):
     monkeypatch.setattr(vlog, "structured", few)
     async with session_scope() as s:
         with pytest.raises(llm.LLMError, match="1 shots with lines instead of 3"):
-            await vlog.write_vlog(s, uuid.uuid4(), idea="x", shots=3)
+            await vlog.write_vlog(s, get_settings().owner_user_id, idea="x", shots=3)
 
 
 async def test_a_saved_character_stars_by_handle_with_their_name(client, in_memory_queue):

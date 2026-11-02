@@ -12,7 +12,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.budget.guard import BudgetBlocked
-from studio.config import get_settings
 from studio.db.models import Asset, Element, ElementAsset, ElementKind, Generation, PipelineRun, PipelineStep
 from studio.director.elements import mentions
 from studio.domain.enums import AssetStatus
@@ -25,7 +24,7 @@ from studio.faceless.writer import (
     write_script,
     write_song,
 )
-from studio.llm.client import LLMError, structured
+from studio.llm.client import LLMError, model_for, structured
 from studio.media.assemble import GAP_S, TAIL_S
 from studio.pipelines.ops import StepFailed
 from studio.pipelines.recipes.music_video import plan_shots, write_lyrics
@@ -192,7 +191,7 @@ async def reword(session: AsyncSession, run: PipelineRun, prompts: list[str], re
     listed = "\n\n".join(f"Prompt {i} (at most {len(p)} characters):\n{p}" for i, p in enumerate(prompts, 1))
     try:
         res = await structured(
-            session, run.user_id, purpose="pipeline.reword", model=get_settings().llm_fast_model,
+            session, run.user_id, purpose="pipeline.reword", model=await model_for(session, run.user_id, "fast"),
             system=REWORD_SYSTEM, prompt=f"The refusal: {reason[:500]}\n\n{listed}", output=Reworded,
             # the mock drops its failure tags, so a test sees the second try succeed
             mock=lambda: Reworded(prompts=[f"{strip_tags(p)} Gently worded." for p in prompts], changed="mock"),

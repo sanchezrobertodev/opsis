@@ -26,6 +26,9 @@ class BudgetPolicy(Base):
     # (budget/modes.py). NULL means whatever .env says.
     provider_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
     llm_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Which Claude writes scripts and plans, and which helps with prompts; NULL means LLM_*_MODEL in .env
+    llm_smart_model: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    llm_fast_model: Mapped[str | None] = mapped_column(String(40), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"), onupdate=text("now()"))
 
 

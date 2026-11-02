@@ -112,7 +112,8 @@ async def test_a_run_counts_as_billed_when_either_side_can_spend(monkeypatch, pr
         if path == "/budget":
             return {"provider_mode": provider, "llm_mode": llm, "confirm_over_usd": 5.0, "daily_cap_usd": 20.0,
                     "today_usd": 0.0, "reserved_usd": 0.0, "monthly_cap_usd": 100.0, "month_usd": 0.0}
-        return {"estimate_usd": 0.0, "live_estimate_usd": 1.2, "generations": 3, "models": ["Veo 3.1"], "cap_usd": 5}
+        return {"estimate_usd": 0.0, "live_estimate_usd": 1.2, "claude_usd": 0.0, "generations": 3, "models": ["Veo 3.1"],
+                "cap_usd": 5}
 
     monkeypatch.setattr(mcp_tools, "_api", fake_api)
     est = await mcp_tools.estimate_run(recipe="faceless")

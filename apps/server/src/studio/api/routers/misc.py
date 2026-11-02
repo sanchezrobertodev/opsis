@@ -21,6 +21,7 @@ from studio.api.schemas import (
     BalanceOut,
     BudgetOut,
     BudgetUpdate,
+    ClaudeModelOut,
     HealthOut,
     LocalEngineOut,
     ReconcileOut,
@@ -47,6 +48,7 @@ from studio.db.models import (
     User,
 )
 from studio.domain.enums import SPENT, LedgerEntry
+from studio.llm import pricing
 from studio.media import reveal
 from studio.providers.local_status import comfy_stats
 from studio.registry.loader import get_registry, get_registry_holder
@@ -122,6 +124,10 @@ def _budget_out(s: guard.SpendSummary, m: modes.Modes) -> BudgetOut:
         confirm_over_usd=float(s.confirm_over_usd), live_enabled=s.live_enabled,
         provider_mode=m.provider, provider_modes=modes.allowed(modes.PROVIDER_MODES, m.provider_ceiling),
         llm_mode=m.llm, llm_modes=modes.allowed(modes.LLM_MODES, m.llm_ceiling),
+        llm_smart_model=m.smart_model, llm_fast_model=m.fast_model,
+        claude_models=[ClaudeModelOut(id=model, name=claude_name(model), input_usd=float(pricing.rates_for(model).input),
+                                      output_usd=float(pricing.rates_for(model).output))
+                       for model in modes.claude_models()],
         live_route_allowlist=sorted(settings.live_routes),
     )
 
@@ -153,6 +159,13 @@ async def patch_budget(body: BudgetUpdate, session: AsyncSession = Depends(get_s
         if value not in modes.allowed(order, ceiling):
             env = field.upper()
             raise HTTPException(422, f"{env} in .env is {ceiling}, so {value} can't be chosen here; change .env first")
+        setattr(policy, field, value)
+    for field in ("llm_smart_model", "llm_fast_model"):
+        value = getattr(body, field)
+        if value is None:
+            continue
+        if value not in modes.claude_models():
+            raise HTTPException(422, f"{value} isn't a Claude model this studio offers")
         setattr(policy, field, value)
     await session.flush()
     out = _budget_out(await guard.summary(session, user.id), await modes.current(session, user.id))
@@ -306,7 +319,8 @@ async def spend_breakdown(period: str = Query("month", pattern="^(today|month|al
 async def health(request: Request, session: AsyncSession = Depends(get_session)) -> HealthOut:
     db_ok = True
     env = get_settings()
-    m = modes.Modes(env.provider_mode, env.provider_mode, env.llm_mode, env.llm_mode)  # .env's, without a database
+    m = modes.Modes(env.provider_mode, env.provider_mode, env.llm_mode, env.llm_mode,  # .env's, without a database
+                    env.llm_smart_model, env.llm_fast_model)
     try:
         await session.execute(text("SELECT 1"))
         m = await modes.current(session)

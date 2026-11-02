@@ -18,7 +18,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from studio.config import get_settings
 from studio.db.models import StepKind
 from studio.faceless.catalog import get_catalog
 from studio.faceless.writer import (
@@ -32,7 +31,7 @@ from studio.faceless.writer import (
     song_text,
 )
 from studio.faceless.writer import _mock_song as mock_song
-from studio.llm.client import LLMError, LLMResult, structured
+from studio.llm.client import LLMError, LLMResult, model_for, structured
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import (
     clip_params,
@@ -108,7 +107,8 @@ async def write_lyrics(session: AsyncSession, user_id: uuid.UUID, *, brief: str,
         f"Language: {language}.",
     ] if line)
     result = await structured(
-        session, user_id, purpose="music_video.lyrics", model=get_settings().llm_smart_model, system=LYRICS_SYSTEM,
+        session, user_id, purpose="music_video.lyrics",
+        model=await model_for(session, user_id, "smart"), system=LYRICS_SYSTEM,
         prompt=prompt, output=Song, mock=lambda: mock_song(brief), effort="medium", max_tokens=8000)
     song = result.output
     song.sections = [x for x in song.sections if any(line.strip() for line in x.lines)][:MAX_SECTIONS]
@@ -155,7 +155,8 @@ async def plan_shots(session: AsyncSession, user_id: uuid.UUID, *, sections: lis
         f"\n{listed}",
     ] if line)
     result = await structured(
-        session, user_id, purpose="music_video.plan", model=get_settings().llm_smart_model, system=PLAN_SYSTEM,
+        session, user_id, purpose="music_video.plan",
+        model=await model_for(session, user_id, "smart"), system=PLAN_SYSTEM,
         prompt=prompt, output=MusicPlan, mock=lambda: _mock_plan(sections, star), effort="medium", max_tokens=8000)
     if len(result.output.shots) != len(sections):
         raise LLMError(f"Claude planned {len(result.output.shots)} shots for {len(sections)} sections. Try again.",
@@ -268,6 +269,9 @@ class MusicVideoRecipe(Recipe):
         mode = _picture_mode(spec, inp.star)
         assert mode is not None
         return with_param(spec, mode.id, {}, "aspect_ratio", inp.aspect_ratio)
+
+    def claude_calls(self, inp: MusicVideoInput) -> list[str]:
+        return ["music_video.plan"] if inp.song is not None else ["music_video.lyrics", "music_video.plan"]
 
     def jobs(self, inp: MusicVideoInput, reg: Registry) -> list[PlannedJob]:
         """A song's length is only known once it's measured, so this prices a three-minute upload (the transcript itself

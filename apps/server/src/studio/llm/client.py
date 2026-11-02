@@ -29,8 +29,10 @@ from studio.llm import pricing
 
 log = logging.getLogger(__name__)
 
-# Server-side refusal fallback, routed by refusal category (Claude API only).
+# Server-side refusal fallback, routed by refusal category (Claude API only). Haiku 5.5 has none: a declined request
+# stays declined, so it's left off there.
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+NO_FALLBACK = {"claude-haiku-5-5"}
 # the pre-call ceiling counts ~3 characters a token (English runs nearer 4, so it errs high) plus room for the
 # output schema, which the API adds to the prompt
 CHARS_PER_TOKEN = 3
@@ -84,6 +86,11 @@ async def is_mock(session: AsyncSession, user_id: uuid.UUID) -> bool:
     return (await modes.current(session, user_id)).llm == "mock"
 
 
+async def model_for(session: AsyncSession, user_id: uuid.UUID, tier: str) -> str:
+    """The Claude chosen in Settings for `smart` (scripts, shot plans) or `fast` (prompt help) calls, else .env's."""
+    return (await modes.current(session, user_id)).claude(tier)
+
+
 async def _check_budget(session: AsyncSession, user_id: uuid.UUID, ceiling: Decimal) -> None:
     s = await summary(session, user_id)
     if not s.live_enabled:
@@ -127,8 +134,7 @@ async def structured[T: BaseModel](
             messages=[{"role": "user", "content": prompt}],
             output_format=output,
             output_config={"effort": effort},
-            betas=[FALLBACK_BETA],
-            fallbacks="default",
+            **({} if model in NO_FALLBACK else {"betas": [FALLBACK_BETA], "fallbacks": "default"}),
         )
     except anthropic.AuthenticationError as exc:
         raise LLMUnavailable("Anthropic rejected the Claude key (Settings > Keys).") from exc

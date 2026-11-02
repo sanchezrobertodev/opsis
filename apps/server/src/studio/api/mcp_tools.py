@@ -28,7 +28,7 @@ INSTRUCTIONS = """Opsis is the user's own AI video studio. Runs make videos, pic
 template (a recipe with most choices made). Start from catalog(kind="templates").
 
 Money: always call estimate_run first and tell the user what it costs and with which models. When the estimate says
-billed (generation in "mixed" or "live", or Claude "live"; Claude's writing isn't in estimate_usd), the run may
+billed (generation in "mixed" or "live", or Claude "live"; claude_usd is Claude's writing within it), the run may
 spend real money: start it only after the user agrees. When it says needs_confirmation, pass its confirm_cost_usd to
 start_run. With both modes "mock" nothing is billed and results are stand-ins.
 
@@ -184,7 +184,7 @@ async def estimate_run(template_id: str | None = None, fields: dict[str, str] | 
         "estimate_usd": est["estimate_usd"], "live_estimate_usd": est["live_estimate_usd"],
         "mode": budget["provider_mode"], "claude_mode": budget["llm_mode"],
         "billed": budget["provider_mode"] != "mock" or budget["llm_mode"] != "mock",
-        "generations": est["generations"], "models": est["models"],
+        "generations": est["generations"], "models": est["models"], "claude_usd": est["claude_usd"],
         "cap_usd": est["cap_usd"], "needs_confirmation": needs,
         "confirm_cost_usd": est["estimate_usd"] if needs else None,
         "left_today_usd": round(budget["daily_cap_usd"] - budget["today_usd"] - budget["reserved_usd"], 2),

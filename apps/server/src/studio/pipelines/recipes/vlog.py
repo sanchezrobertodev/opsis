@@ -19,10 +19,9 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from studio.config import get_settings
 from studio.db.models import StepKind
 from studio.faceless.catalog import get_catalog
-from studio.llm.client import LLMError, LLMResult, structured
+from studio.llm.client import LLMError, LLMResult, model_for, structured
 from studio.media.assemble import GAP_S
 from studio.media.speech import CHARS_PER_SECOND
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
@@ -118,7 +117,8 @@ async def write_vlog(session: AsyncSession, user_id: uuid.UUID, *, idea: str, sh
         f"Extra notes from the creator: {notes}" if notes else "",
     ] if line)
     result = await structured(
-        session, user_id, purpose="vlog.script", model=get_settings().llm_smart_model, system=VLOG_SYSTEM,
+        session, user_id, purpose="vlog.script",
+        model=await model_for(session, user_id, "smart"), system=VLOG_SYSTEM,
         prompt=prompt, output=VlogScript, mock=lambda: _mock_vlog(idea, shots), effort="medium", max_tokens=6000)
     kept = [s for s in result.output.shots if s.line.strip()]
     if len(kept) < shots:  # the estimate and the confirmation were for `shots`
@@ -226,6 +226,9 @@ class VlogRecipe(Recipe):
     def _frame_params(self, inp: VlogInput, reg: Registry) -> dict[str, Any]:
         spec = reg.models[inp.image_model]
         return with_param(spec, ref_mode(spec).id, {}, "aspect_ratio", inp.aspect_ratio)  # type: ignore[union-attr]
+
+    def claude_calls(self, inp: VlogInput) -> list[str]:
+        return ["vlog.script"]
 
     def jobs(self, inp: VlogInput, reg: Registry) -> list[PlannedJob]:
         """Before the script exists: a line of about LINE_CHARS a shot, half the shots on camera."""

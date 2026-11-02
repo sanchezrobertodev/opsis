@@ -12,6 +12,7 @@ from test_pipelines import drain, get, start
 from studio.api.main import app as api
 from studio.db.models import Asset
 from studio.db.session import session_scope
+from studio.llm.pricing import typical_cost
 from studio.media.ffmpeg import probe
 from studio.storage.local import get_storage
 
@@ -122,6 +123,11 @@ async def test_estimate_counts_narration_and_validation_errors(client):
     est = r.json()
     # 1 minute in 8 s blocks: 8 narrations + 8 stills + 8 clips + music + thumbnails
     assert est["generations"] == 26
+    writing = typical_cost("faceless.script", "claude-opus-5-5") + typical_cost("faceless.plan", "claude-opus-5-5")
+    assert est["claude_usd"] == 0 and est["claude_live_usd"] == float(writing)
+    r = await client.post("/pipelines/estimate", json={"recipe": "faceless", "input": {
+        "topic": "x", "minutes": 1, "format": "motion", "script": "My own words."}})
+    assert r.json()["claude_live_usd"] == float(typical_cost("faceless.plan", "claude-opus-5-5"))  # no script to write
 
 
 async def test_catalog_topics_and_channels(client, in_memory_queue):

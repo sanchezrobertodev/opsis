@@ -81,6 +81,10 @@ class Recipe(ABC):
     def jobs(self, inp: Any, reg: Registry) -> list[PlannedJob]:
         """Every generation the run will make (for the up-front estimate)."""
 
+    def claude_calls(self, inp: Any) -> list[str]:
+        """The Claude calls the run will make, by ledger purpose (`llm.pricing.TYPICAL_CALLS`), for the estimate."""
+        return []
+
     @abstractmethod
     def plan(self, inp: Any, settled: Settled, reg: Registry) -> list[StepSpec]: ...
 

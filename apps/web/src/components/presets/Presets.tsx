@@ -236,7 +236,7 @@ function usePresetQuote(req: Schemas["PresetRenderOut"] | null): Quote {
   const error = !req ? null : est.error instanceof Error ? est.error.message : noRoute;
   const mock = chosen?.is_mock ?? false;
   return { usd: chosen ? ((mock ? d?.live_reference?.estimate_usd : d?.estimate_usd) ?? null) : null,
-           charged: d?.estimate_usd ?? null, count: chosen ? 1 : null, mock, error };
+           claude: null, charged: d?.estimate_usd ?? null, count: chosen ? 1 : null, mock, error };
 }
 
 function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) {

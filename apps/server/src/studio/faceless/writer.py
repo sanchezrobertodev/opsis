@@ -15,9 +15,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from studio.config import get_settings
 from studio.faceless.catalog import Style, Theme
-from studio.llm.client import LLMError, LLMResult, structured
+from studio.llm.client import LLMError, LLMResult, model_for, structured
 from studio.media.assemble import GAP_S, TAIL_S
 from studio.media.speech import CHARS_PER_SECOND
 
@@ -122,7 +121,8 @@ async def suggest_topics(session: AsyncSession, user_id: uuid.UUID, *, theme: Th
         f"Channel notes: {notes}" if notes else "",
     ] if line)
     result = await structured(
-        session, user_id, purpose="faceless.topics", model=get_settings().llm_fast_model, system=TOPICS_SYSTEM,
+        session, user_id, purpose="faceless.topics",
+        model=await model_for(session, user_id, "fast"), system=TOPICS_SYSTEM,
         prompt=prompt, output=TopicIdeas, mock=lambda: _mock_topics(theme), effort="low", max_tokens=2000)
     result.output.topics = result.output.topics[:4]
     return result
@@ -142,14 +142,16 @@ async def write_script(session: AsyncSession, user_id: uuid.UUID, *, topic: str,
         f"Extra notes from the creator: {notes}" if notes else "",
     ] if line)
     result = await structured(
-        session, user_id, purpose="faceless.script", model=get_settings().llm_smart_model, system=SCRIPT_SYSTEM,
+        session, user_id, purpose="faceless.script",
+        model=await model_for(session, user_id, "smart"), system=SCRIPT_SYSTEM,
         prompt=prompt, output=Script, mock=lambda: _mock_script(topic, words), effort="medium", max_tokens=8000)
     result.output.narration = tidy_narration(result.output.narration)
     if not result.output.narration:
         raise LLMError("Claude returned an empty script. Try again.", retryable=True)
     if _words(result.output.narration) > words * OVER_BY:  # writers overshoot; the video's length follows the words
         shorter = await structured(
-            session, user_id, purpose="faceless.script", model=get_settings().llm_smart_model, system=SHORTEN_SYSTEM,
+            session, user_id, purpose="faceless.script",
+            model=await model_for(session, user_id, "smart"), system=SHORTEN_SYSTEM,
             prompt=f"At most {words} words.\n\nScript:\n{result.output.narration}", output=Script,
             mock=lambda: _mock_script(topic, words), effort="low", max_tokens=8000)
         if text := tidy_narration(shorter.output.narration):
@@ -180,7 +182,8 @@ async def plan_blocks(session: AsyncSession, user_id: uuid.UUID, *, script: str,
         f"\nNarration:\n{script}",
     ])
     result = await structured(
-        session, user_id, purpose="faceless.plan", model=get_settings().llm_smart_model, system=PLAN_SYSTEM,
+        session, user_id, purpose="faceless.plan",
+        model=await model_for(session, user_id, "smart"), system=PLAN_SYSTEM,
         prompt=prompt, output=BlockPlan, mock=lambda: _mock_plan(script, fmt, star), effort="medium",
         max_tokens=16000)
     plan = result.output
@@ -394,7 +397,8 @@ async def write_song(session: AsyncSession, user_id: uuid.UUID, *, topic: str, t
         f"Extra notes from the creator: {notes}" if notes else "",
     ] if line)
     result = await structured(
-        session, user_id, purpose="faceless.song", model=get_settings().llm_smart_model, system=SONG_SYSTEM,
+        session, user_id, purpose="faceless.song",
+        model=await model_for(session, user_id, "smart"), system=SONG_SYSTEM,
         prompt=prompt, output=Song, mock=lambda: _mock_song(topic), effort="medium", max_tokens=8000)
     song = result.output
     song.sections = [s for s in song.sections if any(x.strip() for x in s.lines)][:MAX_SECTIONS]

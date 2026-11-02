@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { api, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { useBudget, useHealth, useRegistry, useUpdateBudget } from "@/lib/queries";
-import { Button, Field, Segmented, Switch } from "@/components/ui/controls";
+import { Button, Field, Segmented, Select, Switch } from "@/components/ui/controls";
 import { Keys } from "@/components/shell/Keys";
 import { ModelStorage } from "@/components/shell/ModelStorage";
 
@@ -21,6 +21,10 @@ const CLAUDE_TEXT: Record<string, string> = {
   live: "Claude writes scripts and shot plans and helps with prompts, billed to your budget.",
 };
 const MODE_NAME: Record<string, string> = { mock: "Mock", mixed: "Mixed", live: "Live" };
+const CLAUDE_ROLES = [
+  ["llm_smart_model", "Scripts and plans", "Faceless scripts, vlog and music video plans, Cinema shot plans"],
+  ["llm_fast_model", "Prompt help", "Enhance, topic ideas, rewording a refused prompt"],
+] as const;
 
 export function Settings() {
   const { data: budget } = useBudget();
@@ -98,6 +102,24 @@ export function Settings() {
                   onChange={(m) => update.mutate({ llm_mode: m })}
                 />
                 <p className="text-xs leading-relaxed text-muted">{CLAUDE_TEXT[budget.llm_mode]}</p>
+                <div className="grid gap-3 pt-1">
+                  {CLAUDE_ROLES.map(([key, label, hint]) => (
+                    <Field key={key} label={label} hint={hint} htmlFor={key}>
+                      <Select
+                        id={key}
+                        value={budget[key]}
+                        options={budget.claude_models.map((m) => ({
+                          value: m.id,
+                          label: `${m.name} · ${usd(m.input_usd)} in, ${usd(m.output_usd)} out`,
+                        }))}
+                        onChange={(v) => update.mutate({ [key]: v })}
+                      />
+                    </Field>
+                  ))}
+                </div>
+                <p className="text-2xs text-faint">
+                  Prices are per million tokens. Run estimates include what Claude&apos;s writing costs.
+                </p>
               </div>
               <p className="text-2xs text-faint">
                 Changes apply to the next generation, no restart needed.
