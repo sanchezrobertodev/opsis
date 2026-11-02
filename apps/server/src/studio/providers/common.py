@@ -207,12 +207,17 @@ async def staged_ref(provider: str, media: ResolvedMedia, upload: Uploader) -> s
 # ---------------------------------------------------------------- results of synchronous APIs
 
 
+def results_root() -> Path:
+    """Where every ResultStore parks its jobs (`<provider>/<job id>/`); the reaper sweeps old ones."""
+    return get_settings().resolve_media_root().parent / "provider_results"
+
+
 class ResultStore:
     """Synchronous providers (e.g. Gemini image) return bytes in the submit call. We park them on disk under
     a job id so the normal poll -> ingest flow picks them up like any async job."""
 
     def __init__(self, provider: str) -> None:
-        self.root = get_settings().resolve_media_root().parent / "provider_results" / provider
+        self.root = results_root() / provider
 
     def new_job(self) -> tuple[str, Path]:
         job_id = uuid.uuid4().hex

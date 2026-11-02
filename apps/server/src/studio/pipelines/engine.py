@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.budget import guard
@@ -42,7 +42,7 @@ from studio.db.models import (
 )
 from studio.domain import fsm
 from studio.domain.derived import STORED_KEYS
-from studio.domain.enums import ACTIVE_STATUSES, SPENT, ErrorClass, GenStatus
+from studio.domain.enums import ACTIVE_STATUSES, SPENT, AttemptStatus, ErrorClass, GenStatus
 from studio.domain.generations import (
     ConfirmationRequired,
     CreateRequest,
@@ -101,7 +101,9 @@ async def emit_run(session: AsyncSession, run: PipelineRun) -> None:
 async def run_spent(session: AsyncSession, run: PipelineRun) -> Decimal:
     """What the run's generations have cost so far: every charge the ledger holds for their attempts (a provider can
     bill an attempt that then failed), plus the estimate of each one still going (`unknown` too, since it may yet be
-    billed). A finished generation nobody charged for costs nothing, so a rejected request doesn't use up the cap."""
+    billed, and one canceled while its outcome was unknown, whose money stays held; either only until its bill is
+    booked). A finished generation nobody
+    charged for costs nothing, so a rejected request doesn't use up the cap."""
     return (await runs_spent(session, [run.id]))[run.id]
 
 
@@ -117,7 +119,13 @@ async def runs_spent(session: AsyncSession, run_ids: list[uuid.UUID]) -> dict[uu
             .group_by(Generation.group_id))).all(),
         *(await session.execute(
             select(Generation.group_id, func.sum(Generation.estimated_cost_usd))
-            .where(Generation.group_id.in_(run_ids), Generation.status.in_(ACTIVE_STATUSES))
+            .where(Generation.group_id.in_(run_ids), or_(
+                Generation.status.in_(ACTIVE_STATUSES - {GenStatus.unknown}),
+                # unknown or held: its estimate, until the provider's bill is booked on it (counted above)
+                Generation.id.in_(select(GenerationAttempt.generation_id).where(
+                    GenerationAttempt.status == AttemptStatus.unknown,
+                    ~select(SpendLedger.id).where(SpendLedger.generation_attempt_id == GenerationAttempt.id,
+                                                  SpendLedger.entry_type.in_(SPENT)).exists()))))
             .group_by(Generation.group_id))).all(),
         *(await session.execute(  # its Claude steps (scripts, plans, rewording)
             select(SpendLedger.pipeline_run_id, func.sum(SpendLedger.amount_usd))
@@ -240,12 +248,22 @@ def _apply_spec(step: PipelineStep, spec: StepSpec, sort: int, run_digest: str) 
 
 
 def _only_the_catalog_moved(st: PipelineStep, steps: dict[str, PipelineStep], run_digest: str) -> bool:
-    """A finished step whose plan changed although the run's input didn't and nothing it depends on was redone after
-    it: only the registry or a catalog moved under it (a deploy). It keeps its work; redoing it would pay again."""
+    """A finished step whose plan changed although the run's input didn't and nothing it depends on was redone since it
+    started: only the registry or a catalog moved under it (a deploy). It keeps its work; redoing it would pay again."""
     if st.status != StepStatus.succeeded or st.input.get("_run") != run_digest or st.finished_at is None:
         return False
+    since = st.started_at or st.finished_at  # a dependency redone while it rendered left it made from the old output
     deps = (steps.get(k) for k in st.depends_on or ())
-    return not any(d and d.finished_at and d.finished_at > st.finished_at for d in deps)
+    return not any(d and d.finished_at and d.finished_at > since for d in deps)
+
+
+def _adopt_moved_plans(steps: dict[str, PipelineStep], specs: list[StepSpec], run_digest: str) -> None:
+    """Steps whose plan only the code moved keep their work under the new plan, so a later revision of the run
+    compares against what the code plans now (with their `_run` no longer matching, it would redo them)."""
+    for spec in specs:
+        st = steps.get(spec.key)
+        if st and st.input_hash != spec.digest() and _only_the_catalog_moved(st, steps, run_digest):
+            st.input_hash = spec.digest()
 
 
 def _input_digest(value: dict[str, Any]) -> str:
@@ -307,6 +325,7 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
         await emit_run(session, run)
         return
     run_digest = _input_digest(run.input)
+    _adopt_moved_plans(steps, specs, run_digest)
     wanted: set[str] = set()
     for i, spec in enumerate(specs):
         wanted.add(spec.key)
@@ -319,8 +338,7 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
         elif st.input_hash != spec.digest() and st.status == StepStatus.waiting:
             # a checkpoint still waiting for its answer asks about the latest input (an edited script)
             _apply_spec(st, spec, i, run_digest)
-        elif ((st.input_hash != spec.digest() or st.status == StepStatus.skipped) and st.status != StepStatus.running
-              and not _only_the_catalog_moved(st, steps, run_digest)):
+        elif (st.input_hash != spec.digest() or st.status == StepStatus.skipped) and st.status != StepStatus.running:
             # its inputs changed (an edited shot, an upstream redo), or it was skipped and is wanted again: do it
             _apply_spec(st, spec, i, run_digest)
             st.status, st.output, st.error, st.generation_id = StepStatus.pending, {}, None, None
@@ -343,11 +361,16 @@ async def reconcile(session: AsyncSession, run: PipelineRun, fx: Effects) -> Non
         return
 
     settled = settled_outputs(steps)
+    # what's downstream of a step being (re)done is about to be replaced: a step waiting on it would start from the old
+    # output (two shots of a chain revised at once) and be paid for again
+    stale = {st.key for st in live if st.status in (StepStatus.pending, StepStatus.running, StepStatus.waiting)}
+    while grown := {st.key for st in live if st.key not in stale and stale.intersection(st.depends_on or ())}:
+        stale |= grown
     room: dict[str, Decimal] = {}
     for st in sorted(live, key=lambda s: s.sort):
         if st.status != StepStatus.pending:
             continue
-        if not all(d in settled for d in st.depends_on):
+        if not all(d in settled and d not in stale for d in st.depends_on):
             continue
         st.attempts += 1
         if st.kind == StepKind.generate:
@@ -392,7 +415,8 @@ async def execute_step(session: AsyncSession, step: PipelineStep, run: PipelineR
 
 async def _execute_step(session: AsyncSession, step: PipelineStep, run: PipelineRun) -> list[uuid.UUID]:
     if step.kind == StepKind.generate:
-        await _reword(session, step, run)
+        if "_reword" in step.input:  # once: a stale copy of this job finds the reworded take already rendering
+            await _reword(session, step, run)
         return []
     ops = {StepKind.local: LOCAL_OPS, StepKind.llm: LLM_OPS}.get(step.kind, {})
     op = ops.get(step.input.get("op", ""))
@@ -454,6 +478,10 @@ async def cancel_run(session: AsyncSession, run: PipelineRun, fx: Effects) -> No
             continue
         if st.kind == StepKind.generate and st.generation_id:
             gen = await session.get(Generation, st.generation_id, with_for_update=True)
+            if gen and gen.status in (GenStatus.ingesting, GenStatus.unknown):
+                # done at the provider and being saved, or held until someone checks it there: neither can be
+                # stopped, so it settles into its step like a failed run's take (kept for a retry, or marked failed)
+                continue
             if gen and not gen.status.terminal:
                 remote = await cancel_generation(session, gen)
                 if remote:
@@ -461,6 +489,31 @@ async def cancel_run(session: AsyncSession, run: PipelineRun, fx: Effects) -> No
         st.status, st.finished_at = StepStatus.canceled, _now()
     if run.status not in RUN_DONE:  # a failed run stays failed, with its reason; only its takes stop
         run.status, run.finished_at = RunStatus.canceled, _now()
+    await emit_run(session, run)
+
+
+async def revise_run(session: AsyncSession, run: PipelineRun, new_input: dict[str, Any]) -> None:
+    """Give a locked run a new input; its next advance redoes only the steps that change. A deploy since a step was
+    planned may have moved its plan too, so the steps the revision plans the same (finished, or a take still rendering)
+    are marked as planned from the new input: the plan keeps their work instead of redoing it as if this changed it."""
+    recipe = get_recipe(run.recipe)
+    steps = {st.key: st for st in (await session.execute(
+        select(PipelineStep).where(PipelineStep.run_id == run.id))).scalars()}
+    old, new = _input_digest(run.input), _input_digest(new_input)
+    try:
+        settled, reg = settled_outputs(steps), get_registry()
+        before, after = [{sp.key: sp.digest() for sp in recipe.plan(recipe.Input.model_validate(i), settled, reg)}
+                         for i in (run.input, new_input)]
+    except Exception:  # an unknown recipe, or an input that can't be planned any more: the next advance says so
+        before, after = {}, {}
+    for key, st in steps.items():
+        # a step being run holds its row (an ffmpeg op, a rewording): leave it, rather than wait here for it
+        busy = st.status == StepStatus.running and (st.kind != StepKind.generate or "_reword" in st.input)
+        if not busy and st.input.get("_run") == old and key in before and before[key] == after.get(key):
+            st.input = {**st.input, "_run": new}
+    run.input = new_input
+    if run.status in RUN_DONE:
+        run.status, run.error, run.finished_at, run.output = RunStatus.running, None, None, {}
     await emit_run(session, run)
 
 

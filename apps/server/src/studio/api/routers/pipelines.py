@@ -40,17 +40,18 @@ from studio.domain.enums import GenStatus
 from studio.domain.generations import (
     ConfirmationRequired,
     GenerationRequestError,
+    held_ids,
     quick_estimate,
     resolve_media_kinds,
 )
 from studio.llm import pricing
 from studio.pipelines.engine import (
-    RUN_DONE,
     Effects,
     cancel_run,
     emit_run,
     resolve_checkpoint,
     retry_run,
+    revise_run,
     run_spent,
     runs_spent,
 )
@@ -222,6 +223,7 @@ async def run_out(session: AsyncSession, run: PipelineRun) -> RunOut:
         if st.kind == StepKind.checkpoint:  # pick options are asset ids; approve options are plain words
             ids += [v for o in st.input.get("options", []) if _is_uuid(v := str(o.get("value")))]
     assets = await _assets(session, run.user_id, ids)
+    held = await held_ids(session, list(gens.values()))
 
     def step_out(st: PipelineStep) -> StepOut:
         gen = gens.get(st.generation_id) if st.generation_id else None
@@ -230,10 +232,12 @@ async def run_out(session: AsyncSession, run: PipelineRun) -> RunOut:
                    for o in st.input.get("options", [])]
         return StepOut(
             key=st.key, kind=st.kind.value, label=st.label, status=st.status.value, depends_on=st.depends_on,
-            # a take held as unknown says why, since its step only shows it as still running
-            error=st.error or (gen.error_message if gen and gen.status == GenStatus.unknown else None),
+            # a take held (unknown, or stopped while it was being sent) says why: its step can't show it
+            error=st.error or (gen.error_message if gen and (gen.status == GenStatus.unknown or gen.id in held)
+                               else None),
             output=st.output, options=options, generation_id=st.generation_id,
             generation_status=gen.status.value if gen else None, progress=gen.progress if gen else None,
+            held=bool(gen and gen.id in held),
             assets=[asset_out(assets[i]) for i in mine if i in assets],
             started_at=st.started_at, finished_at=st.finished_at,
         )
@@ -329,10 +333,7 @@ async def revise(run_id: uuid.UUID, body: RunRevise, session: AsyncSession = Dep
         raise GenerationRequestError(errors)
     if run.status == RunStatus.canceled:
         raise HTTPException(409, "a canceled run can't be revised; start a new one")
-    run.input = inp.model_dump(mode="json")
-    if run.status in RUN_DONE:
-        run.status, run.error, run.finished_at, run.output = RunStatus.running, None, None, {}
-    await emit_run(session, run)
+    await revise_run(session, run, inp.model_dump(mode="json"))
     await session.commit()
     await defer_advance(run.id)
     return await run_out(session, run)

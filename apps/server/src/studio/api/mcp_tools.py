@@ -45,7 +45,7 @@ server = MCPServer(name="opsis", title="Opsis studio", instructions=INSTRUCTIONS
 async def _api(method: str, path: str, **kw: Any) -> Any:
     from studio.api.main import app  # imported here: main mounts this module
 
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://opsis") as client:
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
         r = await client.request(method, path, **kw)
     if r.status_code >= 400:
         raise ToolError(_problem(r))
@@ -258,8 +258,8 @@ async def spend() -> dict[str, Any]:
 
 @server.tool()
 async def upload(ctx: Context, filename: str, content_base64: str) -> dict[str, Any]:
-    """Add a picture, clip or sound to the library (to use as a run input). The same size and type rules as the
-    studio's own uploads apply."""
+    """Add a picture, clip or sound to the library (to use as a run input). The same type rules as the studio's own
+    uploads apply; here a file can be up to about 12 MB (its base64 must fit a 16 MB request)."""
     try:
         data = base64.b64decode(content_base64, validate=True)
     except (binascii.Error, ValueError) as exc:
@@ -271,13 +271,18 @@ async def upload(ctx: Context, filename: str, content_base64: str) -> dict[str, 
 # ---------------------------------------------------------------- mounting
 
 
+def hosts() -> set[str]:
+    """The names the API answers to (main.py checks every request against them): this machine, and the host the web
+    app is served from (on a server, its tailnet name, which `tailscale serve` passes on for the API too)."""
+    return {"127.0.0.1", "localhost", "[::1]", urlsplit(get_settings().web_origin).hostname or "localhost"}
+
+
 def _security() -> TransportSecuritySettings:
-    """Host and Origin checks against DNS rebinding: this machine, and the host the web app is served from (on a
-    server, its tailnet name)."""
-    hosts = {"127.0.0.1", "localhost", "[::1]", urlsplit(get_settings().web_origin).hostname or "localhost"}
+    """Host and Origin checks against DNS rebinding."""
+    names = hosts()
     return TransportSecuritySettings(
-        allowed_hosts=[*hosts, *(f"{h}:*" for h in hosts)],
-        allowed_origins=[f"{s}://{h}{p}" for s in ("http", "https") for h in hosts for p in ("", ":*")])
+        allowed_hosts=[*names, *(f"{h}:*" for h in names)],
+        allowed_origins=[f"{s}://{h}{p}" for s in ("http", "https") for h in names for p in ("", ":*")])
 
 
 class _Endpoint:

@@ -233,6 +233,8 @@ class GenerationOut(ApiModel):
     started_at: datetime | None
     finished_at: datetime | None
     assets: list[AssetOut] = []
+    # stopped (canceled or failed) while its send may have gone through: its money stays held until marked checked
+    held: bool = False
 
 
 class GenerationPage(ApiModel):
@@ -572,6 +574,7 @@ class StepOut(ApiModel):
     generation_id: uuid.UUID | None
     generation_status: str | None = None
     progress: float | None = None
+    held: bool = False  # its take was stopped while its send may have gone through: money held until marked checked
     assets: list[AssetOut] = []
     started_at: datetime | None
     finished_at: datetime | None

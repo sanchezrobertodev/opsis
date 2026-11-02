@@ -389,6 +389,16 @@ async def quick_estimate(
             live.estimate.usd if live and live.estimate else None)
 
 
+async def held_ids(session: AsyncSession, gens: list[Generation]) -> set[uuid.UUID]:
+    """Takes stopped (canceled or failed) while their send may have gone through: the money stays held until someone
+    checks the provider and marks them checked (`resolve-unknown`)."""
+    stopped = [g.id for g in gens if g.status in (GenStatus.canceled, GenStatus.failed)]
+    if not stopped:
+        return set()
+    return set((await session.execute(select(GenerationAttempt.generation_id).where(
+        GenerationAttempt.generation_id.in_(stopped), GenerationAttempt.status == AttemptStatus.unknown))).scalars())
+
+
 async def inflight_attempt(session: AsyncSession, gen_id: uuid.UUID) -> GenerationAttempt | None:
     return (await session.execute(
         select(GenerationAttempt)
@@ -404,14 +414,18 @@ async def cancel_generation(session: AsyncSession, gen: Generation) -> Generatio
     """Cancel locally right away; returns the in-flight attempt the worker should cancel remotely."""
     if gen.status.terminal:
         raise fsm.IllegalTransition(f"generation is already {gen.status.value}")
+    if gen.status == GenStatus.unknown:
+        # the provider may have it and bill it: someone checks there and marks it failed, which releases its money.
+        # Canceled, it would stay held with no button to clear it, and the billing reconcile would book it on top
+        raise fsm.IllegalTransition("its outcome is unknown: check the provider's dashboard, then mark it failed")
     attempt = await inflight_attempt(session, gen.id)
     await fsm.transition(session, gen, GenStatus.canceled, reason="canceled by user")
     if attempt is not None:
-        if attempt.status == AttemptStatus.submitting:
-            # still being sent: the send settles it once it knows whether the provider took the job (an unknown
-            # outcome keeps its money held until someone checks)
+        if attempt.status in (AttemptStatus.submitting, AttemptStatus.unknown):
+            # still being sent (the send settles it once it knows whether the provider took the job), or its outcome
+            # unknown: the provider may bill it, so its money stays held until someone checks (resolve-unknown)
             return None
-        remote = attempt.provider_job_id is not None and attempt.status != AttemptStatus.unknown
+        remote = attempt.provider_job_id is not None
         attempt.status = AttemptStatus.canceled
         # Providers may bill partial work; P1 adapters report it. Until then release the reservation.
         await guard.settle(session, gen.user_id, attempt, None, estimated=True)

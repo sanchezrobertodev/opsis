@@ -249,7 +249,11 @@ export function useResolveUnknown() {
       unwrap(
         api.POST("/generations/{generation_id}/resolve-unknown", { params: { path: { generation_id: id } } }),
       ),
-    onSuccess: (gen) => patchGeneration(qc, gen.id, gen),
+    onSuccess: (gen) => {
+      patchGeneration(qc, gen.id, gen);
+      // its hold is released, which a held take does without an event: the budget and its run move
+      for (const key of ["budget", "run", "runs"]) void qc.invalidateQueries({ queryKey: [key] });
+    },
   });
 }
 

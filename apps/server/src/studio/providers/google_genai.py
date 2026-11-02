@@ -62,10 +62,12 @@ class GoogleGenAIAdapter(ProviderAdapter):
             self._client_key = key
         return self._client
 
-    def _error(self, exc: Exception, action: str) -> ProviderError:
+    def _error(self, exc: Exception, action: str, *, submitting: bool = False) -> ProviderError:
         if isinstance(exc, ProviderError):
             return exc
         if isinstance(exc, genai_errors.APIError):
+            if submitting and exc.code in (502, 504):  # a gateway that gave up may have passed the job on already
+                return AmbiguousSubmitError(f"Google gateway {exc.code}: the {action} may have gone through")
             text = f"{exc.status or ''} {exc.message or ''}".strip()
             cls = ErrorClass.moderation if looks_like_moderation(text) else classify_http(exc.code or 500, text)
             return ProviderError(cls, f"Google {action} failed ({exc.code}): {text[:800]}")
@@ -117,7 +119,7 @@ class GoogleGenAIAdapter(ProviderAdapter):
         except httpx.HTTPError as exc:
             raise submit_failure("Google", exc) from exc
         except Exception as exc:
-            raise self._error(exc, "submit") from exc
+            raise self._error(exc, "submit", submitting=True) from exc
         return SubmitResult(job_id=op.name, raw={"model": endpoint})
 
     async def _generate_images(self, model: str, payload: dict[str, Any]) -> SubmitResult:
@@ -162,14 +164,20 @@ class GoogleGenAIAdapter(ProviderAdapter):
             await anyio.Path(folder / f"{i:02d}{ext}").write_bytes(image_part.inline_data.data)
             written += 1
         errors = [r for r in calls if isinstance(r, BaseException)]
-        if errors and not written:  # nothing paid for to keep: say why the first call failed
+        if errors and not written:  # nothing paid for to keep: say why the calls failed
             self.store.discard(job_id)
-            exc = errors[0]
-            if isinstance(exc, TimeoutError):
-                raise AmbiguousSubmitError(f"Google image call timed out: {exc!r}") from exc
-            if isinstance(exc, httpx.HTTPError):
-                raise submit_failure("Google", exc) from exc
-            raise self._error(exc, "image generation") from exc  # type: ignore[arg-type]
+
+            def why(exc: BaseException) -> Exception:
+                if isinstance(exc, TimeoutError):
+                    return AmbiguousSubmitError(f"Google image call timed out: {exc!r}")
+                if isinstance(exc, httpx.HTTPError):
+                    return submit_failure("Google", exc)
+                return self._error(exc, "image generation", submitting=True)  # type: ignore[arg-type]
+
+            mapped = [why(e) for e in errors]
+            # one call that may have drawn (and billed) a picture makes the whole take unknown, never resent
+            i = next((i for i, m in enumerate(mapped) if isinstance(m, AmbiguousSubmitError)), 0)
+            raise mapped[i] from errors[i]
         self.store.write_meta(job_id, {"written": written, "blocked": blocked, "requested": count})
         return SubmitResult(job_id=f"{SYNC_PREFIX}{job_id}", raw={"model": model, "images": written})
 

@@ -335,7 +335,8 @@ One `transition()` checks the `ALLOWED` table and writes the status, a `job_even
   - One status call per execution, then re-defer with backoff (3 s × 1.5, cap 20 s for video or 5 s for images,
     with jitter).
   - Emit an event only when status changes or progress moves ≥1%.
-  - On timeout: cancel at the provider, then fail or fail over.
+  - On timeout: ask the provider to stop it, then fail or fail over once a poll says it stopped (or the route is
+    free); until then keep polling, and past twice the limit go to `unknown`, its money held.
 - `gen.ingest` (idempotent, ≤5 retries):
   1. Copy outputs to disk.
   2. Create assets and lineage from every input role.
@@ -344,7 +345,8 @@ One `transition()` checks the `ALLOWED` table and writes the status, a `job_even
   5. Defer `asset.derive`, and `pipeline.advance` if the job belongs to a pipeline.
 - `asset.derive` (queue `cpu`): ffprobe, poster, webp thumbnail, filmstrip sprite (hover-scrub), proxy if the codec
   isn't browser-safe, waveform peaks.
-- `pipeline.advance`: `queueing_lock="adv:{run}"` and `lock="run:{run}"`.
+- `pipeline.advance`: `queueing_lock="advance:{run}"` only; it serializes on the run row (`FOR UPDATE`), since a
+  procrastinate `lock` left a run frozen behind a killed worker's `doing` job.
 - `maint.reap` (every minute): re-defer orphaned `queued` rows and stale polls; mark `submitting` attempts older than
   2 min with no job id as `unknown`; advance running pipelines.
 - `maint.prune`: delete old events.
@@ -385,7 +387,7 @@ One `transition()` checks the `ALLOWED` table and writes the status, a `job_even
 | route_unavailable | 401/403, quota, 404 endpoint, outage, breaker open | update health and fail over. Always allowed before acceptance. After acceptance, needs `allow_failover`, budget room, and a check of `charges_on_failure` |
 | invalid_request | 400/422 | fail; flag the registry entry |
 | moderation | content policy | fail; fail over only if `allow_failover_on_moderation` |
-| timeout | > timeout_s | cancel at the provider, then fail over if allowed |
+| timeout | > timeout_s | cancel at the provider; fail over if allowed once it's confirmed stopped (or free), else `unknown` |
 | ingest_error | download or write failed | retry the ingest only; alert if provider expiry is near |
 
 **Circuit breaker:** opens after 3 consecutive failures for 10 min, then half-opens with one probe.

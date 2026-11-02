@@ -19,10 +19,13 @@ from cryptography.fernet import Fernet
 _MEDIA = Path(tempfile.mkdtemp(prefix="studio-test-media-"))
 # The compose Postgres (:5433); STUDIO_TEST_PG points elsewhere (infra/server's pod: 127.0.0.1:5432)
 PG_HOST, PG_PORT = os.environ.get("STUDIO_TEST_PG", "127.0.0.1:5433").rsplit(":", 1)
+# STUDIO_TEST_DB names the database, so checkouts side by side can test at once without dropping each other's
+TEST_DB = os.environ.get("STUDIO_TEST_DB", "studio_test")
 os.environ.update({
-    "DATABASE_URL": f"postgresql+asyncpg://studio:studio@{PG_HOST}:{PG_PORT}/studio_test",
-    "QUEUE_DATABASE_URL": f"postgresql://studio:studio@{PG_HOST}:{PG_PORT}/studio_test",
+    "DATABASE_URL": f"postgresql+asyncpg://studio:studio@{PG_HOST}:{PG_PORT}/{TEST_DB}",
+    "QUEUE_DATABASE_URL": f"postgresql://studio:studio@{PG_HOST}:{PG_PORT}/{TEST_DB}",
     "PROVIDER_MODE": "mock",
+    "TIMEZONE": "UTC",  # the caps' day and month: a developer .env must not move them
     "LIVE_ROUTE_ALLOWLIST": "",
     "MEDIA_ROOT": str(_MEDIA / "media"),
     "MOCK_QUEUE_SECONDS": "0",
@@ -67,10 +70,10 @@ async def _prepare_test_db() -> None:
 
     admin = await asyncpg.connect(f"postgresql://studio:studio@{PG_HOST}:{PG_PORT}/studio")
     try:
-        exists = await admin.fetchval("SELECT 1 FROM pg_database WHERE datname = 'studio_test'")
+        exists = await admin.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", TEST_DB)
         if exists:
-            await admin.execute("DROP DATABASE studio_test WITH (FORCE)")
-        await admin.execute("CREATE DATABASE studio_test")
+            await admin.execute(f'DROP DATABASE "{TEST_DB}" WITH (FORCE)')
+        await admin.execute(f'CREATE DATABASE "{TEST_DB}"')
     finally:
         await admin.close()
 

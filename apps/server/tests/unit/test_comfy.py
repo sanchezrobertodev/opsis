@@ -306,6 +306,17 @@ async def test_lost_job_is_route_unavailable(fake):
     assert poll.status == "failed" and poll.error_class == ErrorClass.route_unavailable
 
 
+async def test_a_blip_reaching_comfyui_while_polling_is_asked_again(fake, monkeypatch):
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("the PC is asleep", request=request)
+
+    monkeypatch.setattr(ComfyLocalAdapter, "_client", lambda self, timeout=30.0: httpx.AsyncClient(
+        base_url="http://comfy.test", transport=httpx.MockTransport(refuse)))
+    with pytest.raises(ProviderError) as exc:  # anything but transient parks the take in unknown for good
+        await adapter().poll(ROUTE, "p1")
+    assert exc.value.error_class == ErrorClass.transient
+
+
 async def test_validation_errors_are_invalid_requests(fake, monkeypatch):
     with pytest.raises(ProviderError) as exc:
         await adapter().submit(ROUTE, "wan22_ti2v_5b", {"prompt": "x", "negative_prompt": "missing"}, client_ref="r")

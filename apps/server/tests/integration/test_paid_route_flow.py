@@ -16,11 +16,11 @@ import httpx
 import pytest
 import respx
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from studio.api.main import app as api
 from studio.config import get_settings
-from studio.db.models import AssetProviderUpload, GenerationAttempt, SpendLedger
+from studio.db.models import AssetProviderUpload, GenerationAttempt, ProviderRouteHealth, SpendLedger
 from studio.db.session import session_scope
 from studio.domain.enums import AttemptStatus, ErrorClass
 from studio.media.mock_media import make_video
@@ -55,6 +55,8 @@ def http():
 
 @pytest.fixture
 async def client(db, in_memory_queue, live):
+    async with session_scope() as s:  # failures in earlier tests would leave a route's breaker open here
+        await s.execute(delete(ProviderRouteHealth))
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api), base_url="http://test") as c:
         yield c
 
@@ -337,3 +339,135 @@ async def test_a_take_carries_the_most_it_was_approved_for(client, http, mp4_byt
                                                      "params": {"duration": 4}})).json()
     policy = (await client.get("/budget")).json()
     assert cheap["routing"]["max_cost_usd"] == pytest.approx(max(cheap["estimated_cost_usd"], policy["confirm_over_usd"]))
+
+
+@pytest.mark.parametrize(("cancel_status", "status"), [(500, "unknown"), (200, "queued")])
+async def test_a_take_past_its_routes_limit_fails_over_only_once_it_is_stopped(client, http, mp4_bytes, cancel_status,
+                                                                              status):
+    """Still running when its route's time is up: sent elsewhere only if Replicate confirms the cancel; otherwise
+    it may still finish and bill, so it waits for a human with its money held."""
+    from datetime import UTC, datetime, timedelta
+
+    routes = mock_replicate(http, mp4_bytes)
+    routes["status"].mock(side_effect=[httpx.Response(200, json={"status": "processing"}),
+                                       httpx.Response(200, json={"status": "canceled"})])
+    cancel = http.post(url__regex=rf"{R}/predictions/p-\w+/cancel").respond(cancel_status)
+    held_before = (await client.get("/budget")).json()["reserved_usd"]
+    gen = (await client.post("/generations", json={"model_id": "seedance-2.5", "mode": "t2v", "prompt": "a calm sea",
+                                                   "params": {"duration": 4}})).json()
+    await run_submit(uuid.UUID(gen["id"]))
+    async with session_scope() as s:
+        attempt = (await s.execute(select(GenerationAttempt).where(
+            GenerationAttempt.generation_id == uuid.UUID(gen["id"])))).scalar_one()
+        attempt.submitted_at = datetime.now(UTC) - timedelta(days=1)
+    await run_poll(attempt.id)
+    done = (await client.get(f"/generations/{gen['id']}")).json()
+    assert done["status"] == status and cancel.call_count == 1
+    held = (await client.get("/budget")).json()["reserved_usd"] - held_before
+    if status == "unknown":
+        assert "may still finish and bill" in done["error_message"] and held > 0
+    else:
+        assert done["routing"]["tried"] == ["seedance-2.5@replicate"] and held == pytest.approx(0)
+
+
+@pytest.mark.parametrize("then", ["succeeded", "canceled"])
+async def test_a_take_just_past_its_limit_is_still_watched(client, http, mp4_bytes, then):
+    """Replicate won't confirm the cancel: the take is neither sent elsewhere nor given up on. If it finishes after
+    all, its result is kept; if it stops later, it goes elsewhere then, like any take that timed out."""
+    from datetime import UTC, datetime, timedelta
+
+    from studio.registry.loader import get_registry
+    from studio.worker.tasks.generation import PAST_LIMIT
+
+    routes = mock_replicate(http, mp4_bytes)
+    later = {"status": then, "output": DELIVERY, "metrics": {"predict_time": 38.0}}
+    routes["status"].mock(side_effect=[httpx.Response(200, json={"status": "processing"}), httpx.Response(200, json=later)])
+    cancel = http.post(url__regex=rf"{R}/predictions/p-\w+/cancel").respond(500)
+    gen = (await client.post("/generations", json={"model_id": "seedance-2.5", "mode": "t2v", "prompt": "a calm sea",
+                                                   "params": {"duration": 4}})).json()
+    await run_submit(uuid.UUID(gen["id"]))
+    limit = get_registry().model("seedance-2.5").route("seedance-2.5@replicate").timeout_s
+    async with session_scope() as s:
+        attempt = (await s.execute(select(GenerationAttempt).where(
+            GenerationAttempt.generation_id == uuid.UUID(gen["id"])))).scalar_one()
+        attempt.submitted_at = datetime.now(UTC) - timedelta(seconds=limit * 1.5)
+    await run_poll(attempt.id)
+    assert (await client.get(f"/generations/{gen['id']}")).json()["status"] == "in_progress"
+    async with session_scope() as s:
+        watched = await s.get(GenerationAttempt, attempt.id)
+        assert watched.error_message.startswith(PAST_LIMIT) and watched.next_poll_at is not None
+
+    await run_poll(attempt.id)
+    if then == "succeeded":
+        await run_ingest(attempt.id)
+    done = (await client.get(f"/generations/{gen['id']}")).json()
+    assert cancel.call_count == 1  # asked once
+    if then == "succeeded":
+        assert done["status"] == "succeeded" and routes["predict"].call_count == 1
+    else:
+        assert done["status"] == "queued" and done["routing"]["tried"] == ["seedance-2.5@replicate"]
+
+
+async def test_failovers_never_take_a_run_past_its_cap(client, http, mp4_bytes):
+    """Each take was approved for what was left of the run when it was made; one that fails over to a dearer route
+    must still fit what the run's other takes have left since."""
+    from studio.db.models import Generation, PipelineRun
+
+    routes = mock_replicate(http, mp4_bytes)
+    async with session_scope() as s:
+        run = PipelineRun(user_id=get_settings().owner_user_id, recipe="sequence", title="two shots",
+                          cap_usd=Decimal("0.80"))
+        s.add(run)
+        await s.flush()
+        run_id = run.id
+    body = {"model_id": "seedance-2.5", "mode": "t2v", "prompt": "a calm sea",
+            "params": {"duration": 4, "resolution": "480p"}, "group_id": str(run_id)}
+    first = (await client.post("/generations", json=body)).json()
+    second = (await client.post("/generations", json=body)).json()
+    async with session_scope() as s:  # as if priced at $0.30 on a route that then refused it, with $0.80 left
+        g = await s.get(Generation, uuid.UUID(second["id"]))
+        g.estimated_cost_usd = Decimal("0.30")
+        g.routing = {**g.routing, "max_cost_usd": 0.80, "tried": ["seedance-2.5@pika"]}
+    await run_submit(uuid.UUID(first["id"]))  # $0.41 of the $0.80
+    await run_submit(uuid.UUID(second["id"]))  # $0.41 more on Replicate would make $0.82
+    done = (await client.get(f"/generations/{second['id']}")).json()
+    assert done["status"] == "failed" and "$0.39 left in the run's $0.80 cap" in done["error_message"]
+    assert routes["predict"].call_count == 1
+
+
+async def test_a_fal_take_still_running_past_its_limit_never_goes_elsewhere(client, http, monkeypatch):
+    """fal answers the cancel of a running request with 202 (asked, not done) and its SDK returns as for a 200: the
+    take waits for a human instead of paying a second provider, and the route's breaker still counts each timeout."""
+    from datetime import UTC, datetime, timedelta
+
+    import fal_client
+
+    from studio.domain.enums import BreakerState
+    from studio.providers.fal import FalAdapter
+
+    class StillRunning:
+        async def status(self, app, request_id, with_logs=False):
+            return fal_client.InProgress(logs=[])
+
+        async def cancel(self, app, request_id):
+            pass
+
+    monkeypatch.setattr(get_settings(), "fal_key", "test-key")
+    monkeypatch.setattr(get_settings(), "replicate_api_token", "")
+    monkeypatch.setattr(FalAdapter, "client", property(lambda self: StillRunning()))
+    submit = http.post("https://queue.fal.run/bytedance/seedance-2.5/text-to-video").mock(
+        side_effect=lambda req: httpx.Response(200, json={"request_id": uuid.uuid4().hex}))
+    for _ in range(3):
+        gen = (await client.post("/generations", json={"model_id": "seedance-2.5", "mode": "t2v", "prompt": "a calm sea",
+                                                       "params": {"duration": 4, "resolution": "480p"}})).json()
+        await run_submit(uuid.UUID(gen["id"]))
+        async with session_scope() as s:
+            attempt = (await s.execute(select(GenerationAttempt).where(
+                GenerationAttempt.generation_id == uuid.UUID(gen["id"])))).scalar_one()
+            attempt.submitted_at = datetime.now(UTC) - timedelta(days=1)
+        await run_poll(attempt.id)
+        done = (await client.get(f"/generations/{gen['id']}")).json()
+        assert done["status"] == "unknown" and "may still finish and bill" in done["error_message"]
+    assert submit.call_count == 3
+    async with session_scope() as s:
+        assert (await s.get(ProviderRouteHealth, "seedance-2.5@fal")).breaker_state == BreakerState.open

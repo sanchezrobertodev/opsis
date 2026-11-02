@@ -880,7 +880,7 @@ export interface paths {
         /**
          * Resolve Unknown
          * @description A submit whose outcome is unknown: the user checked the provider dashboard and marks it failed. Also a take
-         *     canceled while it was being sent whose send ended with no answer: its held money is released.
+         *     stopped (canceled, or failed) while it was being sent whose send ended with no answer: its held money is released.
          */
         post: operations["resolve_unknown_generations__generation_id__resolve_unknown_post"];
         delete?: never;
@@ -2421,6 +2421,11 @@ export interface components {
              * @default []
              */
             assets: components["schemas"]["AssetOut"][];
+            /**
+             * Held
+             * @default false
+             */
+            held: boolean;
         };
         /** GenerationPage */
         GenerationPage: {
@@ -4020,6 +4025,11 @@ export interface components {
             generation_status?: string | null;
             /** Progress */
             progress?: number | null;
+            /**
+             * Held
+             * @default false
+             */
+            held: boolean;
             /**
              * Assets
              * @default []

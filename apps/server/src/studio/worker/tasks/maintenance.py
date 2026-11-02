@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 import shutil
+import stat
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 
 from studio.db.models import (
     Generation,
@@ -22,6 +25,7 @@ from studio.db.session import session_scope
 from studio.domain import fsm
 from studio.domain.enums import AttemptStatus, ErrorClass, GenStatus
 from studio.domain.removal import retry_purges
+from studio.providers.common import results_root
 from studio.storage.local import get_storage
 from studio.worker.app import Q_MAINT, app
 from studio.worker.tasks.generation import (
@@ -43,6 +47,9 @@ STALE_INGEST = timedelta(minutes=5)
 STALE_RUN = timedelta(minutes=2)
 EVENT_RETENTION = timedelta(days=7)
 ABANDONED_RENDER = timedelta(days=1)
+# a synchronous provider's parked result (ResultStore): ingest copied it into the library long ago, and no job runs
+# anywhere near this long (the longest route timeout is 2 h)
+PARKED_RESULT = timedelta(days=2)
 
 
 @app.periodic(cron="* * * * *")
@@ -95,6 +102,15 @@ async def reap(now: datetime) -> dict[str, int]:
                                                                GenStatus.canceled])))).scalars().all()
 
         await s.execute(delete(JobEvent).where(JobEvent.created_at < now - EVENT_RETENTION))
+        # advances deferred while `defer_advance` still set a `run:` lock wait forever behind a killed worker's
+        # `doing` one, and keep the run's queueing lock, so no new advance can queue
+        # shortcut: drop this once no queued pipeline.advance job carries a lock (a release after the one that ships it)
+        await s.execute(
+            text(
+                "UPDATE procrastinate_jobs SET lock = NULL WHERE task_name = 'pipeline.advance' "
+                "AND lock IS NOT NULL AND status IN ('todo', 'doing')"
+            )
+        )
 
     for gid in queued:
         await defer_submit(gid)
@@ -108,21 +124,26 @@ async def reap(now: datetime) -> dict[str, int]:
     for rid in runs:
         await defer_advance(rid)
         counts["runs"] += 1
-    counts["renders"] = _sweep_renders(now)
+    # frames of a 3D render that was never finished (the tab closed): `/finish` removes the rest
+    counts["renders"] = _sweep((get_storage().temp_dir() / "renders").glob("*"), now - ABANDONED_RENDER)
+    counts["parked_results"] = _sweep(results_root().glob("*/*"), now - PARKED_RESULT)
     counts["files_left"] = await retry_purges()
     if any(counts.values()):
         log.info("reaper: %s", counts)
     return counts
 
 
-def _sweep_renders(now: datetime) -> int:
-    """Frames of a 3D render that was never finished (the tab closed): `/finish` removes the rest."""
-    folder = get_storage().temp_dir() / "renders"
-    old = [d for d in folder.iterdir() if d.is_dir() and d.stat().st_mtime < (now - ABANDONED_RENDER).timestamp()] \
-        if folder.is_dir() else []
-    for d in old:
-        shutil.rmtree(d, ignore_errors=True)
-    return len(old)
+def _sweep(folders: Iterable[Path], before: datetime) -> int:
+    old = 0
+    for d in folders:
+        try:  # a fresh one may be discarded (a failed submit, a cancel) between listing and this
+            st = d.stat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISDIR(st.st_mode) and st.st_mtime < before.timestamp():
+            shutil.rmtree(d, ignore_errors=True)
+            old += 1
+    return old
 
 
 @app.periodic(cron="23 * * * *")

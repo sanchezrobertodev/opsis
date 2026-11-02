@@ -16,6 +16,7 @@ from decimal import Decimal
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from studio.config import get_settings
 from studio.db.models import BudgetPolicy, GenerationAttempt, SpendLedger
 from studio.domain.enums import LedgerEntry
 
@@ -45,14 +46,16 @@ async def get_policy(session: AsyncSession, user_id: uuid.UUID, *, lock: bool = 
     return policy
 
 
-def _windows(now: datetime) -> tuple[datetime, datetime]:
-    day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+def windows(now: datetime | None = None) -> tuple[datetime, datetime]:
+    """When the user's day and month began: midnight in TIMEZONE, so the daily cap resets at their midnight."""
+    local = (now or datetime.now(UTC)).astimezone(get_settings().timezone)
+    day = local.replace(hour=0, minute=0, second=0, microsecond=0)
     return day, day.replace(day=1)
 
 
 async def summary(session: AsyncSession, user_id: uuid.UUID, *, lock: bool = False) -> SpendSummary:
     policy = await get_policy(session, user_id, lock=lock)
-    day, month = _windows(datetime.now(UTC))
+    day, month = windows()
     row = (await session.execute(text("""
         SELECT
           COALESCE(SUM(amount_usd) FILTER (WHERE entry_type IN ('charge', 'adjustment') AND created_at >= :day), 0)
@@ -62,9 +65,10 @@ async def summary(session: AsyncSession, user_id: uuid.UUID, *, lock: bool = Fal
           COALESCE((
             SELECT SUM(r.amount_usd) FROM spend_ledger r
             WHERE r.user_id = :u AND r.entry_type = 'reservation'
+              -- released, or a held one whose bill the provider's billing has booked (counted once, as spend)
               AND NOT EXISTS (SELECT 1 FROM spend_ledger x
                               WHERE x.generation_attempt_id = r.generation_attempt_id
-                                AND x.entry_type = 'release')
+                                AND x.entry_type IN ('release', 'charge', 'adjustment'))
           ), 0) AS reserved
         FROM spend_ledger WHERE user_id = :u
     """), {"u": user_id, "day": day, "month": month})).one()

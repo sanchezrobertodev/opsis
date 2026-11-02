@@ -27,13 +27,14 @@ from sqlalchemy.exc import IntegrityError
 from studio.budget import guard
 from studio.config import get_settings
 from studio.db.base import uuid7
-from studio.db.models import Asset, AssetLineage, Generation, GenerationAttempt
+from studio.db.models import Asset, AssetLineage, Generation, GenerationAttempt, PipelineRun
 from studio.db.session import session_scope
 from studio.domain import fsm
 from studio.domain.enums import AssetKind, AssetSource, AssetStatus, AttemptStatus, ErrorClass, GenStatus
 from studio.domain.generations import routing_env
 from studio.domain.health import record_failure, record_success
 from studio.media.ffmpeg import Probe, probe
+from studio.pipelines.engine import run_spent
 from studio.providers.base import (
     AmbiguousSubmitError,
     PollResult,
@@ -62,6 +63,10 @@ MAX_INGEST_TRIES = 5
 PREPARE_TIMEOUT_S = 900
 SUBMIT_TIMEOUT_S = 330
 POLL_TIMEOUT_S = 60
+# a paid job past its route's time that its provider won't confirm it stopped is still watched (its result may yet come
+# and be billed) up to this many times that time, then held for a human
+WATCH_PAST_LIMIT = 2
+PAST_LIMIT = "past its time limit"  # starts the attempt's message once it has been asked to stop
 EXT = {"video/mp4": ".mp4", "video/webm": ".webm", "video/quicktime": ".mov", "image/png": ".png",
        "image/jpeg": ".jpg", "image/webp": ".webp", "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/flac": ".flac",
        "model/gltf-binary": ".glb", "application/x-ply": ".ply", "application/json": ".json"}
@@ -229,6 +234,17 @@ async def _handle_failure(
 # ------------------------------------------------------------------ submit
 
 
+async def _why_rerouted(s, gen: Generation) -> str:
+    """Why the route a take was priced on is gone, or a price over its limit alone reads like the estimate was wrong."""
+    last = (await s.execute(select(GenerationAttempt).where(GenerationAttempt.generation_id == gen.id)
+                            .order_by(GenerationAttempt.attempt_no.desc()).limit(1))).scalar_one_or_none()
+    if last is None or not last.error_message:
+        return ""
+    providers = get_registry().providers
+    name = providers[last.provider].name if last.provider in providers else last.provider
+    return f"{name} couldn't take it: {last.error_message}. "
+
+
 @app.task(name="gen.submit", queue=Q_SUBMIT)
 async def gen_submit(generation_id: str) -> None:
     await run_submit(uuid.UUID(generation_id))
@@ -260,14 +276,7 @@ async def run_submit(gen_id: uuid.UUID) -> None:
 
             affordable = [c for c in eligible if usd(c) <= Decimal(str(limit))]
             if not affordable:
-                # say why the route it was priced on is gone, or the price alone reads like the estimate was wrong
-                last = (await s.execute(select(GenerationAttempt).where(GenerationAttempt.generation_id == gen.id)
-                                        .order_by(GenerationAttempt.attempt_no.desc()).limit(1))).scalar_one_or_none()
-                why = ""
-                if last is not None and last.error_message:
-                    name = reg.providers[last.provider].name if last.provider in reg.providers else last.provider
-                    why = f"{name} couldn't take it: {last.error_message}. "
-                cheapest = min(eligible, key=usd)
+                cheapest, why = min(eligible, key=usd), await _why_rerouted(s, gen)
                 await fsm.transition(s, gen, GenStatus.failed, error=(
                     ErrorClass.invalid_request,
                     f"{why}Every route left costs more than the ${limit:.2f} this take was approved for "
@@ -295,11 +304,26 @@ async def run_submit(gen_id: uuid.UUID) -> None:
                 await fsm.transition(s, gen, GenStatus.queued, reason="provider_concurrency")
             requeue_in = 5.0
         else:
+            estimate = chosen.estimate.usd if chosen.estimate else Decimal("0")
+            run = await s.get(PipelineRun, gen.group_id) if gen.group_id and estimate > 0 else None
+            if run is not None:
+                # other takes of the run may have failed over to dearer routes since this one was made: check
+                # what's left of its cap now, under the budget lock reserve takes, so failovers can't overrun it
+                # together (run_spent counts this take at its old price)
+                policy = await guard.get_policy(s, gen.user_id, lock=True)
+                cap = run.cap_usd if run.cap_usd is not None else policy.default_run_cap_usd
+                left = cap - await run_spent(s, run) + (gen.estimated_cost_usd or Decimal("0"))
+                if estimate > left:
+                    why = await _why_rerouted(s, gen)
+                    await fsm.transition(s, gen, GenStatus.failed, error=(
+                        ErrorClass.invalid_request,
+                        f"{why}{chosen.provider_name or route.provider} would charge ${estimate:.2f}, more than the "
+                        f"${max(left, Decimal('0')):.2f} left in the run's ${cap:.2f} cap"))
+                    return
             attempt_no = (await s.execute(
                 select(func.coalesce(func.max(GenerationAttempt.attempt_no), 0))
                 .where(GenerationAttempt.generation_id == gen.id)
             )).scalar_one() + 1
-            estimate = chosen.estimate.usd if chosen.estimate else Decimal("0")
             attempt = GenerationAttempt(
                 id=uuid7(), generation_id=gen.id, attempt_no=attempt_no, route_id=route.id,
                 provider=route.provider, status=AttemptStatus.submitting, estimated_cost_usd=estimate,
@@ -372,6 +396,8 @@ async def run_submit(gen_id: uuid.UUID) -> None:
                 gen.error_message = (f"stopped while it was being sent, and the provider may have taken it (and may "
                                      f"bill it): check {route.provider}'s dashboard, then mark it checked. "
                                      f"{ambiguous}")[:2000]
+                await fsm.emit(s, user_id=gen.user_id, topic="generation", type="generation.held", subject_id=gen.id,
+                               payload={**fsm.generation_event_payload(gen), "held": True})
             else:
                 if result is not None:  # it was taken: cancel it there
                     attempt.provider_job_id = result.job_id
@@ -458,10 +484,24 @@ async def run_poll(attempt_id: uuid.UUID) -> None:
     except Exception as exc:  # network hiccup while polling: try again later
         transient_error = repr(exc)
 
+    timed_out = (datetime.now(UTC) - (attempt.submitted_at or datetime.now(UTC))).total_seconds() > route.timeout_s
+    asked = (attempt.error_message or "").startswith(PAST_LIMIT)  # asked to stop on an earlier poll
+    stopped = False
+    after: PollResult | None = None
+    if timed_out and not asked and unreadable is None and (res is None or res.status in ("queued", "running")):
+        try:  # before deciding: only a job that can't bill here any more may go to a second provider
+            if await asyncio.wait_for(adapter.cancel(route, job_id), POLL_TIMEOUT_S):
+                # a cancel may only be asked for (fal's 202 for a running job): believe it once the job says so
+                after = await asyncio.wait_for(adapter.poll(route, job_id), POLL_TIMEOUT_S)
+                stopped = after.status in ("canceled", "failed")
+                if after.status == "succeeded":  # it finished meanwhile: keep it
+                    res = after
+        except Exception:
+            log.warning("remote cancel of %s unconfirmed (job may still finish and bill)", attempt_id, exc_info=True)
+
     next_poll: float | None = None
     ingest = False
     resubmit: float | None = None
-    cancel_remote = False
     async with session_scope() as s:
         gen = await s.get(Generation, attempt.generation_id, with_for_update=True)
         attempt = await s.get(GenerationAttempt, attempt_id, with_for_update=True)
@@ -471,7 +511,6 @@ async def run_poll(attempt_id: uuid.UUID) -> None:
         now = datetime.now(UTC)
         attempt.poll_count += 1
         elapsed = (now - (attempt.submitted_at or now)).total_seconds()
-        timed_out = elapsed > route.timeout_s
 
         if unreadable is not None:
             # never fail over (a second paid job) while the first may still be running: a human decides
@@ -480,11 +519,24 @@ async def run_poll(attempt_id: uuid.UUID) -> None:
             await fsm.transition(s, gen, GenStatus.unknown, reason="job status unreadable",
                                  error=(unreadable.error_class, unreadable.message))
         elif res is None or res.status in ("queued", "running"):
-            if timed_out:
-                cancel_remote = True
+            if timed_out and (stopped or not attempt.estimated_cost_usd):  # stopped there, or free
                 resubmit = await _handle_failure(s, gen, attempt, route, ErrorClass.timeout,
-                                                 f"no result after {int(elapsed)} s", accepted=True)
+                                                 f"no result after {int(elapsed)} s", accepted=True,
+                                                 reported=_reported_cost(after.usage) if after else None)
+            elif timed_out and elapsed > WATCH_PAST_LIMIT * route.timeout_s:
+                # it may still finish and bill: failing over would pay twice, so its money stays held, a human decides
+                message = (f"no result after {int(elapsed)} s and {provider.name} didn't confirm it stopped, so it may "
+                           "still finish and bill it: check its dashboard, then mark it checked")
+                if not asked:
+                    await record_failure(s, attempt.route_id, attempt.provider, ErrorClass.timeout, message)
+                attempt.status, attempt.error_message = AttemptStatus.unknown, message
+                await fsm.transition(s, gen, GenStatus.unknown, reason="timed out", error=(ErrorClass.timeout, message))
             else:
+                if timed_out and not asked:  # asked to stop and not confirmed: keep watching, so a result isn't lost
+                    attempt.error_message = (f"{PAST_LIMIT} ({int(route.timeout_s)} s): asked {provider.name} to stop "
+                                             "it; still watching it, since it may finish and bill")
+                    await record_failure(s, attempt.route_id, attempt.provider, ErrorClass.timeout,
+                                         attempt.error_message)
                 if res is not None:
                     attempt.status = AttemptStatus.running if res.status == "running" else AttemptStatus.submitted
                     attempt.last_response = _scrub(res.raw)
@@ -515,6 +567,11 @@ async def run_poll(attempt_id: uuid.UUID) -> None:
                                      "raw": _scrub(res.raw)}
             await fsm.transition(s, gen, GenStatus.ingesting, reason=None)
             ingest = True
+        elif asked and (res.status == "canceled" or res.error_class != ErrorClass.moderation):
+            # it stopped after we asked it to at its time limit: a timeout, so it may go elsewhere like one
+            resubmit = await _handle_failure(s, gen, attempt, route, ErrorClass.timeout,
+                                             f"no result after {int(elapsed)} s; stopped at the provider", accepted=True,
+                                             reported=_reported_cost(res.usage))
         elif res.status == "canceled":
             attempt.status = AttemptStatus.canceled
             await guard.settle(s, gen.user_id, attempt, _reported_cost(res.usage), estimated=True)
@@ -525,8 +582,6 @@ async def run_poll(attempt_id: uuid.UUID) -> None:
                 res.error_message or "provider reported failure", accepted=True, reported=_reported_cost(res.usage),
             )
 
-    if cancel_remote:
-        await defer_cancel_remote(attempt_id)
     if next_poll is not None:
         await defer_poll(attempt_id, next_poll)
     if ingest:
@@ -613,7 +668,7 @@ async def run_ingest(attempt_id: uuid.UUID) -> None:
             continue
 
         asset_id = uuid7()
-        workdir = storage.temp_dir() / f"ingest-{attempt_id.hex[:12]}-{out.index}"
+        workdir = storage.temp_dir() / f"ingest-{asset_id.hex}"  # a second ingest of this take may run beside it
         workdir.mkdir(parents=True, exist_ok=True)
         try:
             tmp = workdir / "download.bin"
@@ -656,7 +711,11 @@ async def run_ingest(attempt_id: uuid.UUID) -> None:
                                payload={"asset_id": str(asset_id), "generation_id": str(gen_id), "kind": kind.value})
         except IntegrityError:
             storage.delete_prefix(f"u/{user_id}/a/{asset_id}")  # a concurrent ingest won the race
-            continue
+            async with session_scope() as s:  # its asset: whichever of us settles the take derives it
+                asset_id = (await s.execute(select(Asset.id).where(
+                    Asset.generation_id == gen_id, Asset.output_index == out.index))).scalar_one_or_none()
+            if asset_id is None:
+                continue
         created.append(asset_id)
 
     async with session_scope() as s:

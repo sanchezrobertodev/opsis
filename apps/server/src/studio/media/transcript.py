@@ -47,8 +47,8 @@ def shots(words: list[dict[str, Any]], total: float, *, target_s: float, min_s: 
     `min_s`), each cut at a pause in the singing near the target, so a shot never breaks mid-word when a pause exists.
     Each shot carries its words, timed from its own start. Needs total <= max_shots * max_s."""
     gaps = [((a["end"] + b["start"]) / 2, b["start"] - a["end"]) for a, b in itertools.pairwise(words)]
-    cuts, t0 = [], 0.0
-    while total - t0 > max_s:
+    cuts, t0, total = [], 0.0, round(total, 3)  # cuts are kept to the millisecond, so the bounds are too
+    while total - t0 > max_s + 1e-6:  # float noise must not cost one more shot (or an empty one) than allowed
         # every cut leaves a remainder the shots still allowed can cover, so there are never more than max_shots
         left = max_shots - len(cuts) - 1
         lo, hi = max(t0 + min_s, total - left * max_s), t0 + max_s
@@ -59,13 +59,15 @@ def shots(words: list[dict[str, Any]], total: float, *, target_s: float, min_s: 
         if window:
             # a real pause (a breath, a line break) nearest the ideal length, else the longest gap there is
             at = max(window, key=lambda g: (g[1] >= PAUSE_S, -abs(g[0] - ideal) if g[1] >= PAUSE_S else g[1]))[0]
-        else:  # one long word or silence: cut at the ideal point, or after the word it falls in
-            inside = next((w for w in words if w["start"] < ideal < w["end"]), None)
-            at = inside["end"] if inside and inside["end"] <= hi else ideal
+        else:  # one long word or silence: cut at the ideal point kept inside the window, or after the word it falls in
+            # hi wins over lo: a short shot beats one over max_s or an empty last shot
+            at = min(max(ideal, lo), hi)
+            inside = next((w for w in words if w["start"] < at < w["end"]), None)
+            at = inside["end"] if inside and inside["end"] <= hi else at
         at = round(at, 3)
         cuts.append(at)
         t0 = at
-    bounds = [0.0, *cuts, round(total, 3)]
+    bounds = [0.0, *cuts, total]
     out = []
     for start, end in itertools.pairwise(bounds):
         mine = [w for w in words if start <= (w["start"] + w["end"]) / 2 < end]

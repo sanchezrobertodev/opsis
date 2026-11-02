@@ -230,7 +230,8 @@ function StepRow({ run, step }: { run: Run; step: Step }) {
   const answer = useAnswerCheckpoint();
   const resolve = useResolveUnknown();
   const running = step.status === "running" && step.kind === "generate";
-  const held = running && step.generation_status === "unknown";
+  // unknown while it runs, or stopped (the run canceled) while its send may have gone through
+  const held = (running && step.generation_status === "unknown") || step.held;
   return (
     <li className="rounded-[var(--radius-panel)] bg-panel p-3">
       <div className="flex items-center gap-3">
@@ -247,13 +248,23 @@ function StepRow({ run, step }: { run: Run; step: Step }) {
       {held && step.generation_id && (
         <div className="mt-2 flex flex-wrap items-center gap-3 pl-6">
           <p className="flex-1 text-xs leading-relaxed text-muted">
-            The provider&rsquo;s answer couldn&rsquo;t be read, so this take is held rather than tried again (a second
-            try could be paid twice). If the provider shows it failed, mark it failed and the run goes on without it.
+            {step.held ? (
+              <>
+                It was stopped while it was being sent, and the provider may have taken it, so its money is held. Check
+                the provider&rsquo;s dashboard, then mark it checked to release it.
+              </>
+            ) : (
+              <>
+                The provider hasn&rsquo;t confirmed this take stopped (its answer couldn&rsquo;t be read, or it ran out
+                of time), so it&rsquo;s held rather than tried again: a second try could be paid twice. If the provider
+                shows it failed or stopped, mark it failed and the run goes on without it.
+              </>
+            )}
           </p>
           <Button type="button" size="sm" disabled={resolve.isPending}
                   onClick={() => resolve.mutate(step.generation_id!, {
                     onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't mark it failed") })}>
-            Mark failed
+            {step.held ? "Mark checked" : "Mark failed"}
           </Button>
         </div>
       )}

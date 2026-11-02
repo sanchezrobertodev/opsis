@@ -24,7 +24,7 @@ def asset_out(a: Asset) -> AssetOut:
     )
 
 
-def generation_out(g: Generation, assets: list[Asset] | None = None) -> GenerationOut:
+def generation_out(g: Generation, assets: list[Asset] | None = None, held: bool = False) -> GenerationOut:
     storage = get_storage()
     return GenerationOut(
         id=g.id, model_id=g.model_id, mode=g.mode, output_type=g.output_type, status=g.status.value,
@@ -37,5 +37,5 @@ def generation_out(g: Generation, assets: list[Asset] | None = None) -> Generati
         group_id=g.group_id, parent_generation_id=g.parent_generation_id, project_id=g.project_id,
         shot_key=g.shot_key, created_at=g.created_at,
         queued_at=g.queued_at, started_at=g.started_at, finished_at=g.finished_at,
-        assets=[asset_out(a) for a in sorted(assets or [], key=lambda a: a.output_index or 0)],
+        assets=[asset_out(a) for a in sorted(assets or [], key=lambda a: a.output_index or 0)], held=held,
     )

@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from studio import keys as provider_keys
 from studio.api import mcp_tools
@@ -79,11 +81,15 @@ app = FastAPI(
     description="Self-hosted AI video studio: model registry, generations, assets and live events.",
 )
 MAX_BODY_BYTES = MAX_UPLOAD_BYTES + (16 << 20)  # the largest upload plus the form around it
+MAX_JSON_BYTES = 16 << 20  # any other body, which is read into memory whole
+# the routes that take files, which the form parser spools to disk; any other route reads a body whole, whatever its type
+FILE_ROUTES = re.compile(r"/uploads|/projects/[^/]+/renders/[^/]+/frames")
 _web = get_settings().web_origin
+# 127.0.0.1 is the same dev web app as localhost; a deployed API trusts only its own web app
+ORIGINS = [_web, *(["http://127.0.0.1:3000"] if _web.startswith("http://localhost") else [])]
 app.add_middleware(
     CORSMiddleware,
-    # 127.0.0.1 is the same dev web app as localhost; a deployed API trusts only its own web app
-    allow_origins=[_web, *(["http://127.0.0.1:3000"] if _web.startswith("http://localhost") else [])],
+    allow_origins=ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -92,16 +98,31 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def _body_size(request: Request, call_next):  # type: ignore[no-untyped-def]
-    """Refuse an upload by its declared size before it's read: the form parser spools every file to disk first,
-    so a size check in the route comes after the disk filled up."""
+async def _guard(request: Request, call_next):  # type: ignore[no-untyped-def]
+    """Refuse what another website makes a browser send, and a body by its declared size before it's read: the form
+    parser spools every file to disk first and a JSON body is read whole, so a check in the route comes too late."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        origin = request.headers.get("origin")
+        # CORS only hides the answer from a page elsewhere, not the form it posts. The API's own pages (/docs) may;
+        # /mcp checks its callers itself
+        if (origin is not None and origin not in ORIGINS and origin != str(request.base_url).rstrip("/")
+                and request.url.path != "/mcp"):
+            return JSONResponse(status_code=403, content={"detail": "requests from other websites are refused"})
     if request.method in ("POST", "PUT", "PATCH"):
         length = request.headers.get("content-length")
-        if length is None and "multipart/" in request.headers.get("content-type", ""):
-            return JSONResponse(status_code=411, content={"detail": "uploads need a Content-Length"})
-        if length is not None and (not length.isdigit() or int(length) > MAX_BODY_BYTES):
-            return JSONResponse(status_code=413, content={"detail": "file too large"})
+        form = request.headers.get("content-type", "").strip().lower().startswith("multipart/form-data")
+        # a chunked body has no size to check up front
+        if "transfer-encoding" in request.headers or (length is None and form):
+            return JSONResponse(status_code=411, content={"detail": "send the body with a Content-Length"})
+        big = form and FILE_ROUTES.fullmatch(request.url.path) is not None
+        if length is not None and (not length.isdigit() or int(length) > (MAX_BODY_BYTES if big else MAX_JSON_BYTES)):
+            return JSONResponse(status_code=413, content={"detail": "file too large" if big else "body too large"})
     return await call_next(request)
+
+
+# DNS rebinding: a page whose own name points at this machine is same-origin with the API, so only this machine's
+# names and the web app's are answered (any port). Never a bare name like "test": the OS may ask the network for it.
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(mcp_tools.hosts()))
 
 
 @app.exception_handler(GenerationRequestError)

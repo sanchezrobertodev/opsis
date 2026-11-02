@@ -299,7 +299,8 @@ async def lyric_shots(session: AsyncSession, run: PipelineRun, step: PipelineSte
     if total > longest:
         raise StepFailed(f"the song runs {total:.0f} s; at most {inp['max_shots']} shots of {inp['max_s']:.0f} s "
                          f"cover {longest:.0f} s. Raise the shot limit or trim the song")
-    target = max(float(inp["target_s"]), total / float(inp["max_shots"]))
+    # never aim past what the video model can make (a 6 s target for a 5 s model)
+    target = min(max(float(inp["target_s"]), total / float(inp["max_shots"])), float(inp["max_s"]))
     words = read_transcript(get_storage().path_for(script.storage_key))
     cut = lyric_cuts(words, total, target_s=target, min_s=min(float(inp["min_s"]), target),
                      max_s=float(inp["max_s"]), max_shots=int(inp["max_shots"]))

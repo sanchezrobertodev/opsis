@@ -21,8 +21,14 @@ from studio.api.schemas import (
 from studio.api.serializers import generation_out
 from studio.db.models import Asset, Generation, PipelineRun, RunStatus, User
 from studio.domain import fsm
-from studio.domain.enums import ACTIVE_STATUSES, ErrorClass, GenStatus
-from studio.domain.generations import CreateRequest, cancel_generation, create_generation, inflight_attempt
+from studio.domain.enums import ACTIVE_STATUSES, AttemptStatus, ErrorClass, GenStatus
+from studio.domain.generations import (
+    CreateRequest,
+    cancel_generation,
+    create_generation,
+    held_ids,
+    inflight_attempt,
+)
 from studio.domain.removal import delete_files, remove_assets
 from studio.registry.loader import get_registry
 from studio.worker.tasks.generation import defer_cancel_remote, defer_submit
@@ -51,7 +57,8 @@ async def _with_assets(session: AsyncSession, gens: list[Generation]) -> list[Ge
     by_gen: dict[uuid.UUID, list[Asset]] = {}
     for a in rows:
         by_gen.setdefault(a.generation_id, []).append(a)
-    return [generation_out(g, by_gen.get(g.id, [])) for g in gens]
+    held = await held_ids(session, gens)
+    return [generation_out(g, by_gen.get(g.id, []), held=g.id in held) for g in gens]
 
 
 @router.post(
@@ -140,6 +147,8 @@ async def delete_generation(
     gen = await _get_owned(session, user, generation_id, lock=True, deleted_ok=True)
     if gen.status in ACTIVE_STATUSES:
         raise HTTPException(409, "This take is still rendering. Cancel it first, or mark it failed if it's stuck.")
+    if await held_ids(session, [gen]):  # once removed, nothing could release what it holds
+        raise HTTPException(409, "This take's money is held: check the provider's dashboard and mark it checked first.")
     run = await session.get(PipelineRun, gen.group_id) if gen.group_id else None
     if run is not None and run.status in (RunStatus.running, RunStatus.waiting):
         raise HTTPException(409, "This take belongs to a run that is still going. Cancel the run or let it finish first.")
@@ -174,17 +183,18 @@ async def resolve_unknown(
     generation_id: uuid.UUID, session: AsyncSession = Depends(get_session), user: User = Depends(current_user)
 ) -> GenerationOut:
     """A submit whose outcome is unknown: the user checked the provider dashboard and marks it failed. Also a take
-    canceled while it was being sent whose send ended with no answer: its held money is released."""
+    stopped (canceled, or failed) while it was being sent whose send ended with no answer: its held money is released."""
     from studio.budget import guard
-    from studio.domain.enums import AttemptStatus
 
     gen = await _get_owned(session, user, generation_id, lock=True)
     attempt = await inflight_attempt(session, gen.id)
-    held = gen.status == GenStatus.canceled and attempt is not None and attempt.status == AttemptStatus.unknown
+    held = (gen.status in (GenStatus.canceled, GenStatus.failed) and attempt is not None
+            and attempt.status == AttemptStatus.unknown)
     if gen.status != GenStatus.unknown and not held:
         raise HTTPException(409, "generation is not in the unknown state")
     if attempt is not None:
         attempt.status = AttemptStatus.failed
+        attempt.finished_at = attempt.finished_at or attempt.updated_at  # last seen: the bill check shares its hours
         await guard.settle(session, gen.user_id, attempt, None, estimated=True)
     if not held:
         await fsm.transition(session, gen, GenStatus.failed, reason="marked failed by user",

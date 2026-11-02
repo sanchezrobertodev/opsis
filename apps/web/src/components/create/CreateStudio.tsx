@@ -46,7 +46,7 @@ export function CreateStudio({
   // Take numbers count up from the oldest generation in view, like a shooting log.
   const total = items.length;
   // a take still rendering can't be deleted, so it can't be picked either
-  const selectable = items.filter((g) => !isActive(g.status)).map((g) => g.id);
+  const selectable = items.filter((g) => !isActive(g.status) && !g.held).map((g) => g.id);
   const picked = selectable.filter((id) => selection.picked.has(id));
 
   function removePicked() {

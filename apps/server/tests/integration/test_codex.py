@@ -20,6 +20,7 @@ from pathlib import Path
 from PIL import Image
 args = sys.argv[1:]
 Path(os.environ["FAKE_ARGS"]).write_text(json.dumps(args))
+Path(os.environ["FAKE_ARGS"] + ".env").write_text(json.dumps(sorted(os.environ)))
 answer = Path(args[args.index("-o") + 1])
 print(json.dumps({"type": "thread.started", "thread_id": "01a1-test-session"}))
 if os.environ.get("FAKE_LIMIT"):
@@ -69,8 +70,22 @@ async def test_codex_draws_read_only_crops_to_the_shape_and_clears_its_session(m
     assert abs(w / h - 9 / 16) < 0.01  # Codex drew 3:2; cropped to the asked shape
     args = json.loads((tmp_path / "args.json").read_text())
     assert args[:2] == ["exec", "--json"] and args[args.index("-s") + 1] == "read-only"  # never writes or bypasses
+    assert {"features.shell_tool=false", "features.unified_exec=false"} <= set(args)  # nor reads files with a shell
     assert args[args.index("-i") + 1] == str(ref) and "a red apple" in args[-1] and "9:16" in args[-1]
     assert not (tmp_path / "codex-home" / "generated_images" / "01a1-test-session").exists()
+
+
+async def test_codex_never_sees_the_studios_secrets(monkeypatch, tmp_path):
+    adapter = adapter_with_fake(monkeypatch, tmp_path)
+    secrets = ("FAL_KEY", "DATABASE_URL", "QUEUE_DATABASE_URL", "KEYS_SECRET", "PGPASSWORD", "GH_TOKEN")
+    for name in secrets:
+        monkeypatch.setenv(name, "s3cret")
+    route = get_registry().model("gpt-image-2.5").route("gpt-image-2.5@codex")
+    job = (await adapter.submit(route, "t2i", {"prompt": "x", "aspect_ratio": "1:1"}, client_ref="c")).job_id
+    assert (await finish(adapter, route, job)).status == "succeeded"
+    seen = set(json.loads((tmp_path / "args.json.env").read_text()))
+    assert not seen & set(secrets)  # a prompt telling the agent to print its environment finds no key
+    assert {"PATH", "CODEX_HOME"} <= {n.upper() for n in seen}  # what it needs to run and find its sign-in
 
 
 async def test_codex_without_a_picture_moves_on_to_the_next_route(monkeypatch, tmp_path):
