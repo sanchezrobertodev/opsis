@@ -40,7 +40,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   (fal's 202 only asks); until then it's still watched (a result is ingested), and past twice its limit it goes to
   `unknown` with its money held. A take stopped (canceled or failed) while its send was ambiguous keeps its hold too:
   `held` on the take and its run step, released by "Mark checked" (`resolve-unknown`); it can't be deleted until then.
-  A held take's hold stops counting once the provider's bill for it is booked (`budget/reconcile.py`).
+  A held or `unknown` take's hold stops counting, in the totals and the run cap, once the provider's bill for it is
+  booked (`budget/reconcile.py`).
 - **Ingest every provider output to disk immediately.** Veo deletes after 2 days, Replicate after 1 hour.
 - **Status changes go through `domain/fsm.transition()` only.** It writes the status, a `job_events` row and
   `pg_notify` in one transaction.

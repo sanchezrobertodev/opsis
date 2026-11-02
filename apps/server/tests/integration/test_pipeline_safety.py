@@ -321,6 +321,24 @@ async def test_a_take_whose_outcome_is_unknown_keeps_its_money_held_until_checke
     assert await _spent(run_id) == 0
 
 
+async def test_a_bill_booked_on_a_take_whose_outcome_is_unknown_counts_instead_of_its_estimate():
+    """Reconcile can book the provider's bill on an attempt still parked unknown: the run's cap counts it once."""
+    async with session_scope() as s:
+        run = PipelineRun(user_id=get_settings().owner_user_id, recipe="sequence", title="billed while held",
+                          status=RunStatus.running, input=SHOTS)
+        s.add(run)
+        await s.flush()
+        unknown = await _take(s, run, GenStatus.unknown, held=True)
+        canceled = await _take(s, run, GenStatus.canceled, held=True)
+        bills = {unknown.id: Decimal("0.42"), canceled.id: Decimal("0.30")}
+        for a in (await s.execute(select(GenerationAttempt).where(GenerationAttempt.generation_id.in_(bills)))).scalars():
+            s.add(SpendLedger(user_id=run.user_id, entry_type=LedgerEntry.adjustment, amount_usd=bills[a.generation_id],
+                              provider="fal", route_id="kling-3.0@fal", generation_attempt_id=a.id))
+        await s.commit()
+        run_id = run.id
+    assert await _spent(run_id) == Decimal("0.72")  # the bills, not the bills and the estimates
+
+
 async def test_a_stale_step_job_never_rewords_a_take_already_reworded(monkeypatch):
     """Two advances can queue the step twice; the second copy finds the reworded take rendering and leaves it."""
 

@@ -101,7 +101,8 @@ async def emit_run(session: AsyncSession, run: PipelineRun) -> None:
 async def run_spent(session: AsyncSession, run: PipelineRun) -> Decimal:
     """What the run's generations have cost so far: every charge the ledger holds for their attempts (a provider can
     bill an attempt that then failed), plus the estimate of each one still going (`unknown` too, since it may yet be
-    billed, and one canceled while its outcome was unknown, whose money stays held). A finished generation nobody
+    billed, and one canceled while its outcome was unknown, whose money stays held; either only until its bill is
+    booked). A finished generation nobody
     charged for costs nothing, so a rejected request doesn't use up the cap."""
     return (await runs_spent(session, [run.id]))[run.id]
 
@@ -119,8 +120,8 @@ async def runs_spent(session: AsyncSession, run_ids: list[uuid.UUID]) -> dict[uu
         *(await session.execute(
             select(Generation.group_id, func.sum(Generation.estimated_cost_usd))
             .where(Generation.group_id.in_(run_ids), or_(
-                Generation.status.in_(ACTIVE_STATUSES),
-                # held: its estimate, until the provider's bill is booked on it (counted above)
+                Generation.status.in_(ACTIVE_STATUSES - {GenStatus.unknown}),
+                # unknown or held: its estimate, until the provider's bill is booked on it (counted above)
                 Generation.id.in_(select(GenerationAttempt.generation_id).where(
                     GenerationAttempt.status == AttemptStatus.unknown,
                     ~select(SpendLedger.id).where(SpendLedger.generation_attempt_id == GenerationAttempt.id,
