@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+id: topview-t1
+name: Topview T1
+family: topview
+vendor: topview
+description: Text-to-video at 720p, with optional native audio and fixed 4–30 second clips.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [audio]
+prompt: {max_chars: 10000, dialogue: true}
+aspect_ratios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"]
+duration: {min: 4, max: 30, default: 5}
+
+parameters:
+  - {name: duration, label: Duration (s), type: int, min: 4, max: 30, default: 5, ui: slider}
+  - {name: resolution, label: Resolution, type: enum, options: ["720p"], default: "720p", ui: segmented}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], default: "16:9", ui: aspect}
+  - {name: generate_audio, label: Native audio, type: bool, default: true}
+
+modes:
+  - id: t2v
+    label: Text to video
+    ops: [t2v]
+
+routes:
+  - id: topview-t1@topview
+    provider: topview
+    modes:
+      t2v: {endpoint: models/topview/topview-t1/text-to-video/predictions}
+    map:
+      prompt: prompt
+      negative_prompt: null
+      passthrough: false
+      params:
+        duration: duration
+        resolution: resolution
+        aspect_ratio: ratio
+        generate_audio: generate_audio
+    transform: studio.providers.transforms.topview:text_content
+    pricing:
+      basis: per_output_second
+      rates: [{usd: 0.1649}]
+      verified: 2026-11-01
+      source: https://platform.topview.ai/models/topview/topview-t1/text-to-video
+    output: {path: outputs, kind: video}
+    # Keep the reservation on timeout/uncertain failure; a confirmed RELEASED result reports $0.
+    charges_on_failure: true
+    timeout_s: 1800
+    notes: Platform balance is separate from consumer subscriptions. Holds may exceed the final charge. No documented cancellation; uncertain tasks require recovery, not resubmission.
+
+examples:
+  - name: t2v_smoke
+    mode: t2v
+    prompt: A blue paper boat floats across a quiet pond in morning light.
+    params: {duration: 4, resolution: "720p", generate_audio: true}
+    smoke: true
+    expect: {cost_usd_range: [0.6595, 0.6597]}

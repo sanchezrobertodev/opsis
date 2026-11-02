@@ -20,6 +20,7 @@ _ADAPTERS = {
     "elevenlabs": "studio.providers.elevenlabs:ElevenLabsAdapter",
     "reactor": "studio.providers.reactor:ReactorAdapter",
     "pika": "studio.providers.pika:PikaAdapter",
+    "topview": "studio.providers.topview:TopviewAdapter",
     "worldlabs": "studio.providers.worldlabs:WorldLabsAdapter",
     "runpod": "studio.providers.runpod:RunPodAdapter",
     "runpod_comfy": "studio.providers.runpod_comfy:RunPodComfyAdapter",

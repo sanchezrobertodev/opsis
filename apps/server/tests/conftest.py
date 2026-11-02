@@ -38,7 +38,7 @@ os.environ.update({
     # No real credentials from the developer's .env: routing must not depend on which keys this machine has.
     **{k: "" for k in ("ANTHROPIC_API_KEY", "FAL_KEY", "GEMINI_API_KEY", "RUNWAY_API_KEY", "REPLICATE_API_TOKEN",
                        "RUNPOD_API_KEY", "RUNPOD_WAN_CORE_ENDPOINT", "ELEVENLABS_API_KEY", "REACTOR_API_KEY",
-                       "PIKA_API_KEY", "WORLDLABS_API_KEY", "CODEX_BIN")},
+                       "PIKA_API_KEY", "TOPVIEW_API_KEY", "WORLDLABS_API_KEY", "CODEX_BIN")},
     # Keys saved in tests are encrypted with a throwaway secret, never the repo's data/keys.secret
     "KEYS_SECRET": Fernet.generate_key().decode(),
 })

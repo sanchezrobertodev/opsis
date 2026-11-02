@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = Field(default="", repr=False)
     reactor_api_key: str = Field(default="", repr=False)
     pika_api_key: str = Field(default="", repr=False)
+    topview_api_key: str = Field(default="", repr=False)
     worldlabs_api_key: str = Field(default="", repr=False)
     # Encrypts the keys pasted in Settings (studio/keys.py). Empty: data/keys.secret, made on first use.
     keys_secret: str = Field(default="", repr=False)
