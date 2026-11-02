@@ -16,6 +16,7 @@
     "landscape_4_3",
     "landscape_16_9",
     "auto_1K",
+    "auto_1.5K",
     "auto_2K"
    ],
    "default": "auto_2K"
@@ -38,6 +39,9 @@
    "type": "string"
   },
   "sync_mode": {
+   "type": "boolean"
+  },
+  "watermark": {
    "type": "boolean"
   }
  },

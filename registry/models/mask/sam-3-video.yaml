@@ -44,8 +44,7 @@ routes:
       verified: 2026-10-08
       source: https://fal.ai/models/fal-ai/sam-3/video-rle
     eta: "20 + input_video_seconds * 2"
-    # fal's schema still lists `video` and `boundingbox_frames_zip`; the live answer is `rle`, `boxes`, `metadata`
-    output: {path: rle, kind: mask_video, decode: studio.media.rle:mask_video, unpublished: true}
+    output: {path: rle, kind: mask_video, decode: studio.media.rle:mask_video}
 
 examples:
   - name: track_smoke

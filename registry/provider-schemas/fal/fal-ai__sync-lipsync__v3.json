@@ -5,6 +5,10 @@
   "audio_url": {
    "type": "string"
   },
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
   "options": {
    "type": "null|object<Sync3GenerationOptions>"
   },

@@ -9,6 +9,10 @@
    "type": "boolean",
    "default": true
   },
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
   "export_orientation": {
    "type": "null|string",
    "enum": [
