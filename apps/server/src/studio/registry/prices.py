@@ -4,8 +4,9 @@ Each provider with a price list has a `Feed` that reads it and returns `Price`s 
 base price per endpoint, any key), Pika's catalog (a price per option: resolution, mode, with or without a video
 input) and Reactor's `/pricing` (its session rate). A listed price is compared with the route's YAML:
 - on the route's own basis: with the rate for the options it names (a tier, the `{param}` an endpoint is templated
-  on, the one mode that calls the endpoint), else with any of the route's rates, multiplied or not. A single-rate route is fully checked; one
-  priced by resolution, audio or tier is flagged "check by hand" only when the base price matches none of its rates;
+  on, the one mode that calls the endpoint), else with any of the route's rates, multiplied or not. Only a
+  single-rate route can be found "changed"; one priced by tier, resolution or audio is flagged "check by hand" when
+  the listed price matches none of the rates that apply (fal's one base price per endpoint isn't always a tier's);
 - a formula route: the listed number has to appear in the formula (Seedance on Pika: $11.235 per M tokens);
 - a unit the route isn't priced by: check by hand.
 Our RunPod endpoint's `gpu_usd_per_hour` is compared with RunPod's GPU catalog (serverless USD per GPU-hour).
@@ -59,8 +60,13 @@ class Price:
 def price(listed: float, unit: str, units: Units, *, quantity: float = 1, key: str | None = None,
           spec: dict[str, Any] | None = None) -> Price:
     """A listed price per `quantity` of a unit, its basis looked up in a feed's table by `key` (default `unit`)."""
-    basis, n = units.get(re.sub(r"s\b", "", (key or unit).strip().lower()), (None, 1.0))
-    return Price(listed, unit, basis, listed / quantity / n, spec or {})
+    basis, n = units.get(_singular(key or unit).lower(), (None, 1.0))
+    shown = unit.strip() if re.search(r"\d", unit) else _singular(unit)  # "per second", but "per 1000 tokens"
+    return Price(listed, shown, basis, listed / quantity / n, spec or {})
+
+
+def _singular(unit: str) -> str:
+    return re.sub(r"s\b", "", unit.strip())
 
 
 # ---------------------------------------------------------------- where each provider lists its prices
@@ -194,10 +200,15 @@ def compare(route: Route, p: Price, opts: dict[str, Any], provider: str) -> tupl
     yaml = sorted({round(r.usd / r.per * f, 9) for r in rates for f in factors})
     if any(_close(p.usd, y) for y in yaml):
         return None
-    if len(yaml) == 1:
+    if len(pricing.rates) == 1 and not pricing.multipliers:
         return "changed", f"the YAML says ${yaml[0]:g} per {unit}, {provider} lists {p.label}"
-    return "check", f"{provider} lists {p.label}, which matches none of the route's rates " \
-                    f"({', '.join(f'${y:g}' for y in yaml)})"
+    # one listed price can't settle a tiered route: fal lists $0.14/s for every Kling 3.0 tier, while its bills match
+    # the YAML's $0.112 and $0.168
+    shown = " or ".join(f"${y:g}" for y in yaml)
+    if top:
+        options = ", ".join(f"{k} {opts[k]}" for k in rates[0].when)
+        return "check", f"{provider} lists {p.label}; the route's rate for {options} is {shown}"
+    return "check", f"{provider} lists {p.label}, which matches none of the route's rates ({shown})"
 
 
 # ---------------------------------------------------------------- a run over the whole registry

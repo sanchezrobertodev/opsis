@@ -287,8 +287,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   prompt kinds exist, not the fields inside them. The contract tests check every route against those baselines offline. After a reviewed change, fix the
   YAML and run with `--update` (`--provider` limits it).
 - The same weekly run checks prices (`studio/registry/prices.py`, a `Feed` per provider): each route's rates against
-  fal's pricing API (one base price per endpoint, so a route priced by resolution or tier is flagged only when it
-  matches none of its rates), Pika's catalog and Reactor's `/pricing`, and `gpu_usd_per_hour` against RunPod's GPU
+  fal's pricing API (one base price per endpoint, not always a tier's: only a single-rate route can be found changed,
+  one priced by tier or resolution gets "check by hand"), Pika's catalog and Reactor's `/pricing`, and `gpu_usd_per_hour` against RunPod's GPU
   catalog; providers without a price list are listed with their `verified` dates. It never writes the YAML: fix the
   price and move `verified`. The registry lint warns when a route's `verified` or a provider's `gpu_verified` is over
   `lint.PRICE_MAX_AGE_DAYS` (30) old.

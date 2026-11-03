@@ -127,14 +127,16 @@ async def test_the_price_check_compares_each_route_with_its_providers_list():
 
     changed = {x.what: x.problem for x in report.changed}
     check = {x.what: x.problem for x in report.check}
+    # only a single-rate route is found "changed": one listed price can't settle a tiered one (fal lists $0.14/s
+    # for every Kling 3.0 tier while the bills match the YAML)
     assert changed == {
         "solo@fal (toy/solo)": "the YAML says $0.1 per second, fal lists $0.12 per second",
-        "tiers@fal (toy/pro/t2v)": "the YAML says $0.168 per second, fal lists $0.2 per second",
         "wan_core RTX PRO 6000": "the YAML says $3.49/h, RunPod lists $3.79/h",
     }
     assert check == {
-        "sizes@fal (toy/sizes)": "fal lists $0.06 per second, which matches none of the route's rates ($0.05, $0.08)",
-        "pixels@fal (toy/pixels)": "fal lists $0.012 per megapixels; the route is priced per image",
+        "tiers@fal (toy/pro/t2v)": "fal lists $0.2 per second; the route's rate for tier pro is $0.168",
+        "sizes@fal (toy/sizes)": "fal lists $0.06 per second, which matches none of the route's rates ($0.05 or $0.08)",
+        "pixels@fal (toy/pixels)": "fal lists $0.012 per megapixel; the route is priced per image",
         "gone@fal (toy/gone)": "not in fal's price list",
     }
     # standard tier, both Pika tiers (1080p skipped), Reactor and the H100 (one of RunPod's H100s)
@@ -162,8 +164,9 @@ async def test_feeds_that_need_a_key_are_skipped_and_one_unknown_id_doesnt_sink_
 
     listed = await prices.FalFeed().prices(["toy/gone", "toy/solo"], picky, SimpleNamespace(fal_key="k"))
     assert list(listed) == ["toy/solo"]
-    # units are matched in the singular, and a minute is 60 seconds
-    assert prices.price(1.2, "Minutes", prices.FalFeed.UNITS) == prices.Price(1.2, "Minutes", "per_output_second", 0.02)
+    # units are matched and shown in the singular (unless counted: "per 1000 tokens"); a minute is 60 seconds
+    assert prices.price(1.2, "Minutes", prices.FalFeed.UNITS) == prices.Price(1.2, "Minute", "per_output_second", 0.02)
+    assert prices.price(0.02, "1000 tokens", prices.FalFeed.UNITS).label == "$0.02 per 1000 tokens"
 
 
 async def test_the_real_registry_runs_through_the_check():
