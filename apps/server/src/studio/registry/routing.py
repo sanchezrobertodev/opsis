@@ -107,7 +107,7 @@ def _mode_gate(
         # A real local engine runs this model; never swap its output for a test pattern.
         return "this model runs on the local engine"
     if env.provider_mode == "mock":
-        return None if is_mock else "PROVIDER_MODE=mock (live routes disabled)"
+        return None if is_mock else "mock mode is on"  # .env or the Settings switch
     if env.provider_mode == "live":
         return "mock routes are off in live mode" if is_mock else None
     # mixed: allowlisted live routes run live; everything else stays mocked.

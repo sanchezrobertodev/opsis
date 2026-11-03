@@ -66,8 +66,9 @@ test("a pinned provider reaches the estimate and says why it can't run in mock m
   const provider = page.getByLabel("Provider", { exact: true });
   await expect(provider).toHaveValue("seedance-2.5@fal");
   await expect(provider.locator("option", { hasText: "fal.ai" })).toBeDisabled();
-  await expect(provider.locator("option", { hasText: "fal.ai" })).toContainText("PROVIDER_MODE=mock");
-  await expect(page.getByText("fal.ai can't run this", { exact: false })).toBeVisible();
+  await expect(provider.locator("option", { hasText: "fal.ai" })).not.toContainText("mock mode"); // said in full below
+  await expect(provider.locator("option", { hasText: "Replicate" })).toContainText("mock mode is on");
+  await expect(page.getByText("fal.ai can't run this: mock mode is on")).toBeVisible();
   const generate = page.getByRole("button", { name: "Generate", exact: true });
   await expect(generate).toBeDisabled();
 
