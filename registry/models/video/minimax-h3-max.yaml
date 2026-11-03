@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../../schema/model.schema.json
-# Fields and prices verified 2026-10-13 against fal's H3 Max queue OpenAPI and endpoint pages.
+# Fields verified 2026-10-13 against fal's H3 Max queue OpenAPI; prices 2026-11-03 against its endpoint pages.
 # Regular rates: $0.05/s 480p, $0.08/s 768p, $0.16/s 1080p. Budget estimates use regular rates.
-# fal advertises 40% off text/image routes through October 15; do not bake expiring discounts into caps.
+# fal runs promotions (35% off through October 31, 30% off November 1-15); do not bake expiring discounts into caps.
 id: minimax-h3-max
 name: MiniMax H3 Max
 family: minimax
@@ -74,12 +74,12 @@ routes:
         - {when: {resolution: "480p"}, usd: 0.05}
         - {when: {resolution: "768p"}, usd: 0.08}
         - {when: {resolution: "1080p"}, usd: 0.16}
-      verified: 2026-10-13
-      source: https://fal.ai/models/minimax/h3-max/text-to-video
+      verified: 2026-11-03
+      source: https://fal.ai/models/minimax/h3-max/text-to-video (standard rates from November 16)
     timeout_s: 1800
     output: {path: video.url, kind: video}
     notes: >-
-      Cheapest verified supported H3 Max provider. Estimates use regular rates after the October 15 promotion.
+      Cheapest verified supported H3 Max provider. Estimates use regular rates, not fal's promotions.
       Audio and one reference image of up to 4,194,304 pixels are included. Reference videos and audio inputs
       are not exposed. Reference aspect ratios outside 2:5 to 5:2 are rejected before submission.
 
