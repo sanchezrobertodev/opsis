@@ -1,5 +1,5 @@
 {
- "endpoint": "speech-to-speech/{voice_id}",
+ "endpoint": "voice-changer/{voice_id}",
  "variant": null,
  "input": {
   "audio": {

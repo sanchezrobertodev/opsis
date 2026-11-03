@@ -460,7 +460,8 @@ function ProviderField({ routes, candidates, value, onChange }: {
           const c = candidates?.find((x) => x.route_id === r.id);
           return {
             value: r.id,
-            label: [r.provider_name, c?.estimate_usd != null && usd(c.estimate_usd, { free: "free" }), c?.reason]
+            // a pinned provider's reason is said in full under the form; in the closed select it would be cut off
+            label: [r.provider_name, c?.estimate_usd != null && usd(c.estimate_usd, { free: "free" }), r.id !== value && c?.reason]
               .filter(Boolean).join(" · "),
             disabled: c ? !c.eligible : false,
           };

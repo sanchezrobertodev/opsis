@@ -54,8 +54,8 @@ routes:
         - {when: {mode: edit}, usd: 0.03}
         - {when: {mode: extend, resolution: "720p"}, usd: 0.41}
         - {when: {mode: extend, resolution: "1080p"}, usd: 0.53}
-      verified: 2026-10-08
-      source: https://fal.ai/models/blackforestlabs/flux-3/edit-video; fal billing events for an edit ($0.09) and a 5 s 720p extend ($2.05)
+      verified: 2026-11-03
+      source: https://fal.ai/models/blackforestlabs/flux-3/edit-video and /extend-video; fal billing events for an edit ($0.09) and a 5 s 720p extend ($2.05)
     output: {path: video.url, kind: video}
 
 examples:
