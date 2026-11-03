@@ -9,7 +9,7 @@ from studio.config import get_settings
 from studio.registry import drift
 from studio.registry.loader import load_registry
 
-REG = load_registry(get_settings().resolve_registry_dir())
+REG = load_registry(get_settings().resolve_registry_dir())  # built-ins only: your own models keep no baselines
 ROOT = get_settings().resolve_registry_dir() / "provider-schemas"
 TARGETS = drift.targets_for(REG)
 PUBLIC = [k for k, uses in TARGETS.items() if not drift.SOURCES[uses[0][3].provider].keys]

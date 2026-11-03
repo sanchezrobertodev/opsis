@@ -91,6 +91,14 @@ in the worker: the worker leaves each job in `data/provider_results/codex/` and 
 - **Checks:** Settings > Provider balances shows Codex as Ready. `journalctl --user -u opsis-codex` logs each job it
   draws.
 
+## Your own models and workflows
+
+Put them in the checkout's `data/registry/` (model, preset and template YAML, laid out like `registry/`) and
+`data/workflows/comfy/` (ComfyUI graphs). They're in the bind-mounted `data/`, so the API and the worker load them
+within a second, with no rebuild or deploy, and a `git pull` never conflicts with them. `scripts/import_comfy_workflow.py`
+writes there, and the README's "Add a hosted model" walks through a hosted one. Errors in them show in `/health`
+while the studio runs on the built-ins. The off-site copy doesn't send these folders: keep your own copy.
+
 ## Day to day
 ```
 systemctl --user status opsis-api opsis-worker opsis-web opsis-postgres opsis-codex

@@ -218,7 +218,9 @@ uv run python scripts/import_comfy_workflow.py my_workflow_api.json --id my-mode
 ```
 
 It guesses which node inputs the prompt, seed, size, length and media fill, writes the graph, its map and a model
-YAML, and checks they load. [docs/comfy-workflows.md](docs/comfy-workflows.md) says what to review.
+YAML into your own folders (`data/workflows/comfy/` and `data/registry/`, which a `git pull` never touches and a
+server reads without a rebuild), and checks they load. [docs/comfy-workflows.md](docs/comfy-workflows.md) says what
+to review.
 
 ### Larger open models on your RunPod
 
@@ -265,6 +267,25 @@ as the worker's user and could read what the worker can; the server setup runs i
 the studio's keys and files, with its own sign-in.
 
 </details>
+
+### Add a hosted model
+
+A model a provider here already serves (on fal, Replicate, Runway and the rest) is one YAML file and no code:
+
+1. Copy a similar model from `registry/models/<type>/` to `data/registry/models/<type>/<id>.yaml`. That folder is
+   yours: a `git pull` never touches it, and the API and the worker read it within a second, on a server too. Give
+   the copy its own `id` and route ids (`<id>@fal`).
+2. Point the route at the provider's endpoint and map the fields it takes (`map:`; the CLAUDE.md section "Registry
+   expressions and mapping" lists what a route can do). Price it from the provider's pricing page, with `verified`
+   (the day you checked) and `source` (the page's link).
+3. Keep one `examples:` entry, marking the cheapest `smoke: true`.
+4. Check it, for free: `uv run pytest apps/server/tests/contract -k <id>`. A mistake also shows in `/health`; the
+   studio keeps running on everything else meanwhile.
+5. Optionally try it once for real, capped: `uv run python scripts/smoke_live.py --routes <id>@fal --cap 0.50
+   --confirm-spend` (the API in `mixed` mode with that route allowed, or `live`).
+
+A file with a built-in model's id replaces that model, with a warning each time the registry loads. Presets and
+templates of your own go in `data/registry/presets/` and `data/registry/templates/` the same way.
 
 ## Drive it from Claude
 

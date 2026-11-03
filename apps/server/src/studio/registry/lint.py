@@ -13,18 +13,17 @@ if TYPE_CHECKING:
     from studio.registry.loader import Registry
 
 
-COMFY_ADAPTERS = {"comfy_local", "runpod_comfy"}  # routes whose endpoint names a workflows/comfy template
+COMFY_ADAPTERS = {"comfy_local", "runpod_comfy"}  # routes whose endpoint names a workflow template
 
 
 def _check_workflows(spec: ModelSpec, route: Route, rwhere: str) -> list[str]:
     """A ComfyUI route's template must exist, and every field the route sends must have an input in it."""
-    from studio.config import get_settings
-    from studio.providers.comfy_workflows import load_template
+    from studio.providers.comfy_workflows import load_template, workflow_dirs
 
     errors: list[str] = []
     for mode_id, rm in route.modes.items():
         try:
-            template = load_template(get_settings().comfyui_workflows_dir, rm.endpoint)
+            template = load_template(workflow_dirs(), rm.endpoint)
         except (FileNotFoundError, ValueError) as exc:
             errors.append(f"{rwhere}: {exc}")
             continue

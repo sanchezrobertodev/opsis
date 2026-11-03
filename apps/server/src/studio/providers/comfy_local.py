@@ -42,6 +42,7 @@ from studio.providers.comfy_workflows import (
     model_files,
     retime_clip,
     unavailable_choices,
+    workflow_dirs,
 )
 from studio.registry.schema import EnumParam, Route
 
@@ -57,7 +58,7 @@ class ComfyLocalAdapter(ProviderAdapter):
     def __init__(self, base_url: str | None = None, workflows_dir: Path | None = None) -> None:
         settings = get_settings()
         self.base = (base_url or settings.comfyui_url).rstrip("/")
-        self.workflows_dir = workflows_dir or settings.comfyui_workflows_dir
+        self.workflows_dir = workflows_dir or workflow_dirs()
 
     async def reachable(self) -> bool:
         from studio.providers.local_status import comfy_stats

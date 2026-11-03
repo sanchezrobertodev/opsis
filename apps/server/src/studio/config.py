@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # apps/server/src/studio/config.py -> repo root is four parents up
@@ -75,6 +75,16 @@ class Settings(BaseSettings):
     # Local ComfyUI. Empty disables the local route.
     comfyui_url: str = ""
     comfyui_workflows_dir: Path = REPO_ROOT / "workflows" / "comfy"
+    # Your own models, providers, presets and templates (laid out like registry/) and ComfyUI graphs (like
+    # workflows/comfy/), loaded alongside the built-ins; one with a built-in's id or name replaces it. data/ is
+    # yours: a git pull never touches it and the server mounts it, so they need no rebuild.
+    user_registry_dir: Path = REPO_ROOT / "data" / "registry"
+    user_workflows_dir: Path = REPO_ROOT / "data" / "workflows" / "comfy"
+
+    @field_validator("user_registry_dir", "user_workflows_dir")
+    @classmethod
+    def _from_repo_root(cls, v: Path) -> Path:
+        return v if v.is_absolute() else REPO_ROOT / v
     # Optional shared YAML read by the local ComfyUI launcher; enables Settings > Model storage.
     comfyui_model_paths_config: Path | None = None
 

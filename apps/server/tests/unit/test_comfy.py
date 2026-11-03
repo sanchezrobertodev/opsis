@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import struct
 from pathlib import Path
 
@@ -225,6 +226,21 @@ def fake(monkeypatch):
 
 def adapter() -> ComfyLocalAdapter:
     return ComfyLocalAdapter(base_url="http://comfy.test", workflows_dir=WORKFLOWS)
+
+
+async def test_graphs_in_your_folder_run_and_replace_built_ins(fake, tmp_path, monkeypatch):
+    for suffix in (".json", ".map.yaml"):
+        shutil.copy(WORKFLOWS / f"wan22_ti2v_5b{suffix}", tmp_path / f"my_wan{suffix}")
+        shutil.copy(WORKFLOWS / f"flux2_klein_4b{suffix}", tmp_path / f"flux2_klein_4b{suffix}")
+    mine = tmp_path / "flux2_klein_4b.map.yaml"
+    mine.write_text(mine.read_text(encoding="utf-8").replace("description: ", "description: mine, "), encoding="utf-8")
+    monkeypatch.setattr(get_settings(), "user_workflows_dir", tmp_path)
+    a = ComfyLocalAdapter(base_url="http://comfy.test")  # your folder first, then the built-ins
+    res = await a.submit(ROUTE, "my_wan", {"prompt": "a fox"}, client_ref="0123456789")
+    assert "a fox" in json.dumps(fake.prompts[res.job_id]["prompt"])
+    assert load_template(a.workflows_dir, "flux2_klein_4b").map.description.startswith("mine, ")
+    assert load_template(a.workflows_dir, "wan22_ti2v_5b").map.description == \
+        load_template(WORKFLOWS, "wan22_ti2v_5b").map.description
 
 
 async def test_full_job_lifecycle(fake, tmp_path):

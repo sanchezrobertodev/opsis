@@ -42,7 +42,7 @@ from studio.providers.base import (
     ResolvedMedia,
     SubmitResult,
 )
-from studio.providers.comfy_workflows import fresh_seed, load_template, retime_clip
+from studio.providers.comfy_workflows import fresh_seed, load_template, retime_clip, workflow_dirs
 from studio.providers.common import (
     best_mime,
     download_url,
@@ -67,7 +67,7 @@ class RunPodComfyAdapter(RunPodAdapter):
 
     def __init__(self, transport: httpx.AsyncBaseTransport | None = None, workflows_dir: Path | None = None) -> None:
         super().__init__(transport)
-        self.workflows_dir = workflows_dir or get_settings().comfyui_workflows_dir
+        self.workflows_dir = workflows_dir or workflow_dirs()
 
     # ------------------------------------------------------------------ config
 

@@ -49,7 +49,7 @@ async def _watch_registry() -> None:
     from watchfiles import awatch
 
     holder = get_registry_holder()
-    async for _ in awatch(holder.root):
+    async for _ in awatch(*(d for d in holder.dirs if d.is_dir())):  # a folder made later is seen by `current`
         ok = holder.reload()
         hub.publish({
             "id": None, "topic": "system",
