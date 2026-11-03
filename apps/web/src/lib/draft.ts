@@ -18,6 +18,8 @@ type Draft = {
   takes: number;
   /** Camera moves and cinema look (see DirectorPanel). */
   direction: Record<string, unknown>;
+  /** The route each model is pinned to; none or "" picks the cheapest (see ProviderField). */
+  routes?: Record<string, string>;
   /** Edit Video: the chosen operation (an op tag such as `restyle`). */
   op?: string;
 };
