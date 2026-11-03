@@ -48,15 +48,14 @@ def test_editor_format_is_refused_with_the_fix():
         comfy_import.read_graph(json.dumps({"nodes": [], "links": [], "version": 0.4}))
 
 
-def test_drafted_model_loads_and_its_route_fits_the_map(tmp_path, monkeypatch):
+def test_drafted_model_loads_and_its_route_fits_the_map(tmp_path):
     draft = comfy_import.analyze(_graph("wan22_ti2v_5b"))
     (tmp_path / "mine.json").write_text(json.dumps(draft.graph), encoding="utf-8")
     (tmp_path / "mine.map.yaml").write_text(comfy_import.map_yaml(draft, "Mine"), encoding="utf-8")
     spec = ModelSpec.model_validate(yaml.safe_load(comfy_import.model_yaml(draft, "mine", "Mine", "mine", 16)))
     assert spec.modes[0].ops == ["i2v"] and spec.routes[0].min_vram_gb == 16
     assert load_template(tmp_path, "mine").map.outputs[0].kind == "video"
-    monkeypatch.setattr(get_settings(), "comfyui_workflows_dir", tmp_path)
-    assert _check_workflows(spec, spec.routes[0], "mine") == []
+    assert _check_workflows(spec, spec.routes[0], "mine", (tmp_path,)) == []
     # its one LoRA loader is a pick from your ComfyUI's files, and drops out when none is picked
     lora = next(p for p in spec.parameters if p.name == "lora")
     assert lora.comfy_choices == "LoraLoaderModelOnly.lora_name" and lora.default is None

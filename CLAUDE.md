@@ -69,7 +69,7 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   load them alongside the built-ins, and the holder follows them (and the graphs) like the built-ins, so the server
   needs no rebuild and a `git pull` never conflicts. A spec with a built-in's id, or a graph with a built-in's name,
   **replaces** it, with a warning naming both files; the same id twice in `data/registry/` is an error. Their errors
-  never stop the studio from starting: it runs on the built-ins and `/health` lists them. The registry contract tests
+  never stop the studio from starting: it runs on the built-ins, graphs included (`Registry.user_files`), and `/health` lists them. The registry contract tests
   and `smoke_live.py` include them; the provider-schema baselines (`test_provider_schemas.py`,
   `fetch_provider_schemas.py`) cover built-ins only. `import_comfy_workflow.py` writes there unless `--builtin`.
 

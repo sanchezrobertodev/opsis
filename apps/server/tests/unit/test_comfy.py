@@ -15,7 +15,7 @@ from studio.domain.enums import ErrorClass
 from studio.providers import comfy_events
 from studio.providers.base import ProviderError, ProviderOutput, ResolvedMedia
 from studio.providers.comfy_local import ComfyLocalAdapter
-from studio.providers.comfy_workflows import load_template
+from studio.providers.comfy_workflows import load_template, workflow_dirs
 from studio.registry.loader import load_registry
 from studio.registry.mapping import build_payload
 from studio.registry.routing import RoutingEnv, candidates, cheapest_live_estimate
@@ -238,8 +238,8 @@ async def test_graphs_in_your_folder_run_and_replace_built_ins(fake, tmp_path, m
     a = ComfyLocalAdapter(base_url="http://comfy.test")  # your folder first, then the built-ins
     res = await a.submit(ROUTE, "my_wan", {"prompt": "a fox"}, client_ref="0123456789")
     assert "a fox" in json.dumps(fake.prompts[res.job_id]["prompt"])
-    assert load_template(a.workflows_dir, "flux2_klein_4b").map.description.startswith("mine, ")
-    assert load_template(a.workflows_dir, "wan22_ti2v_5b").map.description == \
+    assert load_template(workflow_dirs(), "flux2_klein_4b").map.description.startswith("mine, ")
+    assert load_template(workflow_dirs(), "wan22_ti2v_5b").map.description == \
         load_template(WORKFLOWS, "wan22_ti2v_5b").map.description
 
 

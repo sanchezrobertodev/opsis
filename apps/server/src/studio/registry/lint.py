@@ -10,20 +10,22 @@ from studio.registry.mapping import load_hook
 from studio.registry.schema import EnumParam, FloatParam, IntParam, ModelSpec, Route
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from studio.registry.loader import Registry
 
 
 COMFY_ADAPTERS = {"comfy_local", "runpod_comfy"}  # routes whose endpoint names a workflow template
 
 
-def _check_workflows(spec: ModelSpec, route: Route, rwhere: str) -> list[str]:
+def _check_workflows(spec: ModelSpec, route: Route, rwhere: str, dirs: tuple[Path, ...]) -> list[str]:
     """A ComfyUI route's template must exist, and every field the route sends must have an input in it."""
-    from studio.providers.comfy_workflows import load_template, workflow_dirs
+    from studio.providers.comfy_workflows import load_template
 
     errors: list[str] = []
     for mode_id, rm in route.modes.items():
         try:
-            template = load_template(workflow_dirs(), rm.endpoint)
+            template = load_template(dirs, rm.endpoint)
         except (FileNotFoundError, ValueError) as exc:
             errors.append(f"{rwhere}: {exc}")
             continue
@@ -84,6 +86,9 @@ def _lint_virtual(reg: Registry, spec: ModelSpec, where: str) -> list[str]:
 
 
 def lint(reg: Registry) -> tuple[list[str], list[str]]:
+    from studio.providers.comfy_workflows import workflow_dirs
+
+    workflows = workflow_dirs(reg.user_files)
     errors: list[str] = []
     warnings: list[str] = []
     route_ids: set[str] = set()
@@ -153,7 +158,7 @@ def lint(reg: Registry) -> tuple[list[str], list[str]]:
                         errors.append(f"{rwhere}: mode {mode_id} maps unknown media role {role!r}")
             provider = reg.providers.get(route.provider)
             if provider and provider.adapter in COMFY_ADAPTERS:
-                errors.extend(_check_workflows(spec, route, rwhere))
+                errors.extend(_check_workflows(spec, route, rwhere, workflows))
             if route.provider != "mock":
                 if route.pricing.verified is None:
                     errors.append(f"{rwhere}: pricing needs a `verified` date")

@@ -40,6 +40,8 @@ class Registry:
     templates: dict[str, TemplateSpec] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # loaded with your own files: its ComfyUI routes find graphs in your folder first (comfy_workflows.workflow_dirs)
+    user_files: bool = False
 
     def model(self, model_id: str) -> ModelSpec | None:
         return self.models.get(model_id)
@@ -172,7 +174,8 @@ def _digest(roots: list[Path]) -> str:
 
 def load_registry(root: Path, user_dir: Path | None = None) -> Registry:
     """The built-in registry at `root`, plus your own models, providers, presets and templates in `user_dir`
-    (laid out the same way; `data/registry/` by default), which replace built-ins with the same id."""
+    (laid out the same way; `data/registry/` by default) and your own ComfyUI graphs, which replace built-ins with the
+    same id or name. Without `user_dir`, built-ins only, graphs included."""
     errors: list[str] = []
     warnings: list[str] = []
     roots = [root, *([user_dir] if user_dir and user_dir.is_dir() else [])]
@@ -193,7 +196,8 @@ def load_registry(root: Path, user_dir: Path | None = None) -> Registry:
     from studio.registry.lint import lint  # local import: lint depends on Registry
     from studio.registry.presets import lint_presets, lint_templates
 
-    reg = Registry(models=models, providers=providers, hash=_digest(roots), presets=presets, templates=templates)
+    reg = Registry(models=models, providers=providers, hash=_digest(roots), presets=presets, templates=templates,
+                   user_files=user_dir is not None)
     lint_errors, lint_warnings = lint(reg)
     reg.errors = errors + lint_errors + lint_presets(reg) + lint_templates(reg)
     reg.warnings = warnings + lint_warnings
@@ -218,7 +222,7 @@ class RegistryHolder:
         self.check_every = check_every
         # ComfyUI templates too: a route's lint reads its graph, so a graph added after its model fixes the model
         self._globs = [(root, "*.yaml"), *([(user_dir, "*.yaml")] if user_dir else []), *((d, "*") for d in workflows)]
-        self.dirs = [d for d, _ in self._globs]
+        self.reloads = 0  # tried, good or not: the API tells open pages (main.py:_watch_registry)
         self._current: Registry | None = None
         self._stamp: tuple | None = None
         self._checked = 0.0
@@ -232,7 +236,7 @@ class RegistryHolder:
         try:
             return load_registry(self.root, self.user_dir)
         except RegistryError as exc:
-            if not (self.user_dir and self.user_dir.is_dir()):
+            if self.user_dir is None:
                 raise
             self.last_error = exc.errors
             log.error("registry with your own files failed; running on the built-ins:\n%s", exc)
@@ -254,6 +258,7 @@ class RegistryHolder:
 
     def reload(self) -> bool:
         self._stamp = self._files()
+        self.reloads += 1
         try:
             self._current = load_registry(self.root, self.user_dir)
         except RegistryError as exc:

@@ -3,13 +3,17 @@ built-ins, replace a built-in with the same id, and are followed like the built-
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
+import time
 from pathlib import Path
 
 import pytest
 
 from studio.config import get_settings
+from studio.providers.comfy_workflows import registry_workflow_dirs
+from studio.registry import loader
 from studio.registry.loader import RegistryError, RegistryHolder, load_registry
 
 BUILTIN = get_settings().resolve_registry_dir()
@@ -108,3 +112,46 @@ def test_a_comfy_route_whose_graph_is_in_your_folder(tmp_path, monkeypatch):
     for suffix in (".json", ".map.yaml"):  # the graph arrives: the model loads without touching its YAML
         shutil.copy(WORKFLOWS / f"flux2_klein_4b{suffix}", workflows / f"my_flux{suffix}")
     assert "my-flux" in holder.current.models and holder.last_error is None
+
+
+def test_your_broken_graph_never_stops_the_studio_starting(tmp_path, monkeypatch):
+    workflows = tmp_path / "workflows"
+    workflows.mkdir()
+    monkeypatch.setattr(get_settings(), "user_workflows_dir", workflows)
+    shutil.copy(WORKFLOWS / "flux2_klein_4b.json", workflows / "flux2_klein_4b.json")
+    broken = workflows / "flux2_klein_4b.map.yaml"  # replaces a built-in graph's map, pointing at no node
+    broken.write_text("inputs: {prompt: [{node: nope, input: text}]}\noutputs: []\n", encoding="utf-8")
+    holder = RegistryHolder(BUILTIN, check_every=0, user_dir=tmp_path / "registry", workflows=(workflows, WORKFLOWS))
+    monkeypatch.setattr(loader, "_holder", holder)
+    reg = holder.current
+    assert "flux-2-klein-4b" in reg.models and not reg.user_files  # on the built-ins, graphs included
+    assert any("missing node nope" in e for e in holder.last_error)
+    assert registry_workflow_dirs() == (WORKFLOWS,)  # the adapters run the built-in graph meanwhile
+
+    shutil.copy(WORKFLOWS / "flux2_klein_4b.map.yaml", broken)
+    os.utime(broken, ns=(1, 1))
+    assert holder.current.user_files and holder.last_error is None
+    assert registry_workflow_dirs() == (workflows, WORKFLOWS)
+
+
+async def test_open_pages_hear_of_your_first_file(tmp_path, monkeypatch):
+    from studio.api import main
+
+    user = tmp_path / "registry"  # not there when the API starts
+    holder = RegistryHolder(BUILTIN, check_every=0.01, user_dir=user)
+    assert "my-sam" not in holder.current.models
+    events: list[dict] = []
+    monkeypatch.setattr(main, "get_registry_holder", lambda: holder)
+    monkeypatch.setattr(main.hub, "publish", events.append)
+    watcher = asyncio.create_task(main._watch_registry())
+    try:
+        await asyncio.sleep(0.05)
+        assert events == []  # nothing changed, nothing said
+        _my_sam(user)
+        deadline = time.monotonic() + 15
+        while not events and time.monotonic() < deadline:
+            await asyncio.sleep(0.02)
+    finally:
+        watcher.cancel()
+    assert [e["type"] for e in events] == ["system.registry_reloaded"]
+    assert events[0]["payload"]["hash"] == holder.current.hash and "my-sam" in holder.current.models

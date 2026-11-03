@@ -131,10 +131,18 @@ def _load(directory: Path, name: str, mtime_key: tuple[float, float]) -> Workflo
 _cached = lru_cache(maxsize=64)(_load)
 
 
-def workflow_dirs() -> tuple[Path, ...]:
+def workflow_dirs(user: bool = True) -> tuple[Path, ...]:
     """Where templates are found: your own folder first (a graph there replaces a built-in of the same name)."""
     settings = get_settings()
-    return settings.user_workflows_dir, settings.comfyui_workflows_dir
+    built_in = (settings.comfyui_workflows_dir,)
+    return (settings.user_workflows_dir, *built_in) if user else built_in
+
+
+def registry_workflow_dirs() -> tuple[Path, ...]:
+    """The folders the running registry checked its routes against: built-ins only while your files have errors."""
+    from studio.registry.loader import get_registry  # local import: the registry's lint imports this module
+
+    return workflow_dirs(get_registry().user_files)
 
 
 def load_template(directory: Path | tuple[Path, ...], name: str) -> WorkflowTemplate:
