@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 
 COMFY_ADAPTERS = {"comfy_local", "runpod_comfy"}  # routes whose endpoint names a workflow template
+PRICE_MAX_AGE_DAYS = 30  # a price checked longer ago than this is worth checking again (warning only)
 
 
 def _check_workflows(spec: ModelSpec, route: Route, rwhere: str, dirs: tuple[Path, ...]) -> list[str]:
@@ -162,6 +163,8 @@ def lint(reg: Registry) -> tuple[list[str], list[str]]:
             if route.provider != "mock":
                 if route.pricing.verified is None:
                     errors.append(f"{rwhere}: pricing needs a `verified` date")
+                elif route.enabled and not _free(route) and (age := _age(route.pricing.verified)) is not None:
+                    warnings.append(f"{rwhere}: price last checked {route.pricing.verified} ({age} days ago)")
                 if spec.status == "shutdown" and route.enabled:
                     errors.append(f"{rwhere}: shut-down model must not have enabled routes")
 
@@ -171,4 +174,22 @@ def lint(reg: Registry) -> tuple[list[str], list[str]]:
         if not spec.examples:
             warnings.append(f"{where}: no examples (contract/smoke tests skip it)")
 
+    for provider in reg.providers.values():
+        if provider.gpu_usd_per_hour:
+            if provider.gpu_verified is None:
+                warnings.append(f"provider {provider.id}: gpu_usd_per_hour has no `gpu_verified` date")
+            elif (age := _age(provider.gpu_verified)) is not None:
+                warnings.append(f"provider {provider.id}: GPU prices last checked {provider.gpu_verified} ({age} days ago)")
+
     return errors, warnings
+
+
+def _age(verified: date) -> int | None:
+    """Days since a price was checked, when that's past PRICE_MAX_AGE_DAYS."""
+    days = (date.today() - verified).days
+    return days if days > PRICE_MAX_AGE_DAYS else None
+
+
+def _free(route: Route) -> bool:
+    """Routes on your own machine cost nothing, so their price can't go stale."""
+    return route.pricing.basis != "formula" and all(r.usd == 0 for r in route.pricing.rates)

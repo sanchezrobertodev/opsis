@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from studio.api.main import app as api
-from studio.budget.reconcile import reconcile
+from studio.budget.reconcile import by_route, reconcile
 from studio.config import get_settings
 from studio.db.models import Generation, GenerationAttempt, SpendLedger
 from studio.db.session import session_scope
@@ -206,6 +206,32 @@ async def test_corrections_count_as_spend_and_as_checked(client):
     fal_now = {p["provider"]: p for p in (await client.get("/budget/history")).json()["by_provider"]}["fal"]
     fal_then = history_before.get("fal", {"count": 0, "usd": 0})
     assert (fal_now["count"] - fal_then["count"], round(fal_now["usd"] - fal_then["usd"], 6)) == (2, 1.30)
+
+
+async def test_each_routes_estimates_are_compared_with_its_bills(client):
+    """The weekly report, the hourly log and the breakdown show each route's bills per dollar estimated."""
+    user = get_settings().owner_user_id
+    route = f"toy-{uuid.uuid4().hex[:8]}@fal"  # its own route, so rows from other tests never mix in
+    now = datetime.now(UTC)
+    async with session_scope() as s:
+        for charged, billed in (("0.10", 0.12), ("0.10", 0.09)):
+            a = await attempt(s, user, provider="fal", route=route, usd=charged, when=now)
+            s.add(SpendLedger(user_id=user, entry_type=LedgerEntry.adjustment, provider="fal", route_id=route,
+                              amount_usd=Decimal(str(billed)) - Decimal(charged), generation_attempt_id=a.id,
+                              created_at=now, basis={"source": "fal billing", "billed_usd": billed,
+                                                     "charged_usd": float(charged)}))
+        s.add(SpendLedger(user_id=user, entry_type=LedgerEntry.adjustment, provider="fal", route_id=route,
+                          amount_usd=Decimal("0.05"), created_at=now,  # idle time: no take, left out
+                          basis={"bucket": now.isoformat(), "billed_usd": 0.05}))
+    async with session_scope() as s:
+        rows = {b.route_id: b for b in await by_route(s, now - timedelta(minutes=1))}
+        assert route not in {b.route_id for b in await by_route(s, now + timedelta(minutes=1))}
+    b = rows[route]
+    assert (b.count, b.charged_usd, b.billed_usd) == (2, pytest.approx(0.20), pytest.approx(0.21))
+    assert b.ratio == pytest.approx(1.05)
+    out = next(r for r in (await client.get("/budget/breakdown?period=today")).json()["routes"] if r["route_id"] == route)
+    assert out == {"route_id": route, "count": 2, "charged_usd": pytest.approx(0.20),
+                   "billed_usd": pytest.approx(0.21), "ratio": pytest.approx(1.05)}
 
 
 @respx.mock

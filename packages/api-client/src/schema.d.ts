@@ -3413,6 +3413,28 @@ export interface components {
              */
             created_at: string;
         };
+        /** RouteBillOut */
+        RouteBillOut: {
+            /** Route Id */
+            route_id: string;
+            /**
+             * Count
+             * @description Takes corrected from a bill
+             */
+            count: number;
+            /**
+             * Charged Usd
+             * @description What the studio estimated for them
+             */
+            charged_usd: number;
+            /** Billed Usd */
+            billed_usd: number;
+            /**
+             * Ratio
+             * @description Billed per dollar estimated (none: nothing was estimated)
+             */
+            ratio: number | null;
+        };
         /** RouteSummary */
         RouteSummary: {
             /** Id */
@@ -3909,6 +3931,12 @@ export interface components {
              * @description By model (Claude by its model), most spent first
              */
             models: components["schemas"]["SpendGroup"][];
+            /**
+             * Routes
+             * @description Each route's estimates against its bills (fal with an admin key and our RunPod endpoints have bills)
+             * @default []
+             */
+            routes: components["schemas"]["RouteBillOut"][];
         };
         /** SpendEntryOut */
         SpendEntryOut: {

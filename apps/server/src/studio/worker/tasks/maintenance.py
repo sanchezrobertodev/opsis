@@ -150,11 +150,17 @@ def _sweep(folders: Iterable[Path], before: datetime) -> int:
 @app.task(name="budget.reconcile", queue=Q_MAINT, queueing_lock="budget.reconcile")
 async def budget_reconcile(timestamp: int) -> None:
     """Every hour: read fal's and our RunPod endpoints' bills (free) and book what the estimates missed."""
-    from studio.budget.reconcile import reconcile
+    from studio.budget.reconcile import by_route, reconcile
 
     async with session_scope() as s:
         results = await reconcile(s, days=3)
+        # what the bills say of each route's estimates, logged when this hour booked something new
+        routes = await by_route(s, datetime.now(UTC) - timedelta(days=7)) if any(r.booked_usd for r in results) else []
     for r in results:
         if r.booked_usd or r.status not in ("ok", "skipped"):
             log.info("reconcile %s: %s, %d checked, booked %+.4f%s", r.provider, r.status, r.checked, r.booked_usd,
                      f" ({r.detail})" if r.detail else "")
+    if routes:
+        log.info("reconcile bill/estimate by route, 7 days: %s", "; ".join(
+            f"{b.route_id} {b.ratio:.2f} ({b.count} takes)" if b.ratio is not None else f"{b.route_id} unestimated"
+            for b in routes))

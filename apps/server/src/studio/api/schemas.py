@@ -375,6 +375,14 @@ class SpendGroup(ApiModel):
     checked_usd: float = Field(0.0, description="How much of `usd` was checked against the provider's bill")
 
 
+class RouteBillOut(ApiModel):
+    route_id: str
+    count: int = Field(description="Takes corrected from a bill")
+    charged_usd: float = Field(description="What the studio estimated for them")
+    billed_usd: float
+    ratio: float | None = Field(description="Billed per dollar estimated (none: nothing was estimated)")
+
+
 class SpendBreakdownOut(ApiModel):
     period: Literal["today", "month", "all"]
     total_usd: float
@@ -383,6 +391,8 @@ class SpendBreakdownOut(ApiModel):
                                                 "as it ran, or is still an estimate)")
     features: list[SpendGroup] = Field(description="By studio feature, most spent first")
     models: list[SpendGroup] = Field(description="By model (Claude by its model), most spent first")
+    routes: list[RouteBillOut] = Field([], description="Each route's estimates against its bills (fal with an "
+                                                       "admin key and our RunPod endpoints have bills)")
 
 
 class SpendHistoryOut(ApiModel):

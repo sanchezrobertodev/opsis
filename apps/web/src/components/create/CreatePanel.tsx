@@ -449,6 +449,7 @@ function ProviderField({ routes, candidates, value, onChange }: {
       htmlFor={id}
       hint={pinned
         ? `Runs only on ${pinned.provider_name}: if it fails there, it doesn't fall back to another provider.`
+          + (pinned.pricing_verified ? ` Price checked ${pinned.pricing_verified}.` : "")
         : "The cheapest provider that can run it; if that one fails, the next one takes over."}
     >
       <Select
