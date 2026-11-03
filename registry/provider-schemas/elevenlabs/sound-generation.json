@@ -11,7 +11,8 @@
   "model_id": {
    "type": "string",
    "enum": [
-    "eleven_text_to_sound_v2"
+    "eleven_text_to_sound_v2",
+    "eleven_text_to_sound_v3"
    ],
    "default": "eleven_text_to_sound_v2"
   },

@@ -169,7 +169,7 @@ async def test_the_voice_changer_uploads_the_recording(adapter, tmp_path):
     req = normalize(spec, "change", "", {"voice_id": "cgSgspJ2msm6clMCkdW9", "remove_background_noise": True},
                     [MediaRef(role="input_audio", asset_id="a", kind="audio")])
     endpoint, payload, _ = build_payload(spec, spec.route("eleven-voice-changer@elevenlabs"), req, staged)
-    assert endpoint == "speech-to-speech/cgSgspJ2msm6clMCkdW9"
+    assert endpoint == "voice-changer/cgSgspJ2msm6clMCkdW9"
     call = respx.post(f"{BASE_URL}/{endpoint}").respond(200, content=b"ID3changed", headers={"content-type": "audio/mpeg"})
     res = await adapter.submit(route(), endpoint, payload, client_ref="c")
     body = call.calls.last.request.content
