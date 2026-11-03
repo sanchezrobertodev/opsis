@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Schemas } from "@opsis/api-client";
 import { api, ApiError, SIGNED_OUT, unwrap } from "@/lib/api";
@@ -44,33 +44,54 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   );
 }
 
+const DROPPED =
+  "The token is right, but this browser didn't keep the sign-in. Open the studio on the same host name as its API " +
+  "(for example both on localhost, not localhost and 127.0.0.1).";
+
 function SignIn() {
   const qc = useQueryClient();
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
-  const [dropped, setDropped] = useState(false);
+  const [problem, setProblem] = useState(""); // in the form: a toast would show under the modal's backdrop
+  const ref = useRef<HTMLDialogElement>(null);
+  // a modal goes above any studio dialog already open (showModal: those block a plain overlay) and keeps it as it was
+  useLayoutEffect(() => {
+    if (ref.current && !ref.current.open) ref.current.showModal();
+    // Escape asks every dialog opened without a click in between to close, the studio's under this one too
+    const keep = (e: KeyboardEvent) => e.key === "Escape" && e.preventDefault();
+    window.addEventListener("keydown", keep, true);
+    return () => window.removeEventListener("keydown", keep, true);
+  }, []);
 
   const signIn = async () => {
     setBusy(true);
+    setProblem("");
     try {
       await unwrap(api.POST("/auth/session", { body: { token } }));
       // the cookie only comes back if the browser kept it: an API on another site (localhost vs 127.0.0.1) can't set one
       const now = await session();
-      if (!now.signed_in) return setDropped(true);
+      if (!now.signed_in) return setProblem(DROPPED);
       qc.setQueryData(keys.auth, now);
       void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== keys.auth[0] });
     } catch (err) {
       const wrong = err instanceof ApiError && err.status === 401;
-      toast.error(wrong ? "That isn't the studio's access token" : err instanceof Error ? err.message : "Could not sign in");
+      setProblem(wrong ? "That isn't the studio's access token." : err instanceof Error ? err.message : "Could not sign in.");
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-bay/85 px-4 backdrop-blur-sm">
+    <dialog
+      ref={ref}
+      aria-label="Sign in"
+      // only the token closes it: other close requests (a phone's back) are refused, or it opens again
+      onCancel={(e) => e.preventDefault()}
+      onClose={(e) => e.currentTarget.showModal()}
+      className="m-auto w-[calc(100%-2rem)] max-w-sm bg-transparent p-0 text-chalk backdrop:bg-bay/85 backdrop:backdrop-blur-sm"
+    >
       <form
-        className="w-full max-w-sm space-y-5 rounded-[var(--radius-panel)] border border-line-soft bg-raised/80 p-6"
+        className="space-y-5 rounded-[var(--radius-panel)] border border-line-soft bg-raised/80 p-6"
         onSubmit={(e) => {
           e.preventDefault();
           if (token.trim()) void signIn();
@@ -99,17 +120,16 @@ function SignIn() {
             The studio&rsquo;s ACCESS_TOKEN, from its .env. This browser stays signed in until it&rsquo;s changed.
           </p>
         </div>
-        {dropped && (
+        {problem && (
           <p role="alert" className="text-xs leading-relaxed text-fault">
-            The token is right, but this browser didn&rsquo;t keep the sign-in. Open the studio on the same host name
-            as its API (for example both on localhost, not localhost and 127.0.0.1).
+            {problem}
           </p>
         )}
         <Button type="submit" tone="primary" className="w-full" disabled={busy || !token.trim()}>
           Sign in
         </Button>
       </form>
-    </div>
+    </dialog>
   );
 }
 

@@ -3,6 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useSignedIn } from "@/components/shell/SignIn";
 import { API_URL, type Generation, refused } from "./api";
 import { keys, patchGeneration } from "./queries";
 
@@ -30,8 +31,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<Connection>("connecting");
   const pending = useRef<Set<string>>(new Set());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const signedIn = useSignedIn(); // a refused stream stays closed, so signing back in opens a new one
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
+    if (!signedIn) return;
+    let again: ReturnType<typeof setTimeout> | undefined;
     const flush = () => {
       timer.current = null;
       for (const scope of pending.current) qc.invalidateQueries({ queryKey: [scope] });
@@ -47,7 +52,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     source.onerror = () => {
       const closed = source.readyState === EventSource.CLOSED; // refused (a dropped connection retries instead)
       setState(closed ? "offline" : "connecting");
-      if (closed) refused(401);
+      if (!closed) return;
+      refused(401); // the sign-in comes back if that's why
+      // else a proxy's 502 while the API restarts (tailscale serve): an EventSource never tries again by itself
+      again = setTimeout(() => setRetry((n) => n + 1), 5_000);
     };
     source.onmessage = (event) => {
       let msg: EventMessage;
@@ -92,9 +100,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     };
     return () => {
       source.close();
+      clearTimeout(again);
       if (timer.current) clearTimeout(timer.current);
+      timer.current = null; // or the next stream's invalidations would wait on a timer that never fires
     };
-  }, [qc]);
+  }, [qc, signedIn, retry]);
 
   return <RealtimeContext.Provider value={state}>{children}</RealtimeContext.Provider>;
 }
