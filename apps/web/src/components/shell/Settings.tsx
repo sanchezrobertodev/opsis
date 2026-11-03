@@ -34,7 +34,7 @@ export function Settings() {
 
   return (
     <div className="h-full overflow-y-auto p-6 scrollbar-quiet">
-      <div className="grid max-w-4xl gap-10 lg:grid-cols-2">
+      <div className="grid max-w-4xl grid-cols-1 gap-10 lg:grid-cols-2">
         <section className="space-y-5">
           <h2 className="type-title text-xl">Spending</h2>
           {budget && (

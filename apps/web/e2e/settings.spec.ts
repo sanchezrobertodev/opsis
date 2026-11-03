@@ -23,3 +23,22 @@ test("Settings: provider balances and where the money went", async ({ page }) =>
   // either the tables or the empty note, depending on what this database has been charged
   await expect(spend.getByText(/By feature|Nothing billed yet/).first()).toBeVisible();
 });
+
+test("Settings: a long charge label doesn't widen the page", async ({ page }) => {
+  // under lg the page is one column; a long, truncated label once stretched it, and every section, past the window
+  await page.route("**/budget/history**", (route) => route.fulfill({ json: { by_provider: [], entries: [
+    { id: "long", created_at: new Date().toISOString(), amount_usd: 0.5, entry_type: "charge", provider: "fal",
+      route_id: "mock", estimated: false, kind: "generation", label: "A huge body gliding past ".repeat(20) },
+  ] } }));
+  for (const width of [960, 1023, 1024, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/settings");
+    const heading = page.getByRole("heading", { name: "Spend history" });
+    await expect(page.getByText("A huge body gliding past").first()).toBeVisible();
+    const overflow = await heading.evaluate((h) => {
+      const scroller = h.closest(".overflow-y-auto")!;
+      return scroller.scrollWidth - scroller.clientWidth;
+    });
+    expect(overflow, `at ${width} px`).toBe(0);
+  }
+});
