@@ -47,6 +47,9 @@ def test_mock_mode_only_mock_but_reports_live_reference():
     assert eligible(cands) == ["m@mock"]
     ref = cheapest_live_estimate(cands)
     assert ref is not None and ref.route.id == "m@cheap"
+    down = env(mode="mock")
+    down.reachable = lambda p: p != "a"  # the cheap route's runner is down (the Codex runner): the other one would draw
+    assert cheapest_live_estimate(candidates(reg, spec, normalize(spec, "t2v", "x", {}, []), down)).route.id == "m@pricey"
 
 
 def test_live_mode_sorts_by_cost_and_excludes_mock():

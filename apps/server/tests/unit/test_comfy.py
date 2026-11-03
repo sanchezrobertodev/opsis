@@ -359,7 +359,7 @@ async def test_download_rejects_missing_file(monkeypatch, tmp_path):
 
 def env(*, url: bool, online: bool, mode="mock") -> RoutingEnv:
     return RoutingEnv(provider_mode=mode, live_allowlist=set(), has_key=lambda p: url if p == "comfy_local" else False,
-                      has_adapter=lambda a: True, reachable=lambda p: online)
+                      has_adapter=lambda a: True, reachable=lambda p: online or p != "comfy_local")
 
 
 def eligible(e: RoutingEnv) -> list[str]:
@@ -689,7 +689,7 @@ async def test_local_runs_re_time_clips_and_take_a_fresh_seed(fake, monkeypatch,
 
 def ltx_env(*, online: bool, blocked: str | None, mode="mock") -> RoutingEnv:
     return RoutingEnv(provider_mode=mode, live_allowlist=set(), has_key=lambda p: p == "comfy_local" or mode == "live",
-                      has_adapter=lambda a: True, reachable=lambda p: online,
+                      has_adapter=lambda a: True, reachable=lambda p: online or p != "comfy_local",
                       blocked=lambda r, m: blocked if r.provider == "comfy_local" else None)
 
 

@@ -117,6 +117,30 @@ async def test_codex_says_whether_it_runs_and_is_signed_in(keys, monkeypatch, sa
     assert "sk-" not in got.detail
 
 
+async def test_codex_in_its_own_container_is_asked_through_the_runners_heartbeat(keys, monkeypatch, tmp_path):
+    import os
+    import time
+
+    monkeypatch.setattr(get_settings(), "codex_bin", "codex")
+    monkeypatch.setattr(get_settings(), "codex_runner", True)
+    monkeypatch.setattr(get_settings(), "media_root", tmp_path / "media")
+    monkeypatch.setattr(b.subprocess, "run", lambda *a, **k: pytest.fail("Codex isn't run here in runner mode"))
+    heartbeat = tmp_path / "provider_results" / "codex" / "runner.json"  # beside the Codex jobs
+    heartbeat.parent.mkdir(parents=True)
+
+    async def codex():
+        b.clear_cache()
+        return {x.provider: x for x in await b.balances()}["codex"]
+
+    assert (await codex()).status == "error" and "isn't running" in (await codex()).detail  # no heartbeat yet
+    heartbeat.write_text('{"login": "chatgpt"}')
+    assert (await codex()).status == "ok"
+    heartbeat.write_text('{"login": "api_key"}')
+    assert (await codex()).status == "unavailable" and "podman exec -it opsis-codex" in (await codex()).detail
+    os.utime(heartbeat, (time.time() - 120, time.time() - 120))  # the runner stopped
+    assert "isn't running" in (await codex()).detail
+
+
 @respx.mock
 async def test_one_provider_failing_hides_nothing_else(keys):
     respx.get("https://api.fal.ai/v1/account/billing").respond(403, json={"error": {"type": "authorization_error"}})

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import shutil
+import stat
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import anyio
 import httpx
@@ -207,6 +209,41 @@ async def staged_ref(provider: str, media: ResolvedMedia, upload: Uploader) -> s
 # ---------------------------------------------------------------- results of synchronous APIs
 
 
+def open_plain(path: Path) -> BinaryIO:
+    """Open a regular file to read without following a link or blocking on a pipe someone left in its place."""
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+                 | getattr(os, "O_BINARY", 0))
+    f = os.fdopen(fd, "rb")
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        f.close()
+        raise OSError(f"{path.name} isn't a plain file")
+    return f
+
+
+def write_json(path: Path, data: dict[str, Any]) -> None:
+    """Whole or not at all, for a file another process reads while it's written. The temporary file is new each time
+    (O_EXCL), so a link left in the folder is never written through; it ends in `.json`, so it's never an output."""
+    tmp = path.with_name(f".{uuid.uuid4().hex}.{path.name}")
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0), 0o644)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(json.dumps(data).encode())
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def touch_flag(path: Path) -> None:
+    """Create a flag file (`cancel`) in a job's folder without following a link left there."""
+    if path.parent.is_symlink():
+        return
+    try:
+        os.close(os.open(path, os.O_CREAT | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600))
+    except OSError:  # the job cleared its folder meanwhile
+        pass
+
+
 def results_root() -> Path:
     """Where every ResultStore parks its jobs (`<provider>/<job id>/`); the reaper sweeps old ones."""
     return get_settings().resolve_media_root().parent / "provider_results"
@@ -214,7 +251,8 @@ def results_root() -> Path:
 
 class ResultStore:
     """Synchronous providers (e.g. Gemini image) return bytes in the submit call. We park them on disk under
-    a job id so the normal poll -> ingest flow picks them up like any async job."""
+    a job id so the normal poll -> ingest flow picks them up like any async job. Another container can write a job's
+    folder (the Codex runner), so reading one never follows a link or waits on a pipe."""
 
     def __init__(self, provider: str) -> None:
         self.root = results_root() / provider
@@ -227,19 +265,23 @@ class ResultStore:
 
     def outputs(self, job_id: str, kind: str) -> list[ProviderOutput]:
         path = self.root / job_id
-        files = sorted(p for p in path.glob("*") if p.is_file() and p.suffix != ".json") if path.exists() else []
+        files = sorted(p for p in path.glob("*") if p.is_file() and not p.is_symlink() and p.suffix != ".json")             if path.is_dir() and not path.is_symlink() else []
         return [ProviderOutput(index=i, kind=kind, ref=str(p), mime=mimetypes.guess_type(p.name)[0])
                 for i, p in enumerate(files)]
 
     def meta(self, job_id: str) -> dict[str, Any]:
-        f = self.root / job_id / "meta.json"
-        return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+        try:
+            with open_plain(self.root / job_id / "meta.json") as f:
+                return json.loads(f.read(1_000_000))
+        except FileNotFoundError:
+            return {}
 
     def write_meta(self, job_id: str, meta: dict[str, Any]) -> None:
-        (self.root / job_id / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        write_json(self.root / job_id / "meta.json", meta)
 
     def copy_out(self, output: ProviderOutput, dest: Path) -> str:
-        shutil.copyfile(output.ref or "", dest)
+        with open_plain(Path(output.ref or "")) as src, open(dest, "wb") as out:
+            shutil.copyfileobj(src, out)
         return output.mime or "application/octet-stream"
 
     def discard(self, job_id: str) -> None:

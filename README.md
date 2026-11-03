@@ -247,7 +247,9 @@ Settings shows where the money went, by feature and by model.
 <summary><b>GPT Image through your ChatGPT plan</b> (optional)</summary>
 
 GPT Image 2.5 can draw from a ChatGPT plan's allowance through the
-[Codex CLI](https://developers.openai.com/codex/cli) instead of being billed per picture on fal.
+[Codex CLI](https://developers.openai.com/codex/cli) instead of being billed per picture on fal. These steps are
+for a desktop setup; on the Linux server see
+[infra/server/README.md](infra/server/README.md#gpt-image-through-your-chatgpt-plan) instead.
 
 1. Install the Codex CLI and sign in with your ChatGPT account: `codex login`. `codex login status` should say
    "Logged in using ChatGPT". An API-key sign-in bills per picture, which defeats the purpose.
@@ -258,9 +260,9 @@ GPT Image 2.5 can draw from a ChatGPT plan's allowance through the
 
 It follows the Mock / Mixed / Live switch like any provider. It is slow (about 90 s a picture), and Codex picks the
 size, so pictures are cropped to the shape you asked for. A picture Codex can't draw (the plan's usage limit, a
-refusal) moves on to fal and is billed there. Check OpenAI's terms for this use of a plan. On the Linux server setup
-the API and worker mount the host's `~/.codex`; point `CODEX_BIN` at
-`/home/<you>/.codex/packages/standalone/current/bin/codex`.
+refusal) moves on to fal and is billed there. Check OpenAI's terms for this use of a plan. On a desktop Codex runs
+as the worker's user and could read what the worker can; the server setup runs it in its own container, apart from
+the studio's keys and files, with its own sign-in.
 
 </details>
 

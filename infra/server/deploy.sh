@@ -22,7 +22,12 @@ if [ ! -f .env ]; then
   echo "no .env in $APP_DIR: copy the studio's .env here (chmod 600) and run again"; exit 1
 fi
 chmod 600 .env
-mkdir -p data/media data/backups data/logs data/reports "$HOME/.codex"  # the worker mounts ~/.codex
+# opsis-codex mounts the Codex jobs, its own Codex home and ~/.codex/packages, and draws with the CODEX_BIN that .env
+# names (empty: it stays off)
+mkdir -p data/media data/backups data/logs data/reports data/provider_results/codex "$HOME/.codex/packages" \
+  "$HOME/.local/share/opsis/codex-home"
+chmod 700 "$HOME/.local/share/opsis/codex-home"
+CODEX_BIN="$(sed -n 's/^CODEX_BIN=//p' .env | tail -1)"
 
 if [ "${NO_PULL:-0}" != 1 ] && [ -d .git ]; then
   before="$(git rev-parse HEAD)"
@@ -69,7 +74,7 @@ fi
 echo "==> installing units"
 mkdir -p "$UNIT_DIR" "$USER_UNIT_DIR"
 fill() { sed -e "s|@APP_DIR@|$APP_DIR|g" -e "s|@WEB_PORT@|$WEB_PORT|g" -e "s|@API_PORT@|$API_PORT|g" \
-             -e "s|@WEB_ORIGIN@|$WEB_ORIGIN|g" "$1"; }
+             -e "s|@WEB_ORIGIN@|$WEB_ORIGIN|g" -e "s|@CODEX_BIN@|$CODEX_BIN|g" "$1"; }
 for f in "$HERE"/quadlet/*; do fill "$f" > "$UNIT_DIR/$(basename "$f")"; done
 for f in "$HERE"/systemd/*; do fill "$f" > "$USER_UNIT_DIR/$(basename "$f")"; done
 systemctl --user daemon-reload
@@ -81,7 +86,7 @@ podman run --rm --pod opsis --env-file .env \
   -w /app/apps/server localhost/opsis-server:latest alembic upgrade head
 
 echo "==> restarting the API, worker and web app"
-systemctl --user restart opsis-api.service opsis-worker.service opsis-web.service
+systemctl --user restart opsis-codex.service opsis-api.service opsis-worker.service opsis-web.service
 systemctl --user enable --now opsis-backup.timer opsis-schema-check.timer opsis-offsite.timer >/dev/null
 
 # HTTPS on the tailnet (tailnet only). Set on every deploy: it replaces the port's mapping, so a changed local port
@@ -99,4 +104,10 @@ curl -fsS "$health" >/dev/null || { echo; echo "API not healthy: journalctl --us
 curl -fsS -o /dev/null "http://127.0.0.1:$WEB_PORT/" || { echo; echo "web not up: journalctl --user -u opsis-web -e"; exit 1; }
 
 podman image prune -f >/dev/null
+# the runner's Codex has its own sign-in: until it's done, GPT Image goes to fal (billed). Only grep the status line,
+# never print it (with an API key it shows part of the key).
+if [ -n "$CODEX_BIN" ] && ! podman exec opsis-codex "$CODEX_BIN" login status 2>&1 | grep -q ChatGPT; then
+  echo "WARNING: opsis-codex isn't signed in with ChatGPT, so GPT Image goes to fal (billed) until you run:"
+  echo "  podman exec -it opsis-codex $CODEX_BIN login --device-auth"
+fi
 echo "Studio: $WEB_ORIGIN  (API $API_URL)"

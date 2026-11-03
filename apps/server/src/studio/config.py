@@ -69,6 +69,8 @@ class Settings(BaseSettings):
 
     # The Codex CLI, signed in with a ChatGPT plan: GPT Image from the plan's allowance. Empty turns the route off.
     codex_bin: str = ""
+    # Codex runs in its own container (providers/codex_runner.py, infra/server's opsis-codex), never in the worker
+    codex_runner: bool = False
 
     # Local ComfyUI. Empty disables the local route.
     comfyui_url: str = ""

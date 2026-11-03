@@ -42,7 +42,7 @@ class RoutingEnv:
     has_key: Callable[[str], bool]  # provider id -> key configured?
     has_adapter: Callable[[str], bool]  # adapter key -> implemented?
     health: dict[str, RouteHealth] = field(default_factory=dict)
-    reachable: Callable[[str], bool] = lambda _provider: True  # local engines: is the server up?
+    reachable: Callable[[str], bool] = lambda _provider: True  # local engines, the Codex runner: is it up?
     # local engines that are up: why one can't run this route's mode (missing model files, too little GPU memory)
     blocked: Callable[[Route, str], str | None] = lambda _route, _mode: None
     setting_set: Callable[[str], bool] = lambda _name: True  # is this Settings field filled in?
@@ -59,6 +59,7 @@ class Candidate:
     provider_kind: str | None = None
     eta_seconds: float | None = None
     account: str | None = None  # the billing account (ProviderSpec.billing_account, else the provider id)
+    reachable: bool = True  # its provider is up (local engines, the Codex runner)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -180,8 +181,9 @@ def candidates(
             if hosted:
                 reason = (f"{provider.name} takes {' and '.join(hosted)} inputs only as web links; set "
                           f"{provider.hosting_setting.upper()} so they can be hosted")
-        if reason is None and kind == "local" and not env.reachable(route.provider):
-            reason = f"{provider.name} isn't running. Start it, then try again."
+        if reason is None and not env.reachable(route.provider):
+            reason = (f"{provider.name} isn't running. Start it, then try again." if kind == "local"
+                      else f"{provider.name} isn't ready; see Settings > Provider balances")
         if reason is None and kind == "local":
             reason = env.blocked(route, req.mode)
         if reason is None:
@@ -199,6 +201,7 @@ def candidates(
         out.append(Candidate(route=route, estimate=est, eligible=reason is None, reason=reason,
                              provider_name=provider.name if provider else None, provider_kind=kind,
                              account=(provider.billing_account or provider.id) if provider else None,
+                             reachable=env.reachable(route.provider),
                              eta_seconds=eta_seconds(route.eta, req.params, req.media, req.mode) if est else None))
 
     def sort_key(c: Candidate) -> tuple:
@@ -222,7 +225,8 @@ def candidates(
 def cheapest_live_estimate(cands: list[Candidate]) -> Candidate | None:
     """What this would cost on the cheapest real route, regardless of keys/adapters. Shown next to mock runs."""
     # estimate is None when the route lacks the requested mode, so this keeps only comparable routes; a free local
-    # route that can't run here (no model files) isn't a price this machine would pay
+    # route that can't run here (no model files), or a free one whose runner is down, isn't a price this machine
+    # would pay
     live = [c for c in cands if c.route.provider != MOCK_PROVIDER and c.estimate is not None and c.route.enabled
-            and (c.provider_kind != "local" or c.eligible)]
+            and c.reachable and (c.provider_kind != "local" or c.eligible)]
     return min(live, key=lambda c: c.estimate.usd) if live else None
