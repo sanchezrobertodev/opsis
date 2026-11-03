@@ -50,6 +50,34 @@ test("a running take can be canceled", async ({ page }) => {
   await expect(take.getByText("Canceled")).toBeVisible();
 });
 
+test("a pinned provider reaches the estimate and says why it can't run in mock mode; Auto runs on the mock", async ({ page }) => {
+  // a pin kept from Mixed or Live, as the form remembers it
+  await page.addInitScript(() => {
+    const d = { prompt: "e2e: a fox in the snow", negativePrompt: "", params: {}, media: {}, takes: 1, direction: {} };
+    localStorage.setItem("studio-drafts", JSON.stringify({ version: 3, state: {
+      video: { ...d, modelId: "seedance-2.5", routes: { "seedance-2.5": "seedance-2.5@fal" } }, image: d, edit: d, motion: d,
+    } }));
+  });
+  const pinnedEstimate = page.waitForRequest((r) => r.url().endsWith("/registry/estimate")
+    && r.postDataJSON()?.route_policy === "pinned:seedance-2.5@fal");
+  await page.goto("/create/video");
+  await pinnedEstimate;
+
+  const provider = page.getByLabel("Provider", { exact: true });
+  await expect(provider).toHaveValue("seedance-2.5@fal");
+  await expect(provider.locator("option", { hasText: "fal.ai" })).toBeDisabled();
+  await expect(provider.locator("option", { hasText: "fal.ai" })).toContainText("PROVIDER_MODE=mock");
+  await expect(page.getByText("fal.ai can't run this", { exact: false })).toBeVisible();
+  const generate = page.getByRole("button", { name: "Generate", exact: true });
+  await expect(generate).toBeDisabled();
+
+  await provider.selectOption("");
+  await expect(page.getByText(/Free mock run/)).toBeVisible();
+  const created = page.waitForRequest((r) => r.url().endsWith("/generations") && r.method() === "POST");
+  await generate.click();
+  expect((await created).postDataJSON().route_policy).toBe("cheapest_healthy");
+});
+
 test("every studio has shipped, so none is shown as coming soon", async ({ page }) => {
   const soon = await page.goto("/soon/worlds");
   expect(soon?.status()).toBe(404);

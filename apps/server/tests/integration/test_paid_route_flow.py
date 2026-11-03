@@ -166,6 +166,29 @@ async def test_rejected_key_fails_over_and_explains(client, http):
     assert budget["reserved_usd"] == 0  # the failed attempt's reservation was released
 
 
+async def test_a_pinned_provider_runs_there_and_never_falls_back(client, http, monkeypatch):
+    """The Create form's Provider choice: fal is dearer than Replicate, but a take pinned to it is priced and sent
+    there, and when fal refuses it, it fails instead of moving to Replicate."""
+    monkeypatch.setattr(get_settings(), "fal_key", "test-key")
+    fal = http.post("https://queue.fal.run/bytedance/seedance-2.5/text-to-video").respond(401, json={"detail": "bad key"})
+    replicate = http.post(f"{R}/models/bytedance/seedance-2.5/predictions").respond(201, json={"id": "p-1"})
+    body = {"model_id": "seedance-2.5", "mode": "t2v", "prompt": "x", "params": {"duration": 4, "resolution": "480p"}}
+    auto = (await client.post("/registry/estimate", json=body)).json()
+    assert auto["chosen_route_id"] == "seedance-2.5@replicate"
+
+    body["route_policy"] = "pinned:seedance-2.5@fal"
+    pinned = (await client.post("/registry/estimate", json=body)).json()
+    assert pinned["chosen_route_id"] == "seedance-2.5@fal" and pinned["estimate_usd"] > auto["estimate_usd"]
+
+    gen = (await client.post("/generations", json=body)).json()
+    gid = uuid.UUID(gen["id"])
+    await run_submit(gid)  # 401 -> route unavailable -> failover requeues
+    await run_submit(gid)  # the pin leaves no other route -> fails
+    done = (await client.get(f"/generations/{gen['id']}")).json()
+    assert done["status"] == "failed" and done["error_code"] == "route_unavailable"
+    assert fal.call_count == 1 and not replicate.called
+
+
 async def test_runpod_public_endpoint_charges_what_runpod_reports(client, http, mp4_bytes, monkeypatch):
     """Wan 2.2 14B on a RunPod public endpoint: the input image goes inline (no FAL_KEY), and the take is
     charged RunPod's reported `cost` rather than the price-list estimate."""

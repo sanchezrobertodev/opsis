@@ -3,7 +3,7 @@
 import type { Schemas } from "@opsis/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api, ApiError, isActive, type ModelSummary, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
@@ -11,7 +11,7 @@ import { useDraft } from "@/lib/draft";
 import { useDebounced } from "@/lib/hooks";
 import { type CreateBody, useCreateGeneration, useGenerations, useModel } from "@/lib/queries";
 import { KINDS, modeMatches, type StudioKind } from "@/lib/studioKinds";
-import { Button, Dialog, Segmented } from "@/components/ui/controls";
+import { Button, Dialog, Field, Segmented, Select } from "@/components/ui/controls";
 import { CompareDialog } from "./CompareDialog";
 import { CostPanel } from "./CostPanel";
 import { KeyframeHint } from "./KeyframeHint";
@@ -99,15 +99,13 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
     .filter((slot) => slot.required && !slot.auto && !draft.media[slot.role]?.length)
     .map((slot) => `${slot.label ?? slot.role} is required`);
   const estimateBody = useDebounced(body && !missingMedia.length ? { ...body, prompt: body.prompt ? "x" : "" } : null, 300);
-  const estimate = useQuery({
-    queryKey: ["estimate", estimateBody],
-    queryFn: () =>
-      unwrap(api.POST("/registry/estimate", { body: { route_policy: "cheapest_healthy", ...estimateBody! } })),
-    enabled: Boolean(estimateBody),
-    // keep the last price while a new one loads, but not once an input it needs is gone
-    placeholderData: (prev) => (estimateBody ? prev : undefined),
-    retry: false,
-  });
+  // a route the model no longer has runs as Auto
+  const stored = model && draft.routes?.[model.id];
+  const pinned = stored && model.routes.some((r) => r.id === stored) ? stored : undefined;
+  const routePolicy = pinned ? `pinned:${pinned}` : "cheapest_healthy";
+  const estimate = useEstimate(estimateBody, routePolicy);
+  // Auto's candidates give each provider's own reason; a pinned estimate says "route pinned to" for the others
+  const providers = useEstimate(estimateBody, "cheapest_healthy").data?.candidates;
   const estimateErrors =
     estimate.error instanceof ApiError
       ? ((estimate.error.body as { errors?: string[] })?.errors ?? [estimate.error.message])
@@ -134,10 +132,12 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
   const [showMore, setShowMore] = useState(false);
 
   const promptMissing = mode?.prompt === "required" && !draft.prompt.trim();
-  // No route can run it right now (e.g. the local engine is off): say why, using the most relevant reason.
+  // No route can run it right now (the pinned one can't, the local engine is off): say why, using the most relevant reason.
+  const pin = estimate.data?.candidates.find((c) => c.route_id === pinned);
   const noRoute =
     estimate.data && !estimate.data.chosen_route_id
-      ? (estimate.data.candidates.find((c) => c.provider_kind === "local")?.reason ??
+      ? (pin?.reason && `${pin.provider_name ?? pin.provider} can't run this: ${pin.reason}`) ||
+        (estimate.data.candidates.find((c) => c.provider_kind === "local")?.reason ??
         estimate.data.candidates.find((c) => !c.is_mock)?.reason ??
         "No provider can run this right now.")
       : null;
@@ -154,7 +154,7 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
     const group = takes > 1 ? crypto.randomUUID() : null;
     for (let i = 0; i < takes; i++) {
       try {
-        await create.mutateAsync({ ...body, group_id: group, confirm_cost_usd: confirmCost ?? null });
+        await create.mutateAsync({ ...body, route_policy: routePolicy, group_id: group, confirm_cost_usd: confirmCost ?? null });
       } catch (err) {
         if (err instanceof ApiError && err.status === 409) {
           const b = err.body as { estimate_usd: number; route_id: string };
@@ -288,6 +288,13 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
           <ParamField key={p.name} param={p} value={values[p.name]} onChange={(v) => setParam(studio, model.id, p.name, v)} />
         ))}
 
+        <ProviderField
+          routes={model.routes}
+          candidates={providers}
+          value={pinned ?? ""}
+          onChange={(id) => setDraft(studio, { routes: { ...draft.routes, [model.id]: id } })}
+        />
+
         {(advanced.length > 0 || model.prompt.supports_negative) && (
           <div>
             <button
@@ -333,7 +340,8 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
           />
         </div>
 
-        <CostLine
+        {/* when nothing can run it, the blocker below says why */}
+        {!noRoute && <CostLine
           chosenUsd={estimate.data?.estimate_usd ?? null}
           isMock={chosen?.is_mock ?? false}
           isLocal={chosen?.provider_kind === "local"}
@@ -343,7 +351,7 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
           takes={draft.takes}
           chosen={chosen}
           pending={estimate.isFetching}
-        />
+        />}
 
         {blockers.length > 0 && (
           <ul className="space-y-1 text-xs text-tungsten" aria-live="polite">
@@ -408,6 +416,56 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
         Settings.
       </Dialog>
     </form>
+  );
+}
+
+function useEstimate(body: CreateBody | null, routePolicy: string) {
+  return useQuery({
+    queryKey: ["estimate", body, routePolicy],
+    queryFn: () => unwrap(api.POST("/registry/estimate", { body: { ...body!, route_policy: routePolicy } })),
+    enabled: Boolean(body),
+    // keep the last price while a new one loads, but not once an input it needs is gone
+    placeholderData: (prev) => (body ? prev : undefined),
+    retry: false,
+  });
+}
+
+/** Auto (the cheapest provider that can run it, falling back to the next) or one pinned route, when there's a choice. */
+function ProviderField({ routes, candidates, value, onChange }: {
+  routes: Schemas["RouteSummary"][];
+  candidates: Schemas["CandidateOut"][] | undefined;
+  value: string;
+  onChange: (routeId: string) => void;
+}) {
+  const id = useId();
+  // in the estimate's order: the ones that can run first, cheapest first
+  const rank = (routeId: string) => candidates?.findIndex((c) => c.route_id === routeId) ?? 0;
+  const real = routes.filter((r) => !r.is_mock).sort((a, b) => rank(a.id) - rank(b.id));
+  if (real.length < 2) return null;
+  const pinned = real.find((r) => r.id === value);
+  return (
+    <Field
+      label="Provider"
+      htmlFor={id}
+      hint={pinned
+        ? `Runs only on ${pinned.provider_name}: if it fails there, it doesn't fall back to another provider.`
+        : "The cheapest provider that can run it; if that one fails, the next one takes over."}
+    >
+      <Select
+        id={id}
+        value={value}
+        onChange={onChange}
+        options={[{ value: "", label: "Auto (cheapest)" }, ...real.map((r) => {
+          const c = candidates?.find((x) => x.route_id === r.id);
+          return {
+            value: r.id,
+            label: [r.provider_name, c?.estimate_usd != null && usd(c.estimate_usd, { free: "free" }), c?.reason]
+              .filter(Boolean).join(" · "),
+            disabled: c ? !c.eligible : false,
+          };
+        })]}
+      />
+    </Field>
   );
 }
 
