@@ -1,5 +1,5 @@
 """What the API turns away before a route runs: other names for this machine (DNS rebinding), posts from other
-websites, bodies too large to read, and 3D files named as web pages."""
+websites, bodies too large to read, 3D files named as web pages, and callers without the access token."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from studio.api import mcp_tools
+from studio.api import auth, mcp_tools
 from studio.api.main import app as api
-from studio.config import get_settings
+from studio.config import Settings, get_settings
 
 KEYFRAME = Path(__file__).resolve().parents[4] / "fixtures" / "images" / "keyframe.png"
 
@@ -80,3 +80,63 @@ async def test_3d_files_are_stored_as_what_they_are_not_by_the_name_sent(client)
         "/uploads", files={"file": ("x.PLY", b"ply\nformat binary_little_endian 1.0\n", "text/html")}
     )
     assert r.status_code == 201 and r.json()["url"].endswith("original.ply")
+
+
+async def test_with_an_access_token_every_route_asks_for_it(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "access_token", "open-sesame")
+    web = {"origin": get_settings().web_origin}
+    for path in ("/budget", "/assets", "/docs", "/openapi.json", "/events/stream", f"/media/u/{uuid.uuid4()}/x.png"):
+        r = await client.get(path, headers=web)
+        assert r.status_code == 401, path
+        # CORS still answers, so the web app can read the refusal and show its sign-in
+        assert r.headers.get("access-control-allow-origin") == web["origin"], path
+    assert (await client.post("/elements", json={}, headers=web)).status_code == 401
+    # the health check answers without it, but only that the studio is up
+    assert (await client.get("/health")).json() == {"status": "ok"}
+    assert (await client.get("/auth/session")).json() == {"required": True, "signed_in": False}
+
+    # scripts and MCP clients send it as a header
+    bearer = {"authorization": "Bearer open-sesame"}
+    assert (await client.get("/budget", headers=bearer)).status_code == 200
+    assert "provider_mode" in (await client.get("/health", headers=bearer)).json()
+    assert (await client.get("/budget", headers={"authorization": "Bearer open-sesam"})).status_code == 401
+    # the MCP tools' in-process calls pass it on
+    assert (await mcp_tools._api("GET", "/budget"))["provider_mode"] == "mock"
+
+
+async def test_a_browser_signs_in_once_and_keeps_a_cookie(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "access_token", "open-sesame")
+    web = {"origin": get_settings().web_origin}
+    assert (await client.post("/auth/session", json={"token": "nope"}, headers=web)).status_code == 401
+    assert auth.COOKIE not in client.cookies
+    r = await client.post("/auth/session", json={"token": "open-sesame"}, headers=web)
+    assert r.status_code == 200 and r.json() == {"required": True, "signed_in": True}
+    set_cookie = r.headers["set-cookie"].lower()
+    assert "httponly" in set_cookie and "samesite=lax" in set_cookie
+    # the cookie never holds the token: every service on this host name sees it
+    assert "open-sesame" not in set_cookie and client.cookies[auth.COOKIE] == auth.session_value("open-sesame")
+    assert (await client.get("/budget", headers=web)).status_code == 200
+    assert (await client.get("/auth/session")).json()["signed_in"] is True
+    # but /mcp skips the Origin check, so a cookie never opens it
+    hello = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+    assert (await client.post("/mcp", json=hello)).status_code == 401
+    # a new token signs every browser out
+    monkeypatch.setattr(get_settings(), "access_token", "new-sesame")
+    assert (await client.get("/budget", headers=web)).status_code == 401
+    monkeypatch.setattr(get_settings(), "access_token", "open-sesame")
+    r = await client.delete("/auth/session", headers=web)
+    assert r.json() == {"required": True, "signed_in": False} and auth.COOKIE not in client.cookies
+    assert (await client.get("/budget", headers=web)).status_code == 401
+
+
+async def test_without_an_access_token_nothing_asks_for_one(client):
+    assert (await client.get("/auth/session")).json() == {"required": False, "signed_in": True}
+    assert (await client.get("/budget")).status_code == 200
+
+
+def test_the_token_is_read_as_the_callers_send_it():
+    # a unit's EnvironmentFile keeps a trailing space; callers' tokens are stripped, so the setting is too
+    assert Settings(access_token=" open-sesame	").access_token == "open-sesame"
+    for bad in ("open sesame", "contraseña"):  # a header can't carry either
+        with pytest.raises(ValueError):
+            Settings(access_token=bad)

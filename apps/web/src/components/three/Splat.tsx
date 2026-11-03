@@ -31,7 +31,7 @@ export function sparkIn(scene: THREE.Scene): SparkRenderer | null {
 /** A splat file (.spz or .ply) by URL. Key it by URL: a new file is a new mesh. */
 export function Splat({ url, onLoad }: { url: string; onLoad?: (mesh: SplatMesh) => void }) {
   const [mesh] = useState(() => {
-    const m = new SplatMesh({ url });
+    const m = new SplatMesh({ url, withCredentials: true });
     m.userData.splat = true; // render passes hide splats where they draw data instead of pictures
     return m;
   });

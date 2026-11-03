@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { API_URL, type Generation } from "./api";
+import { API_URL, type Generation, refused } from "./api";
 import { keys, patchGeneration } from "./queries";
 
 type Connection = "connecting" | "live" | "offline";
@@ -42,9 +42,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       if (!timer.current) timer.current = setTimeout(flush, 250);
     };
 
-    const source = new EventSource(`${API_URL}/events/stream`);
+    const source = new EventSource(`${API_URL}/events/stream`, { withCredentials: true });
     source.onopen = () => setState("live");
-    source.onerror = () => setState(source.readyState === EventSource.CLOSED ? "offline" : "connecting");
+    source.onerror = () => {
+      const closed = source.readyState === EventSource.CLOSED; // refused (a dropped connection retries instead)
+      setState(closed ? "offline" : "connecting");
+      if (closed) refused(401);
+    };
     source.onmessage = (event) => {
       let msg: EventMessage;
       try {

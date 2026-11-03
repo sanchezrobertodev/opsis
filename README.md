@@ -270,21 +270,24 @@ the studio's keys and files, with its own sign-in.
 
 The API serves an MCP server at `/mcp` (Streamable HTTP). With it, Claude can list templates, estimate a run,
 start it once you agree, follow it, answer its reviews and find results. Every spending check still applies. No tool
-can change the limits, the mode switch or keys. Like the API, it has no login, so keep it on your own network or
-tailnet.
+can change the limits, the mode switch or keys. When the studio has an access token (`ACCESS_TOKEN`), MCP clients
+send it as a header, as below. Either way, keep the studio on your own network or tailnet.
 
 - **Claude Code** on a machine that can reach the API:
   `claude mcp add --transport http opsis http://localhost:8400/mcp`. On the Linux server setup, use
-  `https://<host>.<tailnet>.ts.net:19444/mcp`.
+  `https://<host>.<tailnet>.ts.net:19444/mcp`. With an access token, add
+  `--header "Authorization: Bearer <token>"`.
 - **Claude Desktop:** add it as a local server in `claude_desktop_config.json`. The
   [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge runs on your computer, so it reaches the tailnet:
   ```json
   { "mcpServers": { "opsis": { "command": "npx", "args": ["-y", "mcp-remote", "https://<host>.<tailnet>.ts.net:19444/mcp"] } } }
   ```
+  With an access token, add `"--header", "Authorization:${OPSIS_AUTH}"` to `args` and
+  `"env": { "OPSIS_AUTH": "Bearer <token>" }` beside them.
 - **claude.ai, mobile and custom connectors** connect from
   [Anthropic's cloud](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp),
   not from your device. They need a public address, so they can't reach a tailnet-only studio. Don't expose `/mcp`
-  publicly: it has no login.
+  publicly, even with an access token.
 
 Ask something like "make a history short about the Titanic's band, tell me what it costs first". When the run can be
 billed (generation Mixed or Live, or Claude Live), Claude shows the estimate and waits for your yes. Above your confirmation limit, the run starts only with that estimate sent back.
@@ -301,8 +304,9 @@ billed (generation Mixed or Live, or Claude Live), Claude shows the estimate and
 
 ## Limitations
 
-- **Single user.** There is no sign-in. Run it on your own machine or a private network such as Tailscale, never
-  on the open internet.
+- **Single user.** There are no accounts. An optional access token (`ACCESS_TOKEN` in `.env.example`) keeps out
+  others on your network who don't know it. Run it on your own machine or a private network such as Tailscale,
+  never on the open internet.
 - **Media is on local disk.** Files live under `data/media/`, so back that folder up yourself. For the database,
   `uv run python scripts/backup_db.py` dumps it to `data/backups/` and `uv run python scripts/restore_db.py --check`
   test-restores the newest dump.

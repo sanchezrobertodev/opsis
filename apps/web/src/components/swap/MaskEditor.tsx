@@ -2,9 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Crosshair, LoaderCircle, Undo2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { api, ApiError, type Asset, isActive, mediaUrl, unwrap } from "@/lib/api";
+import { api, ApiError, type Asset, isActive, mediaUrl, refused, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { useCreateGeneration, useGeneration, useGrabFrame, useRegistry } from "@/lib/queries";
 import { Button, Segmented } from "@/components/ui/controls";
@@ -14,6 +14,23 @@ const SEGMENT_MODEL = "sam-3-image";
 type Point = [number, number, 0 | 1];
 /** The segmentation job for the object, and the frame it was drawn on. Its mask is the job's output. */
 export type Selection = { jobId: string; frameIndex: number };
+
+/** A local copy of a media file: CSS masks fetch without cookies, so the API's sign-in wouldn't go along. */
+function useCookieBlob(url: string | undefined): string | undefined {
+  const [src, setSrc] = useState<string>();
+  useEffect(() => {
+    if (!url) return;
+    let made: string | undefined;
+    let live = true;
+    void fetch(url, { credentials: "include" }).then((r) => (r.ok ? r.blob() : (refused(r.status), null))).then((b) => {
+      if (!b || !live) return;
+      made = URL.createObjectURL(b);
+      setSrc(made);
+    }).catch(() => undefined);
+    return () => { live = false; if (made) URL.revokeObjectURL(made); };
+  }, [url]);
+  return url ? src : undefined;
+}
 
 /** Pick a frame of the clip, click the object (Alt-click what isn't it), and let SAM 3 find its outline. */
 export function MaskEditor({ video, onChange }: { video: Asset; onChange: (s: Selection | null) => void }) {
@@ -27,6 +44,7 @@ export function MaskEditor({ video, onChange }: { video: Asset; onChange: (s: Se
   const [jobId, setJobId] = useState<string>();
   const { data: job } = useGeneration(jobId);
   const mask = job?.status === "succeeded" ? job.assets?.[0] : undefined;
+  const maskSrc = useCookieBlob(mediaUrl(mask?.url));
   const running = Boolean(jobId) && (!job || isActive(job.status));
   const fps = video.fps ?? 24;
   const modelName = useRegistry().data?.models.find((m) => m.id === SEGMENT_MODEL)?.name ?? SEGMENT_MODEL;
@@ -124,10 +142,10 @@ export function MaskEditor({ video, onChange }: { video: Asset; onChange: (s: Se
                style={{ aspectRatio: `${frame.asset.width ?? 16} / ${frame.asset.height ?? 9}` }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={mediaUrl(frame.asset.url)} alt="The frame to select on" className="absolute inset-0 size-full" />
-            {mask && (
+            {maskSrc && (
               <div aria-hidden className="absolute inset-0 bg-tungsten/55"
-                   style={{ maskImage: `url(${mediaUrl(mask.url)})`, maskMode: "luminance", maskSize: "100% 100%",
-                            WebkitMaskImage: `url(${mediaUrl(mask.url)})`, WebkitMaskSize: "100% 100%" }} />
+                   style={{ maskImage: `url(${maskSrc})`, maskMode: "luminance", maskSize: "100% 100%",
+                            WebkitMaskImage: `url(${maskSrc})`, WebkitMaskSize: "100% 100%" }} />
             )}
             <svg role="img" aria-label="Clicks on the frame" viewBox="0 0 100 100" preserveAspectRatio="none"
                  onClick={place} className="absolute inset-0 size-full cursor-crosshair">

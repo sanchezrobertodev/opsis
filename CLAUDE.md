@@ -245,7 +245,10 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   confirmation apply as over HTTP. Never add a tool that changes budget policies, the mode switch or keys. Tests:
   `tests/integration/test_mcp.py` (in-process `mcp.Client`).
 - Every route checks the Host (this machine and `WEB_ORIGIN`'s host, against DNS rebinding; the integration tests add
-  `test` in their conftest) and POST/PUT/PATCH/DELETE check the Origin. Bodies over 16 MB are refused, except
+  `test` in their conftest) and POST/PUT/PATCH/DELETE check the Origin. With `ACCESS_TOKEN` set (`api/auth.py`)
+  every route but `/health` (just its status) and `/auth/session` wants `Authorization: Bearer`, or the browser's
+  HttpOnly cookie from signing in (never on `/mcp`, which skips the Origin check); a new way the web app loads API
+  files must send credentials (`credentials: "include"`, `setWithCredentials(true)`, `withCredentials`). Bodies over 16 MB are refused, except
   multipart uploads on the file routes (`main.py:FILE_ROUTES`: a new route taking files goes there); chunked bodies get 411.
 - Run the API via `python -m studio.api`, not bare uvicorn: on Windows it must use `asyncio:SelectorEventLoop`.
   `pnpm dev` adds `--reload`, so saving server code restarts the API and drops requests in flight (`/health`

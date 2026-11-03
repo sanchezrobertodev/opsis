@@ -7,6 +7,7 @@ Plans first and spends nothing unless --confirm-spend is given; never exceeds --
 
 The API and worker must be running with PROVIDER_MODE=mixed and the routes in LIVE_ROUTE_ALLOWLIST
 (or PROVIDER_MODE=live), plus the provider keys in .env. Local routes (comfy_local) are free and always run.
+A studio with an access token needs it as ACCESS_TOKEN here too (the environment or .env).
 Reports go to smoke_reports/<timestamp>.json.
 """
 
@@ -88,11 +89,16 @@ def main() -> int:
     items, missing = plan(routes_filter)
     if missing:
         print(f"no smoke example for: {', '.join(missing)}")
-    api = httpx.Client(base_url=args.api, timeout=60)
+    token = get_settings().access_token
+    api = httpx.Client(base_url=args.api, timeout=60, headers={"Authorization": f"Bearer {token}"} if token else None)
     try:
         health = api.get("/health").json()
     except httpx.HTTPError:
         print(f"API not reachable at {args.api}. Start it with `pnpm dev`.")
+        return 2
+    if "provider_mode" not in health:  # without the token, /health says only whether the studio is up
+        how = "refused this ACCESS_TOKEN" if token else "asks for its access token: set ACCESS_TOKEN in the environment or .env"
+        print(f"The API at {args.api} {how}.")
         return 2
     print(f"provider mode: {health['provider_mode']}")
     if health.get("reloads_on_change") and args.confirm_spend:

@@ -2,7 +2,8 @@
 
 The tools call the API's own routes in-process, so every check applies as it does over HTTP: validation, the run
 cap, the daily and monthly caps, and confirmation over the threshold. No tool changes the budget, the mode switch
-or keys. There is no login of its own: like the API, it's for your tailnet only.
+or keys. It asks for the API's access token, when one is set, as `Authorization: Bearer` (never the browser's
+cookie: /mcp skips the Origin check).
 """
 
 from __future__ import annotations
@@ -45,7 +46,10 @@ server = MCPServer(name="opsis", title="Opsis studio", instructions=INSTRUCTIONS
 async def _api(method: str, path: str, **kw: Any) -> Any:
     from studio.api.main import app  # imported here: main mounts this module
 
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost") as client:
+    token = get_settings().access_token  # the caller showed it to reach /mcp; the routes ask again
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://localhost",
+                                 headers=headers) as client:
         r = await client.request(method, path, **kw)
     if r.status_code >= 400:
         raise ToolError(_problem(r))

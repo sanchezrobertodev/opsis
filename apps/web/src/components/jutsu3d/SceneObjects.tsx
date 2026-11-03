@@ -63,13 +63,16 @@ function Model({ assetId, animation, time }: { assetId: string; animation: Anima
   return clipUrl ? <Animated url={url} clipUrl={clipUrl} animation={animation} time={time} /> : <Gltf url={url} />;
 }
 
+/** The API is another origin: send its sign-in cookie with the file request. */
+const withCookie = (loader: { setWithCredentials: (v: boolean) => unknown }) => { loader.setWithCredentials(true); };
+
 /**
  * A rigged model posed at the timeline time by a clip, from its own file or another on the same skeleton (bones are
  * matched by name). The copy carries `userData.seek`, so the render passes pose it for each frame they draw.
  */
 function Animated({ url, clipUrl, animation, time }: { url: string; clipUrl: string; animation: Animation; time: number | null }) {
   const copy = useCopy(url, true);
-  const { animations } = useGLTF(clipUrl);
+  const { animations } = useGLTF(clipUrl, true, true, withCookie);
   const clip = animations.find((a) => a.name === animation.clip) ?? null;
   // One effect owns the mixer, from making it to throwing it away, so a remount (or a hot reload) makes a fresh one
   // and a clip that's switched away from stops, the rig back at rest, before the new one poses it: the two never blend.
@@ -145,7 +148,7 @@ function Gltf({ url, shadows = true }: { url: string; shadows?: boolean }) {
 
 /** One loaded file can be in the scene several times: each use gets its own copy, a rig's bones rebound to it. */
 function useCopy(url: string, shadows: boolean): THREE.Object3D {
-  const { scene } = useGLTF(url);
+  const { scene } = useGLTF(url, true, true, withCookie);
   return useMemo(() => {
     const c = cloneRigged(scene);
     c.traverse((n) => { if ((n as THREE.Mesh).isMesh) { n.castShadow = shadows; n.receiveShadow = shadows; } });
