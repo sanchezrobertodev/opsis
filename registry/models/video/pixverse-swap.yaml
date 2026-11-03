@@ -49,7 +49,7 @@ routes:
         - {when: {resolution: "360p"}, usd: 0.15}
         - {when: {resolution: "540p"}, usd: 0.15}
         - {when: {resolution: "720p"}, usd: 0.20}
-      verified: 2026-10-19
+      verified: 2026-11-03
       source: https://fal.ai/models/fal-ai/pixverse/swap
     output: {path: video.url, kind: video}
 

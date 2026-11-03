@@ -183,6 +183,12 @@ def test_flux_3_edit_and_extend():
     assert price("flux-3-video", "flux-3-video@fal", "edit", {}, [clip(seconds=12)]) == pytest.approx(0.36)
 
 
+def test_kling_avatar_bills_whole_seconds():
+    speech = [MediaRef("character_image", "c", "image"), MediaRef("input_audio", "a", "audio", duration_ms=7200)]
+    assert price("kling-avatar-2", "kling-avatar-2@fal", "avatar", {"tier": "standard"}, speech) == pytest.approx(
+        8 * 0.0562)
+
+
 def test_wan_animate_bills_per_input_frame():
     endpoint, p, _ = payload("wan-2.2-animate", "wan-2.2-animate@fal", "replace", {"steps": 12},
                              {"character_image": 1, "driving_video": 1})

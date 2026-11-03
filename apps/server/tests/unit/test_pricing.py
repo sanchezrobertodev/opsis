@@ -75,7 +75,7 @@ def test_never_negative_and_monotonic_in_duration(d1, d2, rate):
     assert a <= b
 
 
-def test_extra_charges_add_per_reference_beyond_the_first():
+def test_extra_charges_add_per_reference():
     from studio.config import get_settings
     from studio.registry.loader import load_registry
 
@@ -85,7 +85,8 @@ def test_extra_charges_add_per_reference_beyond_the_first():
     t2i = estimate(route.pricing, params, mode="t2i")
     one = estimate(route.pricing, params, mode="edit", media=[ref])
     three = estimate(route.pricing, params, mode="edit", media=[ref] * 3)
-    assert t2i.usd == one.usd == Decimal("0.03612")  # fal's table already counts one input image
-    assert three.usd == Decimal("0.03612") + 2 * Decimal("0.0083")
+    assert t2i.usd == Decimal("0.03612")  # fal's table is the output only
+    assert one.usd == Decimal("0.03612") + Decimal("0.0083")
+    assert three.usd == Decimal("0.03612") + 3 * Decimal("0.0083")
     two_out = estimate(route.pricing, {**params, "num_images": 2}, mode="edit", media=[ref] * 3)
-    assert two_out.usd == 2 * Decimal("0.03612") + 2 * Decimal("0.0083")  # inputs bill once per request
+    assert two_out.usd == 2 * Decimal("0.03612") + 3 * Decimal("0.0083")  # inputs bill once per request
