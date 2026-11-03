@@ -53,6 +53,51 @@ class Result:
     detail: str | None = None
 
 
+@dataclass
+class RouteBill:
+    """A route's estimates against its bills: the takes corrected from a bill, what was charged, what was billed."""
+
+    route_id: str
+    count: int
+    charged_usd: float
+    billed_usd: float
+
+    @property
+    def ratio(self) -> float | None:
+        """Billed per dollar estimated (1.10: the bills ran 10% over the estimates)."""
+        return self.billed_usd / self.charged_usd if self.charged_usd else None
+
+
+async def by_route(session: AsyncSession, since: datetime | None = None,
+                   user_id: uuid.UUID | None = None) -> list[RouteBill]:
+    """Each route's corrections from the bills (fal, our RunPod endpoints) since `since`, idle time left out."""
+    q = (select(SpendLedger.route_id, func.count(), func.sum(SpendLedger.basis["charged_usd"].as_float()),
+                func.sum(SpendLedger.basis["billed_usd"].as_float()))
+         .where(SpendLedger.entry_type == LedgerEntry.adjustment, SpendLedger.generation_attempt_id.is_not(None),
+                SpendLedger.basis.has_key("billed_usd"))
+         .group_by(SpendLedger.route_id).order_by(SpendLedger.route_id))
+    if since is not None:
+        q = q.where(SpendLedger.created_at >= since)
+    if user_id is not None:
+        q = q.where(SpendLedger.user_id == user_id)
+    return [RouteBill(route or "?", n, float(charged or 0), float(billed or 0))
+            for route, n, charged, billed in (await session.execute(q)).all()]
+
+
+def bills_text(rows: list[RouteBill], days: int) -> str:
+    """The weekly report's section: each route's estimates against its bills."""
+    lines = [f"# Estimates against bills, last {days} days", ""]
+    if not rows:
+        return "\n".join([*lines, "No take was corrected from a bill (only fal with an admin key and our RunPod "
+                                  "endpoints have bills).", ""])
+    lines += ["| Route | Takes | Estimated | Billed | Bill / estimate |", "|---|---:|---:|---:|---:|"]
+    # furthest off first; a bill with nothing estimated is furthest of all
+    for r in sorted(rows, key=lambda r: abs(r.ratio - 1) if r.ratio is not None else float("inf"), reverse=True):
+        ratio = f"{r.ratio:.2f}" if r.ratio is not None else "no estimate"
+        lines.append(f"| `{r.route_id}` | {r.count} | ${r.charged_usd:.2f} | ${r.billed_usd:.2f} | {ratio} |")
+    return "\n".join([*lines, ""])
+
+
 def _money(x: float | Decimal) -> Decimal:
     return Decimal(str(x)).quantize(CENT, rounding=ROUND_HALF_UP)
 

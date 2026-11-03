@@ -215,6 +215,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   time with no charge booked on its own). Each correction is an `adjustment` row dated like its charge, one per
   attempt; sum spend with `domain.enums.SPENT` (charge + adjustment), never `charge` alone. Google, ElevenLabs and
   Replicate report no per-request cost and stay estimates. A provider's `idle_seconds` is added to its run time.
+  `reconcile.by_route` sums those corrections per route (billed per dollar estimated, idle time left out): in the
+  hourly log when it booked something, the weekly report, and `GET /budget/breakdown` (`routes`).
 
 ## Provider keys
 - Keys pasted in **Settings > Keys** (`/keys`, `api/routers/keys.py`) are stored encrypted in `provider_keys`
@@ -247,7 +249,7 @@ pnpm e2e        # Playwright against the mock provider (reuses a running `pnpm d
 pnpm lint       # ruff + eslint + tsc
 uv run python scripts/backup_db.py                 # dump the database to data/backups/ (14 days kept)
 uv run python scripts/restore_db.py --check        # restore the newest dump into a scratch copy and compare
-uv run python scripts/fetch_provider_schemas.py    # provider schema drift report (free; --update re-baselines)
+uv run python scripts/fetch_provider_schemas.py    # provider schema + price report (free; --update re-baselines)
 ```
 - The API runs on **8400**, not 8000 (other local containers publish 8000). Web reads `NEXT_PUBLIC_API_URL`.
 - The API also serves an MCP server at `/mcp` (`studio/api/mcp_tools.py`; Streamable HTTP, stateless; README "Drive
@@ -284,6 +286,12 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   It compares top-level fields only: of a nested one (Marble's `world_prompt`) it sees just the type, i.e. which
   prompt kinds exist, not the fields inside them. The contract tests check every route against those baselines offline. After a reviewed change, fix the
   YAML and run with `--update` (`--provider` limits it).
+- The same weekly run checks prices (`studio/registry/prices.py`, a `Feed` per provider): each route's rates against
+  fal's pricing API (one base price per endpoint, not always a tier's: only a single-rate route can be found changed,
+  one priced by tier or resolution gets "check by hand"), Pika's catalog and Reactor's `/pricing`, and `gpu_usd_per_hour` against RunPod's GPU
+  catalog; providers without a price list are listed with their `verified` dates. It never writes the YAML: fix the
+  price and move `verified`. The registry lint warns when a route's `verified` or a provider's `gpu_verified` is over
+  `lint.PRICE_MAX_AGE_DAYS` (30) old.
 
 ## Self-hosting on a Linux server
 - `infra/server/` (README there) is an example deployment:

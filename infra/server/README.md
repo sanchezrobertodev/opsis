@@ -43,7 +43,8 @@ in the server's `.env` at that machine's ComfyUI (over Tailscale, for example).
 ## Timers
 - `opsis-backup.timer`: nightly at 03:30, `scripts/backup_db.py` in the worker container. Dumps go to
   `data/backups/` (14 days kept) and the log to `data/logs/backup.log`.
-- `opsis-schema-check.timer`: Mondays at 09:00, `scripts/fetch_provider_schemas.py`. The report goes to `data/reports/`.
+- `opsis-schema-check.timer`: Mondays at 09:00, `scripts/fetch_provider_schemas.py`. The report (schemas, prices,
+  estimates against bills) goes to `data/reports/`.
 
 - `opsis-offsite.timer`: hourly, `offsite.sh`. It sends what's new to another device with Taildrop
   (`OPSIS_OFFSITE_TARGET` in `.env`: that device's Tailscale name; empty turns it off).

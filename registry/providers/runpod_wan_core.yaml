@@ -15,7 +15,8 @@ notes: >-
   Inputs are hosted through fal storage, so set FAL_KEY too (small images go inline without it).
 # A worker stays billed this long after its last job (the endpoint's idle timeout): added to each take's run time.
 idle_seconds: 60
-# Serverless flex prices, USD per hour (https://www.runpod.io/pricing, 2026-11-03). The worker reports which GPU it ran on.
+# Serverless flex prices, USD per hour (https://www.runpod.io/pricing). The worker reports which GPU it ran on.
+gpu_verified: 2026-11-03
 gpu_usd_per_hour:
   RTX PRO 6000: 3.49
   H100: 5.39
