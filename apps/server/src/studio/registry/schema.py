@@ -442,6 +442,9 @@ class ProviderSpec(_Strict):
     # The account it bills, when another provider's (our RunPod endpoint bills the RunPod account): where the cost
     # panel reads its balance. Unset: its own id.
     billing_account: str | None = None
+    # Not local, but routing asks its adapter whether it's up (`reachable()`, e.g. the Codex runner's heartbeat), so the
+    # estimate never shows a route that can't run. Local engines are always asked.
+    probe: bool = False
 
     def configured(self, settings: Any) -> bool:
         """True when every setting in `key_setting` has a value (providers without one are always configured)."""

@@ -33,13 +33,14 @@ async def comfy_stats(url: str) -> dict[str, Any] | None:
 
 
 async def local_reachability(reg: Registry) -> dict[str, bool]:
-    """provider id -> reachable, for every local provider in the registry (each adapter decides how)."""
+    """provider id -> reachable, for local engines and providers marked `probe` (the Codex runner's heartbeat); the
+    others are remote APIs, assumed up and left out, so their SDKs aren't loaded to ask."""
     from studio.providers.factory import adapter_implemented, get_adapter
 
     settings = get_settings()
     out: dict[str, bool] = {}
     for provider in reg.providers.values():
-        if provider.kind != "local" or not adapter_implemented(provider.adapter):
+        if not (provider.kind == "local" or provider.probe) or not adapter_implemented(provider.adapter):
             continue
         if not provider.configured(settings):
             out[provider.id] = False  # configured off (e.g. COMFYUI_URL empty)
@@ -56,7 +57,7 @@ async def local_blockers(reg: Registry, reach: dict[str, bool]) -> dict[tuple[st
     for spec in reg.models.values():
         for route in spec.routes:
             provider = reg.providers.get(route.provider)
-            if provider is None or not reach.get(provider.id) or not route.enabled:
+            if provider is None or provider.kind != "local" or not reach.get(provider.id) or not route.enabled:
                 continue
             adapter = get_adapter(provider.adapter)
             for mode in route.modes:

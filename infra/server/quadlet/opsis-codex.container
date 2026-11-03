@@ -1,0 +1,32 @@
+[Unit]
+Description=Opsis Codex runner (GPT Image through your ChatGPT plan, apart from the studio's files)
+
+[Container]
+ContainerName=opsis-codex
+Image=localhost/opsis-server:latest
+# Not in the pod, so it shares no localhost with the database or the API. Codex keeps a tool that can read files
+# whatever it's told, so it runs here, where the only files are the worker's Codex jobs and its own home: no .env, keys,
+# media or backups (providers/codex_runner.py). The jobs are mounted where the worker sees them.
+Timezone=local
+RunInit=true
+Exec=python -m studio.providers.codex_runner
+Volume=@APP_DIR@/data/provider_results/codex:/app/data/provider_results/codex:z
+# Its own Codex home, signed in once (infra/server/README.md), never the host's ~/.codex with your sessions, plugins
+# and MCP servers; the binary from the host's Codex install, read-only. CODEX_BIN comes from .env (empty: it stays off)
+Volume=%h/.local/share/opsis/codex-home:/codex:Z
+Volume=%h/.codex/packages:%h/.codex/packages:ro,z
+Environment=CODEX_HOME=/codex CODEX_BIN=@CODEX_BIN@ HOME=/tmp
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=ALL
+PodmanArgs=--memory=1g
+StopTimeout=30
+
+[Service]
+# A runner without CODEX_BIN exits cleanly and stays off
+Restart=on-failure
+RestartSec=15
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

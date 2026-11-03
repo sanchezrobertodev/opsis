@@ -29,7 +29,7 @@ from studio.providers.base import (
     ResolvedMedia,
     SubmitResult,
 )
-from studio.providers.common import ResultStore
+from studio.providers.common import ResultStore, touch_flag
 from studio.registry.schema import Route
 
 log = logging.getLogger(__name__)
@@ -101,10 +101,14 @@ class BackgroundJobAdapter(ProviderAdapter):
     def start(self, payload: dict[str, Any], raw: dict[str, Any]) -> SubmitResult:
         job_id, _ = self.store.new_job()
         self._flag(job_id, "running").touch()  # before returning, so the first poll already sees it
+        self.launch(job_id, payload)
+        return SubmitResult(job_id=job_id, raw=raw)
+
+    def launch(self, job_id: str, payload: dict[str, Any]) -> None:
+        """Run a job in this process (one this process started, or one the Codex runner took over)."""
         task = asyncio.get_running_loop().create_task(self._run(job_id, payload))
         self._tasks[job_id] = task
         task.add_done_callback(lambda _t, j=job_id: self._tasks.pop(j, None))
-        return SubmitResult(job_id=job_id, raw=raw)
 
     def _finished(self, route: Route, job_id: str) -> PollResult | None:
         meta = self.store.meta(job_id)
@@ -142,7 +146,7 @@ class BackgroundJobAdapter(ProviderAdapter):
             task.cancel()
             self.store.discard(job_id)
         elif self._flag(job_id, "running").exists():
-            self._flag(job_id, "cancel").touch()  # another worker process runs it; its heartbeat stops it
+            touch_flag(self._flag(job_id, "cancel"))  # another process runs it; its heartbeat stops it
         else:
             self.store.discard(job_id)
         return True

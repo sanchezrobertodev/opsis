@@ -299,10 +299,19 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
   pictures come from the plan's allowance ($0, about 90 s each). The agent never writes: Codex keeps what its image
   tool draws in `$CODEX_HOME/generated_images/<session id>/` (the `thread.started` event), which the adapter crops to
   the asked shape and clears. No picture (a refusal, the usage limit) fails as `route_unavailable`, so fal takes over.
-  Kind `direct`, so it follows the mock/mixed/live switch. The server's worker mounts the host's `~/.codex`. Codex runs
-  without the studio's settings and secret-named environment variables, with its shell, browser and connectors off
-  (`codex.py:NO_TOOLS`; `unified_exec` stays on, so it may still read files the worker can).
-  `local_tools` and `codex` share `local_tools.BackgroundJobAdapter` (a background task, heartbeat and cancel files).
+  Kind `direct`, so it follows the mock/mixed/live switch. Codex runs without the studio's settings and secret-named
+  environment variables, with its shell, browser, connectors, plugins, hooks, sub-agents, memories, web search and
+  notify off (`codex.py:NO_TOOLS`). `local_tools` and `codex` share `local_tools.BackgroundJobAdapter` (a background
+  task, heartbeat and cancel files).
+- On the server Codex never runs in the worker (`CODEX_RUNNER=true`, set by the units): submit parks the job in its
+  ResultStore folder (`job.json` last, the reference pictures copied beside it) and `opsis-codex`
+  (`providers/codex_runner.py`; outside the pod, read-only, no capabilities) claims it by renaming `job.json` and runs
+  the same `BackgroundJobAdapter._run`, so poll, cancel and download don't change, a restarted worker still gets the
+  picture and a restarted runner draws its jobs again. It sees only the Codex jobs, its own Codex home (signed in once,
+  never the host's `~/.codex`) and the binary, read-only. `runner.json` beside the jobs is its heartbeat with the
+  sign-in: routing (`reachable()` counts for every provider kind) and Settings read it, and it draws only when signed
+  in with ChatGPT. Reading a job folder never follows a link or waits on a pipe (`common.open_plain`, `touch_flag`).
+  Without the runner (the Windows dev setup) a Codex that keeps its shell can read what the worker can.
 - `local_tools`: the `video-tools` model's modes (reframe, trim, retime, reverse, loop, interpolate, upscale,
   stabilize) run on this machine's ffmpeg (`studio/media/tools.py`). Free; local routes check
   `adapter.reachable()`.
