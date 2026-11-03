@@ -145,7 +145,8 @@ export function Settings() {
                   ? "Off (set COMFYUI_URL in .env)"
                   : health.local_engine.online
                     ? `Running${health.local_engine.gpu ? ` on ${health.local_engine.gpu.replace(/^cuda:\d+\s*/, "").split(" : ")[0]}` : ""}${
-                        health.local_engine.vram_free_gb != null ? `, ${health.local_engine.vram_free_gb} GB free` : ""
+                        health.local_engine.busy ? ", busy with a job"
+                          : health.local_engine.vram_free_gb != null ? `, ${health.local_engine.vram_free_gb} GB free` : ""
                       }`
                     : "Not running. Start ComfyUI to use the local models."}
               </dd>
@@ -343,7 +344,7 @@ function WhereItWent() {
           {usd(data.checked_usd ?? 0)} checked against fal and RunPod bills, {usd(data.estimated_usd ?? 0)} still the
           studio&rsquo;s estimate<span className="text-faint">*</span>; the rest the provider reported as it ran.
         </p>
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid items-start gap-6 lg:grid-cols-2">
           <SpendTable title="By feature" groups={data.features} total={data.total_usd} />
           <SpendTable title="By model" groups={data.models} total={data.total_usd} />
         </div>

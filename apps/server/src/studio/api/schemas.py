@@ -414,6 +414,7 @@ class BudgetUpdate(ApiModel):
 class LocalEngineOut(ApiModel):
     configured: bool
     online: bool
+    busy: bool = False  # up, but too taken with a job to answer the status check in time
     url: str | None
     gpu: str | None = None
     vram_total_gb: float | None = None

@@ -37,6 +37,7 @@ from studio.db.models import (
 )
 from studio.director.elements import MENTION, unique_slug
 from studio.domain.enums import SPENT, AssetKind
+from studio.domain.fsm import preview_url
 from studio.jutsu3d.document import Jutsu3dDocument, starter_scene
 from studio.llm.client import LLMError, LLMUnavailable
 from studio.media.ffmpeg import probe
@@ -158,6 +159,7 @@ class TakeOut(BaseModel):
     output_type: str
     status: str
     progress: float | None
+    preview_url: str | None = Field(None, description="The latest frame while it renders (local ComfyUI)")
     error: str | None
     prompt: str
     asset: AssetOut | None
@@ -528,7 +530,7 @@ def _generation_take(g: Generation, a: Asset | None) -> TakeOut:
     prompt = g.request.get("prompt", "")
     frame = frame_kind(prompt) if g.output_type == "image" else None
     return TakeOut(generation_id=g.id, shot_key=g.shot_key or "", output_type=g.output_type, status=g.status.value,
-                   progress=g.progress, error=g.error_message, prompt=prompt, frame=frame,
+                   progress=g.progress, preview_url=preview_url(g), error=g.error_message, prompt=prompt, frame=frame,
                    created_at=g.created_at, made_by=made_by, parent_asset_id=parent,
                    asset=asset_out(a) if a else None)
 

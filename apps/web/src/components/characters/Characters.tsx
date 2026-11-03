@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, type MediaSlot, mediaUrl } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
+import { describeCharacter } from "@/lib/designer";
 import type { SlotAsset } from "@/lib/draft";
 import { useDraft } from "@/lib/draft";
 import { uploadFile } from "@/lib/queries";
@@ -812,24 +813,6 @@ const TILE = { Small: "w-[76px]", Medium: "w-[112px]", Large: "w-[156px]", XL: "
 /** A trait option's preview picture in `public/designer/`: `<trait>-<option as a slug>.webp`. */
 const traitFile = (option: string) => option.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-const withArticle = (phrase: string) => `${/^[aeiou]/i.test(phrase) ? "an" : "a"} ${phrase}`;
-
-function describe(traits: Record<string, string>, heritage: string): string {
-  const who = traits.age || heritage || traits.presentation
-    ? [traits.age, heritage, traits.presentation || "person"].filter(Boolean).join(" ")
-    : "";
-  const parts = [
-    who && withArticle(who),
-    traits.build && `${traits.build} build`,
-    (traits.hair || traits.hair_color) && `${[traits.hair, traits.hair_color].filter(Boolean).join(" ")} hair`,
-    traits.eyes && `${traits.eyes} eyes`,
-    traits.outfit && `wearing ${withArticle(traits.outfit)}`,
-    traits.detail,
-    traits.archetype && `the look of ${withArticle(traits.archetype)}`,
-  ].filter(Boolean);
-  return parts.join(", ");
-}
-
 function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const setDraft = useDraft((s) => s.set);
@@ -839,7 +822,7 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
   const [zoom, setZoom] = useState<{ trait: (typeof TRAITS)[number]; option: string } | null>(null);
   const [name, setName] = useState("");
   const [drawWith, setDrawWith] = useState(PORTRAIT_MODEL);
-  const description = describe(traits, heritage.trim());
+  const description = describeCharacter(traits, heritage.trim());
   const style = traits.style ?? "photoreal";
   const create = useCreateElement();
   const portrait = useDrawPortrait();

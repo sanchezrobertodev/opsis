@@ -16,7 +16,8 @@ _cache: dict[str, tuple[float, dict[str, Any] | None]] = {}
 
 
 async def comfy_stats(url: str) -> dict[str, Any] | None:
-    """ComfyUI /system_stats, or None when the server isn't reachable."""
+    """ComfyUI /system_stats, or None when the server isn't reachable. One that takes the request but answers late is
+    busy (it stalls for seconds while it loads a model), not down: its last stats come back with `busy: True`."""
     now = time.monotonic()
     hit = _cache.get(url)
     if hit and now - hit[0] < TTL_SECONDS:
@@ -26,6 +27,8 @@ async def comfy_stats(url: str) -> dict[str, Any] | None:
         async with httpx.AsyncClient(timeout=1.5) as client:
             r = await client.get(f"{url.rstrip('/')}/system_stats")
             stats = r.json() if r.status_code == 200 else None
+    except httpx.ReadTimeout:
+        stats = {**((hit and hit[1]) or {}), "busy": True}
     except (httpx.HTTPError, ValueError):
         stats = None
     _cache[url] = (now, stats)

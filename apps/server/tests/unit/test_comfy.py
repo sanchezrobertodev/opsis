@@ -676,6 +676,27 @@ async def _done(value):
     return value
 
 
+async def test_a_comfyui_too_busy_to_answer_reads_as_running(monkeypatch):
+    import respx
+
+    from studio.providers import local_status
+
+    url, stats = "http://comfy.test", {"devices": [{"name": "cuda:0 GPU"}]}
+    monkeypatch.setattr(local_status, "_cache", {})
+    with respx.mock:
+        route = respx.get(f"{url}/system_stats")
+        route.mock(return_value=httpx.Response(200, json=stats))
+        assert await local_status.comfy_stats(url) == stats
+        local_status._cache[url] = (0.0, stats)  # stale, so it asks again
+        route.mock(side_effect=httpx.ReadTimeout("rendering"))
+        assert await local_status.comfy_stats(url) == {**stats, "busy": True}
+        local_status._cache.clear()
+        assert await local_status.comfy_stats(url) == {"busy": True}  # busy since before we first asked
+        local_status._cache.clear()
+        route.mock(side_effect=httpx.ConnectError("refused"))
+        assert await local_status.comfy_stats(url) is None
+
+
 async def test_local_runs_re_time_clips_and_take_a_fresh_seed(fake, monkeypatch, tmp_path):
     from studio.providers import comfy_local
 

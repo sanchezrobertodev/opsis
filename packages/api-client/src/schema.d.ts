@@ -2616,6 +2616,11 @@ export interface components {
             configured: boolean;
             /** Online */
             online: boolean;
+            /**
+             * Busy
+             * @default false
+             */
+            busy: boolean;
             /** Url */
             url: string | null;
             /** Gpu */
@@ -4136,6 +4141,11 @@ export interface components {
             status: string;
             /** Progress */
             progress: number | null;
+            /**
+             * Preview Url
+             * @description The latest frame while it renders (local ComfyUI)
+             */
+            preview_url?: string | null;
             /** Error */
             error: string | null;
             /** Prompt */
