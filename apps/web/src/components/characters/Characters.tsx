@@ -1,12 +1,12 @@
 "use client";
 
-import { AudioLines, Copy, Images, Mic, Plus, Sparkles, Trash2 } from "lucide-react";
+import { AudioLines, CircleQuestionMark, Copy, Images, Mic, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, type MediaSlot, mediaUrl } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
-import { describeCharacter } from "@/lib/designer";
+import { describeCharacter, OUTFITS, outfitsFor, pickTrait, traitPicture } from "@/lib/designer";
 import type { SlotAsset } from "@/lib/draft";
 import { useDraft } from "@/lib/draft";
 import { uploadFile } from "@/lib/queries";
@@ -793,7 +793,7 @@ const TRAITS: { key: string; label: string; options: string[] }[] = [
   { key: "hair", label: "Hair", options: ["short curly", "long straight", "shaved", "braided", "messy shoulder-length", "slicked back", "bald"] },
   { key: "hair_color", label: "Hair color", options: ["black", "dark brown", "auburn", "blonde", "silver", "dyed blue", "bright red"] },
   { key: "eyes", label: "Eyes", options: ["brown", "hazel", "green", "blue", "grey", "amber"] },
-  { key: "outfit", label: "Outfit", options: ["worn leather jacket", "tailored suit", "streetwear hoodie", "flowing robe", "spacesuit", "work overalls", "evening dress"] },
+  { key: "outfit", label: "Outfit", options: OUTFITS.man }, // by presentation: optionsOf()
   { key: "detail", label: "Signature detail", options: ["scar across one eyebrow", "freckles", "round glasses", "facial tattoo", "eye patch", "silver earrings", "missing tooth"] },
   { key: "archetype", label: "Archetype", options: ["hero", "rebel", "mentor", "trickster", "villain", "everyday person"] },
 ];
@@ -810,8 +810,7 @@ const HINTS: Record<ElementKind, [string, string]> = {
 /** Trait tile widths in Design a character (the pictures are 256 px). */
 const TILE = { Small: "w-[76px]", Medium: "w-[112px]", Large: "w-[156px]", XL: "w-[208px]" };
 
-/** A trait option's preview picture in `public/designer/`: `<trait>-<option as a slug>.webp`. */
-const traitFile = (option: string) => option.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const optionsOf = (t: (typeof TRAITS)[number], presentation?: string) => (t.key === "outfit" ? outfitsFor(presentation) : t.options);
 
 function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
@@ -823,16 +822,17 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
   const [name, setName] = useState("");
   const [drawWith, setDrawWith] = useState(PORTRAIT_MODEL);
   const description = describeCharacter(traits, heritage.trim());
-  const style = traits.style ?? "photoreal";
+  const style = traits.style; // none (Any) lets the model choose
   const create = useCreateElement();
   const portrait = useDrawPortrait();
+  const pick = (key: string, value: string) => setTraits(pickTrait(traits, key, value));
 
   /** Saves the character and draws its portrait here; a drawn style is part of its look, so it's in the description. */
   async function save() {
     try {
       const e = await create.mutateAsync({
         kind: "character", name: name.trim(), attributes: { traits }, images: [],
-        description: style === "photoreal" ? description : `${style} style, ${description}`,
+        description: !style || style === "photoreal" ? description : `${style} style, ${description}`,
       });
       onClose();
       setTraits({});
@@ -845,13 +845,16 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
 
   function randomize() {
     const next: Record<string, string> = {};
-    for (const t of TRAITS) next[t.key] = t.options[Math.floor(Math.random() * t.options.length)];
+    for (const t of TRAITS) {
+      const options = optionsOf(t, next.presentation);
+      next[t.key] = options[Math.floor(Math.random() * options.length)];
+    }
     setTraits(next);
   }
 
   function generate() {
     setDraft("image", {
-      prompt: `${style} character portrait of ${description}. Waist-up, facing the camera, soft studio light, plain background, sharp focus on the face.`,
+      prompt: `${style ? `${style} character` : "Character"} portrait of ${description}. Waist-up, facing the camera, soft studio light, plain background, sharp focus on the face.`,
       takes: 2,
       mode: "t2i",
     });
@@ -893,22 +896,29 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
               {traits[t.key] && <span className="text-chalk">: {traits[t.key]}</span>}
             </legend>
             <div className="flex flex-wrap gap-2">
-              {t.options.map((o) => {
-                const on = traits[t.key] === o;
+              {["", ...optionsOf(t, traits.presentation)].map((o) => {
+                const on = (traits[t.key] || "") === o;
+                const label = o || "Any";
                 return (
                   <div key={o} className={cn("group relative", TILE[size])}>
-                    <button type="button" aria-pressed={on} title={o}
-                            onClick={() => setTraits({ ...traits, [t.key]: on ? "" : o })}
+                    <button type="button" aria-pressed={on} title={o || "Any: left out, so the model chooses"}
+                            onClick={() => pick(t.key, on ? "" : o)}
                             className={cn("flex w-full flex-col gap-1 rounded-[var(--radius-control)] border p-1 text-left",
                                           on ? "border-tungsten bg-raised" : "border-line-soft hover:border-tungsten/40")}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={`/designer/${t.key}-${traitFile(o)}.webp`} alt="" loading="lazy"
-                           className="aspect-square w-full rounded-[3px] bg-bay object-cover"
-                           onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
+                      {o ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={traitPicture(t.key, o, traits.presentation)} alt="" loading="lazy"
+                             className="aspect-square w-full rounded-[3px] bg-bay object-cover"
+                             onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
+                      ) : (
+                        <span className="flex aspect-square w-full items-center justify-center rounded-[3px] bg-bay text-faint">
+                          <CircleQuestionMark className="h-1/2 w-1/2" strokeWidth={1.25} aria-hidden />
+                        </span>
+                      )}
                       <span className={cn("line-clamp-2 leading-tight", size === "Small" ? "text-2xs" : "text-xs",
-                                          on ? "text-chalk" : "text-muted")}>{o}</span>
+                                          on ? "text-chalk" : "text-muted")}>{label}</span>
                     </button>
-                    <ZoomButton title={o} onClick={() => setZoom({ trait: t, option: o })} />
+                    {o && <ZoomButton title={o} onClick={() => setZoom({ trait: t, option: o })} />}
                   </div>
                 );
               })}
@@ -939,7 +949,7 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
       <Dialog open={zoom !== null} onClose={() => setZoom(null)} title={zoom ? `${zoom.trait.label}: ${zoom.option}` : ""} wide
               footer={zoom && (
                 <Button type="button" tone="primary" onClick={() => {
-                  setTraits({ ...traits, [zoom.trait.key]: zoom.option });
+                  pick(zoom.trait.key, zoom.option);
                   setZoom(null);
                 }}>
                   {traits[zoom.trait.key] === zoom.option ? "Picked" : "Pick this"}
@@ -947,12 +957,13 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
               )}>
         {zoom && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={`/designer/full/${zoom.trait.key}-${traitFile(zoom.option)}.webp`} alt={zoom.option} width={768} height={768}
+          <img src={traitPicture(zoom.trait.key, zoom.option, traits.presentation, true)} alt={zoom.option} width={768} height={768}
                className="mx-auto block h-auto max-h-[70vh] w-auto max-w-full rounded-[var(--radius-frame)]" />
         )}
       </Dialog>
       <p className="mt-2 text-2xs text-faint">
-        Click a picture to pick it, again to leave it open; the corner button shows it full size. Create character
+        Click a picture to pick it; Any (or the picture again) leaves the trait for the model to choose. The pictures
+        follow the presentation you pick, and the corner button shows one full size. Create character
         saves it here and draws its portrait from these traits. Try in Create image makes two takes to choose from
         instead.
       </p>

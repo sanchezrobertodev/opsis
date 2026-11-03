@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { describeCharacter, withArticle } from "./designer.ts";
+import { describeCharacter, outfitsFor, pickTrait, traitPicture, withArticle } from "./designer.ts";
 
 test("plural and mass nouns take no article", () => {
   assert.equal(withArticle("work overalls"), "work overalls");
@@ -19,4 +19,19 @@ test("singular nouns take a or an by their sound", () => {
 test("the designer's description reads as English", () => {
   assert.equal(describeCharacter({ age: "young", presentation: "man", outfit: "work overalls", archetype: "everyday person" }, ""),
                "a young man, wearing work overalls, the look of an everyday person");
+});
+
+test("a new presentation clears an outfit it doesn't offer", () => {
+  const woman = { presentation: "woman", outfit: "evening dress" };
+  assert.equal(pickTrait(woman, "presentation", "man").outfit, "");
+  assert.equal(pickTrait(woman, "presentation", "").outfit, "");
+  assert.equal(pickTrait({ ...woman, outfit: "spacesuit" }, "presentation", "non-human creature").outfit, "spacesuit");
+  assert.ok(!outfitsFor("man").includes("evening dress"));
+});
+
+test("pictures follow the presentation; none picked shows the man's set", () => {
+  assert.equal(traitPicture("hair", "short curly", "woman"), "/designer/woman/hair-short-curly.webp");
+  assert.equal(traitPicture("outfit", "pilot's flight suit", "woman", true), "/designer/woman/full/outfit-pilot-s-flight-suit.webp");
+  assert.equal(traitPicture("age", "elderly", ""), "/designer/man/age-elderly.webp");
+  assert.equal(traitPicture("presentation", "woman", "non-human creature"), "/designer/man/presentation-woman.webp");
 });
