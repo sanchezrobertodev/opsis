@@ -120,7 +120,8 @@ class CodexAdapter(BackgroundJobAdapter):
             refs=(f" Use the {len(refs)} attached pictures as references, in order (Image 1 is the first)." if refs else ""),
             prompt=payload.get("prompt", ""))
         cmd = [*self.command(), "exec", "--json", "--skip-git-repo-check", "-s", "read-only", *NO_TOOLS,
-               "-C", str(workdir), "-o", str(workdir / "answer.txt"), *(a for r in refs for a in ("-i", r)), ask]
+               "-C", str(workdir), "-o", str(workdir / "answer.txt"), *(a for r in refs for a in ("-i", r)),
+               "--", ask]  # --image takes several files: without "--" it swallows the prompt
         session = None
         try:
             code = await anyio.to_thread.run_sync(self._exec, cmd, workdir)
