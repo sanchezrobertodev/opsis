@@ -38,4 +38,5 @@ jobs:
       - run: pnpm i --frozen-lockfile
       - run: pnpm --filter @opsis/web lint
       - run: pnpm --filter @opsis/web typecheck
+      - run: pnpm --filter @opsis/web test
       - run: pnpm --filter @opsis/web build

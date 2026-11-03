@@ -11,7 +11,7 @@
     "db:up": "docker compose -f infra/docker-compose.yml up -d --wait",
     "db:migrate": "uv run --directory apps/server alembic upgrade head",
     "gen": "uv run python -m studio.api.export_openapi > packages/api-client/openapi.json && pnpm --filter @opsis/api-client gen",
-    "test": "uv run --directory apps/server pytest -q",
+    "test": "uv run --directory apps/server pytest -q && pnpm --filter @opsis/web test",
     "e2e": "pnpm --filter @opsis/web e2e",
     "lint": "uv run ruff check apps/server && pnpm --filter @opsis/web lint && pnpm --filter @opsis/web typecheck"
   },

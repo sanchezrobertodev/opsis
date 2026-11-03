@@ -241,17 +241,6 @@ function Slate({
   );
 }
 
-/** ", about $0.40" for another take like this one: its own estimate, or for a mock take what it would cost live. */
-function againPrice(gen: Generation): string {
-  const r = gen.routing as { chosen?: string; planned?: string; candidates?: { route_id: string; is_mock?: boolean }[];
-                             live_reference?: { estimate_usd?: number | null } | null };
-  const live = r.live_reference?.estimate_usd;
-  if (r.candidates?.find((c) => c.route_id === (r.chosen ?? r.planned))?.is_mock) {
-    return `, free as a mock run${live ? ` (about ${usd(live)} when live)` : ""}`;
-  }
-  return gen.estimated_cost_usd == null ? "" : `, ${gen.estimated_cost_usd ? `about ${usd(gen.estimated_cost_usd)}` : "free"}`;
-}
-
 function remainingText(seconds: number) {
   return seconds < 90 ? `${Math.max(5, Math.round(seconds / 5) * 5)} s` : `${Math.round(seconds / 60)} min`;
 }
@@ -439,7 +428,7 @@ function TakeFooter({
           </>
         )}
         {!isActive(gen.status) && (
-          <IconButton label={`Generate another take with the same settings${againPrice(gen)}`} onClick={() => retry()}>
+          <IconButton label="Generate another take with the same settings" onClick={() => retry()}>
             <RotateCcw className="size-4" aria-hidden />
           </IconButton>
         )}

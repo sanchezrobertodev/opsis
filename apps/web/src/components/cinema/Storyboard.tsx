@@ -771,8 +771,13 @@ function TakeGrid({ takes, picked, onPick, empty, video, columns = 2, alt = "Ope
                 </div>
               )
             ) : (
-              <span className="grid aspect-video w-full place-items-center rounded-[var(--radius-frame)] bg-bay text-2xs text-faint">
-                {isActive(t.status) ? <LoaderCircle className="size-4 animate-spin text-tungsten" aria-label="Rendering" /> : (t.error ?? t.status)}
+              <span className="relative grid aspect-video w-full place-items-center overflow-hidden rounded-[var(--radius-frame)] bg-bay text-2xs text-faint">
+                {isActive(t.status) && t.preview_url && (
+                  // the sampler's latest frame (local ComfyUI), dimmed under the spinner
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={mediaUrl(t.preview_url)} alt="" aria-hidden className="absolute inset-0 size-full object-cover opacity-60" />
+                )}
+                {isActive(t.status) ? <LoaderCircle className="relative size-4 animate-spin text-tungsten" aria-label="Rendering" /> : (t.error ?? t.status)}
               </span>
             )}
             {video && (

@@ -333,7 +333,7 @@ async def health(request: Request, session: AsyncSession = Depends(get_session))
     device = ((stats or {}).get("devices") or [{}])[0]
     gib = 1024**3
     local = LocalEngineOut(
-        configured=bool(url), online=stats is not None, url=url or None,
+        configured=bool(url), online=stats is not None, busy=bool((stats or {}).get("busy")), url=url or None,
         gpu=device.get("name"),
         vram_total_gb=round(device["vram_total"] / gib, 1) if device.get("vram_total") else None,
         vram_free_gb=round(device["vram_free"] / gib, 1) if device.get("vram_free") else None,

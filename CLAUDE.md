@@ -244,7 +244,8 @@ uv sync && pnpm i && pnpm db:migrate
 pnpm dev        # API :8400 (reload), worker, web :3000
 docker compose up --build   # or all of it in containers (compose.yaml: db, migrate, API, worker, web; ComfyUI stays on the host)
 pnpm gen        # OpenAPI -> packages/api-client/src/schema.d.ts (run after API schema changes)
-pnpm test       # pytest: unit, registry contract, DB integration (a separate studio_test database; STUDIO_TEST_DB names another)
+pnpm test       # pytest: unit, registry contract, DB integration (a separate studio_test database; STUDIO_TEST_DB names another),
+                #   then the web's unit tests (`node --test`, `apps/web/src/**/*.test.mts`)
 pnpm e2e        # Playwright against the mock provider (reuses a running `pnpm dev`)
 pnpm lint       # ruff + eslint + tsc
 uv run python scripts/backup_db.py                 # dump the database to data/backups/ (14 days kept)
@@ -519,6 +520,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   it (groups from `infra/runpod/wan-core/models.yaml`; `local_only` entries never go on the RunPod volume). A blocked
   route is left out with that reason. The mock gives way to a local route only when it can run, or when the model is
   local-only and ComfyUI is configured (then "isn't running" or the blocker shows instead of a mock result).
+  A ComfyUI that takes the status call but answers late (it stalls for seconds while loading a model) is up and
+  `busy` (`local_status.comfy_stats`), never "isn't running".
 - Both ComfyUI adapters draw a fresh seed per take unless one is given (`comfy_workflows.fresh_seed`) and re-time
   clips for `media_fps` routes (`retime_clip`).
 - Workflows live in `workflows/comfy/<name>.json` (API graph) + `<name>.map.yaml` (which node inputs to fill,
