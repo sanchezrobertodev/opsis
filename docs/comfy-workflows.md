@@ -3,7 +3,8 @@
 Any graph that runs in your ComfyUI can become a model in Opsis: it shows up in the Create form with its own
 fields, runs free on your GPU, and gets the same file checks, progress and library as the built-in local models.
 A model is three files: the graph, a map saying which node inputs Opsis fills, and a model YAML. A script drafts
-all three from the graph.
+all three from the graph, into your own folders under `data/`: a `git pull` never touches them, and a server picks
+them up without a rebuild.
 
 ## 1. Get the graph ready in ComfyUI
 
@@ -25,12 +26,18 @@ the route and say so). It writes:
 
 | File | What it is |
 |---|---|
-| `workflows/comfy/my_wan_lora.json` | The graph, as exported. |
-| `workflows/comfy/my_wan_lora.map.yaml` | Which node inputs each field fills. |
-| `registry/models/<video, image or audio>/my-wan-lora.yaml` | The model: its fields, mode and a free `comfy_local` route. |
+| `data/workflows/comfy/my_wan_lora.json` | The graph, as exported. |
+| `data/workflows/comfy/my_wan_lora.map.yaml` | Which node inputs each field fills. |
+| `data/registry/models/<video, image or audio>/my-wan-lora.yaml` | The model: its fields, mode and a free `comfy_local` route. |
 
 It then loads the registry and prints any lint errors for the new model. The API and the worker pick up new and
-edited YAML within a second, so there's nothing to restart.
+edited files within a second, so there's nothing to restart. `USER_REGISTRY_DIR` and `USER_WORKFLOWS_DIR` move
+the two folders; `--builtin` writes into the repo's `registry/` and `workflows/comfy/` instead.
+
+Your files load alongside the built-in ones. A model with a built-in model's id, or a graph with a built-in graph's
+name, replaces the built-in one, and the registry warns about it each time it loads (so you notice when an update
+changes the one you replaced). The same id twice among your own files is an error. A mistake in your files never
+stops the studio from starting: it runs on the built-ins, and `/health` lists the errors until you fix them.
 
 ## 3. Check what it guessed
 
@@ -61,7 +68,7 @@ Fix a wrong guess by editing the node ids. Two more things the map can say:
   loader and links what it fed to its own `model` input (a `LoraLoader` passes `[model, clip]`).
 - `outputs:` lists the save nodes and what they make.
 
-**The model** (`registry/models/.../<id>.yaml`):
+**The model** (`data/registry/models/.../<id>.yaml`):
 
 - `name` and `description` show in the model picker; `status: preview` marks it as new.
 - `license_tier`: set it from the weights' license (`open_permissive` for Apache 2.0 or MIT, `open_restricted` or
@@ -103,4 +110,5 @@ mid-run. Then:
 uv run pytest apps/server/tests/contract -k my-wan-lora
 ```
 
-To share it, open a pull request with the three files.
+To share it, move the three files into `registry/models/` and `workflows/comfy/` (or draft them there with
+`--builtin`) and open a pull request.

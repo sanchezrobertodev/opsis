@@ -40,6 +40,7 @@ from studio.providers.comfy_workflows import (
     fresh_seed,
     load_template,
     model_files,
+    registry_workflow_dirs,
     retime_clip,
     unavailable_choices,
 )
@@ -57,7 +58,7 @@ class ComfyLocalAdapter(ProviderAdapter):
     def __init__(self, base_url: str | None = None, workflows_dir: Path | None = None) -> None:
         settings = get_settings()
         self.base = (base_url or settings.comfyui_url).rstrip("/")
-        self.workflows_dir = workflows_dir or settings.comfyui_workflows_dir
+        self.workflows_dir = workflows_dir
 
     async def reachable(self) -> bool:
         from studio.providers.local_status import comfy_stats
@@ -127,7 +128,7 @@ class ComfyLocalAdapter(ProviderAdapter):
             if gb and gb < route.min_vram_gb - 0.5:  # cards report a little under their size (a 16 GB one 15.9)
                 return f"needs a GPU with {route.min_vram_gb:g} GB of memory; ComfyUI's has {gb:.0f} GB"
         try:
-            template = load_template(self.workflows_dir, route.modes[mode].endpoint)
+            template = load_template(self.workflows_dir or registry_workflow_dirs(), route.modes[mode].endpoint)
         except (FileNotFoundError, ValueError):
             return None  # the registry lint reports broken templates
         info = await self._object_info({n.get("class_type", "") for n in template.graph.values()})
@@ -178,7 +179,7 @@ class ComfyLocalAdapter(ProviderAdapter):
         return staged
 
     async def submit(self, route: Route, endpoint: str, payload: dict[str, Any], *, client_ref: str) -> SubmitResult:
-        template = load_template(self.workflows_dir, endpoint)
+        template = load_template(self.workflows_dir or registry_workflow_dirs(), endpoint)
         values = {**payload, "filename_prefix": f"opsis/{time.strftime('%Y-%m-%d')}/{client_ref[:8]}"}
         fresh_seed(template, values)
         graph, warnings = template.render(values)

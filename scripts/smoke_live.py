@@ -48,7 +48,8 @@ def call(api: httpx.Client, method: str, url: str, *, replay: bool = True, **kw)
 
 
 def plan(routes_filter: set[str] | None):
-    reg = load_registry(get_settings().resolve_registry_dir())
+    settings = get_settings()
+    reg = load_registry(settings.resolve_registry_dir(), settings.user_registry_dir)
     items = []
     for spec in reg.models.values():
         for route in spec.routes:

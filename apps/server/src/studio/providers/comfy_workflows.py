@@ -18,7 +18,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-from studio.config import REPO_ROOT
+from studio.config import REPO_ROOT, get_settings
 
 # Every model file the workflows use, with its folder, exact size, download group and link. Not in the server's
 # container image (infra/runpod stays out of it); messages then name the files without sizes or groups.
@@ -131,12 +131,28 @@ def _load(directory: Path, name: str, mtime_key: tuple[float, float]) -> Workflo
 _cached = lru_cache(maxsize=64)(_load)
 
 
-def load_template(directory: Path, name: str) -> WorkflowTemplate:
-    """Load (and cache until either file changes) a template by name."""
-    jp, mp = directory / f"{name}.json", directory / f"{name}.map.yaml"
-    if not jp.exists() or not mp.exists():
-        raise FileNotFoundError(f"workflow template {name!r} not found in {directory}")
-    return _cached(directory, name, (jp.stat().st_mtime, mp.stat().st_mtime))
+def workflow_dirs(user: bool = True) -> tuple[Path, ...]:
+    """Where templates are found: your own folder first (a graph there replaces a built-in of the same name)."""
+    settings = get_settings()
+    built_in = (settings.comfyui_workflows_dir,)
+    return (settings.user_workflows_dir, *built_in) if user else built_in
+
+
+def registry_workflow_dirs() -> tuple[Path, ...]:
+    """The folders the running registry checked its routes against: built-ins only while your files have errors."""
+    from studio.registry.loader import get_registry  # local import: the registry's lint imports this module
+
+    return workflow_dirs(get_registry().user_files)
+
+
+def load_template(directory: Path | tuple[Path, ...], name: str) -> WorkflowTemplate:
+    """Load (and cache until either file changes) a template by name, from the first folder that has both files."""
+    dirs = (directory,) if isinstance(directory, Path) else directory
+    for d in dirs:
+        jp, mp = d / f"{name}.json", d / f"{name}.map.yaml"
+        if jp.exists() and mp.exists():
+            return _cached(d, name, (jp.stat().st_mtime, mp.stat().st_mtime))
+    raise FileNotFoundError(f"workflow template {name!r} not found in {' or '.join(map(str, dirs))}")
 
 
 def fresh_seed(template: WorkflowTemplate, values: dict[str, Any]) -> None:

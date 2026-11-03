@@ -1,4 +1,6 @@
-"""Contract tests generated from the real registry: every model, route and example must be coherent."""
+"""Contract tests generated from the real registry: every model, route and example must be coherent.
+
+Your own models in data/registry/ (`USER_REGISTRY_DIR`) are checked too: `-k <id>` picks one."""
 
 from __future__ import annotations
 
@@ -11,7 +13,7 @@ from studio.registry.pricing import estimate
 from studio.registry.validate import MediaRef, normalize
 from studio.registry.virtual import resolve as resolve_virtual
 
-REG = load_registry(get_settings().resolve_registry_dir())
+REG = load_registry(get_settings().resolve_registry_dir(), get_settings().user_registry_dir)
 EXAMPLES = [(spec, ex) for spec in REG.models.values() for ex in spec.examples]
 LIVE_ROUTES = [(spec, r) for spec in REG.models.values() for r in spec.routes if r.provider != MOCK_PROVIDER]
 

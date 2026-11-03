@@ -3,10 +3,12 @@
     uv run python scripts/import_comfy_workflow.py my_workflow_api.json --id my-wan-lora --name "My Wan LoRA"
     uv run python scripts/import_comfy_workflow.py my_workflow_api.json --id my-wan-lora --dry-run
 
-Save the workflow in ComfyUI with Workflow > Export (API). This writes three files to review:
-  workflows/comfy/<template>.json        the graph, as exported
-  workflows/comfy/<template>.map.yaml    which node inputs the prompt, seed, size, length and media fill
-  registry/models/<type>/<id>.yaml       the model, with one free comfy_local route
+Save the workflow in ComfyUI with Workflow > Export (API). This writes three files to review, in your own folders
+under data/ (a git pull never touches them and the server reads them without a rebuild; --builtin writes the repo's
+workflows/comfy/ and registry/ instead, to contribute the model):
+  data/workflows/comfy/<template>.json        the graph, as exported
+  data/workflows/comfy/<template>.map.yaml    which node inputs the prompt, seed, size, length and media fill
+  data/registry/models/<type>/<id>.yaml       the model, with one free comfy_local route
 then loads the registry and prints any lint errors for it. Nothing is overwritten without --force.
 docs/comfy-workflows.md explains the files and what to check.
 """
@@ -24,7 +26,11 @@ sys.path.insert(0, str(ROOT / "apps" / "server" / "src"))
 
 from studio.config import get_settings  # noqa: E402
 from studio.providers import comfy_import  # noqa: E402
-from studio.registry.loader import load_registry  # noqa: E402
+from studio.registry.loader import RegistryError, load_registry  # noqa: E402
+
+
+def _shown(path: Path) -> str:
+    return (path.relative_to(ROOT) if path.is_relative_to(ROOT) else path).as_posix()
 
 
 def main() -> int:
@@ -35,6 +41,8 @@ def main() -> int:
     ap.add_argument("--min-vram-gb", type=float, help="GPU memory the graph needs; smaller GPUs skip the route")
     ap.add_argument("--force", action="store_true", help="overwrite files that exist")
     ap.add_argument("--dry-run", action="store_true", help="print the drafts instead of writing them")
+    ap.add_argument("--builtin", action="store_true",
+                    help="write into the repo's workflows/comfy and registry (to contribute it) instead of data/")
     args = ap.parse_args()
 
     if not re.fullmatch(r"[a-z0-9][a-z0-9.-]*", args.id):
@@ -50,30 +58,33 @@ def main() -> int:
     settings = get_settings()
     template = comfy_import.template_name(args.id)
     name = args.name or args.id
+    workflows = settings.comfyui_workflows_dir if args.builtin else settings.user_workflows_dir
+    registry = settings.resolve_registry_dir() if args.builtin else settings.user_registry_dir
     files = {
-        settings.comfyui_workflows_dir / f"{template}.json": json.dumps(graph, indent=2, ensure_ascii=False) + "\n",
-        settings.comfyui_workflows_dir / f"{template}.map.yaml": comfy_import.map_yaml(draft, name),
-        settings.resolve_registry_dir() / "models" / draft.output_type / f"{args.id}.yaml":
+        workflows / f"{template}.json": json.dumps(graph, indent=2, ensure_ascii=False) + "\n",
+        workflows / f"{template}.map.yaml": comfy_import.map_yaml(draft, name),
+        registry / "models" / draft.output_type / f"{args.id}.yaml":
             comfy_import.model_yaml(draft, args.id, name, template, args.min_vram_gb),
     }
     if args.dry_run:
         for path, text in list(files.items())[1:]:
-            print(f"--- {path.relative_to(ROOT).as_posix()}\n{text}")
+            print(f"--- {_shown(path)}\n{text}")
         return 0
     existing = [p for p in files if p.exists()]
     if existing and not args.force:
-        print("these exist (--force overwrites them):\n  " + "\n  ".join(p.relative_to(ROOT).as_posix() for p in existing))
+        print("these exist (--force overwrites them):\n  " + "\n  ".join(_shown(p) for p in existing))
         return 1
     for path, text in files.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8", newline="\n")
-        print(f"wrote {path.relative_to(ROOT).as_posix()}")
+        print(f"wrote {_shown(path)}")
     for note in draft.notes:
         print(f"  note: {note}")
 
-    reg = load_registry(settings.resolve_registry_dir())
-    errors = [e for e in reg.errors if args.id in e or template in e]
-    if errors:
+    try:
+        load_registry(settings.resolve_registry_dir(), settings.user_registry_dir)
+    except RegistryError as exc:  # others' errors too when none is this model's: it won't load until they're fixed
+        errors = [e for e in exc.errors if args.id in e or template in e] or exc.errors
         print("registry lint:\n  " + "\n  ".join(errors))
         return 1
     print(f"\n{args.id} loads cleanly. Next: review the files, start ComfyUI, and try it in Create; then\n"

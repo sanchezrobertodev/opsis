@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from studio.config import REPO_ROOT
 from studio.registry.schema import (
     EnumParam,
     ModelSpec,
@@ -39,6 +40,8 @@ class Registry:
     templates: dict[str, TemplateSpec] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # loaded with your own files: its ComfyUI routes find graphs in your folder first (comfy_workflows.workflow_dirs)
+    user_files: bool = False
 
     def model(self, model_id: str) -> ModelSpec | None:
         return self.models.get(model_id)
@@ -117,87 +120,87 @@ def _fill_field_choices(models: dict[str, ModelSpec], cards: list[Any], errors: 
             f.open = p.open
 
 
-def _read_yaml_dir(directory: Path, errors: list[str]) -> list[tuple[Path, Any]]:
+def _label(path: Path, root: Path, user: bool) -> str:
+    """How messages name a file: built-ins from the registry root, your own by their path (`data/registry/...`)."""
+    if not user:
+        return path.relative_to(root).as_posix()
+    return (path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path).as_posix()
+
+
+def _read_yaml_dir(root: Path, sub: str, user: bool, errors: list[str]) -> list[tuple[str, Any]]:
     out = []
+    directory = root / sub
     if not directory.exists():
         return out
     for path in sorted(directory.rglob("*.yaml")):
         try:
             with path.open(encoding="utf-8") as fh:
-                out.append((path, yaml.safe_load(fh)))
+                out.append((_label(path, root, user), yaml.safe_load(fh)))
         except yaml.YAMLError as exc:  # a file mid-edit: report it, keep loading the rest
-            errors.append(f"{path.relative_to(directory.parent).as_posix()}: not valid YAML ({exc})")
+            errors.append(f"{_label(path, root, user)}: not valid YAML ({exc})")
     return out
 
 
-def _digest(root: Path) -> str:
+def _load_specs(roots: list[Path], sub: str, cls: type, errors: list[str], warnings: list[str]) -> dict[str, Any]:
+    """Specs by id from `<root>/<sub>` of each root in turn. A later root (your own folder) replaces a built-in with
+    the same id, with a warning; the same id twice in one root is an error."""
+    out: dict[str, Any] = {}
+    where: dict[str, str] = {}
+    for i, root in enumerate(roots):
+        seen: set[str] = set()
+        for name, data in _read_yaml_dir(root, sub, i > 0, errors):
+            try:
+                spec = cls.model_validate(data)
+            except ValidationError as exc:
+                errors.append(f"{name}: {exc}")
+                continue
+            if spec.id in seen:
+                errors.append(f"{name}: duplicate {sub[:-1]} id {spec.id}")
+            elif spec.id in out:
+                warnings.append(f"{name}: replaces the built-in {sub[:-1]} {spec.id} ({where[spec.id]})")
+            seen.add(spec.id)
+            out[spec.id], where[spec.id] = spec, name
+    return out
+
+
+def _digest(roots: list[Path]) -> str:
     h = hashlib.sha256()
-    for path in sorted(root.rglob("*.yaml")):
-        h.update(path.relative_to(root).as_posix().encode())
-        h.update(path.read_bytes())
+    for i, root in enumerate(roots):
+        for path in sorted(root.rglob("*.yaml")):
+            h.update(("user/" if i else "").encode() + path.relative_to(root).as_posix().encode())
+            h.update(path.read_bytes())
     return h.hexdigest()[:16]
 
 
-def load_registry(root: Path) -> Registry:
+def load_registry(root: Path, user_dir: Path | None = None) -> Registry:
+    """The built-in registry at `root`, plus your own models, providers, presets and templates in `user_dir`
+    (laid out the same way; `data/registry/` by default) and your own ComfyUI graphs, which replace built-ins with the
+    same id or name. Without `user_dir`, built-ins only, graphs included."""
     errors: list[str] = []
-    providers: dict[str, ProviderSpec] = {}
-    models: dict[str, ModelSpec] = {}
+    warnings: list[str] = []
+    roots = [root, *([user_dir] if user_dir and user_dir.is_dir() else [])]
 
-    for path, data in _read_yaml_dir(root / "providers", errors):
-        try:
-            p = ProviderSpec.model_validate(data)
-        except ValidationError as exc:
-            errors.append(f"{path.name}: {exc}")
-            continue
-        if p.id in providers:
-            errors.append(f"{path.name}: duplicate provider id {p.id}")
-        providers[p.id] = p
-
-    for path, data in _read_yaml_dir(root / "models", errors):
-        try:
-            spec = ModelSpec.model_validate(data)
-        except ValidationError as exc:
-            errors.append(f"{path.relative_to(root).as_posix()}: {exc}")
-            continue
-        if spec.id in models:
-            errors.append(f"{path.name}: duplicate model id {spec.id}")
+    providers: dict[str, ProviderSpec] = _load_specs(roots, "providers", ProviderSpec, errors, warnings)
+    models: dict[str, ModelSpec] = _load_specs(roots, "models", ModelSpec, errors, warnings)
+    for spec in models.values():
         # a virtual model runs on its engines' routes (mock included), never its own
         if spec.kind != "virtual" and not any(r.provider == MOCK_PROVIDER for r in spec.routes):
             spec.routes.append(mock_route(spec))
-        models[spec.id] = spec
     _fill_director_options(models, root, errors)
 
-    presets: dict[str, PresetSpec] = {}
-    for path, data in _read_yaml_dir(root / "presets", errors):
-        try:
-            preset = PresetSpec.model_validate(data)
-        except ValidationError as exc:
-            errors.append(f"{path.relative_to(root).as_posix()}: {exc}")
-            continue
-        if preset.id in presets:
-            errors.append(f"{path.name}: duplicate preset id {preset.id}")
-        presets[preset.id] = preset
-
-    templates: dict[str, TemplateSpec] = {}
-    for path, data in _read_yaml_dir(root / "templates", errors):
-        try:
-            template = TemplateSpec.model_validate(data)
-        except ValidationError as exc:
-            errors.append(f"{path.relative_to(root).as_posix()}: {exc}")
-            continue
-        if template.id in templates:
-            errors.append(f"{path.name}: duplicate template id {template.id}")
-        templates[template.id] = template
+    presets: dict[str, PresetSpec] = _load_specs(roots, "presets", PresetSpec, errors, warnings)
+    templates: dict[str, TemplateSpec] = _load_specs(roots, "templates", TemplateSpec, errors, warnings)
 
     _fill_field_choices(models, [*presets.values(), *templates.values()], errors)
 
     from studio.registry.lint import lint  # local import: lint depends on Registry
     from studio.registry.presets import lint_presets, lint_templates
 
-    reg = Registry(models=models, providers=providers, hash=_digest(root), presets=presets, templates=templates)
+    reg = Registry(models=models, providers=providers, hash=_digest(roots), presets=presets, templates=templates,
+                   user_files=user_dir is not None)
     lint_errors, lint_warnings = lint(reg)
     reg.errors = errors + lint_errors + lint_presets(reg) + lint_templates(reg)
-    reg.warnings = lint_warnings
+    reg.warnings = warnings + lint_warnings
     if reg.errors:
         raise RegistryError(reg.errors)
     return reg
@@ -208,26 +211,42 @@ class RegistryHolder:
 
     Every process (API, worker) notices edited YAML on its own: `current` compares the files' sizes and
     modification times at most once per `check_every` seconds and reloads when they changed, so a model the
-    API accepts is never unknown to the worker.
+    API accepts is never unknown to the worker. `user_dir` holds your own specs (see `load_registry`); errors in
+    them never stop the studio from starting: it runs on the built-ins and reports them in `last_error` (/health).
     """
 
-    def __init__(self, root: Path, check_every: float = 1.0):
+    def __init__(self, root: Path, check_every: float = 1.0, user_dir: Path | None = None,
+                 workflows: tuple[Path, ...] = ()):
         self.root = root
+        self.user_dir = user_dir
         self.check_every = check_every
+        # ComfyUI templates too: a route's lint reads its graph, so a graph added after its model fixes the model
+        self._globs = [(root, "*.yaml"), *([(user_dir, "*.yaml")] if user_dir else []), *((d, "*") for d in workflows)]
+        self.reloads = 0  # tried, good or not: the API tells open pages (main.py:_watch_registry)
         self._current: Registry | None = None
         self._stamp: tuple | None = None
         self._checked = 0.0
         self.last_error: list[str] | None = None
 
     def _files(self) -> tuple:
-        return tuple(sorted((p.relative_to(self.root).as_posix(), p.stat().st_mtime_ns, p.stat().st_size)
-                            for p in self.root.rglob("*.yaml")))
+        return tuple(sorted((p.as_posix(), p.stat().st_mtime_ns, p.stat().st_size)
+                            for d, pattern in self._globs for p in d.rglob(pattern) if p.is_file()))
+
+    def _first_load(self) -> Registry:
+        try:
+            return load_registry(self.root, self.user_dir)
+        except RegistryError as exc:
+            if self.user_dir is None:
+                raise
+            self.last_error = exc.errors
+            log.error("registry with your own files failed; running on the built-ins:\n%s", exc)
+            return load_registry(self.root)  # broken built-ins still fail fast
 
     @property
     def current(self) -> Registry:
         if self._current is None:
             self._stamp = self._files()
-            self._current = load_registry(self.root)
+            self._current = self._first_load()
             self._checked = time.monotonic()
         elif time.monotonic() - self._checked >= self.check_every:
             self._checked = time.monotonic()
@@ -239,8 +258,9 @@ class RegistryHolder:
 
     def reload(self) -> bool:
         self._stamp = self._files()
+        self.reloads += 1
         try:
-            self._current = load_registry(self.root)
+            self._current = load_registry(self.root, self.user_dir)
         except RegistryError as exc:
             self.last_error = exc.errors
             log.error("registry reload failed; keeping last good registry:\n%s", exc)
@@ -257,8 +277,11 @@ def get_registry_holder() -> RegistryHolder:
     global _holder
     if _holder is None:
         from studio.config import get_settings
+        from studio.providers.comfy_workflows import workflow_dirs
 
-        _holder = RegistryHolder(get_settings().resolve_registry_dir())
+        settings = get_settings()
+        _holder = RegistryHolder(settings.resolve_registry_dir(), user_dir=settings.user_registry_dir,
+                                 workflows=workflow_dirs())
     return _holder
 
 

@@ -63,6 +63,16 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 4. Optional live check: `uv run python scripts/smoke_live.py --routes <route-id> --cap 0.50 --confirm-spend`.
 5. Run `pnpm gen` if the API schema changed.
 
+- **A deployment's own models** go in `data/registry/` (`USER_REGISTRY_DIR`; `models/<type>/`, `presets/`,
+  `templates/`, `providers/`, laid out like `registry/`) and their ComfyUI graphs in `data/workflows/comfy/`
+  (`USER_WORKFLOWS_DIR`): `registry/loader.py:load_registry(root, user_dir)` and `comfy_workflows.workflow_dirs()`
+  load them alongside the built-ins, and the holder follows them (and the graphs) like the built-ins, so the server
+  needs no rebuild and a `git pull` never conflicts. A spec with a built-in's id, or a graph with a built-in's name,
+  **replaces** it, with a warning naming both files; the same id twice in `data/registry/` is an error. Their errors
+  never stop the studio from starting: it runs on the built-ins, graphs included (`Registry.user_files`), and `/health` lists them. The registry contract tests
+  and `smoke_live.py` include them; the provider-schema baselines (`test_provider_schemas.py`,
+  `fetch_provider_schemas.py`) cover built-ins only. `import_comfy_workflow.py` writes there unless `--builtin`.
+
 ## Registry expressions and mapping (generic features; use these before writing code)
 - Price `quantity`/`formula` and route `eta` see the params, `mode`, `duration`, `input_video_seconds`,
   `input_video_frames`, `input_audio_seconds`, `input_images`, and `<role>_seconds` per input (e.g.
@@ -504,7 +514,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema drift repor
 - Both ComfyUI adapters draw a fresh seed per take unless one is given (`comfy_workflows.fresh_seed`) and re-time
   clips for `media_fps` routes (`retime_clip`).
 - Workflows live in `workflows/comfy/<name>.json` (API graph) + `<name>.map.yaml` (which node inputs to fill,
-  optional nodes, outputs). `scripts/import_comfy_workflow.py <api.json> --id <id>` drafts both plus a model YAML from
+  optional nodes, outputs), a deployment's own in `data/workflows/comfy/` (looked in first).
+  `scripts/import_comfy_workflow.py <api.json> --id <id>` drafts both plus a model YAML (into `data/`) from
   your own graph (`providers/comfy_import.py`: guesses by input names and links, never by model; `docs/comfy-workflows.md`). Routes name the template as their endpoint; `transform` hooks in
   `studio/providers/transforms/` map quality/aspect to pixel sizes. Route `eta` expressions drive time estimates.
 - One job at a time (sized for 12 GB of VRAM). On a 12 GB card, draft Wan ≈ 70–90 s, standard ≈ 7 min.
