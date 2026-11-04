@@ -1,12 +1,12 @@
 "use client";
 
-import { AudioLines, Copy, Images, Mic, Plus, Sparkles, Trash2 } from "lucide-react";
+import { AudioLines, CircleQuestionMark, Copy, Images, Mic, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, type MediaSlot, mediaUrl } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
-import { describeCharacter } from "@/lib/designer";
+import { CREATURE, describeCharacter, OUTFITS, outfitsFor, picks, pickTrait, togglePick, traitPicture } from "@/lib/designer";
 import type { SlotAsset } from "@/lib/draft";
 import { useDraft } from "@/lib/draft";
 import { uploadFile } from "@/lib/queries";
@@ -28,7 +28,7 @@ import { MediaSlotField } from "@/components/create/MediaSlots";
 import { VOICE_MODEL, VoicePicker } from "@/components/voice/VoicePicker";
 import { useModelsFor } from "@/components/create/QuickGenerate";
 import { ModelSelect, type Quote, quotePrice, quoteText, useRunQuote } from "@/components/runs/RunQuote";
-import { Button, Dialog, Segmented } from "@/components/ui/controls";
+import { Button, Dialog, Segmented, Slider } from "@/components/ui/controls";
 import { OpensFullSize, ZoomButton } from "@/components/ui/PictureViewer";
 import { GLASS_CARD, Lit } from "@/components/ui/Glass";
 
@@ -785,15 +785,20 @@ function MorePictures({ element, count: wanted, onClose }: { element: Element; c
 
 // ---------------------------------------------------------------- trait builder
 
-const TRAITS: { key: string; label: string; options: string[] }[] = [
-  { key: "style", label: "Style", options: ["photoreal", "cinematic film still", "anime", "stylized 3D animation", "graphic novel"] },
+type Trait = { key: string; label: string; options: string[]; multi?: boolean };
+
+const STYLE: Trait = { key: "style", label: "Style", options: ["photoreal", "cinematic film still", "anime", "stylized 3D animation", "graphic novel"] };
+
+const TRAITS: Trait[] = [
+  // first: the traits below, their pictures and Randomize's outfit follow it
+  { key: "presentation", label: "Presentation", options: ["woman", "man", "androgynous person", CREATURE] },
+  STYLE,
   { key: "age", label: "Age", options: ["young", "teenage", "twenty-something", "thirty-something", "middle-aged", "elderly"] },
-  { key: "presentation", label: "Presentation", options: ["woman", "man", "androgynous person", "non-human creature"] },
   { key: "build", label: "Build", options: ["slight", "athletic", "average", "broad", "heavyset", "very tall"] },
   { key: "hair", label: "Hair", options: ["short curly", "long straight", "shaved", "braided", "messy shoulder-length", "slicked back", "bald"] },
   { key: "hair_color", label: "Hair color", options: ["black", "dark brown", "auburn", "blonde", "silver", "dyed blue", "bright red"] },
   { key: "eyes", label: "Eyes", options: ["brown", "hazel", "green", "blue", "grey", "amber"] },
-  { key: "outfit", label: "Outfit", options: ["worn leather jacket", "tailored suit", "streetwear hoodie", "flowing robe", "spacesuit", "work overalls", "evening dress"] },
+  { key: "outfit", label: "Outfit", options: OUTFITS.man }, // by presentation: optionsOf()
   { key: "detail", label: "Signature detail", options: ["scar across one eyebrow", "freckles", "round glasses", "facial tattoo", "eye patch", "silver earrings", "missing tooth"] },
   { key: "archetype", label: "Archetype", options: ["hero", "rebel", "mentor", "trickster", "villain", "everyday person"] },
 ];
@@ -807,32 +812,50 @@ const HINTS: Record<ElementKind, [string, string]> = {
   voice: ["e.g. Narrator", "How it sounds."],
 };
 
-/** Trait tile widths in Design a character (the pictures are 256 px). */
-const TILE = { Small: "w-[76px]", Medium: "w-[112px]", Large: "w-[156px]", XL: "w-[208px]" };
+/** A creature's own traits, in place of a person's (its describeCreature() reads these keys). */
+const CREATURE_TRAITS: Trait[] = [
+  STYLE,
+  { key: "body", label: "Body shape", options: ["two-legged", "four-legged", "six-legged", "winged", "snake-like", "finned", "tentacled", "blob-like", "plant-like", "golem-like"] },
+  { key: "likeness", label: "Animal likeness", options: ["wolf", "big cat", "bear", "owl", "lizard", "frog", "octopus", "moth", "beetle", "deer", "shark"] },
+  { key: "size", label: "Size", options: ["pocket-sized", "cat-sized", "human-sized", "horse-sized", "towering"] },
+  { key: "stage", label: "Life stage", options: ["baby", "young", "adult", "ancient"] },
+  { key: "covering", label: "Covering", options: ["fur", "scales", "feathers", "chitin", "smooth skin", "bark and moss", "crystal", "armour plates", "translucent jelly"] },
+  { key: "coloring", label: "Coloring", options: ["camouflage", "striped", "spotted", "iridescent", "bioluminescent", "pale", "two-tone", "vivid"] },
+  { key: "features", label: "Features (pick any number)", multi: true,
+    options: ["horns", "antlers", "neck frill", "tusks", "beak", "mandibles", "wings", "clubbed tail", "extra arms"] },
+  { key: "eyes", label: "Eyes", options: ["two eyes", "single eye", "many eyes", "eyestalks", "no visible eyes", "glowing eyes"] },
+  { key: "temperament", label: "Temperament", options: ["adorable", "majestic", "eerie", "fearsome", "comical", "wise"] },
+  { key: "habitat", label: "Habitat", options: ["forests", "deserts", "the deep sea", "arctic ice", "volcanic lands", "caves", "high skies", "swamps"] },
+  { key: "gear", label: "Gear", options: ["pack harness", "rider's saddle", "battle armour", "jewelled collar", "robes", "tech implants"] },
+];
 
-/** A trait option's preview picture in `public/designer/`: `<trait>-<option as a slug>.webp`. */
-const traitFile = (option: string) => option.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+/** The traits under the presentation. */
+const traitsFor = (presentation?: string) => (presentation === CREATURE ? CREATURE_TRAITS : TRAITS.slice(1));
+
+const optionsOf = (t: Trait, presentation?: string) => (t.key === "outfit" ? outfitsFor(presentation) : t.options);
 
 function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const setDraft = useDraft((s) => s.set);
   const [traits, setTraits] = useState<Record<string, string>>({});
   const [heritage, setHeritage] = useState("");
-  const [size, setSize] = useState<keyof typeof TILE>("Medium");
-  const [zoom, setZoom] = useState<{ trait: (typeof TRAITS)[number]; option: string } | null>(null);
+  const [size, setSize] = useState(112); // tile width in px (the pictures are 256 px)
+  const [zoom, setZoom] = useState<{ trait: Trait; option: string } | null>(null);
   const [name, setName] = useState("");
   const [drawWith, setDrawWith] = useState(PORTRAIT_MODEL);
   const description = describeCharacter(traits, heritage.trim());
-  const style = traits.style ?? "photoreal";
+  const style = traits.style; // none (Any) lets the model choose
+  const creature = traits.presentation === CREATURE;
   const create = useCreateElement();
   const portrait = useDrawPortrait();
+  const pick = (key: string, value: string) => setTraits(pickTrait(traits, key, value));
 
   /** Saves the character and draws its portrait here; a drawn style is part of its look, so it's in the description. */
   async function save() {
     try {
       const e = await create.mutateAsync({
         kind: "character", name: name.trim(), attributes: { traits }, images: [],
-        description: style === "photoreal" ? description : `${style} style, ${description}`,
+        description: !style || style === "photoreal" ? description : `${style} style, ${description}`,
       });
       onClose();
       setTraits({});
@@ -844,14 +867,20 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
   }
 
   function randomize() {
-    const next: Record<string, string> = {};
-    for (const t of TRAITS) next[t.key] = t.options[Math.floor(Math.random() * t.options.length)];
+    const any = (xs: string[]) => xs[Math.floor(Math.random() * xs.length)];
+    const next: Record<string, string> = { presentation: any(TRAITS[0].options) };
+    for (const t of traitsFor(next.presentation)) {
+      const options = optionsOf(t, next.presentation);
+      next[t.key] = t.multi ? [...new Set([any(options), any(options)])].join(", ") : any(options);
+    }
     setTraits(next);
   }
 
   function generate() {
     setDraft("image", {
-      prompt: `${style} character portrait of ${description}. Waist-up, facing the camera, soft studio light, plain background, sharp focus on the face.`,
+      prompt: `${style ? `${style} character` : "Character"} portrait of ${description}. ${creature
+        ? "The whole body in frame, three-quarter view, soft studio light, plain background, sharp focus."
+        : "Waist-up, facing the camera, soft studio light, plain background, sharp focus on the face."}`,
       takes: 2,
       mode: "t2i",
     });
@@ -860,12 +889,49 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
     toast("Pick the take you like, then use “Save to Characters” on it.");
   }
 
+  const tiles = (t: Trait) => (
+    <fieldset key={t.key} className="flex flex-col gap-1.5">
+      <legend className="mb-1.5 text-2xs text-faint">
+        {t.label}
+        {traits[t.key] && <span className="text-chalk">: {traits[t.key]}</span>}
+      </legend>
+      <div className="flex flex-wrap gap-2">
+        {["", ...optionsOf(t, traits.presentation)].map((o) => {
+          const on = o ? picks(traits[t.key]).includes(o) : !traits[t.key];
+          const label = o || "Any";
+          return (
+            <div key={o} className="group relative" style={{ width: size }}>
+              <button type="button" aria-pressed={on} title={o || "Any: left out, so the model chooses"}
+                      onClick={() => pick(t.key, !o ? "" : t.multi ? togglePick(traits[t.key], o) : on ? "" : o)}
+                      className={cn("flex w-full flex-col gap-1 rounded-[var(--radius-control)] border p-1 text-left",
+                                    on ? "border-tungsten bg-raised" : "border-line-soft hover:border-tungsten/40")}>
+                {o ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={traitPicture(t.key, o, traits.presentation)} alt="" loading="lazy"
+                       className="aspect-square w-full rounded-[3px] bg-bay object-cover"
+                       onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
+                ) : (
+                  <span className="flex aspect-square w-full items-center justify-center rounded-[3px] bg-bay text-faint">
+                    <CircleQuestionMark className="h-1/2 w-1/2" strokeWidth={1.25} aria-hidden />
+                  </span>
+                )}
+                <span className={cn("line-clamp-2 leading-tight", size < 96 ? "text-2xs" : "text-xs",
+                                    on ? "text-chalk" : "text-muted")}>{label}</span>
+              </button>
+              {o && <ZoomButton title={o} onClick={() => setZoom({ trait: t, option: o })} />}
+            </div>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title="Design a character"
-      wide
+      wide="full"
       footer={
         <>
           <Button type="button" tone="ghost" onClick={randomize}>
@@ -883,47 +949,29 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
       }
     >
       <div className="flex flex-col gap-4">
-        <div className="ml-auto w-64">
-          <Segmented label="Picture size" value={size} options={Object.keys(TILE) as (keyof typeof TILE)[]} onChange={setSize} />
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          {tiles(TRAITS[0])}
+          <label className="flex w-64 flex-col gap-1 text-2xs text-faint">
+            Picture size
+            <Slider value={size} min={72} max={256} step={8} onChange={setSize} format={(v) => `${v}px`} />
+          </label>
         </div>
-        {TRAITS.map((t) => (
-          <fieldset key={t.key} className="flex flex-col gap-1.5">
-            <legend className="mb-1.5 text-2xs text-faint">
-              {t.label}
-              {traits[t.key] && <span className="text-chalk">: {traits[t.key]}</span>}
-            </legend>
-            <div className="flex flex-wrap gap-2">
-              {t.options.map((o) => {
-                const on = traits[t.key] === o;
-                return (
-                  <div key={o} className={cn("group relative", TILE[size])}>
-                    <button type="button" aria-pressed={on} title={o}
-                            onClick={() => setTraits({ ...traits, [t.key]: on ? "" : o })}
-                            className={cn("flex w-full flex-col gap-1 rounded-[var(--radius-control)] border p-1 text-left",
-                                          on ? "border-tungsten bg-raised" : "border-line-soft hover:border-tungsten/40")}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={`/designer/${t.key}-${traitFile(o)}.webp`} alt="" loading="lazy"
-                           className="aspect-square w-full rounded-[3px] bg-bay object-cover"
-                           onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
-                      <span className={cn("line-clamp-2 leading-tight", size === "Small" ? "text-2xs" : "text-xs",
-                                          on ? "text-chalk" : "text-muted")}>{o}</span>
-                    </button>
-                    <ZoomButton title={o} onClick={() => setZoom({ trait: t, option: o })} />
-                  </div>
-                );
-              })}
-            </div>
-          </fieldset>
-        ))}
-        <label className="flex max-w-xs flex-col gap-1 text-2xs text-faint">
-          Heritage (optional)
-          <input
-            value={heritage}
-            onChange={(e) => setHeritage(e.target.value)}
-            placeholder="e.g. Korean, Nigerian"
-            className="h-9 rounded-[var(--radius-control)] border border-line-soft bg-bay px-2 text-xs text-chalk outline-none placeholder:text-faint focus:border-tungsten/60"
-          />
-        </label>
+        {/* As many columns as fit about five pictures each, so a wide screen shows more traits at once */}
+        <div className="grid gap-x-8 gap-y-4"
+             style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${5 * size + 32}px), 1fr))` }}>
+          {traitsFor(traits.presentation).map(tiles)}
+        </div>
+        {!creature && (
+          <label className="flex max-w-xs flex-col gap-1 text-2xs text-faint">
+            Heritage (optional)
+            <input
+              value={heritage}
+              onChange={(e) => setHeritage(e.target.value)}
+              placeholder="e.g. Korean, Nigerian"
+              className="h-9 rounded-[var(--radius-control)] border border-line-soft bg-bay px-2 text-xs text-chalk outline-none placeholder:text-faint focus:border-tungsten/60"
+            />
+          </label>
+        )}
       </div>
       <p className={cn("mt-4 rounded-[var(--radius-control)] bg-bay p-3 text-sm leading-relaxed", description ? "text-chalk" : "text-faint")}>
         {description || "Pick a few traits, or press Randomize."}
@@ -931,7 +979,7 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-2xs text-faint">
           Name
-          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="e.g. Marco Reyes"
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder={creature ? "e.g. Bramble" : "e.g. Marco Reyes"}
                  className="h-9 rounded-[var(--radius-control)] border border-line-soft bg-bay px-2 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60" />
         </label>
         <PortraitModel value={drawWith} onChange={setDrawWith} />
@@ -939,20 +987,23 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
       <Dialog open={zoom !== null} onClose={() => setZoom(null)} title={zoom ? `${zoom.trait.label}: ${zoom.option}` : ""} wide
               footer={zoom && (
                 <Button type="button" tone="primary" onClick={() => {
-                  setTraits({ ...traits, [zoom.trait.key]: zoom.option });
+                  const value = traits[zoom.trait.key];
+                  if (!picks(value).includes(zoom.option)) pick(zoom.trait.key, zoom.trait.multi ? togglePick(value, zoom.option) : zoom.option);
                   setZoom(null);
                 }}>
-                  {traits[zoom.trait.key] === zoom.option ? "Picked" : "Pick this"}
+                  {picks(traits[zoom.trait.key]).includes(zoom.option) ? "Picked" : "Pick this"}
                 </Button>
               )}>
         {zoom && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={`/designer/full/${zoom.trait.key}-${traitFile(zoom.option)}.webp`} alt={zoom.option} width={768} height={768}
+          <img src={traitPicture(zoom.trait.key, zoom.option, traits.presentation, true)} alt={zoom.option} width={768} height={768}
                className="mx-auto block h-auto max-h-[70vh] w-auto max-w-full rounded-[var(--radius-frame)]" />
         )}
       </Dialog>
       <p className="mt-2 text-2xs text-faint">
-        Click a picture to pick it, again to leave it open; the corner button shows it full size. Create character
+        Click a picture to pick it; Any (or the picture again) leaves the trait for the model to choose. The pictures
+        follow the presentation you pick, and a creature gets traits of its own, where Features take several picks.
+        The corner button shows a picture full size. Create character
         saves it here and draws its portrait from these traits. Try in Create image makes two takes to choose from
         instead.
       </p>
