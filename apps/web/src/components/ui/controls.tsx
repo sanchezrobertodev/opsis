@@ -258,7 +258,7 @@ export function Dialog({
   title: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  wide?: boolean;
+  wide?: boolean | "full";
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -281,7 +281,7 @@ export function Dialog({
       onClick={(e) => e.target === ref.current && onClose()}
       className={cn(
         "m-auto w-[calc(100%-2rem)] rounded-[var(--radius-panel)] border border-line bg-sheet p-0 text-chalk backdrop:bg-black/60",
-        wide ? "max-w-3xl" : "max-w-md",
+        wide === "full" ? "max-w-none" : wide ? "max-w-3xl" : "max-w-md",
       )}
     >
       {open && (

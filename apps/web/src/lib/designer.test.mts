@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { describeCharacter, outfitsFor, pickTrait, traitPicture, withArticle } from "./designer.ts";
+import { describeCharacter, outfitsFor, pickTrait, togglePick, traitPicture, withArticle } from "./designer.ts";
 
 test("plural and mass nouns take no article", () => {
   assert.equal(withArticle("work overalls"), "work overalls");
@@ -25,8 +25,27 @@ test("a new presentation clears an outfit it doesn't offer", () => {
   const woman = { presentation: "woman", outfit: "evening dress" };
   assert.equal(pickTrait(woman, "presentation", "man").outfit, "");
   assert.equal(pickTrait(woman, "presentation", "").outfit, "");
-  assert.equal(pickTrait({ ...woman, outfit: "spacesuit" }, "presentation", "non-human creature").outfit, "spacesuit");
+  assert.equal(pickTrait({ ...woman, outfit: "spacesuit" }, "presentation", "androgynous person").outfit, "spacesuit");
   assert.ok(!outfitsFor("man").includes("evening dress"));
+});
+
+test("changing between a person and a creature keeps only the style", () => {
+  const person = { presentation: "woman", style: "anime", hair: "braided", outfit: "spacesuit" };
+  assert.deepEqual(pickTrait(person, "presentation", "non-human creature"), { presentation: "non-human creature", style: "anime" });
+  const creature = { presentation: "non-human creature", body: "winged", features: "horns" };
+  assert.deepEqual(pickTrait(creature, "presentation", ""), { presentation: "", style: "" });
+});
+
+test("a creature reads as one description, with several features", () => {
+  const features = togglePick(togglePick(togglePick(undefined, "horns"), "beak"), "clubbed tail");
+  assert.equal(features, "horns, beak, clubbed tail");
+  assert.equal(togglePick(features, "beak"), "horns, clubbed tail");
+  assert.equal(describeCharacter({ presentation: "non-human creature", temperament: "majestic", size: "horse-sized", body: "four-legged",
+                                   likeness: "owl", covering: "feathers", coloring: "iridescent", features, eyes: "glowing eyes",
+                                   habitat: "arctic ice", gear: "rider's saddle" }, "Korean"),
+               "a majestic horse-sized four-legged creature, resembling an owl, covered in feathers, iridescent coloring, "
+               + "with horns, a beak, a clubbed tail and glowing eyes, from arctic ice, wearing a rider's saddle");
+  assert.equal(describeCharacter({ presentation: "non-human creature" }, ""), "a creature");
 });
 
 test("pictures follow the presentation; none picked shows the man's set", () => {
