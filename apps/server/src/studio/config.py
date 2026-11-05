@@ -17,7 +17,8 @@ DEFAULT_OWNER_ID = uuid.UUID("00000000-0000-7000-8000-000000000001")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=REPO_ROOT / ".env", extra="ignore")
+    # hide_input_in_errors: a rejected value may be a secret (ACCESS_TOKEN, keys), never printed in the traceback
+    model_config = SettingsConfigDict(env_file=REPO_ROOT / ".env", extra="ignore", hide_input_in_errors=True)
 
     database_url: str = "postgresql+asyncpg://studio:studio@127.0.0.1:5433/studio"
     # procrastinate uses psycopg 3, which wants a plain libpq URL
@@ -55,6 +56,8 @@ class Settings(BaseSettings):
     worldlabs_api_key: str = Field(default="", repr=False)
     # Encrypts the keys pasted in Settings (studio/keys.py). Empty: data/keys.secret, made on first use.
     keys_secret: str = Field(default="", repr=False)
+    # One shared secret every API route asks for (studio/api/auth.py). Empty: open to whoever reaches it (local dev)
+    access_token: str = Field(default="", repr=False)
     # Our own RunPod serverless endpoint running infra/runpod/wan-core (empty turns its routes off)
     runpod_wan_core_endpoint: str = ""
 
@@ -87,6 +90,15 @@ class Settings(BaseSettings):
         return v if v.is_absolute() else REPO_ROOT / v
     # Optional shared YAML read by the local ComfyUI launcher; enables Settings > Model storage.
     comfyui_model_paths_config: Path | None = None
+
+    @field_validator("access_token")
+    @classmethod
+    def _plain_token(cls, v: str) -> str:
+        # a unit's EnvironmentFile keeps a trailing space that dotenv strips, and a header can't carry non-ASCII
+        v = v.strip()
+        if v and not (v.isascii() and v.isprintable() and " " not in v):
+            raise ValueError("ACCESS_TOKEN takes letters, digits and punctuation only, no spaces")
+        return v
 
     @property
     def live_routes(self) -> set[str]:

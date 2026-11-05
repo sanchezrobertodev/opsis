@@ -16,6 +16,8 @@ Never do these yourself. Explain the step and let the person do it.
 - **Money.** Never raise `PROVIDER_MODE` or `LLM_MODE` above `mock`, fill `LIVE_ROUTE_ALLOWLIST`, or press Generate
   (or start a run) while the studio is in Mixed or Live mode.
 - **Models and GPUs.** Don't download local model weights, install ComfyUI or create cloud endpoints unless asked.
+- **Access token.** On a studio others can reach (a server), suggest an `ACCESS_TOKEN` (`.env.example`) and let the
+  person make and keep it; never print it or put it in a URL.
 - **Other services.** If a port is taken, find out what holds it and ask before stopping anything you didn't start.
 
 ## 1. Check the tools
@@ -49,7 +51,8 @@ Run `pnpm dev` in the background (it doesn't exit). Checks:
 - After `pnpm db:migrate`: it ends without an error.
 - After `pnpm dev`: `curl http://127.0.0.1:8400/health` returns `"status":"ok"`, `"database":true`,
   `"ffmpeg":true` and `"provider_mode":"mock"`. The web app answers on http://localhost:3000 (it redirects to
-  `/create/video`).
+  `/create/video`). With an `ACCESS_TOKEN` in `.env`, `/health` answers only `"status"`: send the token without
+  showing it, `curl -H "Authorization: Bearer $(sed -n 's/^ACCESS_TOKEN=//p' .env | tail -1)" http://127.0.0.1:8400/health`.
 
 ## 2b. Containers only
 

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { type MutableRefObject, useState } from "react";
 import { toast } from "sonner";
 import * as THREE from "three";
-import { API_URL, type Asset, mediaUrl } from "@/lib/api";
+import { API_URL, type Asset, mediaUrl, refused } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { evaluate, fovFor, LIGHTS, type SceneDoc, trackOf, useScene, useSceneProject } from "@/lib/jutsu3d";
 import { Button, Field, Segmented } from "@/components/ui/controls";
@@ -47,8 +47,11 @@ function blobOf(canvas: HTMLCanvasElement, type: string): Promise<Blob> {
 }
 
 async function post(path: string, init: RequestInit) {
-  const r = await fetch(`${API_URL}${path}`, init);
-  if (!r.ok) throw new Error((await r.json().catch(() => null))?.detail ?? `render failed (${r.status})`);
+  const r = await fetch(`${API_URL}${path}`, { ...init, credentials: "include" });
+  if (!r.ok) {
+    refused(r.status);
+    throw new Error((await r.json().catch(() => null))?.detail ?? `render failed (${r.status})`);
+  }
   return r.status === 204 ? null : r.json();
 }
 

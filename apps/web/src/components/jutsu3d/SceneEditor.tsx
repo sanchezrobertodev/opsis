@@ -10,6 +10,7 @@ import {
   addObject, duplicateObject, evaluate, KIND_LABEL, keyObject, loadScene, newObject, type ObjectKind, patchObject, redo,
   removeObject, type SceneDoc, type SceneObject, trackOf, type Transform, undo, useSaveScene, useScene, useSceneProject,
 } from "@/lib/jutsu3d";
+import { useSignedIn } from "@/components/shell/SignIn";
 import { Button, Segmented } from "@/components/ui/controls";
 import { HistoryDialog } from "@/components/cinema/Editor";
 import { AddModel, AddWorld } from "./AddModel";
@@ -54,15 +55,17 @@ export function SceneEditor({ id }: { id: string }) {
 
   // the title as the server keeps it (trimmed; blank keeps the current one), so a saved title stops being dirty
   const wantedTitle = title?.trim() || null;
+  const signedIn = useSignedIn(); // a refused save waits for the sign-in, then goes again
   const dirty = Boolean(doc && saved.current && doc !== saved.current)
     || (wantedTitle !== null && wantedTitle !== project?.title);
   useEffect(() => {
-    if (!dirty || !project || !doc || save.isPending) return;
+    if (!dirty || !project || !doc || save.isPending || !signedIn) return;
     const timer = setTimeout(() => {
       const sent = doc;
       save.mutate({ version: project.version, document: sent, title: wantedTitle ?? project.title }, {
         onSuccess: () => { saved.current = sent; },
         onError: (err) => {
+          if (err instanceof ApiError && err.status === 401) return; // the sign-in shows; the edits wait for it
           if (err instanceof ApiError && err.status === 409) {
             toast.error("This scene was saved somewhere else. Reloaded the latest version.");
             loadedFor.current = null;
@@ -74,7 +77,7 @@ export function SceneEditor({ id }: { id: string }) {
       });
     }, SAVE_AFTER_MS);
     return () => clearTimeout(timer);
-  }, [dirty, doc, wantedTitle, project, save, refetch]);
+  }, [dirty, doc, wantedTitle, project, save, refetch, signedIn]);
 
   // playback
   useEffect(() => {

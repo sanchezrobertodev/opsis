@@ -2,7 +2,7 @@
 
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { api, API_URL, type Asset, mediaUrl, unwrap } from "./api";
+import { api, API_URL, type Asset, mediaUrl, refused, unwrap } from "./api";
 import { studioRoom } from "./room";
 
 const SIZE = 384;
@@ -15,7 +15,7 @@ function blobOf(canvas: HTMLCanvasElement): Promise<Blob> {
 
 /** A three-quarter view of a GLB on a dark ground, for the library (the server can't draw 3D files). */
 export async function modelThumbnail(url: string): Promise<Blob> {
-  const gltf = await new GLTFLoader().loadAsync(url);
+  const gltf = await new GLTFLoader().setWithCredentials(true).loadAsync(url);
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   const room = studioRoom(renderer);
   try {
@@ -75,8 +75,11 @@ export async function redrawModelThumbnails(onProgress: (done: number, total: nu
 export async function saveThumbnail(assetId: string, picture: Blob): Promise<Asset> {
   const form = new FormData();
   form.append("file", picture, "thumb.webp");
-  const r = await fetch(`${API_URL}/assets/${assetId}/thumbnail`, { method: "POST", body: form });
-  if (!r.ok) throw new Error(`couldn't save the thumbnail (${r.status})`);
+  const r = await fetch(`${API_URL}/assets/${assetId}/thumbnail`, { method: "POST", body: form, credentials: "include" });
+  if (!r.ok) {
+    refused(r.status);
+    throw new Error(`couldn't save the thumbnail (${r.status})`);
+  }
   return r.json();
 }
 

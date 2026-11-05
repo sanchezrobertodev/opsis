@@ -422,6 +422,15 @@ class LocalEngineOut(ApiModel):
     comfyui_version: str | None = None
 
 
+class AuthStateOut(ApiModel):
+    required: bool  # ACCESS_TOKEN is set
+    signed_in: bool  # this caller sent it (header or cookie)
+
+
+class SignInIn(ApiModel):
+    token: str = Field(max_length=500)
+
+
 class HealthOut(ApiModel):
     status: Literal["ok", "degraded"]
     database: bool

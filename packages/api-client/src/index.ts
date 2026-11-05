@@ -5,5 +5,6 @@ export type { components, paths };
 export type Schemas = components["schemas"];
 
 export function createApiClient(baseUrl: string) {
-  return createClient<paths>({ baseUrl });
+  // the browser's sign-in cookie (the API's access token) goes along: the API is another origin
+  return createClient<paths>({ baseUrl, credentials: "include" });
 }

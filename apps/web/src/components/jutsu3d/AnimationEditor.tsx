@@ -23,7 +23,7 @@ function useClipSources(model: Asset | undefined) {
     queries: sources.map((a) => ({
       queryKey: ["glb-clips", mediaUrl(a.url)],
       queryFn: async (): Promise<GlbClip[]> => {
-        const gltf = await new GLTFLoader().loadAsync(mediaUrl(a.url) ?? a.url);
+        const gltf = await new GLTFLoader().setWithCredentials(true).loadAsync(mediaUrl(a.url) ?? a.url);
         return gltf.animations.map((c) => ({ name: c.name, seconds: Math.round(c.duration * 100) / 100 }));
       },
       staleTime: Infinity,

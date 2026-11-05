@@ -153,6 +153,23 @@ async def test_the_endpoint_is_served_on_the_api_for_this_machine_only(db):
         assert evil.status_code in (400, 421)
 
 
+async def test_with_an_access_token_the_endpoint_wants_the_header(db, monkeypatch):
+    from studio.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "access_token", "open-sesame")
+    hello = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+        "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test", "version": "1"}}}
+    headers = {"accept": "application/json, text/event-stream", "content-type": "application/json"}
+    async with mcp_tools.running(), httpx.AsyncClient(transport=httpx.ASGITransport(app=api),
+                                                      base_url="http://localhost:8400") as c:
+        r = await c.post("/mcp", content=json.dumps(hello), headers=headers)
+        assert r.status_code == 401 and r.headers["www-authenticate"] == "Bearer"
+        # an MCP client looking for OAuth is told there is none, not asked to sign in
+        assert (await c.get("/.well-known/oauth-protected-resource")).status_code == 404
+        r = await c.post("/mcp", content=json.dumps(hello), headers={**headers, "authorization": "Bearer open-sesame"})
+        assert r.status_code == 200 and r.json()["result"]["serverInfo"]["name"] == "opsis"
+
+
 def test_links_use_the_scheme_the_caller_reached_the_proxy_with():
     from starlette.requests import Request
 

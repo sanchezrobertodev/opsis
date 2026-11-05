@@ -7,6 +7,7 @@ import { ApiError } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { type CinemaDoc, useProject, useRestoreRevision, useRevisions, useProjectRunsActive, useRunsActive, useSaveProject, useTakes } from "@/lib/cinema";
 import { type RunCreate, useStartRun } from "@/lib/runs";
+import { useSignedIn } from "@/components/shell/SignIn";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 import { WHEN } from "@/components/runs/Runs";
 import { CutTab } from "./CutTab";
@@ -39,12 +40,14 @@ export function CinemaEditor({ id }: { id: string }) {
   const title = edited?.title ?? project?.title ?? "";
 
   // save a moment after the last edit; a newer edit waits for the save in flight
+  const signedIn = useSignedIn();
   useEffect(() => {
-    if (!edited || !project || save.isPending) return;
+    if (!edited || !project || save.isPending || !signedIn) return;
     const timer = setTimeout(() => {
       save.mutate({ version: project.version, document: edited.doc, title: edited.title || project.title }, {
         onSuccess: () => setEdited((cur) => (cur && cur.doc === edited.doc && cur.title === edited.title ? null : cur)),
         onError: (err) => {
+          if (err instanceof ApiError && err.status === 401) return; // the sign-in shows; the edits wait for it
           if (err instanceof ApiError && err.status === 409) {
             toast.error("This film was saved somewhere else. Reloaded the latest version.");
             setEdited(null);
@@ -56,7 +59,7 @@ export function CinemaEditor({ id }: { id: string }) {
       });
     }, SAVE_AFTER_MS);
     return () => clearTimeout(timer);
-  }, [edited, project, save, refetch]);
+  }, [edited, project, save, refetch, signedIn]);
 
   if (isLoading) return null;
   if (!project || !doc) return <div className="p-6 text-sm text-muted">This film doesn&rsquo;t exist or was removed.</div>;

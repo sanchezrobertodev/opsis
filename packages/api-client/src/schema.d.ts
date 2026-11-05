@@ -1160,6 +1160,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session State */
+        get: operations["session_state_auth_session_get"];
+        put?: never;
+        /** Sign In */
+        post: operations["sign_in_auth_session_post"];
+        /** Sign Out */
+        delete: operations["sign_out_auth_session_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/keys": {
         parameters: {
             query?: never;
@@ -1332,6 +1351,13 @@ export interface components {
             add_tags?: string[] | null;
             /** Favorite */
             favorite?: boolean | null;
+        };
+        /** AuthStateOut */
+        AuthStateOut: {
+            /** Required */
+            required: boolean;
+            /** Signed In */
+            signed_in: boolean;
         };
         /** BalanceOut */
         BalanceOut: {
@@ -3890,6 +3916,11 @@ export interface components {
             prompt_budget: "each" | "shared";
             /** Default */
             default?: unknown[] | null;
+        };
+        /** SignInIn */
+        SignInIn: {
+            /** Token */
+            token: string;
         };
         /** SpendBreakdown */
         SpendBreakdown: {
@@ -6836,6 +6867,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthOut"];
+                };
+            };
+        };
+    };
+    session_state_auth_session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStateOut"];
+                };
+            };
+        };
+    };
+    sign_in_auth_session_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sign_out_auth_session_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStateOut"];
                 };
             };
         };

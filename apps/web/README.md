@@ -1,7 +1,9 @@
 # @opsis/web
 
 The Opsis UI (Next.js 16, React 19, Tailwind 4). Run it from the repo root with `pnpm dev`; it talks to the
-API at `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8400`).
+API at `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8400`). When the API has an access token, the app shows a
+sign-in (`components/shell/SignIn.tsx`) and every request carries its cookie; the app and the API must then share a
+host name.
 
 - `src/app/` routes: one folder per studio (`create/video`, `create/image`, `edit`, `motion`, `swap`, `cinema`,
   `faceless`, `jutsu3d`, `lipsync`, `worlds`, `characters`, `templates`…) plus `library`, `runs` and `settings`.

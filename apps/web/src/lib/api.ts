@@ -39,12 +39,22 @@ function describe(body: unknown): string | undefined {
   return undefined;
 }
 
+/** Fired when the API refused a request for want of its access token: the sign-in gate asks again (shell/SignIn.tsx). */
+export const SIGNED_OUT = "opsis:signed-out";
+
+export function refused(status: number): void {
+  if (status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event(SIGNED_OUT));
+}
+
 /** openapi-fetch returns {data, error, response}; turn errors into exceptions for TanStack Query. */
 export async function unwrap<T>(
   call: Promise<{ data?: T; error?: unknown; response: Response }>,
 ): Promise<T> {
   const { data, error, response } = await call;
-  if (!response.ok) throw new ApiError(response.status, error);
+  if (!response.ok) {
+    refused(response.status);
+    throw new ApiError(response.status, error);
+  }
   return data as T;
 }
 

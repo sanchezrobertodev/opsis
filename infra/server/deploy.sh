@@ -110,4 +110,8 @@ if [ -n "$CODEX_BIN" ] && ! podman exec opsis-codex "$CODEX_BIN" login status 2>
   echo "WARNING: opsis-codex isn't signed in with ChatGPT, so GPT Image goes to fal (billed) until you run:"
   echo "  podman exec -it opsis-codex $CODEX_BIN login --device-auth"
 fi
+# never print it: only whether it's set
+if ! grep -q '^ACCESS_TOKEN=..' .env; then
+  echo "NOTE: no ACCESS_TOKEN in .env, so anyone on the tailnet can use the studio (and spend). See .env.example."
+fi
 echo "Studio: $WEB_ORIGIN  (API $API_URL)"

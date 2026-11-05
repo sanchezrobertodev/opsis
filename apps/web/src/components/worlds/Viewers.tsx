@@ -1,8 +1,8 @@
 "use client";
 
-import { OrbitControls, PerspectiveCamera, useTexture } from "@react-three/drei";
-import { Canvas, useThree } from "@react-three/fiber";
-import { type MutableRefObject, Suspense, useCallback, useEffect, useState } from "react";
+import { OrbitControls, PerspectiveCamera } from "@react-three/drei";
+import { Canvas, useLoader, useThree } from "@react-three/fiber";
+import { type MutableRefObject, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { OPENCV_TO_Y_UP, SparkLayer, Splat } from "@/components/three/Splat";
 
@@ -55,7 +55,14 @@ export function WorldViewer({ url, handleRef, onReady }: {
 }
 
 function PanoSphere({ url, onReady }: { url: string; onReady?: () => void }) {
-  const texture = useTexture(url, (t) => { t.colorSpace = THREE.SRGBColorSpace; });
+  // the API is another origin: its sign-in cookie goes along only with use-credentials
+  const loaded = useLoader(THREE.TextureLoader, url, (l) => { l.setCrossOrigin("use-credentials"); });
+  const texture = useMemo(() => {
+    const t = loaded.clone(); // the loader's copy is shared by its cache, so the colour space goes on our own
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }, [loaded]);
+  useEffect(() => () => texture.dispose(), [texture]);
   useEffect(() => { onReady?.(); }, [texture, onReady]);
   return (
     // seen from inside, so the sphere is mirrored to read the right way round

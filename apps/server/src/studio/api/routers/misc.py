@@ -10,12 +10,13 @@ from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import exists, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from sse_starlette.sse import EventSourceResponse
 
+from studio.api import auth
 from studio.api.deps import current_user, get_session
 from studio.api.schemas import (
     BalanceOut,
@@ -316,7 +317,7 @@ async def spend_breakdown(period: str = Query("month", pattern="^(today|month|al
 
 
 @router.get("/health", response_model=HealthOut, tags=["health"])
-async def health(request: Request, session: AsyncSession = Depends(get_session)) -> HealthOut:
+async def health(request: Request, session: AsyncSession = Depends(get_session)) -> HealthOut | JSONResponse:
     db_ok = True
     env = get_settings()
     m = modes.Modes(env.provider_mode, env.provider_mode, env.llm_mode, env.llm_mode,  # .env's, without a database
@@ -339,8 +340,11 @@ async def health(request: Request, session: AsyncSession = Depends(get_session))
         vram_free_gb=round(device["vram_free"] / gib, 1) if device.get("vram_free") else None,
         comfyui_version=((stats or {}).get("system") or {}).get("comfyui_version"),
     )
+    status = "ok" if db_ok and ff and not holder.last_error else "degraded"
+    if not auth.allowed(request):  # health checks need no token; the rest is for those who have it
+        return JSONResponse({"status": status})
     return HealthOut(
-        status="ok" if db_ok and ff and not holder.last_error else "degraded",
+        status=status,
         database=db_ok, provider_mode=m.provider, registry_hash=holder.current.hash,
         registry_errors=holder.last_error, ffmpeg=ff, media_root=str(get_storage().root), local_engine=local,
         llm_mode=m.llm, llm_key_set=bool(get_settings().anthropic_api_key),

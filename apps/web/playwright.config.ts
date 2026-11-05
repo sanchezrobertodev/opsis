@@ -3,9 +3,11 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * End-to-end tests run against the mock provider only (PROVIDER_MODE=mock), so they cost nothing.
  * `pnpm e2e` reuses a running `pnpm dev`, or starts API + worker + web itself. To check another studio in mock mode
- * (a server deployment before it gets its keys), set E2E_BASE_URL to its web app and NEXT_PUBLIC_API_URL to its API.
+ * (a server deployment before it gets its keys), set E2E_BASE_URL to its web app and NEXT_PUBLIC_API_URL to its API,
+ * and E2E_ACCESS_TOKEN to its access token if it has one.
  */
 const remote = process.env.E2E_BASE_URL;
+const token = process.env.E2E_ACCESS_TOKEN;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -18,6 +20,7 @@ export default defineConfig({
     baseURL: remote ?? "http://localhost:3000",
     viewport: { width: 1440, height: 900 },
     trace: "retain-on-failure",
+    extraHTTPHeaders: token ? { Authorization: `Bearer ${token}` } : undefined,
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } }],
   webServer: remote

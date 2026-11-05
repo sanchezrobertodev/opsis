@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDraft } from "./draft";
-import { api, API_URL, ApiError, isActive, unwrap, type Asset, type Generation } from "./api";
+import { api, API_URL, ApiError, isActive, refused, unwrap, type Asset, type Generation } from "./api";
 
 export const keys = {
   registry: ["registry"] as const,
@@ -13,6 +13,7 @@ export const keys = {
   lineage: (id: string) => ["lineage", id] as const,
   budget: ["budget"] as const,
   health: ["health"] as const,
+  auth: ["auth"] as const,
   claude: ["claude"] as const,
 };
 
@@ -92,7 +93,19 @@ export function useBalances() {
 }
 
 export function useHealth() {
-  return useQuery({ queryKey: keys.health, queryFn: () => unwrap(api.GET("/health")), refetchInterval: 30_000 });
+  return useQuery({
+    queryKey: keys.health,
+    queryFn: async () => {
+      const health = await unwrap(api.GET("/health"));
+      // without the access token it answers only whether the studio is up
+      if (!("database" in health)) {
+        refused(401);
+        throw new ApiError(401, health);
+      }
+      return health;
+    },
+    refetchInterval: 30_000,
+  });
 }
 
 export type CreateBody = {
@@ -340,6 +353,7 @@ export function uploadFile(file: File, onProgress?: (fraction: number) => void):
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_URL}/uploads`);
+    xhr.withCredentials = true;
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress?.(e.loaded / e.total);
     };
@@ -351,7 +365,10 @@ export function uploadFile(file: File, onProgress?: (fraction: number) => void):
         /* non-JSON error page */
       }
       if (xhr.status >= 200 && xhr.status < 300) resolve(body as Asset);
-      else reject(new ApiError(xhr.status, body));
+      else {
+        refused(xhr.status);
+        reject(new ApiError(xhr.status, body));
+      }
     };
     xhr.onerror = () => reject(new ApiError(0, { message: "Upload failed: the API is unreachable." }));
     const form = new FormData();

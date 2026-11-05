@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from studio import keys as provider_keys
-from studio.api import mcp_tools
+from studio.api import auth, mcp_tools
 from studio.api.routers import (
     assets,
     director,
@@ -90,6 +90,17 @@ FILE_ROUTES = re.compile(r"/uploads|/projects/[^/]+/renders/[^/]+/frames")
 _web = get_settings().web_origin
 # 127.0.0.1 is the same dev web app as localhost; a deployed API trusts only its own web app
 ORIGINS = [_web, *(["http://127.0.0.1:3000"] if _web.startswith("http://localhost") else [])]
+
+
+@app.middleware("http")
+async def _access(request: Request, call_next):  # type: ignore[no-untyped-def]
+    """The access token, when one is set (auth.py). Inside CORS, so a preflight is answered and a refusal is readable."""
+    if not auth.open_path(request.url.path) and not auth.allowed(request):
+        return JSONResponse(status_code=401, content={"detail": "sign in to the studio first: it asks for its access token"},
+                            headers={"WWW-Authenticate": "Bearer"})
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ORIGINS,
@@ -159,6 +170,7 @@ app.include_router(renders.router)
 app.include_router(generations.router)
 app.include_router(assets.router)
 app.include_router(misc.router)
+app.include_router(auth.router)
 app.include_router(keys.router)
 app.include_router(model_storage.router)
 app.include_router(local_engine.router)
