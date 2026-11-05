@@ -81,10 +81,10 @@ def _from_price(reg: Registry, spec: ModelSpec, env: RoutingEnv | None = None) -
             except ValueError:
                 continue
             prices.append(usd)
-            if provider and provider.configured(settings):
+            if provider and provider.configured(settings) and (env is None or env.reachable(route.provider)):
                 usable.append(usd)
-    # routes that are set up, so a free route that isn't (Codex without CODEX_BIN) doesn't make the model look free;
-    # every route on a fresh install with no keys yet
+    # routes that are set up and up, so a free route that isn't (Codex without CODEX_BIN, or its runner down or signed
+    # out) doesn't make the model look free; every route on a fresh install with no keys yet
     found = usable or prices
     return min(found) if found else None
 

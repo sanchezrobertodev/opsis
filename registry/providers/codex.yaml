@@ -4,6 +4,7 @@ kind: direct               # not `local`: it spends the plan's allowance, so it 
 adapter: codex
 key_setting: codex_bin     # the `codex` binary, signed in with ChatGPT; empty turns the route off
 concurrency: 2             # agent runs, about a minute or two a picture; easy on the plan's limits
+probe: true                # on the server, routing skips it while its runner (opsis-codex) is down or signed out
 docs: https://developers.openai.com/codex/cli
 notes: >-
   GPT Image drawn by the Codex CLI's image tool, from the ChatGPT plan's allowance instead of per-image billing.

@@ -108,20 +108,34 @@ async def _pika(c: httpx.AsyncClient, key: str) -> dict[str, Any]:
 
 
 async def _codex(_: httpx.AsyncClient, binary: str) -> dict[str, Any]:
-    """No balance to read: whether the program runs and is signed in with ChatGPT, whose plan pays for the pictures."""
-    def ask() -> str:
-        done = subprocess.run([binary, "login", "status"], capture_output=True, text=True, timeout=TIMEOUT)
-        return done.stdout + done.stderr
+    """No balance to read: whether the program runs and is signed in with ChatGPT, whose plan pays for the pictures
+    (asked of the runner when Codex runs in its own container)."""
+    from studio.providers.codex import CodexAdapter, login_state, runner_state
+    from studio.providers.common import ResultStore
 
-    try:
-        said = await anyio.to_thread.run_sync(ask)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return {"status": "error", "detail": f"CODEX_BIN doesn't run ({type(exc).__name__}); check the path"}
-    if "ChatGPT" in said:
+    if get_settings().codex_runner:
+        state = runner_state(ResultStore(CodexAdapter.key).root)
+        if state is None:
+            return {"status": "error", "detail": "the Codex runner isn't running (systemctl --user status opsis-codex)"}
+        login = str(state.get("login"))
+        if login == "error":
+            return {"status": "error", "detail": "CODEX_BIN doesn't run in the runner; check the path"}
+    else:
+        def ask() -> str:
+            done = subprocess.run([binary, "login", "status"], capture_output=True, text=True, timeout=TIMEOUT)
+            return done.stdout + done.stderr
+
+        try:
+            login = login_state(await anyio.to_thread.run_sync(ask))
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {"status": "error", "detail": f"CODEX_BIN doesn't run ({type(exc).__name__}); check the path"}
+    if login == "chatgpt":
         return {"status": "ok", "detail": "signed in with ChatGPT: GPT Image comes from the plan's allowance"}
-    if "API key" in said:  # never echo the line: it shows part of the key
-        return {"status": "unavailable", "detail": "signed in with an API key, which bills per picture; run codex login"}
-    return {"status": "unavailable", "detail": "not signed in; run codex login with your ChatGPT account"}
+    how = (f"podman exec -it opsis-codex {binary} login --device-auth" if get_settings().codex_runner
+           else "codex login")
+    if login == "api_key":
+        return {"status": "unavailable", "detail": f"signed in with an API key, which bills per picture; run {how}"}
+    return {"status": "unavailable", "detail": f"not signed in; run {how} with your ChatGPT account"}
 
 
 READERS = {"fal": _fal, "runpod": _runpod, "runway": _runway, "elevenlabs": _elevenlabs, "pika": _pika, "codex": _codex}

@@ -434,6 +434,7 @@ class ProviderSpec(_Strict):
     # serverless GPU prices (USD/hour, matched by substring of the GPU name the worker reports).
     endpoint_setting: str | None = None
     gpu_usd_per_hour: dict[str, float] = {}
+    gpu_verified: date | None = None  # when gpu_usd_per_hour was last checked against RunPod's catalog
     idle_seconds: float = 0  # a worker stays billed this long after its job (RunPod's idle timeout)
     # Providers that only take some inputs as web links (RunPod): those media kinds are hosted through the service
     # named by `hosting_setting` (FAL_KEY), so routes that need them are offered only when it's set.
@@ -442,6 +443,9 @@ class ProviderSpec(_Strict):
     # The account it bills, when another provider's (our RunPod endpoint bills the RunPod account): where the cost
     # panel reads its balance. Unset: its own id.
     billing_account: str | None = None
+    # Not local, but routing asks its adapter whether it's up (`reachable()`, e.g. the Codex runner's heartbeat), so the
+    # estimate never shows a route that can't run. Local engines are always asked.
+    probe: bool = False
 
     def configured(self, settings: Any) -> bool:
         """True when every setting in `key_setting` has a value (providers without one are always configured)."""

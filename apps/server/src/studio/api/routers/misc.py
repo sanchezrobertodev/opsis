@@ -25,6 +25,7 @@ from studio.api.schemas import (
     HealthOut,
     LocalEngineOut,
     ReconcileOut,
+    RouteBillOut,
     SpendBreakdown,
     SpendBreakdownOut,
     SpendEntryOut,
@@ -35,6 +36,7 @@ from studio.api.sse import hub
 from studio.budget import guard, modes
 from studio.budget.balances import balances as read_balances
 from studio.budget.features import LABELS, claude_name, feature_of
+from studio.budget.reconcile import by_route
 from studio.budget.reconcile import reconcile as reconcile_bills
 from studio.config import get_settings
 from studio.db.models import (
@@ -308,7 +310,9 @@ async def spend_breakdown(period: str = Query("month", pattern="^(today|month|al
     return SpendBreakdownOut(period=period, total_usd=round(total, 6),  # type: ignore[arg-type]
                              estimated_usd=round(est_total, 6), checked_usd=round(ok_total, 6),
                              features=out(features, lambda k: LABELS.get(k, k)),
-                             models=out(models, lambda k: names.get(k, k)))
+                             models=out(models, lambda k: names.get(k, k)),
+                             routes=[RouteBillOut(**vars(b), ratio=b.ratio)
+                                     for b in await by_route(session, since, user.id)])
 
 
 @router.get("/health", response_model=HealthOut, tags=["health"])
@@ -329,7 +333,7 @@ async def health(request: Request, session: AsyncSession = Depends(get_session))
     device = ((stats or {}).get("devices") or [{}])[0]
     gib = 1024**3
     local = LocalEngineOut(
-        configured=bool(url), online=stats is not None, url=url or None,
+        configured=bool(url), online=stats is not None, busy=bool((stats or {}).get("busy")), url=url or None,
         gpu=device.get("name"),
         vram_total_gb=round(device["vram_total"] / gib, 1) if device.get("vram_total") else None,
         vram_free_gb=round(device["vram_free"] / gib, 1) if device.get("vram_free") else None,

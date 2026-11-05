@@ -1,6 +1,6 @@
 {
   "name": "@opsis/web",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "Apache-2.0",
   "scripts": {
@@ -9,6 +9,7 @@
     "start": "next start --port 3000",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test": "node --test \"src/**/*.test.mts\"",
     "e2e": "playwright test"
   },
   "dependencies": {

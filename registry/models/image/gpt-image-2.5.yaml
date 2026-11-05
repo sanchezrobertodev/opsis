@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../../schema/model.schema.json
-# Verified 2026-10-19 against fal's per-endpoint OpenAPI (openai/gpt-image-2.5/{flare,sunburst}/{text-to-image,edit})
-# and its model pages: both variants cost the same per image, by size and quality. Sizes are explicit pixels
-# (multiples of 16), each priced at its nearest size in fal's table.
+# Fields verified 2026-10-19 against fal's per-endpoint OpenAPI (openai/gpt-image-2.5/{flare,sunburst}/{text-to-image,edit});
+# prices 2026-11-03 against its model pages: both variants cost the same per image, by size and quality. Sizes are
+# explicit pixels (multiples of 16), each priced at its nearest size in fal's table (16:9 and 9:16 at 1920x1072).
 id: gpt-image-2.5
 name: GPT Image 2.5
 family: gpt-image
@@ -87,21 +87,22 @@ routes:
         - {when: {quality: xhigh, aspect_ratio: "2:3"}, usd: 0.07377}
         - {when: {quality: max, aspect_ratio: "2:3"}, usd: 0.16464}
         - {when: {quality: low, aspect_ratio: "16:9"}, usd: 0.00441}
-        - {when: {quality: medium, aspect_ratio: "16:9"}, usd: 0.01029}
-        - {when: {quality: high, aspect_ratio: "16:9"}, usd: 0.0396}
-        - {when: {quality: xhigh, aspect_ratio: "16:9"}, usd: 0.07041}
-        - {when: {quality: max, aspect_ratio: "16:9"}, usd: 0.1584}
+        - {when: {quality: medium, aspect_ratio: "16:9"}, usd: 0.00951}
+        - {when: {quality: high, aspect_ratio: "16:9"}, usd: 0.03945}
+        - {when: {quality: xhigh, aspect_ratio: "16:9"}, usd: 0.07014}
+        - {when: {quality: max, aspect_ratio: "16:9"}, usd: 0.1578}
         - {when: {quality: low, aspect_ratio: "9:16"}, usd: 0.00441}
-        - {when: {quality: medium, aspect_ratio: "9:16"}, usd: 0.01029}
-        - {when: {quality: high, aspect_ratio: "9:16"}, usd: 0.0396}
-        - {when: {quality: xhigh, aspect_ratio: "9:16"}, usd: 0.07041}
-        - {when: {quality: max, aspect_ratio: "9:16"}, usd: 0.1584}
-      # fal's table counts one input image; each further reference bills as image input ($8 per million tokens,
-      # about $0.0083 for a 1024x1024 picture)
+        - {when: {quality: medium, aspect_ratio: "9:16"}, usd: 0.00951}
+        - {when: {quality: high, aspect_ratio: "9:16"}, usd: 0.03945}
+        - {when: {quality: xhigh, aspect_ratio: "9:16"}, usd: 0.07014}
+        - {when: {quality: max, aspect_ratio: "9:16"}, usd: 0.1578}
+      # fal's table is the output only: each reference bills as image input ($8 per million tokens, about $0.0083 for
+      # a 1024x1024 picture) and the prompt as text input ($5 per million tokens, about 4 characters a token)
       extra:
-        - {quantity: "max(0, input_images - 1)", usd: 0.0083}  # inputs bill once per request
-      verified: 2026-10-19
-      source: "https://fal.ai/models/openai/gpt-image-2.5/flare/edit (per-image table incl. one input image; image input $8/M tokens)"
+        - {quantity: input_images, usd: 0.0083}  # inputs bill once per request
+        - {quantity: prompt_chars, usd: 0.00000125}
+      verified: 2026-11-03
+      source: "https://fal.ai/models/openai/gpt-image-2.5/flare/edit (per-image output table; image input $8/M tokens, text input $5/M)"
     output: {path: images, kind: image, multiple: true}
   # The ChatGPT plan's allowance through the Codex CLI: free per picture but slow; anything it can't draw goes to fal.
   - id: gpt-image-2.5@codex

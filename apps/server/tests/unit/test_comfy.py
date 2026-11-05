@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import struct
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from studio.domain.enums import ErrorClass
 from studio.providers import comfy_events
 from studio.providers.base import ProviderError, ProviderOutput, ResolvedMedia
 from studio.providers.comfy_local import ComfyLocalAdapter
-from studio.providers.comfy_workflows import load_template
+from studio.providers.comfy_workflows import load_template, workflow_dirs
 from studio.registry.loader import load_registry
 from studio.registry.mapping import build_payload
 from studio.registry.routing import RoutingEnv, candidates, cheapest_live_estimate
@@ -227,6 +228,21 @@ def adapter() -> ComfyLocalAdapter:
     return ComfyLocalAdapter(base_url="http://comfy.test", workflows_dir=WORKFLOWS)
 
 
+async def test_graphs_in_your_folder_run_and_replace_built_ins(fake, tmp_path, monkeypatch):
+    for suffix in (".json", ".map.yaml"):
+        shutil.copy(WORKFLOWS / f"wan22_ti2v_5b{suffix}", tmp_path / f"my_wan{suffix}")
+        shutil.copy(WORKFLOWS / f"flux2_klein_4b{suffix}", tmp_path / f"flux2_klein_4b{suffix}")
+    mine = tmp_path / "flux2_klein_4b.map.yaml"
+    mine.write_text(mine.read_text(encoding="utf-8").replace("description: ", "description: mine, "), encoding="utf-8")
+    monkeypatch.setattr(get_settings(), "user_workflows_dir", tmp_path)
+    a = ComfyLocalAdapter(base_url="http://comfy.test")  # your folder first, then the built-ins
+    res = await a.submit(ROUTE, "my_wan", {"prompt": "a fox"}, client_ref="0123456789")
+    assert "a fox" in json.dumps(fake.prompts[res.job_id]["prompt"])
+    assert load_template(workflow_dirs(), "flux2_klein_4b").map.description.startswith("mine, ")
+    assert load_template(workflow_dirs(), "wan22_ti2v_5b").map.description == \
+        load_template(WORKFLOWS, "wan22_ti2v_5b").map.description
+
+
 async def test_full_job_lifecycle(fake, tmp_path):
     a = adapter()
     img = tmp_path / "frame.png"
@@ -359,7 +375,7 @@ async def test_download_rejects_missing_file(monkeypatch, tmp_path):
 
 def env(*, url: bool, online: bool, mode="mock") -> RoutingEnv:
     return RoutingEnv(provider_mode=mode, live_allowlist=set(), has_key=lambda p: url if p == "comfy_local" else False,
-                      has_adapter=lambda a: True, reachable=lambda p: online)
+                      has_adapter=lambda a: True, reachable=lambda p: online or p != "comfy_local")
 
 
 def eligible(e: RoutingEnv) -> list[str]:
@@ -660,6 +676,27 @@ async def _done(value):
     return value
 
 
+async def test_a_comfyui_too_busy_to_answer_reads_as_running(monkeypatch):
+    import respx
+
+    from studio.providers import local_status
+
+    url, stats = "http://comfy.test", {"devices": [{"name": "cuda:0 GPU"}]}
+    monkeypatch.setattr(local_status, "_cache", {})
+    with respx.mock:
+        route = respx.get(f"{url}/system_stats")
+        route.mock(return_value=httpx.Response(200, json=stats))
+        assert await local_status.comfy_stats(url) == stats
+        local_status._cache[url] = (0.0, stats)  # stale, so it asks again
+        route.mock(side_effect=httpx.ReadTimeout("rendering"))
+        assert await local_status.comfy_stats(url) == {**stats, "busy": True}
+        local_status._cache.clear()
+        assert await local_status.comfy_stats(url) == {"busy": True}  # busy since before we first asked
+        local_status._cache.clear()
+        route.mock(side_effect=httpx.ConnectError("refused"))
+        assert await local_status.comfy_stats(url) is None
+
+
 async def test_local_runs_re_time_clips_and_take_a_fresh_seed(fake, monkeypatch, tmp_path):
     from studio.providers import comfy_local
 
@@ -689,7 +726,7 @@ async def test_local_runs_re_time_clips_and_take_a_fresh_seed(fake, monkeypatch,
 
 def ltx_env(*, online: bool, blocked: str | None, mode="mock") -> RoutingEnv:
     return RoutingEnv(provider_mode=mode, live_allowlist=set(), has_key=lambda p: p == "comfy_local" or mode == "live",
-                      has_adapter=lambda a: True, reachable=lambda p: online,
+                      has_adapter=lambda a: True, reachable=lambda p: online or p != "comfy_local",
                       blocked=lambda r, m: blocked if r.provider == "comfy_local" else None)
 
 

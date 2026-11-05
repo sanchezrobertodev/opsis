@@ -14,6 +14,9 @@
    ],
    "default": "auto"
   },
+  "audio_effects": {
+   "type": "null|object<EffectsSpec>"
+  },
   "language_code": {
    "type": "null|string"
   },
@@ -43,7 +46,7 @@
    "type": "string"
   },
   "use_pvc_as_ivc": {
-   "type": "boolean"
+   "type": "boolean|null"
   },
   "voice_settings": {
    "type": "null|object<VoiceSettingsResponseModel>"

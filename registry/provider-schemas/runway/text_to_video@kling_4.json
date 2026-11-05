@@ -1,0 +1,51 @@
+{
+ "endpoint": "text_to_video",
+ "variant": "kling_4",
+ "input": {
+  "duration": {
+   "type": "integer",
+   "minimum": 3,
+   "maximum": 30
+  },
+  "model": {
+   "type": "str",
+   "enum": [
+    "kling_4"
+   ]
+  },
+  "promptText": {
+   "type": "string"
+  },
+  "ratio": {
+   "type": "string",
+   "enum": [
+    "1280:720",
+    "720:1280",
+    "940:940",
+    "1460:624",
+    "1920:1080",
+    "1080:1920",
+    "1440:1440",
+    "2200:940",
+    "auto_720p",
+    "auto_1080p"
+   ]
+  },
+  "referenceVideos": {
+   "type": "array<any>",
+   "minItems": 0,
+   "maxItems": 5
+  },
+  "references": {
+   "type": "array<object<ReferenceImage>>",
+   "minItems": 0,
+   "maxItems": 10
+  }
+ },
+ "required": [
+  "model",
+  "promptText"
+ ],
+ "output": [],
+ "deprecated": false
+}

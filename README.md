@@ -218,7 +218,9 @@ uv run python scripts/import_comfy_workflow.py my_workflow_api.json --id my-mode
 ```
 
 It guesses which node inputs the prompt, seed, size, length and media fill, writes the graph, its map and a model
-YAML, and checks they load. [docs/comfy-workflows.md](docs/comfy-workflows.md) says what to review.
+YAML into your own folders (`data/workflows/comfy/` and `data/registry/`, which a `git pull` never touches and a
+server reads without a rebuild), and checks they load. [docs/comfy-workflows.md](docs/comfy-workflows.md) says what
+to review.
 
 ### Larger open models on your RunPod
 
@@ -247,7 +249,9 @@ Settings shows where the money went, by feature and by model.
 <summary><b>GPT Image through your ChatGPT plan</b> (optional)</summary>
 
 GPT Image 2.5 can draw from a ChatGPT plan's allowance through the
-[Codex CLI](https://developers.openai.com/codex/cli) instead of being billed per picture on fal.
+[Codex CLI](https://developers.openai.com/codex/cli) instead of being billed per picture on fal. These steps are
+for a desktop setup; on the Linux server see
+[infra/server/README.md](infra/server/README.md#gpt-image-through-your-chatgpt-plan) instead.
 
 1. Install the Codex CLI and sign in with your ChatGPT account: `codex login`. `codex login status` should say
    "Logged in using ChatGPT". An API-key sign-in bills per picture, which defeats the purpose.
@@ -258,11 +262,30 @@ GPT Image 2.5 can draw from a ChatGPT plan's allowance through the
 
 It follows the Mock / Mixed / Live switch like any provider. It is slow (about 90 s a picture), and Codex picks the
 size, so pictures are cropped to the shape you asked for. A picture Codex can't draw (the plan's usage limit, a
-refusal) moves on to fal and is billed there. Check OpenAI's terms for this use of a plan. On the Linux server setup
-the API and worker mount the host's `~/.codex`; point `CODEX_BIN` at
-`/home/<you>/.codex/packages/standalone/current/bin/codex`.
+refusal) moves on to fal and is billed there. Check OpenAI's terms for this use of a plan. On a desktop Codex runs
+as the worker's user and could read what the worker can; the server setup runs it in its own container, apart from
+the studio's keys and files, with its own sign-in.
 
 </details>
+
+### Add a hosted model
+
+A model a provider here already serves (on fal, Replicate, Runway and the rest) is one YAML file and no code:
+
+1. Copy a similar model from `registry/models/<type>/` to `data/registry/models/<type>/<id>.yaml`. That folder is
+   yours: a `git pull` never touches it, and the API and the worker read it within a second, on a server too. Give
+   the copy its own `id` and route ids (`<id>@fal`).
+2. Point the route at the provider's endpoint and map the fields it takes (`map:`; the CLAUDE.md section "Registry
+   expressions and mapping" lists what a route can do). Price it from the provider's pricing page, with `verified`
+   (the day you checked) and `source` (the page's link).
+3. Keep one `examples:` entry, marking the cheapest `smoke: true`.
+4. Check it, for free: `uv run pytest apps/server/tests/contract -k <id>`. A mistake also shows in `/health`; the
+   studio keeps running on everything else meanwhile.
+5. Optionally try it once for real, capped: `uv run python scripts/smoke_live.py --routes <id>@fal --cap 0.50
+   --confirm-spend` (the API in `mixed` mode with that route allowed, or `live`).
+
+A file with a built-in model's id replaces that model, with a warning each time the registry loads. Presets and
+templates of your own go in `data/registry/presets/` and `data/registry/templates/` the same way.
 
 ## Drive it from Claude
 

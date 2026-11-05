@@ -45,17 +45,20 @@ log = logging.getLogger("studio.api")
 
 
 async def _watch_registry() -> None:
-    """Dev convenience: edit registry YAML and the API picks it up; a broken file keeps the last good copy."""
-    from watchfiles import awatch
-
+    """Tells open pages when the registry changes. `current` re-reads changed files at most once per `check_every`,
+    yours too, in a folder made since the start; a broken file keeps the last good copy."""
     holder = get_registry_holder()
-    async for _ in awatch(holder.root):
-        ok = holder.reload()
-        hub.publish({
-            "id": None, "topic": "system",
-            "type": "system.registry_reloaded" if ok else "system.registry_error",
-            "payload": {"hash": holder.current.hash, "errors": holder.last_error},
-        })
+    seen = holder.reloads
+    while True:
+        await asyncio.sleep(holder.check_every)
+        reg = holder.current
+        if holder.reloads != seen:
+            seen = holder.reloads
+            hub.publish({
+                "id": None, "topic": "system",
+                "type": "system.registry_error" if holder.last_error else "system.registry_reloaded",
+                "payload": {"hash": reg.hash, "errors": holder.last_error},
+            })
 
 
 @asynccontextmanager
@@ -76,7 +79,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="Opsis API",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
     description="Self-hosted AI video studio: model registry, generations, assets and live events.",
 )

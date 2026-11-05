@@ -41,16 +41,17 @@ routes:
         pose_strength: pose_strength
         seed: seed
       media: {character_image: character_image, driving_video: driving_video}
-    # Billed per GPU second on an RTX PRO 6000 ($3.49/h): run time (10 distilled steps) plus the 60 s idle tail and
-    # ~60 s to load the 17 GB model (a 480p take ran 66 s with the load on 0.3.0, 115 s on 0.2.0): a ceiling,
+    # Billed per GPU second on an RTX PRO 6000 ($3.49/h): run time (10 distilled steps, for a 5 s clip's 81 frames)
+    # plus the 60 s idle tail and ~90 s to load the 17 GB model and boot a cold worker (a 49-frame 480p take ran 66 s
+    # with the load on 0.3.0, 115 s on 0.2.0; RunPod billed 1.13x the run time, which leaves the boot out): a ceiling,
     # corrected to the bill.
     pricing:
       basis: per_gpu_second
-      quantity: "(30 if quality == '480p' else 90) + 60 + 60"
+      quantity: "(50 if quality == '480p' else 150) + 60 + 90"
       rates: [{usd: 0.000969}]
-      verified: 2026-10-08
-      source: RunPod serverless RTX PRO 6000 $3.49/h (get-gpu-type); run time estimated, not yet benchmarked
-    eta: "(30 if quality == '480p' else 90) + 60"
+      verified: 2026-11-03
+      source: https://www.runpod.io/pricing (serverless RTX 6000 Pro $3.49/h); run time from 49-frame takes, scaled to 81
+    eta: "(50 if quality == '480p' else 150) + 90"
     timeout_s: 3600
     output: {path: output.outputs, kind: video}
     # Wan works at 16 fps: clips are re-timed to it, so its 81 frames cover up to 5 s of them
@@ -73,4 +74,4 @@ examples:
     params: {quality: "480p"}
     media: {character_image: "fixture:images/person.jpg", driving_video: "fixture:videos/person_3s.mp4"}
     smoke: true
-    expect: {cost_usd_range: [0.13, 0.16]}
+    expect: {cost_usd_range: [0.19, 0.2]}

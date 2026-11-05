@@ -42,7 +42,7 @@ from studio.providers.base import (
     ResolvedMedia,
     SubmitResult,
 )
-from studio.providers.comfy_workflows import fresh_seed, load_template, retime_clip
+from studio.providers.comfy_workflows import fresh_seed, load_template, registry_workflow_dirs, retime_clip
 from studio.providers.common import (
     best_mime,
     download_url,
@@ -67,7 +67,7 @@ class RunPodComfyAdapter(RunPodAdapter):
 
     def __init__(self, transport: httpx.AsyncBaseTransport | None = None, workflows_dir: Path | None = None) -> None:
         super().__init__(transport)
-        self.workflows_dir = workflows_dir or get_settings().comfyui_workflows_dir
+        self.workflows_dir = workflows_dir
 
     # ------------------------------------------------------------------ config
 
@@ -130,7 +130,7 @@ class RunPodComfyAdapter(RunPodAdapter):
         return url, name
 
     async def submit(self, route: Route, endpoint: str, payload: dict[str, Any], *, client_ref: str) -> SubmitResult:
-        template = load_template(self.workflows_dir, endpoint)
+        template = load_template(self.workflows_dir or registry_workflow_dirs(), endpoint)
         inputs: list[dict[str, str]] = []
         values = {k: _to_file(v, inputs) for k, v in payload.items()}
         values["filename_prefix"] = f"opsis/{time.strftime('%Y-%m-%d')}/{client_ref[:8]}"

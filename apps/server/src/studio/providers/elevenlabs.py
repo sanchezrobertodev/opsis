@@ -5,7 +5,7 @@ alignment). Submit makes that call and parks the result in a ResultStore, so pol
 async provider. A timeout mid-call is an ambiguous paid submit and is never retried automatically.
 
 Route endpoints are API paths under /v1, e.g. `text-to-speech/{voice_id}/with-timestamps`, `sound-generation`,
-`music` and `speech-to-speech/{voice_id}`. The payload is the JSON body; `output_format` always asks for 128 kbps MP3.
+`music` and `voice-changer/{voice_id}`. The payload is the JSON body; `output_format` always asks for 128 kbps MP3.
 Routes that take a recording (the voice changer) get it staged as a local file and sent as a multipart upload.
 
 Dubbing (`dubbing/project`) is the one asynchronous call: submit starts a project with its first target language and

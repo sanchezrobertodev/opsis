@@ -11,8 +11,10 @@ in the server's `.env` at that machine's ComfyUI (over Tailscale, for example).
 | API | `opsis-api` (image `opsis-server`) | 127.0.0.1:8097 -> https://<host>.<tailnet>.ts.net:19444 | 768 MB |
 | Worker | `opsis-worker` (image `opsis-server`) | none | 1.5 GB |
 | Web app | `opsis-web` (image `opsis-web`, standalone Next.js) | 127.0.0.1:8096 -> https://<host>.<tailnet>.ts.net:19443 | 512 MB |
+| Codex runner | `opsis-codex` (image `opsis-server`) | none, outside the pod | 1 GB |
 
-- **Pod:** all four containers run in the pod `opsis`, so they reach each other on localhost.
+- **Pod:** the first four run in the pod `opsis`, so they reach each other on localhost. The Codex runner doesn't
+  (see [GPT Image through your ChatGPT plan](#gpt-image-through-your-chatgpt-plan)).
 - **Files:** the units run from your checkout of this repository. Its `.env` (mode 600, never committed) holds the
   keys and modes, and its `data/` (media, backups, logs, reports) is bind-mounted into the API and worker at `/app/data`.
   Keys pasted in Settings are encrypted with `data/keys.secret` (or `KEYS_SECRET`); the off-site copy doesn't send it,
@@ -34,14 +36,15 @@ in the server's `.env` at that machine's ComfyUI (over Tailscale, for example).
 4. Installs the Quadlet units and timers. A server set up before the rename to Opsis ran them as `ams-*` in the pod
    `ams`: the first deploy stops and removes those and their images, and the database keeps its volume.
 5. Migrates the database.
-6. Restarts the API, worker and web app.
+6. Restarts the Codex runner, API, worker and web app.
 7. Sets the two `tailscale serve` ports once.
 8. Checks health.
 
 ## Timers
 - `opsis-backup.timer`: nightly at 03:30, `scripts/backup_db.py` in the worker container. Dumps go to
   `data/backups/` (14 days kept) and the log to `data/logs/backup.log`.
-- `opsis-schema-check.timer`: Mondays at 09:00, `scripts/fetch_provider_schemas.py`. The report goes to `data/reports/`.
+- `opsis-schema-check.timer`: Mondays at 09:00, `scripts/fetch_provider_schemas.py`. The report (schemas, prices,
+  estimates against bills) goes to `data/reports/`.
 
 - `opsis-offsite.timer`: hourly, `offsite.sh`. It sends what's new to another device with Taildrop
   (`OPSIS_OFFSITE_TARGET` in `.env`: that device's Tailscale name; empty turns it off).
@@ -70,9 +73,36 @@ Run any of them by hand: `systemctl --user start opsis-backup.service`.
   ```
   Then start the API, worker and web app again.
 
+## GPT Image through your ChatGPT plan
+With `CODEX_BIN` set in `.env` (the standalone install: `/home/<you>/.codex/packages/standalone/current/bin/codex`,
+the only path the runner can see), GPT Image draws from your ChatGPT plan through the Codex CLI. The runner's unit takes
+it from `.env` when `deploy.sh` installs the units, so after setting or changing it run `NO_PULL=1 infra/server/deploy.sh`
+rather than only restarting. Codex can read files whatever it's told, so it never runs
+in the worker: the worker leaves each job in `data/provider_results/codex/` and `opsis-codex` draws it.
+- **What it sees:** those jobs, its own Codex home `~/.local/share/opsis/codex-home` (its sign-in and sessions) and
+  `~/.codex/packages` (the binary), read-only. Not your `~/.codex` with its sessions, plugins and MCP servers, nor
+  `.env`, the keys, media, backups or the database. It runs read-only with no capabilities, outside the pod.
+- **Sign it in once**, with the ChatGPT account whose plan should pay (it prints a link and a code to open on any
+  device):
+  ```
+  podman exec -it opsis-codex /home/<you>/.codex/packages/standalone/current/bin/codex login --device-auth
+  ```
+  Until it's signed in with ChatGPT (an API key would bill per picture, outside the studio's caps), Settings says so
+  and GPT Image goes to fal.
+- **Checks:** Settings > Provider balances shows Codex as Ready. `journalctl --user -u opsis-codex` logs each job it
+  draws.
+
+## Your own models and workflows
+
+Put them in the checkout's `data/registry/` (model, preset and template YAML, laid out like `registry/`) and
+`data/workflows/comfy/` (ComfyUI graphs). They're in the bind-mounted `data/`, so the API and the worker load them
+within a second, with no rebuild or deploy, and a `git pull` never conflicts with them. `scripts/import_comfy_workflow.py`
+writes there, and the README's "Add a hosted model" walks through a hosted one. Errors in them show in `/health`
+while the studio runs on the built-ins. The off-site copy doesn't send these folders: keep your own copy.
+
 ## Day to day
 ```
-systemctl --user status opsis-api opsis-worker opsis-web opsis-postgres
+systemctl --user status opsis-api opsis-worker opsis-web opsis-postgres opsis-codex
 journalctl --user -u opsis-worker -f
 podman exec opsis-worker python scripts/restore_db.py --check     # restore the newest dump into a scratch copy
 systemd-cgtop                                                    # memory per container during a render

@@ -35,12 +35,13 @@ routes:
       media: {character_image: image_url, input_audio: audio_url}
     pricing:
       basis: per_output_second
-      quantity: input_audio_seconds
+      # billed in whole seconds: 7.2 s takes were billed 8 s (2026-10-19)
+      quantity: ceil(input_audio_seconds)
       rates:
         - {when: {tier: standard}, usd: 0.0562}
         - {when: {tier: pro}, usd: 0.115}
-      verified: 2026-10-07
-      source: https://fal.ai/models/fal-ai/kling-video/ai-avatar/v2/standard
+      verified: 2026-11-03
+      source: https://fal.ai/models/fal-ai/kling-video/ai-avatar/v2/standard and /pro
     timeout_s: 1800
     output: {path: video.url, kind: video}
 

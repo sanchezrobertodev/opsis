@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=../../schema/model.schema.json
-# Verified 2026-10-19: ElevenLabs speech-to-speech (POST /v1/speech-to-speech/{voice_id}, multipart `audio`) and its API
-# pricing page (Voice Changer $0.12 per minute).
+# Verified 2026-10-19: ElevenLabs Voice Changer (multipart `audio`) and its API pricing page ($0.12 per minute).
+# 2026-11-03: the path moved from /v1/speech-to-speech/{voice_id} (deprecated) to /v1/voice-changer/{voice_id}.
 id: eleven-voice-changer
 name: ElevenLabs Voice Changer
 family: elevenlabs
@@ -48,7 +48,7 @@ routes:
   - id: eleven-voice-changer@elevenlabs
     provider: elevenlabs
     modes:
-      change: {endpoint: "speech-to-speech/{voice_id}", fixed: {model_id: eleven_multilingual_sts_v2}}
+      change: {endpoint: "voice-changer/{voice_id}", fixed: {model_id: eleven_multilingual_sts_v2}}
     map:
       params:
         voice_id: {to: null}

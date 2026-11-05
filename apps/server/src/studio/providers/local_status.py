@@ -16,7 +16,8 @@ _cache: dict[str, tuple[float, dict[str, Any] | None]] = {}
 
 
 async def comfy_stats(url: str) -> dict[str, Any] | None:
-    """ComfyUI /system_stats, or None when the server isn't reachable."""
+    """ComfyUI /system_stats, or None when the server isn't reachable. One that takes the request but answers late is
+    busy (it stalls for seconds while it loads a model), not down: its last stats come back with `busy: True`."""
     now = time.monotonic()
     hit = _cache.get(url)
     if hit and now - hit[0] < TTL_SECONDS:
@@ -26,6 +27,8 @@ async def comfy_stats(url: str) -> dict[str, Any] | None:
         async with httpx.AsyncClient(timeout=1.5) as client:
             r = await client.get(f"{url.rstrip('/')}/system_stats")
             stats = r.json() if r.status_code == 200 else None
+    except httpx.ReadTimeout:
+        stats = {**((hit and hit[1]) or {}), "busy": True}
     except (httpx.HTTPError, ValueError):
         stats = None
     _cache[url] = (now, stats)
@@ -33,13 +36,14 @@ async def comfy_stats(url: str) -> dict[str, Any] | None:
 
 
 async def local_reachability(reg: Registry) -> dict[str, bool]:
-    """provider id -> reachable, for every local provider in the registry (each adapter decides how)."""
+    """provider id -> reachable, for local engines and providers marked `probe` (the Codex runner's heartbeat); the
+    others are remote APIs, assumed up and left out, so their SDKs aren't loaded to ask."""
     from studio.providers.factory import adapter_implemented, get_adapter
 
     settings = get_settings()
     out: dict[str, bool] = {}
     for provider in reg.providers.values():
-        if provider.kind != "local" or not adapter_implemented(provider.adapter):
+        if not (provider.kind == "local" or provider.probe) or not adapter_implemented(provider.adapter):
             continue
         if not provider.configured(settings):
             out[provider.id] = False  # configured off (e.g. COMFYUI_URL empty)
@@ -56,7 +60,7 @@ async def local_blockers(reg: Registry, reach: dict[str, bool]) -> dict[tuple[st
     for spec in reg.models.values():
         for route in spec.routes:
             provider = reg.providers.get(route.provider)
-            if provider is None or not reach.get(provider.id) or not route.enabled:
+            if provider is None or provider.kind != "local" or not reach.get(provider.id) or not route.enabled:
                 continue
             adapter = get_adapter(provider.adapter)
             for mode in route.modes:

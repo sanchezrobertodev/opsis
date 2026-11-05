@@ -10,21 +10,23 @@ from studio.registry.mapping import load_hook
 from studio.registry.schema import EnumParam, FloatParam, IntParam, ModelSpec, Route
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from studio.registry.loader import Registry
 
 
-COMFY_ADAPTERS = {"comfy_local", "runpod_comfy"}  # routes whose endpoint names a workflows/comfy template
+COMFY_ADAPTERS = {"comfy_local", "runpod_comfy"}  # routes whose endpoint names a workflow template
+PRICE_MAX_AGE_DAYS = 30  # a price checked longer ago than this is worth checking again (warning only)
 
 
-def _check_workflows(spec: ModelSpec, route: Route, rwhere: str) -> list[str]:
+def _check_workflows(spec: ModelSpec, route: Route, rwhere: str, dirs: tuple[Path, ...]) -> list[str]:
     """A ComfyUI route's template must exist, and every field the route sends must have an input in it."""
-    from studio.config import get_settings
     from studio.providers.comfy_workflows import load_template
 
     errors: list[str] = []
     for mode_id, rm in route.modes.items():
         try:
-            template = load_template(get_settings().comfyui_workflows_dir, rm.endpoint)
+            template = load_template(dirs, rm.endpoint)
         except (FileNotFoundError, ValueError) as exc:
             errors.append(f"{rwhere}: {exc}")
             continue
@@ -85,6 +87,9 @@ def _lint_virtual(reg: Registry, spec: ModelSpec, where: str) -> list[str]:
 
 
 def lint(reg: Registry) -> tuple[list[str], list[str]]:
+    from studio.providers.comfy_workflows import workflow_dirs
+
+    workflows = workflow_dirs(reg.user_files)
     errors: list[str] = []
     warnings: list[str] = []
     route_ids: set[str] = set()
@@ -154,10 +159,12 @@ def lint(reg: Registry) -> tuple[list[str], list[str]]:
                         errors.append(f"{rwhere}: mode {mode_id} maps unknown media role {role!r}")
             provider = reg.providers.get(route.provider)
             if provider and provider.adapter in COMFY_ADAPTERS:
-                errors.extend(_check_workflows(spec, route, rwhere))
+                errors.extend(_check_workflows(spec, route, rwhere, workflows))
             if route.provider != "mock":
                 if route.pricing.verified is None:
                     errors.append(f"{rwhere}: pricing needs a `verified` date")
+                elif route.enabled and not _free(route) and (age := _age(route.pricing.verified)) is not None:
+                    warnings.append(f"{rwhere}: price last checked {route.pricing.verified} ({age} days ago)")
                 if spec.status == "shutdown" and route.enabled:
                     errors.append(f"{rwhere}: shut-down model must not have enabled routes")
 
@@ -167,4 +174,22 @@ def lint(reg: Registry) -> tuple[list[str], list[str]]:
         if not spec.examples:
             warnings.append(f"{where}: no examples (contract/smoke tests skip it)")
 
+    for provider in reg.providers.values():
+        if provider.gpu_usd_per_hour:
+            if provider.gpu_verified is None:
+                warnings.append(f"provider {provider.id}: gpu_usd_per_hour has no `gpu_verified` date")
+            elif (age := _age(provider.gpu_verified)) is not None:
+                warnings.append(f"provider {provider.id}: GPU prices last checked {provider.gpu_verified} ({age} days ago)")
+
     return errors, warnings
+
+
+def _age(verified: date) -> int | None:
+    """Days since a price was checked, when that's past PRICE_MAX_AGE_DAYS."""
+    days = (date.today() - verified).days
+    return days if days > PRICE_MAX_AGE_DAYS else None
+
+
+def _free(route: Route) -> bool:
+    """Routes on your own machine cost nothing, so their price can't go stale."""
+    return route.pricing.basis != "formula" and all(r.usd == 0 for r in route.pricing.rates)

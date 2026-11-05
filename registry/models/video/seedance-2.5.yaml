@@ -110,7 +110,7 @@ routes:
               video_references: video_urls, audio_references: audio_urls}
     pricing:
       # Generation: per output second. Edit/extend are token-priced on input + output seconds (video inputs at
-      # 0.6x): about $0.126/s at 480p and $0.284/s at 720p of input plus output.
+      # 0.6x): about $0.1323/s at 480p and $0.2838/s at 720p of input plus output.
       basis: per_output_second
       quantity: >-
         input_video_seconds * 2 if mode == 'video_edit'
@@ -118,11 +118,11 @@ routes:
       rates:
         - {when: {resolution: "480p"}, usd: 0.2205}
         - {when: {resolution: "720p"}, usd: 0.473}
-        - {when: {mode: video_edit, resolution: "480p"}, usd: 0.126}
+        - {when: {mode: video_edit, resolution: "480p"}, usd: 0.1323}
         - {when: {mode: video_edit, resolution: "720p"}, usd: 0.2838}
-        - {when: {mode: extend, resolution: "480p"}, usd: 0.126}
+        - {when: {mode: extend, resolution: "480p"}, usd: 0.1323}
         - {when: {mode: extend, resolution: "720p"}, usd: 0.2838}
-      verified: 2026-10-06
+      verified: 2026-11-03
       source: https://fal.ai/models/bytedance/seedance-2.5/reference-to-video
     output: {path: video.url, kind: video}
     notes: About 2x Replicate for t2v/i2v. Pika is an optional lower-cost route for omni references.
