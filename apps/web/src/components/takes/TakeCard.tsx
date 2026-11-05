@@ -343,12 +343,14 @@ function TakeFooter({
       negative_prompt?: string | null;
       params: Record<string, unknown>;
       media: { role: string; asset_id: string }[];
+      route_policy?: string;
     };
     // a fresh seed per take, so "another take" actually varies
     const params = Object.fromEntries(Object.entries(r.params ?? {}).filter(([k]) => k !== "seed"));
     create.mutate(
       { model_id: r.model_id, mode: r.mode, prompt: r.prompt, negative_prompt: r.negative_prompt, params,
-        media: (r.media ?? []).map((m) => ({ role: m.role, asset_id: m.asset_id })), confirm_cost_usd: confirmCost },
+        media: (r.media ?? []).map((m) => ({ role: m.role, asset_id: m.asset_id })), confirm_cost_usd: confirmCost,
+        route_policy: r.route_policy }, // a pinned provider stays pinned
       { onError: (e) => {
         if (e instanceof ApiError && e.status === 409) {
           const now = (e.body as { estimate_usd: number }).estimate_usd;
