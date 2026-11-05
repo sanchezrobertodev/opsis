@@ -88,6 +88,7 @@ async def test_codex_draws_read_only_crops_to_the_shape_and_clears_its_session(m
     assert {"features.hooks=false", "features.plugins=false", 'web_search="disabled"'} <= set(args)  # nor runs
     # the user's own hooks and plugins, or searches the web
     assert args[args.index("-i") + 1] == str(ref) and "a red apple" in args[-1] and "9:16" in args[-1]
+    assert args[-2] == "--"  # the prompt after the pictures, never read as one more picture
     assert not (tmp_path / "codex-home" / "generated_images" / "01a1-test-session").exists()
     assert not list((tmp_path / "codex-home" / "sessions").rglob("*01a1-test-session*"))  # megabytes a picture
 
