@@ -114,18 +114,22 @@ def test_a_comfy_route_whose_graph_is_in_your_folder(tmp_path, monkeypatch):
     assert "my-flux" in holder.current.models and holder.last_error is None
 
 
-def test_your_broken_graph_never_stops_the_studio_starting(tmp_path, monkeypatch):
+@pytest.mark.parametrize(("text", "error"), [
+    ("inputs: {prompt: [{node: nope, input: text}]}\noutputs: []\n", "missing node nope"),  # points at no node
+    ("inputs: [\n", "flux2_klein_4b.map.yaml: while parsing"),  # not YAML yet: a file mid-edit
+])
+def test_your_broken_graph_never_stops_the_studio_starting(tmp_path, monkeypatch, text, error):
     workflows = tmp_path / "workflows"
     workflows.mkdir()
     monkeypatch.setattr(get_settings(), "user_workflows_dir", workflows)
     shutil.copy(WORKFLOWS / "flux2_klein_4b.json", workflows / "flux2_klein_4b.json")
-    broken = workflows / "flux2_klein_4b.map.yaml"  # replaces a built-in graph's map, pointing at no node
-    broken.write_text("inputs: {prompt: [{node: nope, input: text}]}\noutputs: []\n", encoding="utf-8")
+    broken = workflows / "flux2_klein_4b.map.yaml"  # replaces a built-in graph's map
+    broken.write_text(text, encoding="utf-8")
     holder = RegistryHolder(BUILTIN, check_every=0, user_dir=tmp_path / "registry", workflows=(workflows, WORKFLOWS))
     monkeypatch.setattr(loader, "_holder", holder)
     reg = holder.current
     assert "flux-2-klein-4b" in reg.models and not reg.user_files  # on the built-ins, graphs included
-    assert any("missing node nope" in e for e in holder.last_error)
+    assert any(error in e for e in holder.last_error)
     assert registry_workflow_dirs() == (WORKFLOWS,)  # the adapters run the built-in graph meanwhile
 
     shutil.copy(WORKFLOWS / "flux2_klein_4b.map.yaml", broken)

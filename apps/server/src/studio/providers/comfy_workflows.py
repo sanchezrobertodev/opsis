@@ -111,7 +111,11 @@ def _load(directory: Path, name: str, mtime_key: tuple[float, float]) -> Workflo
     graph = json.loads((directory / f"{name}.json").read_text(encoding="utf-8"))
     if "prompt" in graph and isinstance(graph["prompt"], dict):
         graph = graph["prompt"]  # accept files saved straight from ComfyUI's API export
-    spec = TemplateMap.model_validate(yaml.safe_load((directory / f"{name}.map.yaml").read_text(encoding="utf-8")))
+    try:
+        raw = yaml.safe_load((directory / f"{name}.map.yaml").read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:  # a map mid-edit: a ValueError, so the registry reports it and keeps the built-ins
+        raise ValueError(f"{name}.map.yaml: {exc}") from exc
+    spec = TemplateMap.model_validate(raw)
     for key, targets in spec.inputs.items():
         for t in targets:
             if t.node not in graph:
