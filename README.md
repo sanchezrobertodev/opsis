@@ -44,7 +44,7 @@ three short films in it.
 | **Shot sequence** | Shots that continue from each other's last frame, joined into one cut |
 | **Edit video, Motion control, Motion transfer** | Change or restyle a clip by instruction, stack camera moves from a library of 65, copy a performance onto a character |
 | **Object swap, Face swap** | Click an object, track it through the clip and replace it; swap a face in a picture or a clip |
-| **Characters** | Saved characters you `@mention` in any prompt, reference sheets, trained LoRA identities |
+| **Characters** | Design a person or a creature from picture tiles, then `@mention` them in any prompt; reference sheets, trained LoRA identities |
 | **Faceless Studio** | A topic becomes a narrated short: script review, shots, voice, music, captions, thumbnail |
 | **Cinema Studio** | Script to storyboard to takes to a timed cut, with an AI director chat and dialogue lip-sync |
 | **3D blocking and Worlds** | Block a scene with 3D models in Gaussian-splat worlds, then re-render the passes as live action |
@@ -245,6 +245,12 @@ To try one paid route at a time, use `PROVIDER_MODE=mixed` with only that route 
 `LIVE_ROUTE_ALLOWLIST=kling-3.0@fal`. The price line under Takes names the provider a take will run on, and
 Settings shows where the money went, by feature and by model.
 
+When a model has more than one provider (Seedance 2.5 on Replicate, Pika or fal; Veo 3.1 on Google or fal; GPT Image
+2.5 on Codex or fal), the Create form shows a **Provider** select. **Auto (cheapest)**, the default, runs each take on
+the cheapest provider that can and falls back to the next if it fails. A provider you pick runs every take, including
+"another take" from a take's card, and never falls back. Each option shows its price, and one that can't run the take
+says why (no key, mock mode, ComfyUI isn't running).
+
 <details>
 <summary><b>GPT Image through your ChatGPT plan</b> (optional)</summary>
 
@@ -327,7 +333,11 @@ billed (generation Mixed or Live, or Claude Live), Claude shows the estimate and
 - **Media is on local disk.** Files live under `data/media/`, so back that folder up yourself. For the database,
   `uv run python scripts/backup_db.py` dumps it to `data/backups/` and `uv run python scripts/restore_db.py --check`
   test-restores the newest dump.
-- **Prices go stale.** Each price in `registry/` carries the date it was verified.
+- **Prices go stale.** Each price in `registry/` carries the date it was verified, and the registry lint warns once
+  that date is more than 30 days old. The weekly provider check (`uv run python scripts/fetch_provider_schemas.py`,
+  free) also compares the prices with fal's pricing API, Pika's and Reactor's price lists and RunPod's GPU catalog,
+  and lists the rest to check by hand; it reports and never edits the YAML. fal (with an admin key) and your RunPod
+  endpoint report their bills, which correct the charges; Google, ElevenLabs and Replicate stay estimates.
 - **Hosted models need your own accounts** and cost money. The local routes are the ones that are free and open
   end to end.
 
