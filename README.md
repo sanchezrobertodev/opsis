@@ -60,6 +60,10 @@ three short films in it.
     <td width="50%"><img src="docs/screenshots/characters.webp" alt="Characters: saved people, locations and styles to mention in prompts"><br><sub><b>Characters</b>: people, places and styles you <code>@mention</code></sub></td>
     <td width="50%"><img src="docs/screenshots/faceless.webp" alt="Faceless Studio: theme, style, narrator, music and captions for a narrated short"><br><sub><b>Faceless Studio</b>: a narrated short from a topic</sub></td>
   </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/designer.webp" alt="Design a character: a creature picked from picture tiles, four-legged, like an owl, horse-sized"><br><sub><b>Design a character</b>: a person or a creature from picture tiles</sub></td>
+    <td width="50%"><img src="docs/screenshots/keys.webp" alt="Settings, Keys: each provider's key, from .env or pasted here (the last four characters are blanked in this picture)"><br><sub><b>Settings &gt; Keys</b>: paste provider keys in the app, stored encrypted</sub></td>
+  </tr>
 </table>
 
 Across every studio:
@@ -250,6 +254,8 @@ When a model has more than one provider (Seedance 2.5 on Replicate, Pika or fal;
 the cheapest provider that can and falls back to the next if it fails. A provider you pick runs every take, including
 "another take" from a take's card, and never falls back. Each option shows its price, and one that can't run the take
 says why (no key, mock mode, ComfyUI isn't running).
+
+![The Create form for Seedance 2.5 with its Provider list open: Auto (cheapest), Pika, fal.ai and Replicate, each with its price](docs/screenshots/provider.webp)
 
 <details>
 <summary><b>GPT Image through your ChatGPT plan</b> (optional)</summary>
