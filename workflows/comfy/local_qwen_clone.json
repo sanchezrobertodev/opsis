@@ -1,0 +1,37 @@
+{
+  "1": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "voice.wav"
+    }
+  },
+  "2": {
+    "class_type": "FB_Qwen3TTSVoiceClone",
+    "inputs": {
+      "target_text": "",
+      "ref_audio": [
+        "1",
+        0
+      ],
+      "ref_text": "",
+      "x_vector_only": true,
+      "model_choice": "1.7B",
+      "device": "auto",
+      "precision": "bf16",
+      "language": "Auto",
+      "seed": 0,
+      "unload_model_after_generate": true,
+      "attention": "auto"
+    }
+  },
+  "3": {
+    "class_type": "SaveAudio",
+    "inputs": {
+      "audio": [
+        "2",
+        0
+      ],
+      "filename_prefix": "opsis/tts"
+    }
+  }
+}

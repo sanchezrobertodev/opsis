@@ -178,3 +178,36 @@ def upscaled_size(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -
     factor = float(req.params.get("scale", 2))
     payload["width"], payload["height"] = round(w * factor / 2) * 2, round(h * factor / 2) * 2
     return payload
+
+
+# InfiniteTalk (local_infinitetalk): 81 frames at 25 fps a pass, 72 more per extension (9 carried over), 3 extensions
+TALK_FPS, TALK_FIRST, TALK_MORE, TALK_EXTENSIONS = 25, 81, 72, 3
+TALK_MAX_SECONDS = (TALK_FIRST + TALK_MORE * TALK_EXTENSIONS) / TALK_FPS  # 11.88 s
+
+
+def infinitetalk_passes(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    """Size the clip like the picture at 480p, turn on the extensions the speech needs and trim to the speech."""
+    picture = next((m for m in req.media if m.role == "character_image"), None)
+    w, h = (picture.width, picture.height) if picture is not None and picture.width and picture.height else (16, 9)
+    payload["width"], payload["height"] = WAN14B_SIZES[("480p", "16:9" if w > h * 1.2 else "9:16" if h > w * 1.2 else "1:1")]
+    speech = sum(m.duration_ms or 0 for m in req.media if m.role == "input_audio") / 1000
+    frames = max(5, min(math.ceil(speech * TALK_FPS) + 1, int(TALK_MAX_SECONDS * TALK_FPS)))
+    for k in range(1, TALK_EXTENSIONS + 1):
+        payload.pop(f"extend_{k}", None)
+        if frames > TALK_FIRST + TALK_MORE * (k - 1):
+            payload[f"extend_{k}"] = 9  # the motion frames it carries on from
+    payload["frames"] = frames
+    return payload
+
+
+def infinitetalk_dub(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    """Dub a clip (local_infinitetalk_dub): its shape at 480p at 25 fps, as long as the clip or the speech, whichever is
+    longer (the speech is padded with silence to it; past the clip's end the dub carries on from its last frame)."""
+    clip = next((m for m in req.media if m.role == "input_video"), None)
+    w, h = (clip.width, clip.height) if clip is not None and clip.width and clip.height else (16, 9)
+    scale = (CLIP_PIXELS["480p"] / (w * h)) ** 0.5
+    payload["width"], payload["height"] = max(16, int(w * scale) // 16 * 16), max(16, int(h * scale) // 16 * 16)
+    seconds = max(sum(m.duration_ms or 0 for m in req.media if m.role == r) for r in ("input_video", "input_audio")) / 1000
+    payload["frames"] = max(5, round(seconds * TALK_FPS))
+    payload["seconds"] = payload["frames"] / TALK_FPS
+    return payload

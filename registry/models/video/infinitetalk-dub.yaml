@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# InfiniteTalk (MeiGen, Apache 2.0) dubbing a clip, on your own ComfyUI through Kijai's ComfyUI-WanVideoWrapper
+# (Apache 2.0): workflows/comfy/local_infinitetalk_dub. Checked against the wrapper's source and V2V example on
+# 2026-11-10; not yet run here.
+id: infinitetalk-dub
+name: InfiniteTalk dub (local)
+family: wan
+vendor: meigen
+description: >-
+  Moves the mouths in a clip to a voice track, keeping the clip's motion. Free on your own GPU, 480p, up to 15 s. It
+  redraws the whole frame, so the background can shift a little.
+output_type: video
+status: active
+license_tier: open_permissive   # Apache 2.0
+tags: [local, free, open-weights, lipsync]
+prompt: {max_chars: 1000, dialect: wan}
+
+parameters:
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: lipsync
+    label: Lip sync a clip
+    ops: [lipsync]
+    prompt: optional  # what's in the clip, which helps keep it
+    medias:
+      - {role: input_video, kinds: [video], label: Clip with a face, required: true, max_duration_s: 15}
+      - {role: input_audio, kinds: [audio], label: Speech, required: true, max_duration_s: 15}
+
+routes:
+  - id: infinitetalk-dub@comfy_local
+    provider: comfy_local
+    modes:
+      lipsync: {endpoint: local_infinitetalk_dub}
+    transform: studio.providers.transforms.comfy:infinitetalk_dub
+    media_fps: {input_video: 25}
+    min_vram_gb: 12  # an estimate: every block swapped to system RAM; not yet run on 12 GB
+    map:
+      media: {input_video: input_video, input_audio: input_audio}
+    pricing:
+      basis: per_request
+      rates: [{usd: 0}]
+      verified: 2026-11-10
+      source: your own GPU
+    # an estimate: 4 steps per 81-frame window with every block swapped, until it's timed on a 12 GB card
+    eta: "120 + 30 * input_video_seconds"
+    timeout_s: 5400
+    output: {path: outputs, kind: video}
+    notes: >-
+      Needs the ComfyUI-WanVideoWrapper node pack (github.com/kijai/ComfyUI-WanVideoWrapper) and the model files:
+      fetch_models.py --local --group infinitetalk-dub.
+
+examples:
+  - name: lipsync_smoke
+    mode: lipsync
+    media: {input_video: "fixture:videos/person_3s.mp4", input_audio: "fixture:audio/line.mp3"}
+    smoke: true
+    expect: {cost_usd_range: [0, 0]}

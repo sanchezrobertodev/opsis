@@ -111,7 +111,9 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `registry/virtual.py:resolve` swaps the request for the engine's before mentions, compiling, routing and pricing.
   Shared params are fitted (durations rounded, unknown values dropped with a warning); `virtual.director` params
   become shot direction. Generations store the base model and `request.via` names the studio.
-- Rules can limit input length while they apply: `max_input_seconds: {input_audio: 30}` (OmniHuman at 1080p).
+- Rules can limit input length while they apply: `max_input_seconds: {input_audio: 30}` (OmniHuman at 1080p). A route
+  can too, for itself: `constraints: {media.input_audio: {max_seconds: 11.8}}` (local InfiniteTalk), so longer inputs
+  route elsewhere.
 - An output can be decoded on our side when the answer isn't a file: `output: {path: rle, kind: mask_video, decode:
   studio.media.rle:mask_video}` (SAM 3 video's per-frame run-length masks become the matte clip at ingest). Mark
   `unpublished: true` when a provider returns a field its published schema doesn't list (the drift check skips it).
@@ -475,6 +477,14 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   models use their own voices. `cinema_scene` refuses voiced lines its multi-shot mode can't take, under
   `characters`. A voice sample is a ready recording of 2-30 s (`elements.py:_check_sample`); a cloned voice keeps its
   first 2-15 s recording as its sample, and a character whose voice is a saved voice uses that sample.
+- A voice model with a clone mode (op `tts`, a required `audio_references` slot: Qwen3-TTS's `clone`,
+  `cinema.py:clone_mode`) speaks a line whose speaker has a sample and no voice id for it from that recording
+  (`_speech`), so a sample-only speaker isn't refused. Film settings mark each voice and lip-sync choice free (this
+  computer) or paid (`ModelPicker.tsx:modelOptions`).
+- How a take is lip-synced (`cinema.py:take_lipsync`): a clip-driven mode (sync Lipsync 3, InfiniteTalk dub) moves
+  the take's mouths; a lip-sync model that only makes a picture speak (InfiniteTalk, OmniHuman, Kling Avatar) remakes
+  the take from its first frame (`face[shot:n]`, op `first_frame`) with the shot's prompt, over the track padded with
+  silence to the shot's length (`join_audio` `pad_to`). Film settings label those "redraws the take".
 - The director (`studio/director/compiler.py`): besides the look lists, `lights` (up to two placed sources) and
   `cast_emotions` (a feeling per @mentioned cast member, phrased with the name the mention resolved to). Golden
   snapshots per dialect live in `tests/unit/golden/director/`; regenerate with `UPDATE_GOLDEN=1` and review the diff.
@@ -526,10 +536,18 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
 
 ## Local engine (ComfyUI)
 - `comfy_local` provider = your ComfyUI (0.34) at `COMFYUI_URL` (default http://127.0.0.1:8188; the README's "Open models on your
-  GPU" lists the model files). Local-only models: `wan-2.2-5b` (t2v/i2v), `flux-2-klein-4b` (t2i) and
+  GPU" lists the model files). Local-only models: `wan-2.2-5b` (t2v/i2v), `flux-2-klein-4b` (t2i), `qwen3-tts` (tts
+  in nine stock voices, and `clone` from a 2-30 s recording, x-vector only so no transcript; the ComfyUI-Qwen-TTS node
+  pack, which downloads its models on first use) and
   `esrgan-video` (op `upscale`: every frame through an upscale model, then scaled to the clip's size times `scale` by
   `transforms/comfy.py:upscaled_size`; clips up to 5 s and 720p, since every frame is held at 4x in RAM). The wan-core
-  graphs (LTX-2.5, the Wan 14B ones) have local routes too, with `min_vram_gb` (an estimate).
+  graphs (LTX-2.5, the Wan 14B ones) have local routes too, with `min_vram_gb` (an estimate). `infinitetalk` has a local
+  route on ComfyUI's own InfiniteTalk nodes (`local_infinitetalk`, group `infinitetalk`): 480p, a first pass of 81
+  frames and up to three extensions of 72 at 25 fps (11.8 s), each turned on by
+  `transforms/comfy.py:infinitetalk_passes` and bypassed when off. `infinitetalk-dub` (local only, group
+  `infinitetalk-dub`, the ComfyUI-WanVideoWrapper pack) moves the mouths in a clip of up to 15 s: the clip re-noised
+  from step 2 of 4 at 480p and 25 fps, as long as the clip or the speech (padded with silence), whichever is longer
+  (`transforms/comfy.py:infinitetalk_dub`). It redraws the whole frame.
 - Local routes are free and run in every PROVIDER_MODE. Before routing, `adapter.unavailable()` checks an up ComfyUI
   can run the route (`local_status.local_blockers`): GPU memory from `/system_stats`, node classes and model files
   from `/object_info` (60 s cache), naming the missing file and the `fetch_models.py --local --group ...` that gets
@@ -541,7 +559,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
 - Both ComfyUI adapters draw a fresh seed per take unless one is given (`comfy_workflows.fresh_seed`) and re-time
   clips for `media_fps` routes (`retime_clip`).
 - Workflows live in `workflows/comfy/<name>.json` (API graph) + `<name>.map.yaml` (which node inputs to fill,
-  optional nodes, outputs), a deployment's own in `data/workflows/comfy/` (looked in first).
+  optional nodes, outputs, and `pack: {name, url}` when it needs a custom node pack, which the blocker then names
+  instead of "update ComfyUI"), a deployment's own in `data/workflows/comfy/` (looked in first).
   `scripts/import_comfy_workflow.py <api.json> --id <id>` drafts both plus a model YAML (into `data/`) from
   your own graph (`providers/comfy_import.py`: guesses by input names and links, never by model; `docs/comfy-workflows.md`). Routes name the template as their endpoint; `transform` hooks in
   `studio/providers/transforms/` map quality/aspect to pixel sizes. Route `eta` expressions drive time estimates.

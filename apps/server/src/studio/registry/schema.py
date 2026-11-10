@@ -333,7 +333,7 @@ class Route(_Strict):
     media_fps: dict[str, float] = {}
     # local engines: the GPU memory (GB) it needs; a smaller card leaves the route out instead of running out of memory
     min_vram_gb: float | None = None
-    constraints: dict[str, dict[str, Any]] = {}  # param -> {options|min|max}
+    constraints: dict[str, dict[str, Any]] = {}  # param -> {options|min|max}; media.<role> -> {max|max_seconds}
     unsupported_params: list[str] = []
     pricing: Pricing
     sunset: date | None = None  # provider retires this route on this date; routing skips it from then on

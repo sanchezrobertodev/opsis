@@ -84,6 +84,9 @@ def _constraint_violation(route: Route, req: NormalizedRequest) -> str | None:
             count = sum(1 for m in req.media if m.role == role)
             if "max" in rule and count > rule["max"]:
                 return f"accepts at most {rule['max']} {role}"
+            seconds = sum(m.duration_ms or 0 for m in req.media if m.role == role) / 1000
+            if "max_seconds" in rule and seconds > rule["max_seconds"] + 0.05:
+                return f"takes at most {rule['max_seconds']:g} s of {role} ({seconds:.1f} s given)"
             continue
         value = req.params.get(name)
         if value is None:

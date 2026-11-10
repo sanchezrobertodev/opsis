@@ -1,0 +1,26 @@
+{
+  "1": {
+    "class_type": "FB_Qwen3TTSCustomVoice",
+    "inputs": {
+      "text": "",
+      "speaker": "Ryan",
+      "model_choice": "1.7B",
+      "device": "auto",
+      "precision": "bf16",
+      "language": "Auto",
+      "seed": 0,
+      "unload_model_after_generate": true,
+      "attention": "auto"
+    }
+  },
+  "2": {
+    "class_type": "SaveAudio",
+    "inputs": {
+      "audio": [
+        "1",
+        0
+      ],
+      "filename_prefix": "opsis/tts"
+    }
+  }
+}
