@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import Asset, Element, ElementAsset, ElementKind
 from studio.domain.enums import AssetStatus
-from studio.registry.schema import ModelSpec
+from studio.registry.schema import MediaSlot, ModelSpec
 
 MENTION = re.compile(r"(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_-]{0,39})")
 KIND_ORDER = {"character": 0, "location": 1, "prop": 2, "style": 3, "voice": 4}
@@ -127,13 +127,23 @@ async def resolve_mentions(
     # recordings already on the request, by asset id: speakers sharing one get its token, not a second copy
     vtokens = {str(m.get("asset_id")): voice_token.format(n=n) for n, m in enumerate(
         (m for m in existing_media if m.get("role") == voice_role), start=1)} if vslot else {}
+    if vtokens and vleft != float("inf"):  # what's left of the mode's seconds of reference audio, counted per file
+        ids = [a for a in vtokens if _is_uuid(a)]  # anything else is refused when the request is checked
+        have = {str(i): ms for i, ms in (await session.execute(select(Asset.id, Asset.duration_ms).where(
+            Asset.id.in_([uuid.UUID(a) for a in ids]), Asset.user_id == user_id))).all()} if ids else {}
+        vleft -= sum((have.get(str(m.get("asset_id"))) or 0) / 1000 for m in existing_media if m.get("role") == voice_role)
     samples = await voice_samples(session, user_id, rows) if vslot else {}
+    ordered = sorted((by_slug[s] for s in slugs if s in by_slug), key=lambda e: KIND_ORDER.get(e.kind.value, 9))
+    talking = {s.lower() for s in speakers}
+    # the dialogue's speakers first, so someone who only appears in the shot can't take the room their voices need
+    chosen, tried, vroom = pick_voices([e.id for e in sorted(ordered, key=lambda e: e.slug not in talking)], samples,
+                                       vslot, vroom, vleft, set(vtokens)) if vslot else (set(), set(), vroom)
     # lora_list pairs the two roles by position, so two-expert characters go first and single files after them
     lora_pairs: list[tuple[str, str]] = []
     lora_singles: list[str] = []
 
     replacements: dict[str, tuple[str, str]] = {}  # slug -> (first mention text, later mention text)
-    for element in sorted((by_slug[s] for s in slugs if s in by_slug), key=lambda e: KIND_ORDER.get(e.kind.value, 9)):
+    for element in ordered:
         attached: list[str] = []
         label = element.name
         if strategy == "refs_native" and slot is not None and capacity > 0:
@@ -176,13 +186,10 @@ async def resolve_mentions(
             res.warnings.append(f"{spec.name} doesn't take reference images, so @{element.slug} is described in "
                                 f"words. For a consistent look, make a start frame from its pictures first.")
         voiced = bool((element.voice or {}).get("params") or (element.voice or {}).get("sample_asset_id"))
-        sample = samples.get(element.id)
-        if vslot is not None and sample and (sample[0] in vtokens or vroom > 0):
-            asset_id, secs = sample
-            if (asset_id not in vtokens and (vslot.min_duration_s or 0) <= secs <= (vslot.max_duration_s or secs)
-                    and secs <= vleft + 0.05):
+        if element.id in tried:
+            asset_id, secs = samples[element.id]
+            if asset_id in chosen and asset_id not in vtokens:  # numbered in the prompt's order
                 res.media.append({"role": voice_role, "asset_id": asset_id})
-                vroom, vleft = vroom - 1, vleft - secs
                 vtokens[asset_id] = voice_token.format(n=vnext)
                 vnext += 1
             if asset_id in vtokens:  # attached now, or before for another speaker with the same voice
@@ -223,6 +230,34 @@ async def resolve_mentions(
 
     res.prompt = MENTION.sub(substitute, prompt).replace(",,", ",").replace(", .", ".")
     return res
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
+def pick_voices(order: list[uuid.UUID], samples: dict[uuid.UUID, tuple[str, float]], slot: MediaSlot, room: int,
+                seconds: float, have: set[str]) -> tuple[set[str], set[uuid.UUID], int]:
+    """Which voice samples go to the model, taking elements in `order`: each sample while the slot has room for
+    another file and `seconds` left for it, within the slot's per-file limits. A recording already going (`have`, or
+    another element's) is shared. Returns the recordings going, the elements whose sample was offered (those with
+    none, or that found no room for one, aren't), and the room left."""
+    chosen, tried = set(have), set()
+    for eid in order:
+        sample = samples.get(eid)
+        if not sample or not (sample[0] in chosen or room > 0):
+            continue
+        tried.add(eid)
+        asset_id, secs = sample
+        if (asset_id not in chosen and (slot.min_duration_s or 0) <= secs <= (slot.max_duration_s or secs)
+                and secs <= seconds + 0.05):
+            chosen.add(asset_id)
+            room, seconds = room - 1, seconds - secs
+    return chosen, tried, room
 
 
 def seconds_cap(spec: ModelSpec, mode_id: str, role: str | None) -> float:

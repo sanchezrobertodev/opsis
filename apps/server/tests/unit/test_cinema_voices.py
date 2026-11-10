@@ -93,3 +93,22 @@ def test_a_picture_lip_sync_model_remakes_the_take_from_its_first_frame():
     steps = {s.key: s for s in recipe.plan(clip, settled, REG)}
     assert "pad_to" not in steps["track[sone]"].input and "face[sone:1]" not in steps
     assert steps["lip[sone:1]"].input["media"][0] == {"role": "input_video", "asset_id": settled["take[sone:1]"]["asset_id"]}
+
+
+def test_speakers_voices_are_picked_first_within_whats_left():
+    import uuid
+
+    from studio.director.elements import pick_voices
+
+    slot = REG.models["minimax-h3"].mode("reference").slot("audio_references")  # 3 files, 2-15 s each
+    alice, bob, cy = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    samples = {alice: ("a", 15.0), bob: ("b", 5.0), cy: ("b", 5.0)}  # Cy shares Bob's voice
+    # Bob speaks, Alice only appears: his recording goes first and hers no longer fits the 15 s
+    chosen, tried, room = pick_voices([bob, alice, cy], samples, slot, 3, 15.0, set())
+    assert chosen == {"b"} and tried == {alice, bob, cy} and room == 2
+    # in the prompt's order Alice's would have used up all 15 s
+    assert pick_voices([alice, bob], samples, slot, 3, 15.0, set())[0] == {"a"}
+    # 10 s already on the request leave room for Bob's 5 s only
+    assert pick_voices([alice, bob], samples, slot, 2, 5.0, {"x"})[0] == {"x", "b"}
+    # no room for another file: nothing new is offered, but a recording already going is shared
+    assert pick_voices([alice, bob], samples, slot, 0, 15.0, {"b"}) == ({"b"}, {bob}, 0)

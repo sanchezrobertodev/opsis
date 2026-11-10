@@ -463,6 +463,32 @@ async def test_speakers_sharing_a_voice_share_its_recording(client, in_memory_qu
     assert "voice Audio 1" in gen.compiled["prompt"] and "Audio 2" not in gen.compiled["prompt"]
 
 
+async def test_the_speakers_voices_go_first_and_recordings_already_given_count(client, in_memory_queue, tmp_path):
+    speech = await upload(client, ROOT / "fixtures" / "audio" / "line.mp3", "audio/mpeg")  # 5.5 s
+    tone = tmp_path / "tone.mp3"
+    await ffmpeg("-f", "lavfi", "-i", "sine=frequency=220:duration=12", "-c:a", "libmp3lame", str(tone))
+    long = await upload(client, tone, "audio/mpeg")
+    alice, bob = await character(client, "Alice", sample=long), await character(client, "Bob", sample=speech)
+    # Alice is mentioned first but only Bob speaks: his recording goes in, hers would leave his no room in H3's 15 s
+    p = await new_project(client)
+    run = await start(client, "cinema_takes", project_id=p["id"], model_id="minimax-h3", takes=1, shots=[
+        {"key": "sone", "prompt": f"{alice} watches {bob}", "duration": 5,
+         "direction": {"dialogue": [{"who": bob, "text": "It goes dark tonight."}]}}])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    assert [s["key"] for s in done["steps"]] == ["take[sone:1]"]
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(done["steps"][0]["generation_id"]))
+    assert [m["asset_id"] for m in gen.request["media"] if m["role"] == "audio_references"] == [speech]
+    # 12 s of reference audio already on the request leave no room for Bob's 5.5 s
+    r = await client.post("/director/compile", json={"model_id": "minimax-h3", "mode": "reference",
+                                                       "prompt": f"{bob} at the window",
+                                                       "media": [{"role": "audio_references", "asset_id": long}]})
+    assert r.status_code == 200, r.text
+    assert "voice Audio" not in r.json()["prompt"] and any("can't take here" in w for w in r.json()["warnings"])
+
+
 async def test_a_voice_that_is_only_a_recording_is_kept_or_refused(client, in_memory_queue):
     speech = await upload(client, ROOT / "fixtures" / "audio" / "line.mp3", "audio/mpeg")
     nova = await character(client, "Nova", sample=speech, voice_id=None)
