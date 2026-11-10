@@ -198,3 +198,16 @@ def infinitetalk_passes(*, spec: Any, route: Any, req: Any, payload: dict[str, A
             payload[f"extend_{k}"] = 9  # the motion frames it carries on from
     payload["frames"] = frames
     return payload
+
+
+def infinitetalk_dub(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    """Dub a clip (local_infinitetalk_dub): its shape at 480p at 25 fps, as long as the clip or the speech, whichever is
+    longer (the speech is padded with silence to it; past the clip's end the dub carries on from its last frame)."""
+    clip = next((m for m in req.media if m.role == "input_video"), None)
+    w, h = (clip.width, clip.height) if clip is not None and clip.width and clip.height else (16, 9)
+    scale = (CLIP_PIXELS["480p"] / (w * h)) ** 0.5
+    payload["width"], payload["height"] = max(16, int(w * scale) // 16 * 16), max(16, int(h * scale) // 16 * 16)
+    seconds = max(sum(m.duration_ms or 0 for m in req.media if m.role == r) for r in ("input_video", "input_audio")) / 1000
+    payload["frames"] = max(5, round(seconds * TALK_FPS))
+    payload["seconds"] = payload["frames"] / TALK_FPS
+    return payload

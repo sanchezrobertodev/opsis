@@ -201,6 +201,7 @@ download groups that fetch them.
 | Wan Animate-2: motion transfer | `animate2`, `wan-shared` | 24 GB |
 | Wan VACE: masked edits (Object swap) | `vace`, `wan-shared` | 24 GB |
 | InfiniteTalk: a picture and a voice to a talking clip (480p, up to 11.8 s; Lipsync, Talking shot) | `infinitetalk` | 12 GB |
+| InfiniteTalk dub: the mouths in a clip moved to a voice (480p, up to 15 s; needs the [ComfyUI-WanVideoWrapper](https://github.com/kijai/ComfyUI-WanVideoWrapper) node pack) | `infinitetalk-dub` | 12 GB |
 
 ```bash
 uv run python infra/runpod/wan-core/fetch_models.py --local --dest <ComfyUI>/models --group ltx
@@ -222,6 +223,11 @@ voices that character's lines from it. It needs the
 it into `custom_nodes/` and `pip install -r requirements.txt` with ComfyUI's Python). The pack downloads each model on
 its first use into `models/qwen-tts/`: 4.5 GB for the stock voices, 4.5 GB more for cloning. Until the pack is there,
 its route names the missing pack.
+
+Film settings > Lip-synced with then picks how each take is matched to its lines, free or paid. **InfiniteTalk dub
+(local)** moves the mouths in the take, keeping its motion. **InfiniteTalk (local)**, like the paid avatar models,
+redraws the take from its first frame speaking the lines, so the take's own motion is lost. Both redraw the frame at
+480p, so the background can shift a little.
 
 ### Your own workflows
 

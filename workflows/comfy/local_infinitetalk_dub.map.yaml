@@ -1,0 +1,22 @@
+# InfiniteTalk dubbing (MeiGen, Apache 2.0) on Kijai's ComfyUI-WanVideoWrapper (Apache 2.0): a clip and one speaker's
+# voice -> the same clip with the mouth moved to the speech. Source: the wrapper's
+# wanvideo_2_1_14B_V2V_InfiniteTalk_example_02 (checked 2026-11-10 at commit 088128b2): the clip's frames re-noised
+# from step 2 of 4 (lightx2v LoRA, cfg 1), its first frame as the reference. Kijai's loaders do the model; ComfyUI's own
+# nodes do the rest (the text through WanVideoTextEmbedBridge, so the shared umt5 file serves; no KJNodes or VHS).
+# All 40 blocks are swapped to system RAM so the 14B model fits a 12 GB card (slower; a bigger card can swap fewer).
+# The whole frame is redrawn at 480p, so the background can drift a little. The speech is padded with silence to the
+# clip's length (`transforms/comfy.py:infinitetalk_dub`), so the dub is as long as the clip.
+description: InfiniteTalk 14B dub (Wan 2.1, 480p), a clip and a voice
+pack: {name: ComfyUI-WanVideoWrapper, url: "https://github.com/kijai/ComfyUI-WanVideoWrapper"}
+inputs:
+  prompt: [{node: "7", input: text}]
+  seed: [{node: "24", input: seed}]
+  width: [{node: "13", input: width}, {node: "16", input: width}]
+  height: [{node: "13", input: height}, {node: "16", input: height}]
+  frames: [{node: "23", input: num_frames}, {node: "26", input: length}]
+  seconds: [{node: "19", input: duration}, {node: "21", input: duration}]
+  input_video: [{node: "11", input: file}]
+  input_audio: [{node: "18", input: audio}]
+  filename_prefix: [{node: "28", input: filename_prefix}]
+outputs:
+  - {node: "28", kind: video}

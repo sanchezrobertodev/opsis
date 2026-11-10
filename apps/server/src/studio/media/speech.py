@@ -67,13 +67,16 @@ def join_graph(count: int, gap: float) -> str:
     return ";".join(parts)
 
 
-async def join_speech(paths: list[Path], dest: Path, *, gap: float = 0.35) -> None:
-    """One dialogue track from several spoken lines, in order, with a short pause between speakers."""
-
+async def join_speech(paths: list[Path], dest: Path, *, gap: float = 0.35, pad_to: float | None = None) -> None:
+    """One dialogue track from several spoken lines, in order, with a short pause between speakers; `pad_to` adds
+    silence at the end up to that many seconds (a longer track is kept whole)."""
+    pad = f"apad=whole_dur={pad_to:.3f}" if pad_to else None
     if len(paths) == 1:
-        await ffmpeg("-i", str(paths[0]), "-ar", "48000", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "128k", str(dest))
+        await ffmpeg("-i", str(paths[0]), *(("-af", pad) if pad else ()), "-ar", "48000", "-ac", "1",
+                     "-c:a", "libmp3lame", "-b:a", "128k", str(dest))
         return
     inputs = [x for p in paths for x in ("-i", str(p))]
-    await ffmpeg(*inputs, "-filter_complex", join_graph(len(paths), gap), "-map", "[out]",
+    graph = join_graph(len(paths), gap) + (f";[out]{pad}[padded]" if pad else "")
+    await ffmpeg(*inputs, "-filter_complex", graph, "-map", "[padded]" if pad else "[out]",
                  "-c:a", "libmp3lame", "-b:a", "128k", str(dest))
 

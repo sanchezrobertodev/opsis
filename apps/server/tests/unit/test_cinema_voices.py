@@ -55,3 +55,41 @@ def test_a_local_voice_model_speaks_from_the_speakers_recording():
     assert "media" not in steps["line[sone:3]"]  # a plain line's step input is as it was before cloning came in
     jobs = [j for j in recipe.jobs(inp.model_copy(update={"voice_model": "qwen3-tts"}), REG) if j.model_id == "qwen3-tts"]
     assert [j.mode for j in jobs] == ["clone", "tts", "tts"] and jobs[0].media == (("audio_references", sample),)
+
+
+def test_a_picture_lip_sync_model_remakes_the_take_from_its_first_frame():
+    import uuid
+
+    from studio.pipelines.recipes.cinema import CinemaTakesInput, CinemaTakesRecipe
+
+    lines = [{"who": "@nova", "text": "It goes dark tonight.", "voice_id": "v"}]
+    take = TakeShot(key="sone", prompt="Nova at the window", duration=5, direction={"dialogue": lines})
+    inp = CinemaTakesInput(project_id=uuid.uuid4(), model_id="kling-3.0", takes=1, shots=[take],
+                           lipsync_model_id="infinitetalk")
+    recipe = CinemaTakesRecipe()
+    assert recipe.validate(inp, REG) == []
+
+    def made() -> dict:
+        return {"asset_id": str(uuid.uuid4())}
+
+    settled = {"take[sone:1]": made(), "line[sone:1]": made()}
+    steps = {s.key: s for s in recipe.plan(inp, settled, REG)}
+    assert steps["track[sone]"].input["pad_to"] == 5.0  # the remake is as long as the shot
+    settled["track[sone]"] = made()
+    steps = {s.key: s for s in recipe.plan(inp, settled, REG)}
+    assert steps["face[sone:1]"].input == {"op": "first_frame", "asset_id": settled["take[sone:1]"]["asset_id"]}
+    assert "lip[sone:1]" not in steps
+    settled["face[sone:1]"] = made()
+    lip = {s.key: s for s in recipe.plan(inp, settled, REG)}["lip[sone:1]"]
+    assert lip.input["media"] == [{"role": "character_image", "asset_id": settled["face[sone:1]"]["asset_id"]},
+                                  {"role": "input_audio", "asset_id": settled["track[sone]"]["asset_id"]}]
+    assert lip.input["prompt"] == "Nova at the window" and lip.depends_on == ("face[sone:1]", "track[sone]")
+    jobs = [j for j in recipe.jobs(inp, REG) if j.model_id == "infinitetalk"]
+    assert [j.roles for j in jobs] == [("character_image", "input_audio")]
+    assert jobs[0].planned_seconds == (("input_audio", 5.0),)
+
+    # a clip-driven model moves the take's mouths, with the track as it was
+    clip = inp.model_copy(update={"lipsync_model_id": "infinitetalk-dub"})
+    steps = {s.key: s for s in recipe.plan(clip, settled, REG)}
+    assert "pad_to" not in steps["track[sone]"].input and "face[sone:1]" not in steps
+    assert steps["lip[sone:1]"].input["media"][0] == {"role": "input_video", "asset_id": settled["take[sone:1]"]["asset_id"]}

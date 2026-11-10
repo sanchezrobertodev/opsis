@@ -132,7 +132,8 @@ async def join_audio(session: AsyncSession, run: PipelineRun, step: PipelineStep
     work.mkdir(parents=True)
     try:
         dest = work / "dialogue.mp3"
-        await join_speech([storage.path_for(a.storage_key) for a in lines], dest, gap=inp.get("gap", 0.35))
+        await join_speech([storage.path_for(a.storage_key) for a in lines], dest, gap=inp.get("gap", 0.35),
+                          pad_to=inp.get("pad_to"))
         seconds = (await probe(dest)).duration_ms
         track = await save_derived(
             session, run.user_id, dest, kind=AssetKind.audio, source=AssetSource.pipeline,

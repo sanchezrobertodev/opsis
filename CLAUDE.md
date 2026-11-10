@@ -481,6 +481,10 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   `cinema.py:clone_mode`) speaks a line whose speaker has a sample and no voice id for it from that recording
   (`_speech`), so a sample-only speaker isn't refused. Film settings mark each voice and lip-sync choice free (this
   computer) or paid (`ModelPicker.tsx:modelOptions`).
+- How a take is lip-synced (`cinema.py:take_lipsync`): a clip-driven mode (sync Lipsync 3, InfiniteTalk dub) moves
+  the take's mouths; a lip-sync model that only makes a picture speak (InfiniteTalk, OmniHuman, Kling Avatar) remakes
+  the take from its first frame (`face[shot:n]`, op `first_frame`) with the shot's prompt, over the track padded with
+  silence to the shot's length (`join_audio` `pad_to`). Film settings label those "redraws the take".
 - The director (`studio/director/compiler.py`): besides the look lists, `lights` (up to two placed sources) and
   `cast_emotions` (a feeling per @mentioned cast member, phrased with the name the mention resolved to). Golden
   snapshots per dialect live in `tests/unit/golden/director/`; regenerate with `UPDATE_GOLDEN=1` and review the diff.
@@ -540,7 +544,10 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   graphs (LTX-2.5, the Wan 14B ones) have local routes too, with `min_vram_gb` (an estimate). `infinitetalk` has a local
   route on ComfyUI's own InfiniteTalk nodes (`local_infinitetalk`, group `infinitetalk`): 480p, a first pass of 81
   frames and up to three extensions of 72 at 25 fps (11.8 s), each turned on by
-  `transforms/comfy.py:infinitetalk_passes` and bypassed when off.
+  `transforms/comfy.py:infinitetalk_passes` and bypassed when off. `infinitetalk-dub` (local only, group
+  `infinitetalk-dub`, the ComfyUI-WanVideoWrapper pack) moves the mouths in a clip of up to 15 s: the clip re-noised
+  from step 2 of 4 at 480p and 25 fps, as long as the clip or the speech (padded with silence), whichever is longer
+  (`transforms/comfy.py:infinitetalk_dub`). It redraws the whole frame.
 - Local routes are free and run in every PROVIDER_MODE. Before routing, `adapter.unavailable()` checks an up ComfyUI
   can run the route (`local_status.local_blockers`): GPU memory from `/system_stats`, node classes and model files
   from `/object_info` (60 s cache), naming the missing file and the `fetch_models.py --local --group ...` that gets

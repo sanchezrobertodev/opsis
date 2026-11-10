@@ -809,7 +809,10 @@ function FilmSettings({ doc, update }: { doc: CinemaDoc; update: Update }) {
   const video = (registry?.models ?? []).filter((m) => m.output_type === "video" && m.modes.some((x) => x.ops.includes("i2v")))
     .sort((a, b) => Number(b.kind === "virtual") - Number(a.kind === "virtual"));
   const image = (registry?.models ?? []).filter((m) => m.output_type === "image" && m.modes.some((x) => x.ops.includes("t2i")));
-  const lipsyncers = (registry?.models ?? []).filter((m) => m.modes.some((x) => x.ops.includes("lipsync") && !x.ops.includes("avatar")));
+  const lipsyncers = (registry?.models ?? []).filter((m) => m.modes.some((x) => x.ops.includes("lipsync")));
+  // a model that only makes a picture speak remakes the take from its first frame
+  const remakes = (id: string) => !lipsyncers.find((m) => m.id === id)?.modes
+    .some((x) => x.ops.includes("lipsync") && !x.ops.includes("avatar"));
   const speakers = (registry?.models ?? []).filter((m) => m.modes.some((x) => x.ops.includes("tts")));
   const withVoices = (registry?.models ?? []).filter((m) => m.voices).map((m) => m.name);
   const voices = s.dialogue_voices ?? "characters";
@@ -846,9 +849,11 @@ function FilmSettings({ doc, update }: { doc: CinemaDoc; update: Update }) {
                 options={modelOptions(speakers)} />
       </Field>
       <Field label="Lip-synced with" htmlFor="lipsync-model"
-             hint="Moves the mouths in each take to its voiced lines.">
+             hint={registry && remakes(s.lipsync_model_id ?? "sync-lipsync-3")
+               ? "Redraws each take from its first frame, speaking its voiced lines: the take's own motion is lost."
+               : "Moves the mouths in each take to its voiced lines."}>
         <Select id="lipsync-model" value={s.lipsync_model_id ?? "sync-lipsync-3"} onChange={(v) => set({ lipsync_model_id: v })}
-                options={modelOptions(lipsyncers)} />
+                options={modelOptions(lipsyncers).map((o) => (remakes(o.value) ? { ...o, label: `${o.label} · redraws the take` } : o))} />
       </Field>
       <Field label="Opening frames on" htmlFor="frame-model">
         <Select id="frame-model" value={s.image_model_id} onChange={(v) => set({ image_model_id: v })}

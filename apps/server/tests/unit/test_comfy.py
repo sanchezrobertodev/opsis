@@ -842,3 +842,26 @@ def test_local_infinitetalk_takes_at_most_its_passes_of_speech():
         req = NormalizedRequest("infinitetalk", "avatar", "hi", None, {"resolution": "480p"}, media)
         assert _constraint_violation(route, req) == why
 
+
+
+def test_infinitetalk_dub_keeps_the_clip_shape_and_runs_as_long_as_the_longer_input():
+    from types import SimpleNamespace
+
+    from studio.providers.comfy_workflows import load_template, registry_workflow_dirs
+    from studio.providers.transforms.comfy import CLIP_PIXELS, infinitetalk_dub
+
+    spec = REG.models["infinitetalk-dub"]
+    route = spec.route("infinitetalk-dub@comfy_local")
+    template = load_template(registry_workflow_dirs(), "local_infinitetalk_dub")
+    for clip_s, speech_s, frames in ((3, 5, 125), (6, 2.2, 150)):
+        req = SimpleNamespace(media=[
+            SimpleNamespace(role="input_video", width=720, height=1280, duration_ms=clip_s * 1000),
+            SimpleNamespace(role="input_audio", width=None, height=None, duration_ms=speech_s * 1000)])
+        payload: dict = {}
+        infinitetalk_dub(spec=spec, route=route, req=req, payload=payload)
+        w, h = payload["width"], payload["height"]
+        assert w % 16 == 0 and h % 16 == 0 and w * h <= CLIP_PIXELS["480p"] and abs(w / h - 9 / 16) < 0.03
+        assert payload["frames"] == frames and payload["seconds"] == frames / 25
+        graph, _ = template.render(payload)
+        assert graph["23"]["inputs"]["num_frames"] == graph["26"]["inputs"]["length"] == frames
+        assert graph["19"]["inputs"]["duration"] == graph["21"]["inputs"]["duration"] == frames / 25
