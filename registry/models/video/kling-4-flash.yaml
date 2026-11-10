@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Field names verified 2026-11-09 against Runway's OpenAPI (kling_4_flash).
+id: kling-4-flash
+name: Kling 4 Flash
+family: kling
+vendor: kuaishou
+description: Kling 4.0's faster, cheaper tier on Runway, 3–20 second clips at 720p with native sound, from text or a start frame.
+output_type: video
+status: active
+license_tier: commercial_api
+tags: [fast, audio]
+prompt: {max_chars: 26000, dialect: kling}
+aspect_ratios: &aspects ["16:9", "9:16", "1:1", "21:9", "auto"]
+duration: {min: 3, max: 20, default: 5}
+
+parameters:
+  - {name: duration, label: Duration (s), type: int, min: 3, max: 20, default: 5, ui: slider}
+  - {name: resolution, label: Resolution, type: enum, options: ["720p"], default: "720p", ui: segmented}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: *aspects, default: "16:9", ui: aspect, modes: [t2v]}
+
+modes:
+  - id: t2v
+    label: Text to video
+    ops: [t2v]
+  - id: i2v
+    label: Image to video
+    ops: [i2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+
+elements: {strategy: keyframe_first}
+
+routes:
+  - id: kling-4-flash@runway
+    provider: runway
+    modes:
+      t2v: {endpoint: text_to_video, fixed: {model: kling_4_flash}}
+      i2v: {endpoint: image_to_video, fixed: {model: kling_4_flash, ratio: auto_720p}}  # framing follows the frame
+    map:
+      prompt: promptText
+      negative_prompt: null
+      passthrough: false
+      params:
+        duration: duration
+        resolution: {to: null}
+        aspect_ratio: {to: ratio, transform: enum_map, args: {values:
+          {"16:9": "1280:720", "9:16": "720:1280", "1:1": "940:940", "21:9": "1460:624", "auto": "auto_720p"}}}
+      media: {start_image: promptImage}
+    pricing:
+      basis: formula
+      # 9.4 credits/s (the Kling 4.0 promotion doesn't apply), rounded up to a whole credit at $0.01.
+      formula: "ceil(duration * 94 / 10) / 100"
+      verified: 2026-11-09
+      source: https://docs.dev.runwayml.com/guides/pricing/
+    charges_on_failure: true  # Runway charges for accepted tasks that fail input moderation.
+    output: {path: output, kind: video}
+
+examples:
+  - name: t2v_smoke
+    mode: t2v
+    prompt: A robin lands on a windowsill and chirps twice.
+    params: {duration: 3}
+    smoke: true
+    expect: {cost_usd_range: [0.29, 0.29]}

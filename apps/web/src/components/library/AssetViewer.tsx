@@ -22,6 +22,7 @@ import { SaveAsElement } from "@/components/characters/SaveAsElement";
 const RELATION_LABEL: Record<string, string> = {
   start_image: "Start frame",
   end_image: "End frame",
+  middle_images: "Middle frame",
   image_references: "Reference",
   video_references: "Video reference",
   audio_references: "Audio reference",

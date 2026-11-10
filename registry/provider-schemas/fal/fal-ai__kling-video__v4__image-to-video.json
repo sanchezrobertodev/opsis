@@ -1,0 +1,44 @@
+{
+ "endpoint": "fal-ai/kling-video/v4/image-to-video",
+ "variant": null,
+ "input": {
+  "duration": {
+   "type": "integer",
+   "default": 5,
+   "minimum": 3,
+   "maximum": 30
+  },
+  "end_image_url": {
+   "type": "null|string"
+  },
+  "middle_image_urls": {
+   "type": "array<string>|null",
+   "maxItems": 8
+  },
+  "multi_prompt": {
+   "type": "array<object<KlingV4Shot>>|null",
+   "minItems": 1
+  },
+  "prompt": {
+   "type": "null|string"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "720p",
+    "1080p"
+   ],
+   "default": "1080p"
+  },
+  "start_image_url": {
+   "type": "string"
+  }
+ },
+ "required": [
+  "start_image_url"
+ ],
+ "output": [
+  "video"
+ ],
+ "deprecated": false
+}

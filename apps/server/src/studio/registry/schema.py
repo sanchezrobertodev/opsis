@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 MediaRole = Literal[
     "start_image",
     "end_image",
+    "middle_images",  # keyframes between the start and end frames, in order (Kling 4.0)
     "image_references",
     "video_references",
     "audio_references",
@@ -145,6 +146,7 @@ class ShotsParam(_ParamBase):
     max_total_s: float = 15
     # each: every shot may use the model's whole prompt limit (a shot list); shared: the shots share one prompt
     prompt_budget: Literal["each", "shared"] = "each"
+    max_shot_chars: int | None = None  # a shot's own prompt limit, below the model's (fal's Kling 4.0: 512)
     default: list[Any] | None = None
 
 

@@ -1,50 +1,104 @@
 # yaml-language-server: $schema=../../schema/model.schema.json
+# Field names verified 2026-11-09: Runway's OpenAPI (kling_4) and fal's per-endpoint OpenAPI (fal-ai/kling-video/v4).
 id: kling-4.0
 name: Kling 4.0
 family: kling
 vendor: kuaishou
-description: Generate a 3–30 second video at 720p from a text prompt, with native sound and dialogue.
+description: >-
+  3–30 second clips at 720p or 1080p with native sound and dialogue, from text or frames (a start frame, up to 8
+  middle frames and an end frame), and up to 6 shots in one take on fal.
 output_type: video
 status: active
 license_tier: commercial_api
-tags: [cinematic, audio]
+tags: [cinematic, long, first-last-frame, audio]
 prompt: {max_chars: 26000, dialect: kling, dialogue: true}
 aspect_ratios: &aspects ["16:9", "9:16", "1:1", "21:9", "auto"]
 duration: {min: 3, max: 30, default: 5}
 
 parameters:
-  - {name: duration, label: Duration (s), type: int, min: 3, max: 30, default: 5, ui: slider}
-  - {name: resolution, label: Resolution, type: enum, options: ["720p"], default: "720p", ui: segmented}
-  - {name: aspect_ratio, label: Aspect, type: enum, options: *aspects, default: "16:9", ui: aspect}
+  - {name: duration, label: Duration (s), type: int, min: 3, max: 30, default: 5, ui: slider,
+     help: "A multi-shot take is as long as its shots together."}
+  - {name: shots, label: Shots, type: shots, min_shots: 2, max_shots: 6, min_shot_s: 1, max_shot_s: 30,
+     max_total_s: 30, max_shot_chars: 512, modes: [multi_shot, multi_shot_frame]}
+  - {name: resolution, label: Resolution, type: enum, options: ["720p", "1080p"], default: "720p", ui: segmented}
+  - {name: aspect_ratio, label: Aspect, type: enum, options: *aspects, default: "16:9", ui: aspect,
+     modes: [t2v, multi_shot], help: "Auto lets the model choose the shape (Runway only)."}
 
 modes:
   - id: t2v
     label: Text to video
     ops: [t2v]
+  - id: i2v
+    label: Image to video
+    ops: [i2v, flf2v]
+    medias:
+      - {role: start_image, kinds: [image], label: Start frame, required: true}
+      - {role: middle_images, kinds: [image], label: Middle frames, max: 8}
+      - {role: end_image, kinds: [image], label: End frame}
+  - id: multi_shot
+    label: Multi-shot
+    ops: [multi_shot]
+    prompt: none  # the shots carry the prompts
+  - id: multi_shot_frame
+    label: Multi-shot from a frame
+    ops: [multi_shot]
+    prompt: none
+    medias:
+      - {role: start_image, kinds: [image], label: First frame, required: true}
+
+elements: {strategy: keyframe_first}
 
 routes:
   - id: kling-4.0@runway
     provider: runway
     modes:
       t2v: {endpoint: text_to_video, fixed: {model: kling_4}}
+      i2v: {endpoint: image_to_video, fixed: {model: kling_4}}
     map:
       prompt: promptText
       negative_prompt: null
       passthrough: false
       params:
         duration: duration
-        resolution: {to: null}
-        aspect_ratio: {to: ratio, transform: enum_map, args: {values:
-          {"16:9": "1280:720", "9:16": "720:1280", "1:1": "940:940", "21:9": "1460:624", "auto": "auto_720p"}}}
+        resolution: {to: null}    # the hook folds resolution and aspect into `ratio`
+        aspect_ratio: {to: null}
+      media: {start_image: promptImage, middle_images: _middle, end_image: _last}
+    transform: studio.providers.transforms.runway:kling_4
     pricing:
       basis: formula
-      # Reserve at list price (15.7 credits/s, rounded up to a whole credit at $0.01).
-      formula: "ceil(duration * 157 / 10) / 100"
-      verified: 2026-11-02
+      # Reserve at list price (15.7 credits/s at 720p, 23.5 at 1080p), rounded up to a whole credit at $0.01.
+      formula: "ceil(duration * (235 if resolution == '1080p' else 157) / 10) / 100"
+      verified: 2026-11-09
       source: https://docs.dev.runwayml.com/guides/pricing/
     charges_on_failure: true  # Runway charges for accepted tasks that fail input moderation.
     output: {path: output, kind: video}
-    notes: Estimates use list price. The 720p text-to-video promotion is 12.56 credits per second through November 30, 2026 UTC.
+    notes: >-
+      Estimates use list price. Through November 30, 2026 UTC Kling 4.0 is 20% off (12.56 credits/s at 720p,
+      18.8 at 1080p).
+
+  - id: kling-4.0@fal
+    provider: fal
+    modes:
+      t2v: {endpoint: fal-ai/kling-video/v4/text-to-video}
+      i2v: {endpoint: fal-ai/kling-video/v4/image-to-video}
+      multi_shot: {endpoint: fal-ai/kling-video/v4/text-to-video}
+      multi_shot_frame: {endpoint: fal-ai/kling-video/v4/image-to-video}
+    map:
+      negative_prompt: null
+      params:
+        shots: {to: multi_prompt, transform: shot_list, args: {duration: int}}   # [{prompt, duration: 1..30}]
+      media: {start_image: start_image_url, middle_images: middle_image_urls, end_image: end_image_url}
+    constraints:
+      aspect_ratio: {options: ["16:9", "9:16", "1:1", "21:9"]}
+    pricing:
+      basis: per_output_second
+      rates:
+        - {when: {resolution: "720p"}, usd: 0.157}
+        - {when: {resolution: "1080p"}, usd: 0.235}
+      verified: 2026-11-09
+      source: https://fal.ai/models/fal-ai/kling-video/v4/text-to-video
+    output: {path: video.url, kind: video}
+    notes: Multi-shot sends multi_prompt (up to 6 shots, 30 s in all, 512 characters a shot). No auto aspect.
 
 examples:
   - name: t2v_smoke
@@ -52,4 +106,19 @@ examples:
     prompt: A robin lands on a windowsill and chirps twice.
     params: {duration: 3}
     smoke: true
-    expect: {cost_usd_range: [0.48, 0.48]}
+    expect: {cost_usd_range: [0.47, 0.48]}
+  - name: i2v_1080p
+    mode: i2v
+    prompt: The lighthouse lamp flares to life as the storm rolls in.
+    params: {duration: 5, resolution: "1080p"}
+    media: {start_image: "fixture:images/keyframe.png"}
+    expect: {cost_usd_range: [1.17, 1.18]}
+  - name: multi_shot
+    mode: multi_shot
+    prompt: ""
+    params:
+      shots:
+        - {prompt: "Wide shot of a lighthouse on a cliff as a storm rolls in.", duration: 4}
+        - {prompt: "Close-up of the keeper's hand turning the brass key.", duration: 3}
+        - {prompt: "The lamp flares to life, beam sweeping the dark sea.", duration: 5}
+    expect: {cost_usd_range: [1.88, 1.89]}

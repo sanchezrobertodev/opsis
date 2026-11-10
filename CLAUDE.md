@@ -101,6 +101,9 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   The plan compiles each shot's prompt with the take's direction under the shot's own and sets `duration` to the total.
   Routes send them with the `shot_list` transform (Kling `multi_prompt`) or `timed_prompt` (Seedance, one prompt that
   cuts on cue; `prompt_budget: shared` splits the prompt limit between shots).
+- `max_shot_chars` on a `shots` param caps each shot's own prompt (fal's Kling 4.0: 512), checked before submit. The
+  `middle_images` role holds keyframes between the start and end frames, in order (Kling 4.0: up to 8; Runway takes
+  them as `promptImage` `{uri, position}` objects, `transforms/runway.py:kling_4`).
 - A route's `output` can carry `meta` (stored on each asset, e.g. `{projection: equirectangular}` marks a 360
   panorama; `GET /assets?projection=equirectangular` lists them) and `extras` (more files the same job returns, each
   its own asset: Marble's panorama and collision mesh next to its splat). Mock routes copy both.
