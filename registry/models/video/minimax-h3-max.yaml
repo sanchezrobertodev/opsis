@@ -50,8 +50,17 @@ modes:
       # Cap pixels as well as count to stay within the included reference allowance.
       - {role: image_references, kinds: [image], label: "Reference image (up to 4 MP, 2:5 to 5:2)",
          required: true, min: 1, max: 1, max_pixels: 4194304, min_aspect: 0.4, max_aspect: 2.5}
+      - {role: audio_references, kinds: [audio], label: "Voices or sounds (2–15 s each, 15 s in all)", max: 3,
+         min_duration_s: 2, max_duration_s: 15}
 
-elements: {strategy: refs_native, ref_role: image_references, max_refs: 1, token: "Image {n}"}
+rules:
+  - when: {mode: reference}
+    max_input_seconds: {audio_references: 15}
+    message: MiniMax H3 Max takes up to 15 s of reference audio in all.
+
+# a mentioned character's voice sample goes in as reference audio, so H3 Max speaks with it
+elements: {strategy: refs_native, ref_role: image_references, max_refs: 1, token: "Image {n}",
+           voice_role: audio_references, voice_token: "Audio {n}"}
 
 routes:
   - id: minimax-h3-max@fal
@@ -67,7 +76,8 @@ routes:
       params:
         resolution: {to: resolution, transform: enum_map,
                      args: {values: {"480p": "480P", "768p": "768P", "1080p": "1080P"}}}
-      media: {start_image: image_url, end_image: end_image_url, image_references: "reference_image_urls[]"}
+      media: {start_image: image_url, end_image: end_image_url, image_references: "reference_image_urls[]",
+              audio_references: "reference_audio_urls[]"}
     pricing:
       basis: per_output_second
       rates:
@@ -80,8 +90,9 @@ routes:
     output: {path: video.url, kind: video}
     notes: >-
       Cheapest verified supported H3 Max provider. Estimates use regular rates, not fal's promotions.
-      Audio and one reference image of up to 4,194,304 pixels are included. Reference videos and audio inputs
-      are not exposed. Reference aspect ratios outside 2:5 to 5:2 are rejected before submission.
+      Audio and one reference image of up to 4,194,304 pixels are included. Reference audio is about 80 tokens a
+      second, so 15 s (1,200) and the picture (at most 2,560) stay within the 4,096 included tokens. Reference
+      videos are not exposed. Reference aspect ratios outside 2:5 to 5:2 are rejected before submission.
 
 examples:
   - name: t2v_480p_smoke

@@ -52,7 +52,8 @@ modes:
     medias:
       - {role: image_references, kinds: [image], label: Image refs, max: 9}
       - {role: video_references, kinds: [video], label: Video refs, max: 3, max_duration_s: 15}
-      - {role: audio_references, kinds: [audio], label: Audio refs, max: 3}
+      - {role: audio_references, kinds: [audio], label: "Voices or sounds (2–30 s each)", max: 3,
+         min_duration_s: 2, max_duration_s: 30}
   - id: video_edit
     label: Edit a video
     ops: [instruction_edit, restyle, relight, object_replace]
@@ -65,7 +66,14 @@ modes:
     medias:
       - {role: input_video, kinds: [video], label: Clip to continue, required: true, max_duration_s: 30, max_mb: 200}
 
-elements: {strategy: refs_native, ref_role: image_references, token: "@Image{n}"}
+rules:
+  - when: {mode: omni_reference}
+    max_input_seconds: {audio_references: 30}
+    message: Seedance 2.5 takes up to 30 s of reference audio in all.
+
+# a mentioned character's voice sample goes in as reference audio (@Audio1), so Seedance speaks with it
+elements: {strategy: refs_native, ref_role: image_references, token: "@Image{n}",
+           voice_role: audio_references, voice_token: "@Audio{n}"}
 
 routes:
   - id: seedance-2.5@replicate

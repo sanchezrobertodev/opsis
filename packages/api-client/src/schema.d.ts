@@ -1877,6 +1877,16 @@ export interface components {
              * @description The voice to speak it with, when it's voiced separately
              */
             voice_id?: string | null;
+            /**
+             * Voice Sample Id
+             * @description A recording of the speaker's voice (filled by the studio)
+             */
+            voice_sample_id?: string | null;
+            /**
+             * Voice Sample Seconds
+             * @description How long that recording is (filled by the studio)
+             */
+            voice_sample_seconds?: number | null;
         };
         /** DialogueOut */
         DialogueOut: {
@@ -2851,6 +2861,12 @@ export interface components {
              * @enum {string}
              */
             runs_on: "local" | "cloud_gpu" | "hosted";
+            /**
+             * Voices
+             * @description Speaks dialogue in a character's own voice, from a recording of it
+             * @default false
+             */
+            voices: boolean;
         };
         /** MoveChoice */
         MoveChoice: {
@@ -4395,6 +4411,11 @@ export interface components {
             params: {
                 [key: string]: unknown;
             };
+            /**
+             * Sample Asset Id
+             * @description A recording of the voice (2-30 s): models that take reference audio speak with it
+             */
+            sample_asset_id?: string | null;
         };
     };
     responses: never;

@@ -238,7 +238,10 @@ async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, r
     text = SHOT_BREAK.join(str(s.get("prompt") or "") for s in shots) if shots else body.prompt
     # @mentions of saved characters/locations/props may attach reference images, so resolve them before
     # validation: the attached images count against the model's slot limits like any other input.
-    mention = await resolve_mentions(session, user_id, spec, body.mode, text, body.media)
+    # a shot's speakers count too: their voice samples go where the model takes reference audio
+    lines = (body.direction or {}).get("dialogue") if isinstance(body.direction, dict) else None
+    speakers = [str(x.get("who"))[1:] for x in lines or [] if isinstance(x, dict) and str(x.get("who") or "").startswith("@")]
+    mention = await resolve_mentions(session, user_id, spec, body.mode, text, body.media, speakers)
     if (instead := _text_mode_without_refs(spec, body.mode, body.media, mention.media, mention.elements)) is not None:
         mention.warnings.append(f"{spec.mode(body.mode).label} needs reference images and none of the mentioned "
                                 f"have pictures yet, so this uses {instead.label} instead")

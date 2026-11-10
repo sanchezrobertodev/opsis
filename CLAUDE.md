@@ -128,6 +128,10 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   the prompt as global styles) and drops the prompt and length, which a plan can't take.
 - `prompt.dialogue: true` marks models that speak lines written in their prompt (Veo 3.1, Seedance 2.5, Kling 3.0);
   the director writes `direction.dialogue` into their prompt dialect and warns on other models.
+- `elements: {voice_role: audio_references, voice_token: "Audio {n}"}` marks models that speak in a voice from a
+  recording (MiniMax H3 and H3 Max reference, Seedance 2.5 omni): a mentioned character's voice sample attaches to that
+  slot within its limits (and a rule's `max_input_seconds`), and the mention reads "Nova (Image 1; voice Audio 1)".
+  The model summary's `voices` flag says so to the web.
 
 ## Adding a preset (effects gallery)
 - One YAML per preset in `registry/presets/<category>/<id>.yaml`: `model_id`, `mode`, a `prompt` template with
@@ -458,10 +462,19 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   and returned as proposed scenes plus a diff (`changes`, shots numbered as they'll read). An update keeps the shot's
   picks, trims and the rest of its look. Applying is refused in the browser if the storyboard changed since asking.
 - Dialogue: a shot's `lines` (who + words; blank lines are kept for editing and skipped when filming) travel to the
-  takes run as `direction.dialogue` with each speaker's voice from their Element (`elements.voice` =
-  `{model_id, params}`). Models with `prompt.dialogue` speak them; on others `cinema_takes` voices each line
-  (`line[shot:k]`), joins them (`track[shot]`, op `join_audio`) and lip-syncs every take to the track
-  (`lip[shot:n]`, the film's `lipsync_model_id`), each a new take.
+  takes run as `direction.dialogue`; `resolve()` (`cinema.py:fill_voices`) adds each @speaker's voice from their
+  Element (`elements.voice` = `{model_id, params, sample_asset_id?}`) and their voice sample with its length. Models
+  with `prompt.dialogue` speak them; on others `cinema_takes` voices each line (`line[shot:k]`, the film's
+  `voice_model`), joins them (`track[shot]`, op `join_audio`) and lip-syncs every take to the track (`lip[shot:n]`,
+  the film's `lipsync_model_id`), each a new take.
+- Character voices (`dialogue_voices`, Film settings, default `characters`): a model that speaks gets the lines only
+  when it can take every voiced speaker's sample as reference audio (`takes_voices`: the model's
+  `elements.voice_role` slot, its count, per-clip and total-seconds limits; `voice_mode` switches H3 to its
+  reference mode for it). Otherwise its take is filmed without the lines (sound not forced on) and voiced and
+  lip-synced like a model that doesn't speak, so nobody speaks in a voice of the model's own. `model` lets speaking
+  models use their own voices. `cinema_scene` refuses voiced lines its multi-shot mode can't take, under
+  `characters`. A voice sample is a ready recording of 2-30 s (`elements.py:_check_sample`); a cloned voice keeps its
+  first 2-15 s recording as its sample, and a character whose voice is a saved voice uses that sample.
 - The director (`studio/director/compiler.py`): besides the look lists, `lights` (up to two placed sources) and
   `cast_emotions` (a feeling per @mentioned cast member, phrased with the name the mention resolved to). Golden
   snapshots per dialect live in `tests/unit/golden/director/`; regenerate with `UPDATE_GOLDEN=1` and review the diff.
