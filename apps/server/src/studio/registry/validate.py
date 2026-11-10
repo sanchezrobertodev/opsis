@@ -151,6 +151,8 @@ def _coerce_shots(param: ShotsParam, value: Any) -> list[dict[str, Any]]:
             raise ValueError(f"shot {i}: duration must be a number of seconds") from None
         if not param.min_shot_s <= seconds <= param.max_shot_s:
             raise ValueError(f"shot {i} must last {param.min_shot_s:g} to {param.max_shot_s:g} s")
+        if param.max_shot_chars and len(str(shot["prompt"]).strip()) > param.max_shot_chars:
+            raise ValueError(f"shot {i}: a shot's description can be at most {param.max_shot_chars} characters")
         clean: dict[str, Any] = {"prompt": str(shot["prompt"]).strip(), "duration": round(seconds, 2)}
         if isinstance(shot.get("direction"), dict) and shot["direction"]:
             clean["direction"] = shot["direction"]

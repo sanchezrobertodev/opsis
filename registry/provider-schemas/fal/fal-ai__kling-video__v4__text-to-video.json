@@ -1,0 +1,42 @@
+{
+ "endpoint": "fal-ai/kling-video/v4/text-to-video",
+ "variant": null,
+ "input": {
+  "aspect_ratio": {
+   "type": "string",
+   "enum": [
+    "16:9",
+    "9:16",
+    "1:1",
+    "21:9"
+   ],
+   "default": "16:9"
+  },
+  "duration": {
+   "type": "integer",
+   "default": 5,
+   "minimum": 3,
+   "maximum": 30
+  },
+  "multi_prompt": {
+   "type": "array<object<KlingV4Shot>>|null",
+   "minItems": 1
+  },
+  "prompt": {
+   "type": "null|string"
+  },
+  "resolution": {
+   "type": "string",
+   "enum": [
+    "720p",
+    "1080p"
+   ],
+   "default": "1080p"
+  }
+ },
+ "required": [],
+ "output": [
+  "video"
+ ],
+ "deprecated": false
+}

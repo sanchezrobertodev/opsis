@@ -1,0 +1,48 @@
+{
+ "endpoint": "text_to_video",
+ "variant": "kling_4_flash",
+ "input": {
+  "duration": {
+   "type": "integer",
+   "minimum": 3,
+   "maximum": 20
+  },
+  "model": {
+   "type": "str",
+   "enum": [
+    "kling_4_flash"
+   ]
+  },
+  "promptText": {
+   "type": "string"
+  },
+  "ratio": {
+   "type": "string",
+   "enum": [
+    "1280:720",
+    "720:1280",
+    "960:960",
+    "1464:628",
+    "auto_720p",
+    "940:940",
+    "1460:624"
+   ]
+  },
+  "referenceVideos": {
+   "type": "array<object<ReferenceVideo>>",
+   "minItems": 0,
+   "maxItems": 5
+  },
+  "references": {
+   "type": "array<object<ReferenceImage>>",
+   "minItems": 0,
+   "maxItems": 10
+  }
+ },
+ "required": [
+  "model",
+  "promptText"
+ ],
+ "output": [],
+ "deprecated": false
+}

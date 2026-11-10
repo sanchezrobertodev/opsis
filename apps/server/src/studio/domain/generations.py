@@ -186,6 +186,9 @@ def compile_shots(spec: ModelSpec, param: ShotsParam, shots: list[Any], text: st
     if param.prompt_budget == "shared":  # one prompt holds every shot, with a short timing label each
         spec = spec.model_copy(deep=True)
         spec.prompt.max_chars = max(80, (spec.prompt.max_chars - 80) // max(1, len(shots)) - 24)
+    if param.max_shot_chars and param.max_shot_chars < spec.prompt.max_chars:
+        spec = spec.model_copy(deep=True)
+        spec.prompt.max_chars = param.max_shot_chars
     for i, (shot, prompt) in enumerate(zip(shots, text.split(SHOT_BREAK), strict=True), 1):
         merged = {**_chosen(direction), **_chosen(shot.get("direction") if isinstance(shot, dict) else None)}
         c = compile_prompt(spec, prompt, ShotDirection.model_validate(merged) if merged else None, names=names)

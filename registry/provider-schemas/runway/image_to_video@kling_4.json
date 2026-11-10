@@ -1,0 +1,48 @@
+{
+ "endpoint": "image_to_video",
+ "variant": "kling_4",
+ "input": {
+  "duration": {
+   "type": "integer",
+   "minimum": 3,
+   "maximum": 30
+  },
+  "model": {
+   "type": "str",
+   "enum": [
+    "kling_4"
+   ]
+  },
+  "promptImage": {
+   "type": "array<any>|string",
+   "minItems": 1,
+   "maxItems": 10
+  },
+  "promptText": {
+   "type": "string"
+  },
+  "ratio": {
+   "type": "string",
+   "enum": [
+    "auto_720p",
+    "auto_1080p"
+   ]
+  },
+  "referenceVideos": {
+   "type": "array<any>",
+   "minItems": 0,
+   "maxItems": 5
+  },
+  "references": {
+   "type": "array<object<ReferenceImage>>",
+   "minItems": 0,
+   "maxItems": 10
+  }
+ },
+ "required": [
+  "model",
+  "promptImage"
+ ],
+ "output": [],
+ "deprecated": false
+}

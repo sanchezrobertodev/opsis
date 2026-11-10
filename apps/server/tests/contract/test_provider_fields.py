@@ -223,6 +223,32 @@ def test_runway_act_two_wraps_inputs_as_typed_objects():
     assert p["bodyControl"] is True and p["expressionIntensity"] == 3 and p["ratio"] == "1280:720"
 
 
+def test_kling_4_runway_folds_size_into_ratio_and_lists_frames():
+    endpoint, p, _ = payload("kling-4.0", "kling-4.0@runway", "t2v", {"resolution": "1080p", "aspect_ratio": "9:16"})
+    assert endpoint == "text_to_video" and p["model"] == "kling_4" and p["ratio"] == "1080:1920"
+    assert payload("kling-4.0", "kling-4.0@runway", "t2v", {"aspect_ratio": "auto"})[1]["ratio"] == "auto_720p"
+    endpoint, p, _ = payload("kling-4.0", "kling-4.0@runway", "i2v", {"resolution": "1080p"}, {"start_image": 1})
+    assert endpoint == "image_to_video" and p["promptImage"] == IMG and p["ratio"] == "auto_1080p"
+    _, p, _ = payload("kling-4.0", "kling-4.0@runway", "i2v", {},
+                      {"start_image": 1, "middle_images": 2, "end_image": 1})
+    assert [f["position"] for f in p["promptImage"]] == ["first", "middle", "middle", "last"]
+    assert all(f["uri"] == IMG for f in p["promptImage"]) and not any(k.startswith("_") for k in p)
+
+
+def test_kling_4_fal_sends_frames_and_shots():
+    _, p, _ = payload("kling-4.0", "kling-4.0@fal", "i2v", {"resolution": "1080p"},
+                      {"start_image": 1, "middle_images": 1, "end_image": 1})
+    assert p["start_image_url"] == IMG and p["middle_image_urls"] == [IMG] and p["end_image_url"] == IMG
+    assert p["resolution"] == "1080p" and p["duration"] == 5 and "aspect_ratio" not in p
+    shots = [{"prompt": "wide", "duration": 4}, {"prompt": "close", "duration": 3}]
+    endpoint, p, _ = payload("kling-4.0", "kling-4.0@fal", "multi_shot", {"shots": shots}, prompt="")
+    assert endpoint == "fal-ai/kling-video/v4/text-to-video"
+    assert p["multi_prompt"] == shots and "prompt" not in p
+    with pytest.raises(Exception, match="at most 512 characters"):
+        payload("kling-4.0", "kling-4.0@fal", "multi_shot", {"shots": [{"prompt": "x" * 513, "duration": 4}, *shots]},
+                prompt="")
+
+
 def test_runpod_public_endpoints():
     endpoint, p, _ = payload("pruna-p-video-edit", "pruna-p-video-edit@runpod", "edit", {"draft": True},
                              {"input_video": 1, "image_references": 2})

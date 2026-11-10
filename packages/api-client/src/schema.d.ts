@@ -2669,7 +2669,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "start_image" | "end_image" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image" | "character_image" | "driving_video" | "input_image" | "training_data" | "lora" | "lora_high" | "input_model";
+            role: "start_image" | "end_image" | "middle_images" | "image_references" | "video_references" | "audio_references" | "mask" | "input_video" | "input_audio" | "control_video" | "style_image" | "replacement_image" | "character_image" | "driving_video" | "input_image" | "training_data" | "lora" | "lora_high" | "input_model";
             /** Kinds */
             kinds: ("image" | "video" | "audio" | "mask" | "mask_video" | "model3d" | "splat" | "lora" | "archive" | "subtitle")[];
             /** Label */
@@ -3888,6 +3888,8 @@ export interface components {
              * @enum {string}
              */
             prompt_budget: "each" | "shared";
+            /** Max Shot Chars */
+            max_shot_chars?: number | null;
             /** Default */
             default?: unknown[] | null;
         };
