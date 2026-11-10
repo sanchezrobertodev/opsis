@@ -35,7 +35,8 @@ async def compile_preview(
     prompt, warnings, names = body.prompt, [], None
     if body.mode is not None:
         media = [{"role": m.role, "asset_id": str(m.asset_id)} for m in body.media]
-        mention = await resolve_mentions(session, user.id, spec, body.mode, body.prompt, media)
+        speakers = [x.who[1:] for x in (body.direction.dialogue if body.direction else []) if x.who.startswith("@")]
+        mention = await resolve_mentions(session, user.id, spec, body.mode, body.prompt, media, speakers)
         prompt, warnings, names = mention.prompt, mention.warnings, mention.names
     c = compile_prompt(spec, prompt, body.direction, names=names)
     return CompileOut(prompt=c.prompt, warnings=[*warnings, *c.warnings], dialect=c.dialect,

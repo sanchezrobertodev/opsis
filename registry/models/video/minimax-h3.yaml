@@ -48,8 +48,17 @@ modes:
     medias:
       # Stay within fal's five free images; additional images cost $0.08 each.
       - {role: image_references, kinds: [image], label: "Image refs (up to 5, included)", required: true, min: 1, max: 5}
+      - {role: audio_references, kinds: [audio], label: "Voices or sounds (2–15 s each, 15 s in all)", max: 3,
+         min_duration_s: 2, max_duration_s: 15}
 
-elements: {strategy: refs_native, ref_role: image_references, max_refs: 5, token: "Image {n}"}
+rules:
+  - when: {mode: reference}
+    max_input_seconds: {audio_references: 15}
+    message: MiniMax H3 takes up to 15 s of reference audio in all.
+
+# a mentioned character's voice sample goes in as reference audio, so H3 speaks with it
+elements: {strategy: refs_native, ref_role: image_references, max_refs: 5, token: "Image {n}",
+           voice_role: audio_references, voice_token: "Audio {n}"}
 
 routes:
   - id: minimax-h3@fal
@@ -65,7 +74,8 @@ routes:
       params:
         resolution: {to: resolution, transform: enum_map,
                      args: {values: {"480p": "480P", "768p": "768P", "2k": "2K", "4k": "4K"}}}
-      media: {start_image: image_url, end_image: end_image_url, image_references: reference_image_urls}
+      media: {start_image: image_url, end_image: end_image_url, image_references: reference_image_urls,
+              audio_references: "reference_audio_urls[]"}
     pricing:
       basis: per_output_second
       rates:
@@ -79,7 +89,8 @@ routes:
     output: {path: video.url, kind: video}
     notes: >-
       Cheapest verified H3 route among the studio's supported providers. Audio and the first five reference
-      images are included. Reference videos and audio inputs are not exposed here.
+      images are included. Reference audio (up to 3 clips, 15 s in all) has no listed charge; a mentioned
+      character's voice sample goes there. Reference videos are not exposed here.
 
 examples:
   - name: t2v_480p_smoke

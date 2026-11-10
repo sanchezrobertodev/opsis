@@ -57,6 +57,8 @@ class DialogueLine(BaseModel):
     who: str = Field(min_length=1, max_length=60)
     text: str = Field(min_length=1, max_length=500)
     voice_id: str | None = Field(None, description="The voice to speak it with, when it's voiced separately")
+    voice_sample_id: str | None = Field(None, description="A recording of the speaker's voice (filled by the studio)")
+    voice_sample_seconds: float | None = Field(None, description="How long that recording is (filled by the studio)")
 
 
 class ShotDirection(BaseModel):
