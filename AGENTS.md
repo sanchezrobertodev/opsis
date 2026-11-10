@@ -15,7 +15,10 @@ Never do these yourself. Explain the step and let the person do it.
   them in `.env`); each key there links to where it comes from. Don't read `.env` back to them.
 - **Money.** Never raise `PROVIDER_MODE` or `LLM_MODE` above `mock`, fill `LIVE_ROUTE_ALLOWLIST`, or press Generate
   (or start a run) while the studio is in Mixed or Live mode.
-- **Models and GPUs.** Don't download local model weights, install ComfyUI or create cloud endpoints unless asked.
+- **Models and GPUs.** Don't download local model weights, install ComfyUI or node packs, or create cloud endpoints
+  unless asked. When they ask for local models, run `uv run python scripts/setup_local.py` on the computer with
+  ComfyUI (running) and show them its list; set up only the models they pick with `--model`, and let them answer its
+  question (no `--yes` unless they said so).
 - **Other services.** If a port is taken, find out what holds it and ask before stopping anything you didn't start.
 
 ## 1. Check the tools

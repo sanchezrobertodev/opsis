@@ -17,7 +17,7 @@ import { CostPanel } from "./CostPanel";
 import { KeyframeHint } from "./KeyframeHint";
 import { type Direction, DirectorPanel, mentionSlugs } from "./DirectorPanel";
 import { MediaSlotField } from "./MediaSlots";
-import { ModelPicker } from "./ModelPicker";
+import { defaultModel, ModelPicker } from "./ModelPicker";
 import { MotionPathsField } from "./MotionPathsField";
 import { defaultsFor, isVisible, ParamField } from "./ParamField";
 import { PromptBox } from "./PromptBox";
@@ -46,7 +46,7 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
   const modelId =
     draft.modelId && models.some((m) => m.id === draft.modelId)
       ? draft.modelId
-      : (models.find((m) => m.id === preferred) ?? models[0])?.id;
+      : defaultModel(models, preferred);
   const { data: model } = useModel(modelId);
   // the ring on Generate turns while anything renders (same query as the top bar's count)
   const { data: gens } = useGenerations();

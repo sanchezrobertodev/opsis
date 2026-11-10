@@ -11,6 +11,7 @@ import { type CreateBody, useCreateGeneration, useModel, useRegistry } from "@/l
 import { modeMatches } from "@/lib/studioKinds";
 import { Button, Field, Segmented, Select } from "@/components/ui/controls";
 import { MediaSlotField } from "./MediaSlots";
+import { defaultModel } from "./ModelPicker";
 import { defaultsFor, isVisible, ParamField } from "./ParamField";
 
 /** The models with a mode doing `op`, current ones first. */
@@ -36,7 +37,7 @@ export function QuickGenerate({ op, media: initialMedia = {}, promptPlaceholder,
   const models = useModelsFor(op);
   const ids = { model: useId(), prompt: useId() };
   const [modelId, setModelId] = useState<string>();
-  const current = models.find((m) => m.id === modelId) ?? models[0];
+  const current = models.find((m) => m.id === modelId) ?? models.find((m) => m.id === defaultModel(models));
   const { data: model } = useModel(current?.id);
   const modes = model?.modes.filter((m) => modeMatches(m, [op])) ?? [];
   const [modeId, setModeId] = useState<string>();

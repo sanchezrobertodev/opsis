@@ -667,7 +667,7 @@ async def test_a_small_gpu_or_missing_files_keep_a_local_route_out(monkeypatch):
     monkeypatch.setattr(local_status, "comfy_stats", big)
     monkeypatch.setattr(a, "_object_info", info)
     why = await a.unavailable(route, "t2v")
-    assert why.startswith("ComfyUI is missing ltx-2.5-22b-distilled") and "--group ltx" in why
+    assert why.startswith("ComfyUI is missing ltx-2.5-22b-distilled") and why.endswith("setup_local.py --model ltx-2.5")
     monkeypatch.setattr(a, "_object_info", lambda classes: _done({c: {"input": {"required": {}}} for c in classes}))
     assert await a.unavailable(route, "t2v") is None
 
@@ -689,7 +689,7 @@ async def test_a_missing_node_pack_is_named(monkeypatch):
     monkeypatch.setattr(a, "_object_info", lambda classes: _done({"SaveAudio": {"input": {"required": {}}}}))
     why = await a.unavailable(route, "tts")
     assert why == ("ComfyUI has no FB_Qwen3TTSCustomVoice node; install the ComfyUI-Qwen-TTS node pack "
-                   "(https://github.com/flybirdxx/ComfyUI-Qwen-TTS)")
+                   "(https://github.com/flybirdxx/ComfyUI-Qwen-TTS), or run setup_local.py --model qwen3-tts")
 
 
 def test_infinitetalk_runs_as_many_passes_as_the_speech_needs():

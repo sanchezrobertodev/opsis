@@ -11,6 +11,7 @@ import { realParams, type SceneDoc, useSceneProject } from "@/lib/jutsu3d";
 import { useRegistry } from "@/lib/queries";
 import { type RunCreate, useEstimateRun, useProjectRuns, useStartRun } from "@/lib/runs";
 import { Button, Field, Segmented, Select } from "@/components/ui/controls";
+import { defaultModel } from "@/components/create/ModelPicker";
 import { useModelsFor } from "@/components/create/QuickGenerate";
 import { ModelSelect } from "@/components/runs/RunQuote";
 import { renderScene, renderTimes } from "./RenderPanel";
@@ -55,7 +56,7 @@ export function MakeReal({ doc, handleRef, projectId }: {
   const real = realParams(doc.timeline.duration, doc.timeline.fps);
   const models = (registry?.models ?? []).filter((m) => m.output_type === "video" && m.kind !== "virtual"
     && m.status !== "shutdown" && m.modes.some((x) => x.ops.includes(op)));
-  const modelId = models.some((m) => m.id === chosen) ? chosen! : (models.find((m) => m.id === PREFERRED[op]) ?? models[0])?.id;
+  const modelId = models.some((m) => m.id === chosen) ? chosen! : defaultModel(models, PREFERRED[op]);
 
   const body: RunCreate | null = ready && modelId && prompt.trim() ? {
     recipe: "jutsu3d",

@@ -40,6 +40,12 @@ function price(m: ModelSummary): string | null {
 
 const isOpen = (m: ModelSummary) => m.license_tier.startsWith("open");
 
+/** The model a form starts on: one this computer can run now for free when there is one, else the form's pick. */
+export function defaultModel(models: ModelSummary[], preferred?: string): string | undefined {
+  return (models.find((m) => m.id === preferred && m.local_ready) ?? models.find((m) => m.local_ready)
+    ?? models.find((m) => m.id === preferred) ?? models[0])?.id;
+}
+
 /** Models as plain select options: the ones on this computer first, each marked free or paid. */
 export function modelOptions(models: ModelSummary[]) {
   return [...models].sort((a, b) => Number(b.runs_on === "local") - Number(a.runs_on === "local"))

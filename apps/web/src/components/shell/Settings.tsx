@@ -9,6 +9,7 @@ import { cn, usd } from "@/lib/cn";
 import { useBudget, useHealth, useRegistry, useUpdateBudget } from "@/lib/queries";
 import { Button, Field, Segmented, Select, Switch } from "@/components/ui/controls";
 import { Keys } from "@/components/shell/Keys";
+import { LocalModels } from "@/components/shell/LocalModels";
 import { ModelStorage } from "@/components/shell/ModelStorage";
 
 const MODE_TEXT: Record<string, string> = {
@@ -178,6 +179,7 @@ export function Settings() {
 
         <Keys />
         <Balances />
+        {health?.local_engine.configured && <LocalModels online={health.local_engine.online} />}
         <ModelStorage />
         <Appearance />
         <WhereItWent />
