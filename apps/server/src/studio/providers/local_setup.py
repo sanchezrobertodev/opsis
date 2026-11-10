@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -142,25 +143,25 @@ def python_version(python: Path) -> str:
 
 
 def install_pack(pack: Pack, comfy: Comfy, python: Path) -> None:
-    """Clone the pack into custom_nodes/ at its checked commit, then its requirements into ComfyUI's Python without
-    moving the packages in KEEP."""
-    dest = comfy.custom_nodes / pack.name
-    subprocess.run(["git", "clone", "--quiet", pack.url, str(dest)], check=True)
-    if pack.ref:
-        subprocess.run(["git", "-C", str(dest), "-c", "advice.detachedHead=false", "checkout", "--quiet", pack.ref],
-                       check=True)
-    requirements = dest / "requirements.txt"
-    if not requirements.is_file():
-        return
-    have = json.loads(subprocess.run([str(python), "-c", (
-        "import importlib.metadata as m, json, sys\n"
-        "out = {}\n"
-        "for n in sys.argv[1:]:\n"
-        "    try: out[n] = m.version(n)\n"
-        "    except m.PackageNotFoundError: pass\n"
-        "print(json.dumps(out))"), *KEEP], capture_output=True, text=True, check=True).stdout)
-    with tempfile.TemporaryDirectory() as tmp:
-        constraints = Path(tmp) / "keep.txt"
-        constraints.write_text("".join(f"{n}=={v}\n" for n, v in have.items()), encoding="utf-8")
-        subprocess.run([str(python), "-m", "pip", "install", "-r", str(requirements), "-c", str(constraints)],
-                       check=True)
+    """Clone the pack at its checked commit and install its requirements into ComfyUI's Python without moving the
+    packages in KEEP; only then is it moved into custom_nodes/, so a failed install is tried again next time."""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:  # git's read-only objects on Windows
+        clone = Path(tmp) / pack.name
+        subprocess.run(["git", "clone", "--quiet", pack.url, str(clone)], check=True)
+        if pack.ref:
+            subprocess.run(["git", "-C", str(clone), "-c", "advice.detachedHead=false", "checkout", "--quiet",
+                            pack.ref], check=True)
+        requirements = clone / "requirements.txt"
+        if requirements.is_file():
+            have = json.loads(subprocess.run([str(python), "-c", (
+                "import importlib.metadata as m, json, sys\n"
+                "out = {}\n"
+                "for n in sys.argv[1:]:\n"
+                "    try: out[n] = m.version(n)\n"
+                "    except m.PackageNotFoundError: pass\n"
+                "print(json.dumps(out))"), *KEEP], capture_output=True, text=True, check=True).stdout)
+            constraints = Path(tmp) / "keep.txt"
+            constraints.write_text("".join(f"{n}=={v}\n" for n, v in have.items()), encoding="utf-8")
+            subprocess.run([str(python), "-m", "pip", "install", "-r", str(requirements), "-c", str(constraints)],
+                           check=True)
+        shutil.move(clone, comfy.custom_nodes / pack.name)

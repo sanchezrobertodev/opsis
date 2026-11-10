@@ -125,7 +125,9 @@ def main() -> int:
         homes = sorted({str(d) for _, d in jobs})
         free = min(shutil.disk_usage(existing(Path(h))).free for h in homes) / 1e9
         print(f"  - download {len(files)} model files, {gb(files):.1f} GB, into {', '.join(homes)} ({free:.0f} GB free)")
-        if free < gb(files) + 1:
+        # a download that stopped resumes from its .part, so only the rest of it needs room
+        parts = sum(p.stat().st_size for f, d in jobs if (p := d / f"{f['name']}.part").is_file()) / 1e9
+        if free < gb(files) - parts + 1:
             print("Not enough free space for them.")
             return 2
     if not args.yes and input("Go ahead? [y/N] ").strip().lower() not in ("y", "yes"):

@@ -6,6 +6,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from studio.config import get_settings
 from studio.providers.local_setup import Comfy, comfy_from, install_pack, local_models
 from studio.registry.loader import load_registry
@@ -75,13 +77,22 @@ def test_a_pack_is_cloned_at_its_commit_and_never_moves_comfyuis_torch(tmp_path,
             return subprocess.CompletedProcess(cmd, 0, json.dumps({"torch": "2.13.0+cu130", "transformers": "5.15.1"}))
         if "pip" in cmd:
             pinned.append(Path(cmd[cmd.index("-c") + 1]).read_text())
+            if pip_fails:
+                raise subprocess.CalledProcessError(1, cmd)
         return subprocess.CompletedProcess(cmd, 0, "")
 
     monkeypatch.setattr(subprocess, "run", run)
+    pip_fails = True
+    with pytest.raises(subprocess.CalledProcessError):
+        install_pack(pack, comfy, Path("python.exe"))
+    assert not comfy.has_pack(pack)  # a failed install leaves nothing in custom_nodes/, so the next run tries again
+    pip_fails = False
+    calls.clear()
     install_pack(pack, comfy, Path("python.exe"))
     assert calls[0][:2] == ["git", "clone"] and calls[1][-1] == pack.ref
     assert calls[-1][:4] == ["python.exe", "-m", "pip", "install"]
-    assert pinned == ["torch==2.13.0+cu130\ntransformers==5.15.1\n"]
+    assert pinned[-1] == "torch==2.13.0+cu130\ntransformers==5.15.1\n"
+    assert comfy.has_pack(pack) and (tmp_path / pack.name / "requirements.txt").is_file()
 
 
 def test_settings_lists_what_each_local_model_still_needs(monkeypatch):
