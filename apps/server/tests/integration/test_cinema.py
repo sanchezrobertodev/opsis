@@ -442,6 +442,42 @@ async def test_h3_speaks_in_the_characters_voice_sample(client, in_memory_queue)
     assert sorted(s["key"] for s in done["steps"]) == ["take[sone:1]", "take[stwo:1]"]
 
 
+async def test_speakers_sharing_a_voice_share_its_recording(client, in_memory_queue):
+    speech = await upload(client, ROOT / "fixtures" / "audio" / "line.mp3", "audio/mpeg")
+    for name in ("Nova", "Kai"):
+        await character(client, name, sample=speech)
+    p = await new_project(client)
+    run = await start(client, "cinema_takes", project_id=p["id"], model_id="minimax-h3", takes=1, shots=[
+        {"key": "sone", "prompt": "@nova and @kai at the window", "duration": 5, "direction": {"dialogue": [
+            {"who": "@nova", "text": "It goes dark tonight."}, {"who": "@kai", "text": "Then we light it."}]}}])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    assert [s["key"] for s in done["steps"]] == ["take[sone:1]"]
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(done["steps"][0]["generation_id"]))
+    assert [m["asset_id"] for m in gen.request["media"] if m["role"] == "audio_references"] == [speech]
+    assert "voice Audio 1" in gen.compiled["prompt"] and "Audio 2" not in gen.compiled["prompt"]
+
+
+async def test_a_voice_that_is_only_a_recording_is_kept_or_refused(client, in_memory_queue):
+    speech = await upload(client, ROOT / "fixtures" / "audio" / "line.mp3", "audio/mpeg")
+    r = await client.post("/elements", json={"kind": "character", "name": "Nova", "voice": {
+        "model_id": "eleven-v4", "params": {}, "sample_asset_id": speech}})
+    assert r.status_code == 201, r.text
+    p = await new_project(client)
+    shots = [{"key": "sone", "prompt": "Nova turns", "duration": 5,
+              "direction": {"dialogue": [{"who": "@nova", "text": "It goes dark tonight."}]}}]
+    # Kling can't take the recording, and Eleven v4 can't speak from one
+    r = await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
+        "project_id": p["id"], "model_id": "kling-3.0", "shots": shots}})
+    assert r.status_code == 422 and "only a voice sample" in r.text, r.text
+    for model, extra in (("minimax-h3", {}), ("kling-3.0", {"dialogue_voices": "model"})):
+        r = await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
+            "project_id": p["id"], "model_id": model, "shots": shots, **extra}})
+        assert r.status_code == 200, (model, r.text)
+
+
 async def test_a_voice_sample_is_a_short_recording(client, tmp_path):
     picture = await upload(client, ROOT / "fixtures" / "images" / "person.jpg", "image/jpeg")
     beep = tmp_path / "beep.mp3"

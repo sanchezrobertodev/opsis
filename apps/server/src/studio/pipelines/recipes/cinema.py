@@ -357,6 +357,14 @@ class CinemaTakesRecipe(Recipe):
                 return [f"{spec.name} doesn't voice dialogue, and {inp.voice_model!r} can't speak the lines"]
             if lip is None or lipsync_mode(lip, "video") is None:
                 return [f"{spec.name} doesn't voice dialogue, and {inp.lipsync_model_id!r} can't lip-sync a take"]
+            if inp.dialogue_voices == "characters":
+                lost = sorted({x.who for s in inp.shots if self._voiced_after(inp, spec, s, reg)
+                               for x in _voiced_lines(s) if not x.voice_id})
+                if lost:
+                    return [f"{', '.join(lost)} {'has' if len(lost) == 1 else 'have'} only a voice sample, which "
+                            f"{spec.name} can't take and {voice.name} can't speak from. Pick a {voice.name} voice "
+                            "on their page, film on a model that takes voice samples, or let the model use its own "
+                            "voices (Film settings)."]
         return []
 
     def _mode(self, inp: CinemaTakesInput, spec: ModelSpec, shot: TakeShot) -> Mode | None:
@@ -403,7 +411,9 @@ class CinemaTakesRecipe(Recipe):
         for shot in inp.shots:
             mode = self._mode(inp, spec, shot)
             assert mode is not None
-            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode, shot, reg), tuple(sorted(shot.roles())),
+            # a mode picked for the voices also needs what the mentions fill (H3 reference: their pictures)
+            roles = shot.roles() | {s.role for s in mode.medias if s.required or s.min}
+            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode, shot, reg), tuple(sorted(roles)),
                                key=shot.key)] * inp.takes
             if self._voiced_after(inp, spec, shot, reg):
                 lines = _lines(shot)

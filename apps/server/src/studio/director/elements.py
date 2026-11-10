@@ -124,6 +124,9 @@ async def resolve_mentions(
     vslot = mode.slot(voice_role) if mode and voice_role else None
     vused = sum(1 for m in existing_media if m.get("role") == voice_role) if vslot else 0
     vroom, vnext, vleft = max(0, (vslot.max if vslot else 0) - vused), vused + 1, seconds_cap(spec, mode_id, voice_role)
+    # recordings already on the request, by asset id: speakers sharing one get its token, not a second copy
+    vtokens = {str(m.get("asset_id")): voice_token.format(n=n) for n, m in enumerate(
+        (m for m in existing_media if m.get("role") == voice_role), start=1)} if vslot else {}
     samples = await voice_samples(session, user_id, rows) if vslot else {}
     # lora_list pairs the two roles by position, so two-expert characters go first and single files after them
     lora_pairs: list[tuple[str, str]] = []
@@ -174,14 +177,17 @@ async def resolve_mentions(
                                 f"words. For a consistent look, make a start frame from its pictures first.")
         voiced = bool((element.voice or {}).get("params") or (element.voice or {}).get("sample_asset_id"))
         sample = samples.get(element.id)
-        if vslot is not None and sample and vroom > 0:
+        if vslot is not None and sample and (sample[0] in vtokens or vroom > 0):
             asset_id, secs = sample
-            if (vslot.min_duration_s or 0) <= secs <= (vslot.max_duration_s or secs) and secs <= vleft + 0.05:
+            if (asset_id not in vtokens and (vslot.min_duration_s or 0) <= secs <= (vslot.max_duration_s or secs)
+                    and secs <= vleft + 0.05):
                 res.media.append({"role": voice_role, "asset_id": asset_id})
-                attached.append(asset_id)
                 vroom, vleft = vroom - 1, vleft - secs
-                spoken = f"voice {voice_token.format(n=vnext)}"
+                vtokens[asset_id] = voice_token.format(n=vnext)
                 vnext += 1
+            if asset_id in vtokens:  # attached now, or before for another speaker with the same voice
+                attached.append(asset_id)
+                spoken = f"voice {vtokens[asset_id]}"
                 label = f"{label[:-1]}; {spoken})" if label.endswith(")") else f"{element.name} ({spoken})"
             else:
                 res.warnings.append(f"@{element.slug}'s voice sample is {secs:g} s, which {spec.name} can't take "
