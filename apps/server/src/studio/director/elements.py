@@ -7,6 +7,9 @@ How a mention becomes something the model understands depends on the model's `el
   weights in the auto `lora` / `lora_high` slots and the mention carries its trigger word, e.g. "Maya (mayaxq)".
 - keyframe_first / text_only: the mention becomes the name plus its short description, with a hint on how
   to get a consistent look.
+A model that also takes reference audio (`elements.voice_role`, e.g. MiniMax H3's reference mode) gets a character's
+voice sample there (`voice.sample_asset_id`), named with `voice_token`: "Maya (Image 1; voice Audio 1)". So do the
+speakers of a shot's dialogue that the prompt doesn't mention (`speakers`).
 The first mention of each element carries its description; later ones just the name.
 """
 
@@ -21,9 +24,9 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from studio.db.models import Asset, Element, ElementAsset
+from studio.db.models import Asset, Element, ElementAsset, ElementKind
 from studio.domain.enums import AssetStatus
-from studio.registry.schema import ModelSpec
+from studio.registry.schema import MediaSlot, ModelSpec
 
 MENTION = re.compile(r"(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_-]{0,39})")
 KIND_ORDER = {"character": 0, "location": 1, "prop": 2, "style": 3, "voice": 4}
@@ -78,8 +81,10 @@ async def resolve_mentions(
     mode_id: str,
     prompt: str,
     existing_media: list[dict[str, str]],
+    speakers: list[str] | tuple[str, ...] = (),
 ) -> Resolution:
     slugs = mentions(prompt)
+    slugs += [s for s in dict.fromkeys(x.lower() for x in speakers) if s not in slugs]
     if not slugs:
         return Resolution(prompt=prompt)
 
@@ -114,12 +119,31 @@ async def resolve_mentions(
     lora_room = {r: max(0, (mode.slot(r).max if mode and mode.slot(r) else 0)
                         - sum(1 for m in existing_media if m.get("role") == r)) for r in ("lora", "lora_high")}
     trained = await _ready_loras(session, rows) if strategy == "lora" else set()
+    voice_role = (spec.elements or {}).get("voice_role")
+    voice_token = (spec.elements or {}).get("voice_token") or "Audio {n}"
+    vslot = mode.slot(voice_role) if mode and voice_role else None
+    vused = sum(1 for m in existing_media if m.get("role") == voice_role) if vslot else 0
+    vroom, vnext, vleft = max(0, (vslot.max if vslot else 0) - vused), vused + 1, seconds_cap(spec, mode_id, voice_role)
+    # recordings already on the request, by asset id: speakers sharing one get its token, not a second copy
+    vtokens = {str(m.get("asset_id")): voice_token.format(n=n) for n, m in enumerate(
+        (m for m in existing_media if m.get("role") == voice_role), start=1)} if vslot else {}
+    if vtokens and vleft != float("inf"):  # what's left of the mode's seconds of reference audio, counted per file
+        ids = [a for a in vtokens if _is_uuid(a)]  # anything else is refused when the request is checked
+        have = {str(i): ms for i, ms in (await session.execute(select(Asset.id, Asset.duration_ms).where(
+            Asset.id.in_([uuid.UUID(a) for a in ids]), Asset.user_id == user_id))).all()} if ids else {}
+        vleft -= sum((have.get(str(m.get("asset_id"))) or 0) / 1000 for m in existing_media if m.get("role") == voice_role)
+    samples = await voice_samples(session, user_id, rows) if vslot else {}
+    ordered = sorted((by_slug[s] for s in slugs if s in by_slug), key=lambda e: KIND_ORDER.get(e.kind.value, 9))
+    talking = {s.lower() for s in speakers}
+    # the dialogue's speakers first, so someone who only appears in the shot can't take the room their voices need
+    chosen, tried, vroom = pick_voices([e.id for e in sorted(ordered, key=lambda e: e.slug not in talking)], samples,
+                                       vslot, vroom, vleft, set(vtokens)) if vslot else (set(), set(), vroom)
     # lora_list pairs the two roles by position, so two-expert characters go first and single files after them
     lora_pairs: list[tuple[str, str]] = []
     lora_singles: list[str] = []
 
     replacements: dict[str, tuple[str, str]] = {}  # slug -> (first mention text, later mention text)
-    for element in sorted((by_slug[s] for s in slugs if s in by_slug), key=lambda e: KIND_ORDER.get(e.kind.value, 9)):
+    for element in ordered:
         attached: list[str] = []
         label = element.name
         if strategy == "refs_native" and slot is not None and capacity > 0:
@@ -161,6 +185,27 @@ async def resolve_mentions(
         elif strategy == "keyframe_first" and element.kind.value == "character":
             res.warnings.append(f"{spec.name} doesn't take reference images, so @{element.slug} is described in "
                                 f"words. For a consistent look, make a start frame from its pictures first.")
+        voiced = bool((element.voice or {}).get("params") or (element.voice or {}).get("sample_asset_id"))
+        if element.id in tried:
+            asset_id, secs = samples[element.id]
+            if asset_id in chosen and asset_id not in vtokens:  # numbered in the prompt's order
+                res.media.append({"role": voice_role, "asset_id": asset_id})
+                vtokens[asset_id] = voice_token.format(n=vnext)
+                vnext += 1
+            if asset_id in vtokens:  # attached now, or before for another speaker with the same voice
+                attached.append(asset_id)
+                spoken = f"voice {vtokens[asset_id]}"
+                label = f"{label[:-1]}; {spoken})" if label.endswith(")") else f"{element.name} ({spoken})"
+            else:
+                res.warnings.append(f"@{element.slug}'s voice sample is {secs:g} s, which {spec.name} can't take "
+                                    f"here, so it speaks in the model's own voice")
+        elif vslot is not None and voiced and vroom > 0:
+            res.warnings.append(f"@{element.slug} has no voice sample yet, so {spec.name} speaks in its own voice. "
+                                "Add one on its page.")
+        elif voiced and spec.prompt.dialogue and vslot is None:
+            other = next((m.label for m in spec.modes if voice_role and m.slot(voice_role)), None)
+            res.warnings.append(f"{spec.name} {mode.label if mode else mode_id} speaks in its own voice, so "
+                                f"@{element.slug}'s voice isn't used" + (f" ({other} can take it)." if other else "."))
         description = (element.description or "").strip()[:DESCRIPTION_LIMIT]
         first = f"{label}, {description}," if description else label
         replacements[element.slug] = (first, label)
@@ -185,6 +230,64 @@ async def resolve_mentions(
 
     res.prompt = MENTION.sub(substitute, prompt).replace(",,", ",").replace(", .", ".")
     return res
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
+def pick_voices(order: list[uuid.UUID], samples: dict[uuid.UUID, tuple[str, float]], slot: MediaSlot, room: int,
+                seconds: float, have: set[str]) -> tuple[set[str], set[uuid.UUID], int]:
+    """Which voice samples go to the model, taking elements in `order`: each sample while the slot has room for
+    another file and `seconds` left for it, within the slot's per-file limits. A recording already going (`have`, or
+    another element's) is shared. Returns the recordings going, the elements whose sample was offered (those with
+    none, or that found no room for one, aren't), and the room left."""
+    chosen, tried = set(have), set()
+    for eid in order:
+        sample = samples.get(eid)
+        if not sample or not (sample[0] in chosen or room > 0):
+            continue
+        tried.add(eid)
+        asset_id, secs = sample
+        if (asset_id not in chosen and (slot.min_duration_s or 0) <= secs <= (slot.max_duration_s or secs)
+                and secs <= seconds + 0.05):
+            chosen.add(asset_id)
+            room, seconds = room - 1, seconds - secs
+    return chosen, tried, room
+
+
+def seconds_cap(spec: ModelSpec, mode_id: str, role: str | None) -> float:
+    """How many seconds of `role` inputs the mode takes in all, from rules that apply to the mode alone
+    (H3: 15 s of reference audio)."""
+    caps = [r.max_input_seconds[role] for r in spec.rules if role in r.max_input_seconds and set(r.when) <= {"mode"}
+            and mode_id in (r.when["mode"] if isinstance(r.when.get("mode"), list) else [r.when.get("mode", mode_id)])]
+    return min(caps, default=float("inf"))
+
+
+async def voice_samples(session: AsyncSession, user_id: uuid.UUID, elements: Any) -> dict[uuid.UUID, tuple[str, float]]:
+    """Each element's voice sample (a recording of its voice, `voice.sample_asset_id`) as (asset id, seconds), if
+    it's still a ready recording. A character whose voice is one of your saved voices and has no sample of its own
+    uses that voice's."""
+    def voice_id(e: Any) -> str | None:
+        return ((e.voice or {}).get("params") or {}).get("voice_id")
+
+    own: dict[uuid.UUID, str | None] = {e.id: (e.voice or {}).get("sample_asset_id") for e in elements}
+    if any(not own[e.id] and voice_id(e) for e in elements):
+        saved = (await session.execute(select(Element).where(
+            Element.user_id == user_id, Element.kind == ElementKind.voice, Element.deleted_at.is_(None)))).scalars()
+        by_voice = {voice_id(v): (v.voice or {}).get("sample_asset_id") for v in saved}
+        own.update({e.id: by_voice.get(voice_id(e)) for e in elements if not own[e.id] and voice_id(e)})
+    ids = [uuid.UUID(str(s)) for s in own.values() if s]
+    if not ids:
+        return {}
+    ready = {str(a.id): (a.duration_ms or 0) / 1000 for a in (await session.execute(select(Asset).where(
+        Asset.id.in_(ids), Asset.user_id == user_id, Asset.status == AssetStatus.ready, Asset.deleted_at.is_(None),
+        Asset.kind == "audio"))).scalars()}
+    return {eid: (str(s), ready[str(s)]) for eid, s in own.items() if s and str(s) in ready}
 
 
 async def _ready_loras(session: AsyncSession, rows: Any) -> set[str]:

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from pathlib import Path
 
 import httpx
 import pytest
@@ -14,7 +15,7 @@ from studio.api.main import app as api
 from studio.db.models import Generation, GenerationAttempt, SpendLedger
 from studio.db.session import session_scope
 from studio.domain.enums import AttemptStatus, LedgerEntry
-from studio.media.ffmpeg import probe
+from studio.media.ffmpeg import ffmpeg, probe
 from studio.storage.local import get_storage
 
 
@@ -355,7 +356,8 @@ DIALOGUE = [{"who": "Nova", "text": "It goes dark tonight.", "voice_id": "XrExE9
 
 async def test_dialogue_is_spoken_by_models_that_voice_it(client, in_memory_queue):
     p = await new_project(client)
-    run = await start(client, "cinema_takes", project_id=p["id"], model_id="kling-3.0", takes=1, shots=[
+    run = await start(client, "cinema_takes", project_id=p["id"], model_id="kling-3.0", takes=1,
+                      dialogue_voices="model", shots=[
         {"key": "sone", "prompt": "Nova turns from the window", "duration": 5, "direction": {"dialogue": DIALOGUE}}])
     await drain(in_memory_queue)
     done = await get(client, run["id"])
@@ -366,6 +368,152 @@ async def test_dialogue_is_spoken_by_models_that_voice_it(client, in_memory_queu
     assert 'Nova says: "It goes dark tonight."' in gen.compiled["prompt"]
     assert 'Kai says: "Then we light it by hand."' in gen.compiled["prompt"]
     assert gen.request["params"]["generate_audio"] is True  # Kling speaks only with its sound on
+
+
+ROOT = Path(__file__).resolve().parents[4]
+
+
+async def upload(client, path: Path, mime: str) -> str:
+    r = await client.post("/uploads", files={"file": (path.name, path.read_bytes(), mime)})
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+async def character(client, name: str, sample: str | None = None, voice_id: str | None = "XrExE9yKIg1WjnnlVkGX",
+                    picture: bool = True) -> str:
+    """A new character's @handle; the name gets a random ending, since the test database keeps every test's."""
+    images = [{"asset_id": await upload(client, ROOT / "fixtures" / "images" / "person.jpg", "image/jpeg"),
+               "view": "front"}] if picture else []
+    voice = {"model_id": "eleven-v4", "params": {"voice_id": voice_id} if voice_id else {},
+             **({"sample_asset_id": sample} if sample else {})}
+    r = await client.post("/elements", json={"kind": "character", "name": f"{name} {uuid.uuid4().hex[:6]}",
+                                             "voice": voice, "images": images})
+    assert r.status_code == 201, r.text
+    return r.json()["handle"]
+
+
+async def test_characters_keep_their_voices_on_models_that_speak_their_own(client, in_memory_queue):
+    """Kling speaks, but not in a character's voice: by default the take is filmed without the lines, and they're
+    voiced and lip-synced onto it."""
+    p = await new_project(client)
+    run = await start(client, "cinema_takes", project_id=p["id"], model_id="kling-3.0", takes=1, shots=[
+        {"key": "sone", "prompt": "Nova turns from the window", "duration": 5, "direction": {"dialogue": DIALOGUE}}])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    steps = {s["key"]: s for s in done["steps"]}
+    assert set(steps) == {"take[sone:1]", "line[sone:1]", "line[sone:2]", "track[sone]", "lip[sone:1]"}
+    async with session_scope() as s:
+        take = await s.get(Generation, uuid.UUID(steps["take[sone:1]"]["generation_id"]))
+    assert "says:" not in take.compiled["prompt"]  # it says nothing of its own
+    assert take.request["params"].get("generate_audio") is not True
+
+
+async def test_h3_speaks_in_the_characters_voice_sample(client, in_memory_queue):
+    speech = await upload(client, ROOT / "fixtures" / "audio" / "line.mp3", "audio/mpeg")  # 5.5 s
+    nova = await character(client, "Nova", sample=speech)
+    kai = await character(client, "Kai", voice_id="nPczCjzI2devNBz1zQrb")  # no recording of Kai's voice
+    p = await new_project(client)
+    shots = [{"key": "sone", "prompt": f"{nova} turns from the window", "duration": 5,
+              "direction": {"dialogue": [{"who": nova, "text": "It goes dark tonight."}]}},
+             {"key": "stwo", "prompt": f"{kai} in the doorway", "duration": 5,
+              "direction": {"dialogue": [{"who": kai, "text": "Then we light it by hand."}]}}]
+    run = await start(client, "cinema_takes", project_id=p["id"], model_id="minimax-h3", takes=1, shots=shots)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    steps = {s["key"]: s for s in done["steps"]}
+    # Nova's shot: H3's reference mode, her recording as reference audio, the line in the prompt
+    assert not {"line[sone:1]", "lip[sone:1]"} & set(steps)
+    async with session_scope() as s:
+        nova = await s.get(Generation, uuid.UUID(steps["take[sone:1]"]["generation_id"]))
+        kai = await s.get(Generation, uuid.UUID(steps["take[stwo:1]"]["generation_id"]))
+        line = await s.get(Generation, uuid.UUID(steps["line[stwo:1]"]["generation_id"]))
+    assert nova.request["mode"] == "reference"
+    assert {"role": "audio_references", "asset_id": speech} in [
+        {"role": m["role"], "asset_id": m["asset_id"]} for m in nova.request["media"]]
+    assert "Audio 1" in nova.compiled["prompt"] and "It goes dark tonight." in nova.compiled["prompt"]
+    # Kai's: no recording, so filmed without the line, then voiced in his saved voice and lip-synced
+    assert {"line[stwo:1]", "track[stwo]", "lip[stwo:1]"} <= set(steps)
+    assert "Then we light it" not in kai.compiled["prompt"]
+    assert line.request["params"]["voice_id"] == "nPczCjzI2devNBz1zQrb"
+
+    # the same film with the model's own voices: H3 speaks both lines itself, in text to video
+    run = await start(client, "cinema_takes", project_id=p["id"], model_id="minimax-h3", takes=1,
+                      dialogue_voices="model", shots=shots)
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert sorted(s["key"] for s in done["steps"]) == ["take[sone:1]", "take[stwo:1]"]
+
+
+async def test_speakers_sharing_a_voice_share_its_recording(client, in_memory_queue):
+    speech = await upload(client, ROOT / "fixtures" / "audio" / "line.mp3", "audio/mpeg")
+    nova, kai = [await character(client, name, sample=speech) for name in ("Nova", "Kai")]
+    p = await new_project(client)
+    run = await start(client, "cinema_takes", project_id=p["id"], model_id="minimax-h3", takes=1, shots=[
+        {"key": "sone", "prompt": f"{nova} and {kai} at the window", "duration": 5, "direction": {"dialogue": [
+            {"who": nova, "text": "It goes dark tonight."}, {"who": kai, "text": "Then we light it."}]}}])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    assert [s["key"] for s in done["steps"]] == ["take[sone:1]"]
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(done["steps"][0]["generation_id"]))
+    assert [m["asset_id"] for m in gen.request["media"] if m["role"] == "audio_references"] == [speech]
+    assert "voice Audio 1" in gen.compiled["prompt"] and "Audio 2" not in gen.compiled["prompt"]
+
+
+async def test_the_speakers_voices_go_first_and_recordings_already_given_count(client, in_memory_queue, tmp_path):
+    speech = await upload(client, ROOT / "fixtures" / "audio" / "line.mp3", "audio/mpeg")  # 5.5 s
+    tone = tmp_path / "tone.mp3"
+    await ffmpeg("-f", "lavfi", "-i", "sine=frequency=220:duration=12", "-c:a", "libmp3lame", str(tone))
+    long = await upload(client, tone, "audio/mpeg")
+    alice, bob = await character(client, "Alice", sample=long), await character(client, "Bob", sample=speech)
+    # Alice is mentioned first but only Bob speaks: his recording goes in, hers would leave his no room in H3's 15 s
+    p = await new_project(client)
+    run = await start(client, "cinema_takes", project_id=p["id"], model_id="minimax-h3", takes=1, shots=[
+        {"key": "sone", "prompt": f"{alice} watches {bob}", "duration": 5,
+         "direction": {"dialogue": [{"who": bob, "text": "It goes dark tonight."}]}}])
+    await drain(in_memory_queue)
+    done = await get(client, run["id"])
+    assert done["status"] == "succeeded", done["error"]
+    assert [s["key"] for s in done["steps"]] == ["take[sone:1]"]
+    async with session_scope() as s:
+        gen = await s.get(Generation, uuid.UUID(done["steps"][0]["generation_id"]))
+    assert [m["asset_id"] for m in gen.request["media"] if m["role"] == "audio_references"] == [speech]
+    # 12 s of reference audio already on the request leave no room for Bob's 5.5 s
+    r = await client.post("/director/compile", json={"model_id": "minimax-h3", "mode": "reference",
+                                                       "prompt": f"{bob} at the window",
+                                                       "media": [{"role": "audio_references", "asset_id": long}]})
+    assert r.status_code == 200, r.text
+    assert "voice Audio" not in r.json()["prompt"] and any("can't take here" in w for w in r.json()["warnings"])
+
+
+async def test_a_voice_that_is_only_a_recording_is_kept_or_refused(client, in_memory_queue):
+    speech = await upload(client, ROOT / "fixtures" / "audio" / "line.mp3", "audio/mpeg")
+    nova = await character(client, "Nova", sample=speech, voice_id=None)
+    p = await new_project(client)
+    shots = [{"key": "sone", "prompt": f"{nova} turns", "duration": 5,
+              "direction": {"dialogue": [{"who": nova, "text": "It goes dark tonight."}]}}]
+    # Kling can't take the recording, and Eleven v4 can't speak from one
+    r = await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
+        "project_id": p["id"], "model_id": "kling-3.0", "shots": shots}})
+    assert r.status_code == 422 and "only a voice sample" in r.text, r.text
+    for model, extra in (("minimax-h3", {}), ("kling-3.0", {"dialogue_voices": "model"})):
+        r = await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
+            "project_id": p["id"], "model_id": model, "shots": shots, **extra}})
+        assert r.status_code == 200, (model, r.text)
+
+
+async def test_a_voice_sample_is_a_short_recording(client, tmp_path):
+    picture = await upload(client, ROOT / "fixtures" / "images" / "person.jpg", "image/jpeg")
+    beep = tmp_path / "beep.mp3"
+    await ffmpeg("-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:a", "libmp3lame", str(beep))
+    short = await upload(client, beep, "audio/mpeg")
+    for sample, why in ((picture, "a recording"), (short, "2 to 30 s"), (str(uuid.uuid4()), "not found")):
+        r = await client.post("/elements", json={"kind": "character", "name": "Nova", "voice": {
+            "model_id": "eleven-v4", "params": {}, "sample_asset_id": sample}})
+        assert r.status_code in (404, 422) and why in r.text, r.text
 
 
 async def test_dialogue_is_voiced_and_lip_synced_on_models_that_dont(client, in_memory_queue):
@@ -490,7 +638,13 @@ async def test_old_free_text_dialogue_becomes_lines(client):
 
 async def test_a_scene_with_dialogue_turns_the_sound_on(client, in_memory_queue):
     p = await new_project(client)
-    run = await start(client, "cinema_scene", project_id=p["id"], model_id="kling-3.0", scene_key="cone", shots=[
+    scene = [{"key": "sone", "prompt": "Nova at the window", "duration": 4, "direction": {"dialogue": DIALOGUE[:1]}},
+             {"key": "stwo", "prompt": "Kai in the doorway", "duration": 4}]
+    r = await client.post("/pipelines", json={"recipe": "cinema_scene", "input": {
+        "project_id": p["id"], "model_id": "kling-3.0", "scene_key": "cone", "shots": scene}})
+    assert r.status_code == 422 and "one by one" in r.text, r.text  # Kling would lose Nova's voice
+    run = await start(client, "cinema_scene", project_id=p["id"], model_id="kling-3.0", scene_key="cone",
+                      dialogue_voices="model", shots=[
         {"key": "sone", "prompt": "Nova at the window", "duration": 4, "direction": {"dialogue": DIALOGUE[:1]}},
         {"key": "stwo", "prompt": "Kai in the doorway", "duration": 4,
          "direction": {"dialogue": [*DIALOGUE[1:], {"who": "Kai", "text": " "}]}}])  # a blank line is skipped

@@ -37,6 +37,10 @@ export type CinemaSettings = {
   model_params: Record<string, unknown>;
   image_model_id: string;
   lipsync_model_id: string;
+  /** Voices each line a take doesn't speak itself. */
+  voice_model?: string;
+  /** characters: every speaker keeps their own voice; model: models that speak use their own voices. */
+  dialogue_voices?: "characters" | "model";
   aspect_ratio: string;
   resolution: string;
   direction: Direction;

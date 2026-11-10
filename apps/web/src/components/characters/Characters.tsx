@@ -9,7 +9,7 @@ import { cn, usd } from "@/lib/cn";
 import { CREATURE, describeCharacter, OUTFITS, outfitsFor, picks, pickTrait, togglePick, traitPicture } from "@/lib/designer";
 import type { SlotAsset } from "@/lib/draft";
 import { useDraft } from "@/lib/draft";
-import { uploadFile } from "@/lib/queries";
+import { uploadFile, useAsset } from "@/lib/queries";
 import { STARTERS } from "@/lib/starters";
 import { type RunCreate, useStartRun } from "@/lib/runs";
 import {
@@ -35,6 +35,7 @@ import { GLASS_CARD, Lit } from "@/components/ui/Glass";
 const FILTERS = ["all", "character", "location", "prop", "style", "voice"] as const;
 type Filter = (typeof FILTERS)[number];
 
+const VOICE_SAMPLE_SLOT: MediaSlot = { role: "audio_references", kinds: ["audio"], label: "Voice sample (optional)", max: 1, min: 0, required: false, auto: false };
 const REF_SLOT: MediaSlot = { role: "image_references", kinds: ["image"], label: "Reference images", max: 80, min: 0, required: false, auto: false };
 
 export function Characters() {
@@ -389,6 +390,16 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
   const [description, setDescription] = useState(existing?.description ?? "");
   const [voice, setVoice] = useState<string | null>(
     ((existing?.voice as { params?: { voice_id?: string } } | null)?.params?.voice_id) ?? null);
+  const savedSample = (existing?.voice as { sample_asset_id?: string } | null)?.sample_asset_id ?? null;
+  const { data: savedSampleAsset } = useAsset(savedSample ?? undefined);
+  // undefined: the saved one stands; null: removed
+  const [sample, setSample] = useState<SlotAsset | null | undefined>(undefined);
+  const sampleId = sample === undefined ? savedSample : (sample?.id ?? null);
+  const samples: SlotAsset[] = sample !== undefined ? (sample ? [sample] : [])
+    : savedSampleAsset ? [{ id: savedSampleAsset.id, kind: "audio", url: savedSampleAsset.url, title: "Voice sample" }] : [];
+  const voiceBody = voice || sampleId
+    ? { model_id: VOICE_MODEL, params: voice ? { voice_id: voice } : {}, ...(sampleId ? { sample_asset_id: sampleId } : {}) }
+    : null;
   const [pending, setPending] = useState<SlotAsset[]>([]);
   const [drawIt, setDrawIt] = useState(true);
   const [drawWith, setDrawWith] = useState(PORTRAIT_MODEL);
@@ -409,7 +420,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
     try {
       if (existing) {
         await patch.mutateAsync({ id: existing.id, name, kind, description,
-                                  voice: voice ? { model_id: VOICE_MODEL, params: { voice_id: voice } } : null, clear_voice: !voice,
+                                  voice: voiceBody, clear_voice: !voiceBody,
                                   clear_lora: false });
         if (pending.length) {
           await addImages.mutateAsync({ id: existing.id, images: pending.map((p) => ({ asset_id: p.id, view: "front" as const })) });
@@ -419,7 +430,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
         const e = await create.mutateAsync({
           name, kind, description, attributes: {},
           images: pending.map((p) => ({ asset_id: p.id, view: "front" as const })),
-          ...(voice ? { voice: { model_id: VOICE_MODEL, params: { voice_id: voice } } } : {}),
+          ...(voiceBody ? { voice: voiceBody } : {}),
         });
         toast(`Created ${e.handle}. Use it in any prompt.`);
         if (pictureless && drawIt && description.trim()) await portrait.draw(e, drawWith);
@@ -466,8 +477,15 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
           <span className="text-2xs text-faint">Models that can’t take images get this text instead. Keep it short.</span>
         </label>
         {kind === "character" && (
-          <VoicePicker value={voice} onChange={setVoice} allowNone
-                       label="Voice (for dialogue and talking shots)" />
+          <>
+            <VoicePicker value={voice} onChange={setVoice} allowNone
+                         label="Voice (for dialogue and talking shots)" />
+            <MediaSlotField slot={VOICE_SAMPLE_SLOT} value={samples} onAdd={(a) => setSample(a)} onRemove={() => setSample(null)} />
+            <p className="text-2xs text-faint">
+              A recording of them speaking, 2 to 30 s (5 to 15 s of clear speech works best). Video models that take a
+              voice, like MiniMax H3, say their lines in it. A cloned voice brings its own.
+            </p>
+          </>
         )}
         {existing && (
           <p className="flex items-center gap-2 text-xs text-muted">

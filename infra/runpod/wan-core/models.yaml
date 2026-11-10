@@ -12,7 +12,9 @@
 # LTX-2.x Community License (free, commercial use under $10M yearly revenue). The Wan 2.2 text-to-video group (31 GB)
 # was dropped the same day; LTX-2.5 replaced it.
 # Your own ComfyUI runs these graphs too (fetch_models.py --local). `local_only` entries are never fetched onto the
-# volume: the two models only the local engine runs (wan5b, flux-klein; sizes checked 2026-10-30) and wan-shared, the
+# volume: the models only the local engine runs (wan5b, flux-klein; sizes checked 2026-10-30; infinitetalk, InfiniteTalk
+# on ComfyUI's own nodes, Apache 2.0, sizes checked 2026-11-09; infinitetalk-dub, InfiniteTalk dubbing a clip on
+# Kijai's WanVideoWrapper, Apache 2.0, sizes checked 2026-11-10) and wan-shared, the
 # Wan text encoder, VAE and clip vision on their own, so a PC fetching VACE or Animate-2 skips core's 14B experts. A file
 # several groups need is listed once per group; the fetcher fetches it once.
 files:
@@ -65,6 +67,32 @@ files:
   - {group: wan-shared, local_only: true, folder: vae, name: wan_2.1_vae.safetensors, bytes: 253815318,
      url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"}
   - {group: wan-shared, local_only: true, folder: clip_vision, name: clip_vision_h.safetensors, bytes: 1264219396,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"}
+  - {group: infinitetalk, local_only: true, folder: diffusion_models, name: Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors, bytes: 16643349018,
+     url: "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors"}
+  - {group: infinitetalk, local_only: true, folder: model_patches, name: wan2.1_infiniteTalk_single_fp16.safetensors, bytes: 5125258232,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/model_patches/wan2.1_infiniteTalk_single_fp16.safetensors"}
+  - {group: infinitetalk, local_only: true, folder: audio_encoders, name: wav2vec2-chinese-base_fp16.safetensors, bytes: 190115368,
+     url: "https://huggingface.co/Kijai/wav2vec2_safetensors/resolve/main/wav2vec2-chinese-base_fp16.safetensors"}
+  - {group: infinitetalk, local_only: true, folder: loras, name: lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors, bytes: 738005744,
+     url: "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"}
+  - {group: infinitetalk, local_only: true, folder: text_encoders, name: umt5_xxl_fp8_e4m3fn_scaled.safetensors, bytes: 6735906897,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"}
+  - {group: infinitetalk, local_only: true, folder: vae, name: wan_2.1_vae.safetensors, bytes: 253815318,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"}
+  - {group: infinitetalk-dub, local_only: true, folder: diffusion_models, name: Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors, bytes: 16643349018,
+     url: "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors"}
+  - {group: infinitetalk-dub, local_only: true, folder: diffusion_models, name: Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors, bytes: 2713548210,
+     url: "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/InfiniteTalk/Wan2_1-InfiniteTalk-Single_fp8_e4m3fn_scaled_KJ.safetensors"}
+  - {group: infinitetalk-dub, local_only: true, folder: vae, name: Wan2_1_VAE_bf16.safetensors, bytes: 253806278,
+     url: "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors"}
+  - {group: infinitetalk-dub, local_only: true, folder: wav2vec2, name: wav2vec2-chinese-base_fp16.safetensors, bytes: 190115368,
+     url: "https://huggingface.co/Kijai/wav2vec2_safetensors/resolve/main/wav2vec2-chinese-base_fp16.safetensors"}
+  - {group: infinitetalk-dub, local_only: true, folder: loras, name: lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors, bytes: 738005744,
+     url: "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors"}
+  - {group: infinitetalk-dub, local_only: true, folder: text_encoders, name: umt5_xxl_fp8_e4m3fn_scaled.safetensors, bytes: 6735906897,
+     url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"}
+  - {group: infinitetalk-dub, local_only: true, folder: clip_vision, name: clip_vision_h.safetensors, bytes: 1264219396,
      url: "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"}
   - {group: wan5b, local_only: true, folder: diffusion_models, name: wan2.2_ti2v_5B_fp16.safetensors, bytes: 9999658848,
      url: "https://huggingface.co/Comfy-Org/Wan-2.2/resolve/main/split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"}

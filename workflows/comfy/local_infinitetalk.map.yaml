@@ -1,0 +1,29 @@
+# InfiniteTalk (MeiGen, Apache 2.0) on ComfyUI's own nodes: a picture and one speaker's voice -> a talking clip.
+# Source: ComfyUI's official template video_wan2_1_infinitetalk (comfyui_workflow_templates 0.11.48), single
+# speaker: Wan 2.1 I2V 14B 480p (fp8), the lightx2v distill LoRA, 6 steps, cfg 1, euler. Checked against ComfyUI
+# 0.34's nodes_wan.py.
+# Each pass makes 81 frames at 25 fps (3.24 s); an extension carries on from the last 9 frames and adds 72 (2.88 s).
+# `transforms/comfy.py:infinitetalk_passes` turns on as many extensions as the speech needs (up to three, 11.9 s) and
+# trims the clip to the speech; an extension that's off is bypassed, so ComfyUI never runs its nodes.
+description: InfiniteTalk 14B (Wan 2.1, 480p), a picture and a voice, up to 11.9 s
+inputs:
+  prompt: [{node: "5", input: text}]
+  seed: [{node: "23", input: noise_seed}, {node: "33", input: noise_seed}, {node: "43", input: noise_seed},
+         {node: "53", input: noise_seed}]
+  width: [{node: "20", input: width}, {node: "30", input: width}, {node: "40", input: width}, {node: "50", input: width}]
+  height: [{node: "20", input: height}, {node: "30", input: height}, {node: "40", input: height},
+           {node: "50", input: height}]
+  frames: [{node: "60", input: length}]
+  extend_1: [{node: "30", input: motion_frame_count}]
+  extend_2: [{node: "40", input: motion_frame_count}]
+  extend_3: [{node: "50", input: motion_frame_count}]
+  start_image: [{node: "11", input: image}]
+  input_audio: [{node: "9", input: audio}]
+  filename_prefix: [{node: "62", input: filename_prefix}]
+optional:
+  # in this order: each bypass links what came after it to what came before
+  extend_1: {node: "37", bypass: [image1]}
+  extend_2: {node: "47", bypass: [image1]}
+  extend_3: {node: "57", bypass: [image1]}
+outputs:
+  - {node: "62", kind: video}

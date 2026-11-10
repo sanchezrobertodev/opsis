@@ -136,15 +136,18 @@ class ComfyLocalAdapter(ProviderAdapter):
             return None
         files = model_files()
         classes, missing = unavailable_choices(template, info, files, _picked(route, mode, template))
+        setup = f"setup_local.py --model {route.id.partition('@')[0]}"
         if classes:
-            return f"ComfyUI has no {', '.join(classes)} node; update ComfyUI to 0.34 or newer"
+            pack = template.map.pack
+            how = (f"install the {pack.name} node pack ({pack.url}), or run {setup}" if pack
+                   else "update ComfyUI to 0.34 or newer")
+            return f"ComfyUI has no {', '.join(classes)} node; {how}"
         if not missing:
             return None
         size = sum(files[name].get("bytes", 0) for name in missing if name in files)
         groups = download_groups(missing, files)
         more = f" and {len(missing) - 1} more model files" if len(missing) > 1 else ""
-        how = (f"; get them with fetch_models.py --local --group {' --group '.join(groups)}" if groups
-               else "; see the README's \"Open models on your GPU\"")
+        how = f"; get them with {setup}" if groups else "; see the README's \"Open models on your GPU\""
         return f"ComfyUI is missing {missing[0]}{more}{f' ({size / 1e9:.1f} GB)' if size else ''}{how}"
 
     async def stage_inputs(self, route: Route, media: list[ResolvedMedia]) -> dict[str, Any]:

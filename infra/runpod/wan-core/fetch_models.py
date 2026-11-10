@@ -92,11 +92,11 @@ def _download(f: dict[str, Any], dest: Path) -> str:
     return f"got {path.name} ({size / 1e9:.1f} GB at {mb_s:.0f} MB/s)"
 
 
-def fetch_all(manifest: Path, dest: Path, groups: list[str] | None = None, local: bool = False) -> dict[str, Any]:
-    files = load(manifest, groups, local)
+def fetch(jobs: list[tuple[dict[str, Any], Path]]) -> tuple[list[str], list[str]]:
+    """(manifest entry, models folder) pairs, a few at a time: what was got or skipped, and what failed."""
     done, failed = [], []
     with ThreadPoolExecutor(PARALLEL) as pool:
-        futures = {pool.submit(_download, f, dest): f for f in files}
+        futures = {pool.submit(_download, f, dest): f for f, dest in jobs}
         for fut in as_completed(futures):
             try:
                 msg = fut.result()
@@ -105,6 +105,11 @@ def fetch_all(manifest: Path, dest: Path, groups: list[str] | None = None, local
                 msg = f"FAILED {exc}"
                 failed.append(msg)
             print(f"fetch_models | {msg}", flush=True)
+    return done, failed
+
+
+def fetch_all(manifest: Path, dest: Path, groups: list[str] | None = None, local: bool = False) -> dict[str, Any]:
+    done, failed = fetch([(f, dest) for f in load(manifest, groups, local)])
     return {"done": done, "failed": failed, **status(manifest, dest, groups, local)}
 
 

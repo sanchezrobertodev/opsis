@@ -1,0 +1,14 @@
+# Qwen3-TTS 1.7B CustomVoice (Qwen, Apache 2.0): text in one of nine stock voices. Needs the ComfyUI-Qwen-TTS node pack
+# (flybirdxx, checked at v1.0.7 2026-11-09); on its first run it downloads the model (4.5 GB) to models/qwen-tts/.
+# 24 kHz speech; the model is unloaded after each line, so a lip-sync that follows has the GPU to itself.
+description: Qwen3-TTS 1.7B, stock voices
+pack: {name: ComfyUI-Qwen-TTS, url: "https://github.com/flybirdxx/ComfyUI-Qwen-TTS",
+       ref: "f8f029fab458f7ef09142edd23a6c678856b4850"}
+inputs:
+  prompt: [{node: "1", input: text}]
+  voice_id: [{node: "1", input: speaker}]
+  language: [{node: "1", input: language}]
+  seed: [{node: "1", input: seed}]
+  filename_prefix: [{node: "2", input: filename_prefix}]
+outputs:
+  - {node: "2", kind: audio}

@@ -667,13 +667,51 @@ async def test_a_small_gpu_or_missing_files_keep_a_local_route_out(monkeypatch):
     monkeypatch.setattr(local_status, "comfy_stats", big)
     monkeypatch.setattr(a, "_object_info", info)
     why = await a.unavailable(route, "t2v")
-    assert why.startswith("ComfyUI is missing ltx-2.5-22b-distilled") and "--group ltx" in why
+    assert why.startswith("ComfyUI is missing ltx-2.5-22b-distilled") and why.endswith("setup_local.py --model ltx-2.5")
     monkeypatch.setattr(a, "_object_info", lambda classes: _done({c: {"input": {"required": {}}} for c in classes}))
     assert await a.unavailable(route, "t2v") is None
 
 
 async def _done(value):
     return value
+
+
+async def test_a_missing_node_pack_is_named(monkeypatch):
+    from studio.providers import local_status
+
+    route = REG.models["qwen3-tts"].route("qwen3-tts@comfy_local")
+    a = adapter()
+
+    async def stats(_url):
+        return {"devices": [{"vram_total": 12 * 2**30}]}
+
+    monkeypatch.setattr(local_status, "comfy_stats", stats)
+    monkeypatch.setattr(a, "_object_info", lambda classes: _done({"SaveAudio": {"input": {"required": {}}}}))
+    why = await a.unavailable(route, "tts")
+    assert why == ("ComfyUI has no FB_Qwen3TTSCustomVoice node; install the ComfyUI-Qwen-TTS node pack "
+                   "(https://github.com/flybirdxx/ComfyUI-Qwen-TTS), or run setup_local.py --model qwen3-tts")
+
+
+def test_infinitetalk_runs_as_many_passes_as_the_speech_needs():
+    from types import SimpleNamespace
+
+    from studio.providers.comfy_workflows import load_template, registry_workflow_dirs
+    from studio.providers.transforms.comfy import infinitetalk_passes
+
+    spec = REG.models["infinitetalk"]
+    route = spec.route("infinitetalk@comfy_local")
+    template = load_template(registry_workflow_dirs(), "local_infinitetalk")
+    for seconds, frames, passes in ((2, 51, 0), (3.5, 89, 1), (7, 176, 2), (11.8, 296, 3)):
+        req = SimpleNamespace(media=[
+            SimpleNamespace(role="character_image", width=1280, height=720, duration_ms=None),
+            SimpleNamespace(role="input_audio", width=None, height=None, duration_ms=seconds * 1000)])
+        payload: dict = {}
+        infinitetalk_passes(spec=spec, route=route, req=req, payload=payload)
+        assert payload["frames"] == frames and [payload.get(f"extend_{k}") for k in (1, 2, 3)] == (
+            [9] * passes + [None] * (3 - passes))
+        graph, _ = template.render(payload)
+        last = graph["60"]["inputs"]["image"][0]  # the clip comes from the last pass that ran
+        assert last == {0: "25", 1: "37", 2: "47", 3: "57"}[passes]
 
 
 async def test_a_comfyui_too_busy_to_answer_reads_as_running(monkeypatch):
@@ -791,3 +829,39 @@ def test_choices_endpoint_says_when_comfyui_is_off(monkeypatch):
     off = client.get("/local-engine/choices", params={"field": "LoraLoaderModelOnly.lora_name"}).json()
     assert not off["available"] and "Is it running?" in off["message"]
     assert client.get("/local-engine/choices", params={"field": "../etc"}).status_code == 422
+
+
+def test_local_infinitetalk_takes_at_most_its_passes_of_speech():
+    from types import SimpleNamespace
+
+    from studio.registry.routing import NormalizedRequest, _constraint_violation
+
+    route = REG.models["infinitetalk"].route("infinitetalk@comfy_local")
+    for seconds, why in ((11.8, None), (12.5, "takes at most 11.8 s of input_audio (12.5 s given)")):
+        media = [SimpleNamespace(role="input_audio", duration_ms=seconds * 1000)]
+        req = NormalizedRequest("infinitetalk", "avatar", "hi", None, {"resolution": "480p"}, media)
+        assert _constraint_violation(route, req) == why
+
+
+
+def test_infinitetalk_dub_keeps_the_clip_shape_and_runs_as_long_as_the_longer_input():
+    from types import SimpleNamespace
+
+    from studio.providers.comfy_workflows import load_template, registry_workflow_dirs
+    from studio.providers.transforms.comfy import CLIP_PIXELS, infinitetalk_dub
+
+    spec = REG.models["infinitetalk-dub"]
+    route = spec.route("infinitetalk-dub@comfy_local")
+    template = load_template(registry_workflow_dirs(), "local_infinitetalk_dub")
+    for clip_s, speech_s, frames in ((3, 5, 125), (6, 2.2, 150)):
+        req = SimpleNamespace(media=[
+            SimpleNamespace(role="input_video", width=720, height=1280, duration_ms=clip_s * 1000),
+            SimpleNamespace(role="input_audio", width=None, height=None, duration_ms=speech_s * 1000)])
+        payload: dict = {}
+        infinitetalk_dub(spec=spec, route=route, req=req, payload=payload)
+        w, h = payload["width"], payload["height"]
+        assert w % 16 == 0 and h % 16 == 0 and w * h <= CLIP_PIXELS["480p"] and abs(w / h - 9 / 16) < 0.03
+        assert payload["frames"] == frames and payload["seconds"] == frames / 25
+        graph, _ = template.render(payload)
+        assert graph["23"]["inputs"]["num_frames"] == graph["26"]["inputs"]["length"] == frames
+        assert graph["19"]["inputs"]["duration"] == graph["21"]["inputs"]["duration"] == frames / 25

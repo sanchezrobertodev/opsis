@@ -84,6 +84,10 @@ class Settings(_Doc):
                                          description="More params for that model, such as Cinema Studio's engine")
     image_model_id: str = Field("nano-banana-2", description="Renders hero frames")
     lipsync_model_id: str = Field("sync-lipsync-3", description="Lip-syncs dialogue on models that don't voice it")
+    voice_model: str = Field("eleven-v4", description="Voices each line of dialogue a take doesn't speak itself")
+    dialogue_voices: Literal["characters", "model"] = Field(
+        "characters", description="characters: every speaker keeps their own voice; model: models that speak use "
+                                  "their own voices")
     aspect_ratio: str = "16:9"
     resolution: str = "720p"
     direction: ShotDirection = Field(default_factory=ShotDirection,

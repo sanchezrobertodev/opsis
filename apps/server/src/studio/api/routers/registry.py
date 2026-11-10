@@ -40,7 +40,7 @@ def _wrapped(reg: Registry, spec: ModelSpec) -> list[ModelSpec]:
 
 # Part of the summary's ETag: bump it when what the summary computes changes (from-prices), so browsers holding the
 # last copy fetch it again even though the registry files didn't change.
-SUMMARY_VERSION = 5
+SUMMARY_VERSION = 7
 STAND_IN_SECONDS = 5  # a typical input clip or sound, for modes priced by input length (video edits)
 STAND_IN_PROMPT = "x" * 300  # a short script, for routes priced by the text (speech)
 
@@ -93,12 +93,18 @@ def _from_price(reg: Registry, spec: ModelSpec, env: RoutingEnv | None = None) -
 RUNS_ON = ("local", "cloud_gpu", "hosted")
 
 
+def _local_ready(reg: Registry, spec: ModelSpec, env: RoutingEnv) -> bool:
+    if spec.kind == "virtual":
+        return any(_local_ready(reg, m, env) for m in _wrapped(reg, spec))
+    return any(runs_locally(reg, spec, m.id, env) for m in spec.modes)
+
+
 def _runs_on(reg: Registry, spec: ModelSpec, env: RoutingEnv) -> str:
     if spec.kind == "virtual":
         found = [_runs_on(reg, m, env) for m in _wrapped(reg, spec)]
         return min(found, key=RUNS_ON.index) if found else "hosted"
     # a model that also runs elsewhere counts as yours once this machine's engine can run it
-    if local_only(reg, spec) or any(runs_locally(reg, spec, m.id, env) for m in spec.modes):
+    if local_only(reg, spec) or _local_ready(reg, spec, env):
         return "local"
     kinds = {p.kind for r in spec.routes if r.provider != MOCK_PROVIDER and (p := reg.providers.get(r.provider))}
     return "cloud_gpu" if "selfhosted" in kinds else "hosted"
@@ -138,7 +144,8 @@ async def get_registry_summary(
             output_type=spec.output_type, status=spec.status, license_tier=spec.license_tier, tags=spec.tags,
             modes=[ModeSummary(id=m.id, label=m.label, ops=list(m.ops)) for m in spec.modes],
             from_price_usd=_from_price(reg, spec, env), runnable=await _runnable(reg, spec, env),
-            runs_on=_runs_on(reg, spec, env),
+            runs_on=_runs_on(reg, spec, env), voices=bool((spec.elements or {}).get("voice_role")),
+            local_ready=_local_ready(reg, spec, env),
         ))
     return RegistryOut(hash=reg.hash, provider_mode=mode, models=models,
                        warnings=reg.warnings)

@@ -7,7 +7,10 @@ tagged with the project and shot) and the editor picks them into the document.
   of the previous shot (its picked take, or the first take this run makes of it). Editing a shot and revising the
   run redoes that shot and the shots chained after it, nothing else. A shot's dialogue goes into the prompt of
   models that voice it themselves; on other models each line is voiced (TTS), the lines are joined into one track,
-  and every take is lip-synced to it as a new take.
+  and every take is lip-synced to it as a new take. With `dialogue_voices: characters` (the default) a model that
+  speaks gets the lines only when it can take the speakers' voice samples as reference audio (MiniMax H3's reference
+  mode); otherwise its takes are filmed without them and voiced and lip-synced like a model that doesn't speak, so
+  each character keeps its own voice.
 - cinema_export: the cut. Picked takes and title cards in order, trimmed, joined with cuts or short fades, with
   dialogue, music and SFX tracks mixed under them.
 """
@@ -18,10 +21,12 @@ import uuid
 from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BaseModel, Field, ValidationError, model_validator
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import StepKind
 from studio.director.compiler import DialogueLine, ShotDirection
-from studio.director.elements import mentions
+from studio.director.elements import mentions, seconds_cap, voice_samples
 from studio.media.speech import CHARS_PER_SECOND
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import (
@@ -77,6 +82,10 @@ def chain_key(shot: str) -> str:
 
 def line_key(shot: str, k: int) -> str:
     return f"line[{shot}:{k}]"
+
+
+def face_key(shot: str, n: int) -> str:
+    return f"face[{shot}:{n}]"
 
 
 def track_key(shot: str) -> str:
@@ -209,8 +218,89 @@ def _lines(shot: TakeShot | SceneShot) -> list[DialogueLine]:
     return [DialogueLine.model_validate(x) for x in (shot.direction or {}).get("dialogue") or []]
 
 
-def _voice_params(line: DialogueLine) -> dict[str, Any]:
-    return {"voice_id": line.voice_id} if line.voice_id else {}
+def take_lipsync(lip: ModelSpec) -> tuple[Mode, bool] | None:
+    """How `lip` lip-syncs a take: a clip-driven mode moves its mouths (False); a picture-driven one remakes the take
+    from its first frame (True), as long as the shot, with the speakers' lines over it."""
+    if (mode := lipsync_mode(lip, "video")) is not None:
+        return mode, False
+    return (mode, True) if (mode := lipsync_mode(lip, "image")) is not None else None
+
+
+def clone_mode(voice: ModelSpec) -> Mode | None:
+    """A speech mode that speaks in the voice of a recording (Qwen3-TTS's clone)."""
+    return next((m for m in voice.modes if "tts" in m.ops and (s := m.slot("audio_references")) and s.required), None)
+
+
+def _speech(voice: ModelSpec, line: DialogueLine) -> tuple[Mode, dict[str, Any], list[dict[str, str]]]:
+    """How `voice` speaks a line: in the speaker's voice id for it, else from their recording when it can clone one,
+    else in its default voice. Returns the mode, its params and its media."""
+    clone = clone_mode(voice)
+    if line.voice_id or not (line.voice_sample_id and clone):
+        tts = mode_with_op(voice, "tts")
+        assert tts is not None
+        return tts, ({"voice_id": line.voice_id} if line.voice_id else {}), []
+    return clone, {}, [{"role": "audio_references", "asset_id": line.voice_sample_id}]
+
+
+def _voiced_lines(shot: TakeShot | SceneShot) -> list[DialogueLine]:
+    """Lines whose speaker has a voice of their own (an ElevenLabs voice, or a recording of it)."""
+    return [x for x in _lines(shot) if x.voice_id or x.voice_sample_id]
+
+
+def voice_mode(spec: ModelSpec, roles: set[str]) -> Mode | None:
+    """A mode that takes reference audio for voices (`elements.voice_role`) and the given frames, needing nothing
+    else the studio can't fill (the mentions fill the model's reference images)."""
+    elements = spec.elements or {}
+    voice, refs = elements.get("voice_role"), elements.get("ref_role", "image_references")
+    for m in spec.modes:
+        fillable = roles | {voice, refs}
+        if (voice and m.slot(voice) and m.prompt != "none" and all(m.slot(r) for r in roles)
+                and all(s.role in fillable for s in m.medias if s.required or s.min)):
+            return m
+    return None
+
+
+def takes_voices(spec: ModelSpec, mode: Mode, shot: TakeShot | SceneShot) -> bool:
+    """Whether every voiced speaker's recording fits the mode's reference audio (how many, how long each, how long
+    in all), so the model speaks with them."""
+    slot = mode.slot((spec.elements or {}).get("voice_role") or "")
+    lines = _voiced_lines(shot)
+    if slot is None or not all(x.voice_sample_id for x in lines):
+        return False
+    seconds = {x.voice_sample_id: x.voice_sample_seconds or 0.0 for x in lines}
+    lo, hi = slot.min_duration_s or 0, slot.max_duration_s or float("inf")
+    return (len(seconds) <= slot.max and all(lo <= s <= hi for s in seconds.values())
+            and sum(seconds.values()) <= seconds_cap(spec, mode.id, slot.role))
+
+
+async def fill_voices(session: AsyncSession, user_id: uuid.UUID, shots: list[Any], voice_model: str) -> list[Any]:
+    """Each line's @speaker as saved: their voice id (when it's for `voice_model` and the line names none) and
+    their voice sample, so the plan knows which models can speak with it. Samples sent by the caller are dropped."""
+    from studio.db.models import Element  # local import: models import nothing from recipes
+
+    def slug(line: dict[str, Any]) -> str | None:
+        who = str(line.get("who") or "")
+        return who[1:].lower() if who.startswith("@") else None
+
+    wanted = {x for s in shots for line in (s.direction or {}).get("dialogue") or [] if (x := slug(line))}
+    rows = (await session.execute(select(Element).where(
+        Element.user_id == user_id, Element.slug.in_(wanted), Element.deleted_at.is_(None)))).scalars().all() if wanted else []
+    by_slug, samples = {e.slug: e for e in rows}, await voice_samples(session, user_id, rows)
+
+    def filled(line: dict[str, Any]) -> dict[str, Any]:
+        line = {**line, "voice_sample_id": None, "voice_sample_seconds": None}
+        e = by_slug.get(slug(line) or "")
+        if e is None:
+            return line
+        voice = e.voice or {}
+        saved = (voice.get("params") or {}).get("voice_id") if voice.get("model_id") == voice_model else None
+        sample = samples.get(e.id)
+        return {**line, "voice_id": line.get("voice_id") or saved,
+                "voice_sample_id": sample[0] if sample else None, "voice_sample_seconds": sample[1] if sample else None}
+
+    return [s.model_copy(update={"direction": {**s.direction, "dialogue": [
+        filled(x) if isinstance(x, dict) else x for x in s.direction["dialogue"]]}})
+        if isinstance((s.direction or {}).get("dialogue"), list) else s for s in shots]
 
 
 class TakeShot(BaseModel):
@@ -244,6 +334,9 @@ class CinemaTakesInput(BaseModel):
     shots: list[TakeShot] = Field(min_length=1, max_length=40)
     voice_model: str = Field("eleven-v4", description="Voices dialogue on models that don't speak it themselves")
     lipsync_model_id: str = Field("sync-lipsync-3", description="Lip-syncs those takes to their dialogue")
+    dialogue_voices: Literal["characters", "model"] = Field(
+        "characters", description="characters: each speaker keeps their own voice (a model that can't take it is "
+                                  "voiced and lip-synced afterwards); model: models that speak use their own voices")
 
     @model_validator(mode="after")
     def _chains_point_back(self) -> CinemaTakesInput:
@@ -264,6 +357,10 @@ class CinemaTakesRecipe(Recipe):
     def title(self, inp: CinemaTakesInput) -> str:
         return f"Takes: {len(inp.shots)} shot{'s' if len(inp.shots) > 1 else ''} x {inp.takes}"
 
+    async def resolve(self, session: AsyncSession, user_id: uuid.UUID, inp: CinemaTakesInput,
+                      reg: Registry) -> CinemaTakesInput:
+        return inp.model_copy(update={"shots": await fill_voices(session, user_id, inp.shots, inp.voice_model)})
+
     def validate(self, inp: CinemaTakesInput, reg: Registry) -> list[str]:
         spec = reg.model(inp.model_id)
         if spec is None or spec.output_type != "video":
@@ -282,14 +379,33 @@ class CinemaTakesRecipe(Recipe):
             voice, lip = reg.model(inp.voice_model), reg.model(inp.lipsync_model_id)
             if voice is None or mode_with_op(voice, "tts") is None:
                 return [f"{spec.name} doesn't voice dialogue, and {inp.voice_model!r} can't speak the lines"]
-            if lip is None or lipsync_mode(lip, "video") is None:
+            if lip is None or take_lipsync(lip) is None:
                 return [f"{spec.name} doesn't voice dialogue, and {inp.lipsync_model_id!r} can't lip-sync a take"]
+            if inp.dialogue_voices == "characters" and clone_mode(voice) is None:
+                lost = sorted({x.who for s in inp.shots if self._voiced_after(inp, spec, s, reg)
+                               for x in _voiced_lines(s) if not x.voice_id})
+                if lost:
+                    return [f"{', '.join(lost)} {'has' if len(lost) == 1 else 'have'} only a voice sample, which "
+                            f"{spec.name} can't take and {voice.name} can't speak from. Pick a {voice.name} voice "
+                            "on their page, film on a model that takes voice samples, or let the model use its own "
+                            "voices (Film settings)."]
         return []
+
+    def _mode(self, inp: CinemaTakesInput, spec: ModelSpec, shot: TakeShot) -> Mode | None:
+        """The take's mode (`take_mode`), or one that takes the speakers' voices when it would keep them and the
+        usual one can't (MiniMax H3: reference mode instead of text to video)."""
+        mode = take_mode(spec, shot)
+        if (inp.dialogue_voices != "characters" or not _voiced_lines(shot) or shot.end_asset_id
+                or (mode is not None and takes_voices(spec, mode, shot))):
+            return mode
+        other = voice_mode(spec, shot.roles())
+        return other if other is not None and takes_voices(spec, other, shot) else mode
 
     def _params(self, inp: CinemaTakesInput, spec: ModelSpec, mode: Mode, shot: TakeShot,
                 reg: Registry | None = None) -> dict[str, Any]:
         params = with_param(spec, mode.id, dict(inp.params), "duration", shot.duration)
-        if reg is not None and _lines(shot) and self._speaks(spec, mode, params, reg):
+        if (reg is not None and _lines(shot) and self._speaks(spec, mode, params, reg)
+                and not self._voiced_after(inp, spec, shot, reg)):
             params = with_param(spec, mode.id, params, "generate_audio", True)  # dialogue needs the sound on
         return params
 
@@ -302,33 +418,45 @@ class CinemaTakesRecipe(Recipe):
             return False
 
     def _voiced_after(self, inp: CinemaTakesInput, spec: ModelSpec, shot: TakeShot, reg: Registry) -> bool:
-        """Lines this model can't speak: voiced and lip-synced onto each take afterwards."""
+        """Lines this model can't speak, or can't speak in the speakers' own voices: voiced and lip-synced onto each
+        take afterwards."""
         if not _lines(shot):
             return False
-        mode = take_mode(spec, shot)
-        return mode is not None and not self._speaks(spec, mode, dict(inp.params), reg)
+        mode = self._mode(inp, spec, shot)
+        if mode is None:
+            return False
+        if not self._speaks(spec, mode, dict(inp.params), reg):
+            return True
+        return inp.dialogue_voices == "characters" and bool(_voiced_lines(shot)) and not takes_voices(spec, mode, shot)
 
     def jobs(self, inp: CinemaTakesInput, reg: Registry) -> list[PlannedJob]:
         spec = reg.models[inp.model_id]
         out = []
         for shot in inp.shots:
-            mode = take_mode(spec, shot)
+            mode = self._mode(inp, spec, shot)
             assert mode is not None
-            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode, shot, reg), tuple(sorted(shot.roles())),
+            # a mode picked for the voices also needs what the mentions fill (H3 reference: their pictures)
+            roles = shot.roles() | {s.role for s in mode.medias if s.required or s.min}
+            out += [PlannedJob(spec.id, mode.id, self._params(inp, spec, mode, shot, reg), tuple(sorted(roles)),
                                key=shot.key)] * inp.takes
             if self._voiced_after(inp, spec, shot, reg):
                 lines = _lines(shot)
                 voice = reg.models[inp.voice_model]
-                tts = mode_with_op(voice, "tts")
                 lip = reg.models[inp.lipsync_model_id]
-                lip_mode = lipsync_mode(lip, "video")
-                assert tts is not None and lip_mode is not None
-                out += [PlannedJob(voice.id, tts.id, _voice_params(line), prompt_chars=len(line.text), key=shot.key)
-                        for line in lines]
+                found = take_lipsync(lip)
+                assert found is not None
+                lip_mode, remake = found
+                for line in lines:
+                    mode, params, media = _speech(voice, line)
+                    out.append(PlannedJob(voice.id, mode.id, params, tuple(m["role"] for m in media),
+                                          prompt_chars=len(line.text), key=shot.key,
+                                          media=tuple((m["role"], m["asset_id"]) for m in media)))
                 speech = sum(len(x.text) for x in lines) / CHARS_PER_SECOND + LINE_GAP_S * (len(lines) - 1)
-                out += [PlannedJob(lip.id, lip_mode.id, {}, ("input_video", "input_audio"), planned_seconds=(
-                    ("input_video", float(shot.duration or 5)), ("input_audio", max(1.0, speech))),
-                    key=shot.key)] * inp.takes
+                seconds = float(shot.duration or 5)
+                out += [PlannedJob(lip.id, lip_mode.id, {}, ("character_image", "input_audio"), planned_seconds=(
+                    ("input_audio", max(seconds, speech)),), key=shot.key) if remake else
+                    PlannedJob(lip.id, lip_mode.id, {}, ("input_video", "input_audio"), planned_seconds=(
+                        ("input_video", seconds), ("input_audio", max(1.0, speech))), key=shot.key)] * inp.takes
         return out
 
     def plan(self, inp: CinemaTakesInput, settled: Settled, reg: Registry) -> list[StepSpec]:
@@ -358,12 +486,17 @@ class CinemaTakesRecipe(Recipe):
             media = [{"role": "start_image", "asset_id": start}] if start else []
             if shot.end_asset_id:
                 media.append({"role": "end_image", "asset_id": str(shot.end_asset_id)})
-            mode = take_mode(spec, shot)
+            mode = self._mode(inp, spec, shot)
             assert mode is not None
+            # voiced afterwards on a model that speaks: filmed without the lines, so it says nothing of its own
+            silent = self._voiced_after(inp, spec, shot, reg) and self._speaks(spec, mode, dict(inp.params), reg)
+            direction = shot.direction
+            if silent and direction:
+                direction = {k: v for k, v in direction.items() if k != "dialogue"}
             for n in range(1, inp.takes + 1):
                 specs.append(StepSpec(take_key(shot.key, n), StepKind.generate, f"{shot.key} take {n}", {
                     "model_id": spec.id, "mode": mode.id, "prompt": shot.prompt, "media": media,
-                    "params": self._params(inp, spec, mode, shot, reg), "direction": shot.direction,
+                    "params": self._params(inp, spec, mode, shot, reg), "direction": direction,
                     "project_id": str(inp.project_id), "shot_key": shot.key, "take": n,
                 }, deps, optional=True))
             if self._voiced_after(inp, spec, shot, reg):
@@ -375,34 +508,45 @@ class CinemaTakesRecipe(Recipe):
         """Each line voiced, the lines joined into one track, and each take lip-synced to it (a new take)."""
         lines = _lines(shot)
         voice = reg.models[inp.voice_model]
-        tts = mode_with_op(voice, "tts")
-        assert tts is not None
         pid = str(inp.project_id)
         keys = [line_key(shot.key, k) for k in range(1, len(lines) + 1)]
-        specs = [StepSpec(key, StepKind.generate, f"{shot.key} line {k}: {line.text[:40]}", {
-            "model_id": voice.id, "mode": tts.id, "prompt": line.text, "params": _voice_params(line),
-            "project_id": pid}, optional=True) for k, (key, line) in enumerate(zip(keys, lines, strict=True), 1)]
+        specs = []
+        for k, (key, line) in enumerate(zip(keys, lines, strict=True), 1):
+            mode, params, media = _speech(voice, line)
+            specs.append(StepSpec(key, StepKind.generate, f"{shot.key} line {k}: {line.text[:40]}", {
+                "model_id": voice.id, "mode": mode.id, "prompt": line.text, "params": params,
+                **({"media": media} if media else {}), "project_id": pid}, optional=True))  # earlier plans unchanged
         voiced = [ok(settled, k) for k in keys]
         if not all(voiced):
             return specs
+        lip = reg.models[inp.lipsync_model_id]
+        found = take_lipsync(lip)
+        assert found is not None
+        lip_mode, remake = found
+        # a remake is as long as the speech it's given: silence after the lines keeps it as long as the shot
+        pad = {"pad_to": float(shot.duration or 5)} if remake else {}
         specs.append(StepSpec(track_key(shot.key), StepKind.local, f"{shot.key} dialogue", {
             "op": "join_audio", "asset_ids": [v["asset_id"] for v in voiced if v], "gap": LINE_GAP_S,
-            "shot_key": shot.key, "title": f"Dialogue: {lines[0].text[:60]}"}, tuple(keys)))
+            "shot_key": shot.key, "title": f"Dialogue: {lines[0].text[:60]}", **pad}, tuple(keys)))
         track = ok(settled, track_key(shot.key))
         if track is None:
             return specs
-        lip = reg.models[inp.lipsync_model_id]
-        lip_mode = lipsync_mode(lip, "video")
-        assert lip_mode is not None
         for n in range(1, inp.takes + 1):
             take = ok(settled, take_key(shot.key, n))
-            if take is not None:
-                specs.append(StepSpec(lip_key(shot.key, n), StepKind.generate, f"{shot.key} take {n}: lip sync", {
-                    "model_id": lip.id, "mode": lip_mode.id, "prompt": "", "params": {},
-                    "media": [{"role": "input_video", "asset_id": take["asset_id"]},
-                              {"role": "input_audio", "asset_id": track["asset_id"]}],
-                    "project_id": pid, "shot_key": shot.key}, (take_key(shot.key, n), track_key(shot.key)),
-                    optional=True))
+            if take is None:
+                continue
+            source, deps = {"role": "input_video", "asset_id": take["asset_id"]}, (take_key(shot.key, n),)
+            if remake:
+                specs.append(StepSpec(face_key(shot.key, n), StepKind.local, f"{shot.key} take {n}: first frame",
+                                      {"op": "first_frame", "asset_id": take["asset_id"]}, deps))
+                frame = ok(settled, face_key(shot.key, n))
+                if frame is None:
+                    continue
+                source, deps = {"role": "character_image", "asset_id": frame["asset_id"]}, (face_key(shot.key, n),)
+            specs.append(StepSpec(lip_key(shot.key, n), StepKind.generate, f"{shot.key} take {n}: lip sync", {
+                "model_id": lip.id, "mode": lip_mode.id, "prompt": "" if lip_mode.prompt == "none" else shot.prompt,
+                "params": {}, "media": [source, {"role": "input_audio", "asset_id": track["asset_id"]}],
+                "project_id": pid, "shot_key": shot.key}, (*deps, track_key(shot.key)), optional=True))
         return specs
 
     def result(self, inp: CinemaTakesInput, settled: Settled) -> dict[str, Any] | None:
@@ -550,6 +694,7 @@ class CinemaSceneInput(BaseModel):
     scene_key: str = Field(pattern=KEY)
     shots: list[SceneShot] = Field(min_length=2, max_length=8)
     start_asset_id: uuid.UUID | None = Field(None, description="The first shot's picked hero frame")
+    dialogue_voices: Literal["characters", "model"] = "characters"  # as for cinema_takes
 
 
 class CinemaSceneRecipe(Recipe):
@@ -564,6 +709,11 @@ class CinemaSceneRecipe(Recipe):
     def _mode(self, inp: CinemaSceneInput, spec: ModelSpec) -> Mode | None:
         return multi_shot_mode(spec, frame=inp.start_asset_id is not None)
 
+    async def resolve(self, session: AsyncSession, user_id: uuid.UUID, inp: CinemaSceneInput,
+                      reg: Registry) -> CinemaSceneInput:
+        # a speaker with a saved voice has a voice of their own, which the scene's one take may not keep
+        return inp.model_copy(update={"shots": await fill_voices(session, user_id, inp.shots, "eleven-v4")})
+
     def validate(self, inp: CinemaSceneInput, reg: Registry) -> list[str]:
         spec = reg.model(inp.model_id)
         if spec is None or spec.output_type != "video":
@@ -571,6 +721,10 @@ class CinemaSceneRecipe(Recipe):
         if self._mode(inp, spec) is None:
             frame = " from a hero frame" if inp.start_asset_id else ""
             return [f"{spec.name} can't film several shots in one take{frame}"]
+        if (inp.dialogue_voices == "characters" and any(_voiced_lines(s) for s in inp.shots)
+                and not all(takes_voices(spec, self._mode(inp, spec), s) for s in inp.shots if _voiced_lines(s))):
+            return [f"{spec.name} would speak the scene's lines in its own voices. Film the shots one by one to keep "
+                    "each character's voice, or let the model use its own voices (Film settings)."]
         return []
 
     def _params(self, inp: CinemaSceneInput, spec: ModelSpec, mode: Mode, reg: Registry) -> dict[str, Any]:

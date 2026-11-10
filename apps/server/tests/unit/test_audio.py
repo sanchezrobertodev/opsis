@@ -282,3 +282,17 @@ def test_a_voice_id_cant_rewrite_the_elevenlabs_address():
         segment = url.removeprefix("text-to-speech/").removesuffix("/with-timestamps")
         assert "/" not in segment and "?" not in segment and segment not in (".", ".."), url
         assert str(httpx.URL(f"https://api.test/v1/{url}").path).startswith("/v1/text-to-speech/")
+
+
+async def test_a_dialogue_track_is_padded_with_silence_to_a_length(tmp_path):
+    from studio.media.ffmpeg import ffmpeg, probe
+    from studio.media.speech import join_speech
+
+    lines = []
+    for n, seconds in enumerate((1, 1.5)):
+        lines.append(tmp_path / f"line{n}.wav")
+        await ffmpeg("-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}", str(lines[-1]))
+    for paths, pad_to, expect in ((lines, 5.0, 5.0), (lines[:1], 4.0, 4.0), (lines, 1.0, 2.85)):
+        dest = tmp_path / "track.mp3"
+        await join_speech(paths, dest, gap=0.35, pad_to=pad_to)
+        assert abs((await probe(dest)).duration_ms / 1000 - expect) < 0.15  # a longer track is kept whole

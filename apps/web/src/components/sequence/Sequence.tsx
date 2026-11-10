@@ -12,7 +12,7 @@ import { useModel, useRegistry } from "@/lib/queries";
 import { type RunCreate, useEstimateRun, useStartRun } from "@/lib/runs";
 import { type Direction, DirectorPanel, mentionSlugs } from "@/components/create/DirectorPanel";
 import { MediaSlotField } from "@/components/create/MediaSlots";
-import { ModelPicker } from "@/components/create/ModelPicker";
+import { defaultModel, ModelPicker } from "@/components/create/ModelPicker";
 import { useClaudeCost } from "@/components/llm/ClaudeCost";
 import { Button, Segmented, Select, Slider, Switch } from "@/components/ui/controls";
 
@@ -66,7 +66,7 @@ export function Sequence() {
     (m) => m.output_type === "video" && m.modes.some((mode) => mode.ops.includes("i2v")),
   );
   const [modelId, setModelId] = useState<string | undefined>();
-  const model = modelId ?? models.find((m) => m.id === "kling-3.0")?.id ?? models[0]?.id;
+  const model = modelId ?? defaultModel(models, "kling-3.0");
   const { data: detail } = useModel(model);
   const [shots, setShots] = useState<Shot[]>([
     { id: 1, prompt: "", duration: null },

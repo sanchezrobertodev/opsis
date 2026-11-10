@@ -1222,6 +1222,26 @@ export interface paths {
         patch: operations["update_model_storage_local_engine_model_storage_patch"];
         trace?: never;
     };
+    "/local-engine/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Local Models
+         * @description Every model your own ComfyUI can run, and whether it can now (scripts/setup_local.py sets them up).
+         */
+        get: operations["local_models_local_engine_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/local-engine/choices": {
         parameters: {
             query?: never;
@@ -1877,6 +1897,16 @@ export interface components {
              * @description The voice to speak it with, when it's voiced separately
              */
             voice_id?: string | null;
+            /**
+             * Voice Sample Id
+             * @description A recording of the speaker's voice (filled by the studio)
+             */
+            voice_sample_id?: string | null;
+            /**
+             * Voice Sample Seconds
+             * @description How long that recording is (filled by the studio)
+             */
+            voice_sample_seconds?: number | null;
         };
         /** DialogueOut */
         DialogueOut: {
@@ -2632,6 +2662,20 @@ export interface components {
             /** Comfyui Version */
             comfyui_version?: string | null;
         };
+        /** LocalModelOut */
+        LocalModelOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Ready */
+            ready: boolean;
+            /**
+             * Reason
+             * @description Why a running ComfyUI can't run it yet, naming the fix
+             */
+            reason?: string | null;
+        };
         /** LookItem */
         LookItem: {
             /** Id */
@@ -2851,6 +2895,18 @@ export interface components {
              * @enum {string}
              */
             runs_on: "local" | "cloud_gpu" | "hosted";
+            /**
+             * Voices
+             * @description Speaks dialogue in a character's own voice, from a recording of it
+             * @default false
+             */
+            voices: boolean;
+            /**
+             * Local Ready
+             * @description This computer's engine can run it now, for free (a default to pick)
+             * @default false
+             */
+            local_ready: boolean;
         };
         /** MoveChoice */
         MoveChoice: {
@@ -4395,6 +4451,11 @@ export interface components {
             params: {
                 [key: string]: unknown;
             };
+            /**
+             * Sample Asset Id
+             * @description A recording of the voice (2-30 s): models that take reference audio speak with it
+             */
+            sample_asset_id?: string | null;
         };
     };
     responses: never;
@@ -6977,6 +7038,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    local_models_local_engine_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalModelOut"][];
                 };
             };
         };

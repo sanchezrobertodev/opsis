@@ -19,7 +19,7 @@ from studio.budget import modes
 from studio.config import get_settings
 from studio.db.models import Asset, Element, ElementAsset, ElementKind, User
 from studio.director.elements import unique_slug
-from studio.domain.enums import AssetKind
+from studio.domain.enums import AssetKind, AssetStatus
 from studio.media.ffmpeg import ffmpeg
 from studio.providers import elevenlabs
 from studio.providers.base import ProviderError
@@ -44,6 +44,8 @@ class VoiceIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model_id: str = "eleven-v4"
     params: dict[str, Any] = {}
+    sample_asset_id: uuid.UUID | None = Field(
+        None, description="A recording of the voice (2-30 s): models that take reference audio speak with it")
 
 
 def _check_voice(voice: VoiceIn) -> dict[str, Any]:
@@ -60,7 +62,26 @@ def _check_voice(voice: VoiceIn) -> dict[str, Any]:
         raise HTTPException(422, "; ".join(exc.errors)) from None
     if unknown := [w for w in req.warnings if "unknown parameter" in w]:
         raise HTTPException(422, "; ".join(unknown))
-    return {"model_id": spec.id, "params": {k: v for k, v in voice.params.items() if v is not None}}
+    out: dict[str, Any] = {"model_id": spec.id, "params": {k: v for k, v in voice.params.items() if v is not None}}
+    if voice.sample_asset_id:
+        out["sample_asset_id"] = str(voice.sample_asset_id)
+    return out
+
+
+SAMPLE_SECONDS = (2, 30)  # H3 takes 2-15 s of reference audio, Seedance up to 30 s
+
+
+async def _check_sample(session: AsyncSession, user: User, voice: VoiceIn | None) -> None:
+    """A voice sample must be one of your recordings, ready, and 2-30 s long."""
+    if voice is None or voice.sample_asset_id is None:
+        return
+    a = (await _owned_assets(session, user, [voice.sample_asset_id], images=False))[voice.sample_asset_id]
+    seconds = (a.duration_ms or 0) / 1000
+    if a.kind != AssetKind.audio or a.status != AssetStatus.ready:
+        raise HTTPException(422, "a voice sample must be a recording (an audio file)")
+    if not SAMPLE_SECONDS[0] <= seconds <= SAMPLE_SECONDS[1]:
+        raise HTTPException(422, f"a voice sample must last {SAMPLE_SECONDS[0]} to {SAMPLE_SECONDS[1]} s "
+                                 f"(this one is {seconds:.0f} s); 5 to 15 s of clear speech works best")
 
 
 class ElementCreate(BaseModel):
@@ -159,6 +180,7 @@ async def list_elements(kind: Kind | None = None, q: str | None = Query(None, ma
 async def create_element(body: ElementCreate, session: AsyncSession = Depends(get_session),
                          user: User = Depends(current_user)) -> ElementOut:
     assets = await _owned_assets(session, user, [i.asset_id for i in body.images])
+    await _check_sample(session, user, body.voice)
     e = Element(user_id=user.id, kind=ElementKind(body.kind), name=body.name.strip(),
                 slug=await unique_slug(session, user.id, body.name), description=body.description.strip(),
                 attributes=body.attributes, voice=_check_voice(body.voice) if body.voice else {})
@@ -220,10 +242,13 @@ async def clone_voice(body: CloneVoiceIn, session: AsyncSession = Depends(get_se
             raise HTTPException(502, f"ElevenLabs couldn't clone the voice: {exc.message}") from exc
         finally:
             shutil.rmtree(work, ignore_errors=True)
+    # a short recording of it, for models that take reference audio (H3 takes 2-15 s)
+    sample = next((a for a in sounds if a.kind == AssetKind.audio and 2 <= (a.duration_ms or 0) / 1000 <= 15), None)
     e = Element(user_id=user.id, kind=ElementKind.voice, name=body.name.strip(),
                 slug=await unique_slug(session, user.id, body.name), description="",
                 attributes={"samples": [str(a.id) for a in sounds]},
-                voice={"model_id": "eleven-v4", "params": {"voice_id": voice_id}},
+                voice={"model_id": "eleven-v4", "params": {"voice_id": voice_id},
+                       **({"sample_asset_id": str(sample.id)} if sample else {})},
                 cloned_voice_id=voice_id if live else None)
     session.add(e)
     await session.commit()
@@ -253,6 +278,7 @@ async def patch_element(element_id: uuid.UUID, body: ElementPatch, session: Asyn
         await _owned_assets(session, user, [body.cover_asset_id])  # only a picture of yours can be the cover
         e.cover_asset_id = body.cover_asset_id
     if body.voice is not None:
+        await _check_sample(session, user, body.voice)
         e.voice = _check_voice(body.voice)
     elif body.clear_voice:
         e.voice = {}
