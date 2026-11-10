@@ -379,13 +379,17 @@ async def upload(client, path: Path, mime: str) -> str:
     return r.json()["id"]
 
 
-async def character(client, name: str, sample: str | None = None, voice_id: str = "XrExE9yKIg1WjnnlVkGX") -> dict:
-    picture = await upload(client, ROOT / "fixtures" / "images" / "person.jpg", "image/jpeg")
-    voice = {"model_id": "eleven-v4", "params": {"voice_id": voice_id}, **({"sample_asset_id": sample} if sample else {})}
-    r = await client.post("/elements", json={"kind": "character", "name": name, "voice": voice,
-                                             "images": [{"asset_id": picture, "view": "front"}]})
+async def character(client, name: str, sample: str | None = None, voice_id: str | None = "XrExE9yKIg1WjnnlVkGX",
+                    picture: bool = True) -> str:
+    """A new character's @handle; the name gets a random ending, since the test database keeps every test's."""
+    images = [{"asset_id": await upload(client, ROOT / "fixtures" / "images" / "person.jpg", "image/jpeg"),
+               "view": "front"}] if picture else []
+    voice = {"model_id": "eleven-v4", "params": {"voice_id": voice_id} if voice_id else {},
+             **({"sample_asset_id": sample} if sample else {})}
+    r = await client.post("/elements", json={"kind": "character", "name": f"{name} {uuid.uuid4().hex[:6]}",
+                                             "voice": voice, "images": images})
     assert r.status_code == 201, r.text
-    return r.json()
+    return r.json()["handle"]
 
 
 async def test_characters_keep_their_voices_on_models_that_speak_their_own(client, in_memory_queue):
@@ -407,13 +411,13 @@ async def test_characters_keep_their_voices_on_models_that_speak_their_own(clien
 
 async def test_h3_speaks_in_the_characters_voice_sample(client, in_memory_queue):
     speech = await upload(client, ROOT / "fixtures" / "audio" / "line.mp3", "audio/mpeg")  # 5.5 s
-    await character(client, "Nova", sample=speech)
-    await character(client, "Kai", voice_id="nPczCjzI2devNBz1zQrb")  # no recording of Kai's voice
+    nova = await character(client, "Nova", sample=speech)
+    kai = await character(client, "Kai", voice_id="nPczCjzI2devNBz1zQrb")  # no recording of Kai's voice
     p = await new_project(client)
-    shots = [{"key": "sone", "prompt": "@nova turns from the window", "duration": 5,
-              "direction": {"dialogue": [{"who": "@nova", "text": "It goes dark tonight."}]}},
-             {"key": "stwo", "prompt": "@kai in the doorway", "duration": 5,
-              "direction": {"dialogue": [{"who": "@kai", "text": "Then we light it by hand."}]}}]
+    shots = [{"key": "sone", "prompt": f"{nova} turns from the window", "duration": 5,
+              "direction": {"dialogue": [{"who": nova, "text": "It goes dark tonight."}]}},
+             {"key": "stwo", "prompt": f"{kai} in the doorway", "duration": 5,
+              "direction": {"dialogue": [{"who": kai, "text": "Then we light it by hand."}]}}]
     run = await start(client, "cinema_takes", project_id=p["id"], model_id="minimax-h3", takes=1, shots=shots)
     await drain(in_memory_queue)
     done = await get(client, run["id"])
@@ -444,12 +448,11 @@ async def test_h3_speaks_in_the_characters_voice_sample(client, in_memory_queue)
 
 async def test_speakers_sharing_a_voice_share_its_recording(client, in_memory_queue):
     speech = await upload(client, ROOT / "fixtures" / "audio" / "line.mp3", "audio/mpeg")
-    for name in ("Nova", "Kai"):
-        await character(client, name, sample=speech)
+    nova, kai = [await character(client, name, sample=speech) for name in ("Nova", "Kai")]
     p = await new_project(client)
     run = await start(client, "cinema_takes", project_id=p["id"], model_id="minimax-h3", takes=1, shots=[
-        {"key": "sone", "prompt": "@nova and @kai at the window", "duration": 5, "direction": {"dialogue": [
-            {"who": "@nova", "text": "It goes dark tonight."}, {"who": "@kai", "text": "Then we light it."}]}}])
+        {"key": "sone", "prompt": f"{nova} and {kai} at the window", "duration": 5, "direction": {"dialogue": [
+            {"who": nova, "text": "It goes dark tonight."}, {"who": kai, "text": "Then we light it."}]}}])
     await drain(in_memory_queue)
     done = await get(client, run["id"])
     assert done["status"] == "succeeded", done["error"]
@@ -462,12 +465,10 @@ async def test_speakers_sharing_a_voice_share_its_recording(client, in_memory_qu
 
 async def test_a_voice_that_is_only_a_recording_is_kept_or_refused(client, in_memory_queue):
     speech = await upload(client, ROOT / "fixtures" / "audio" / "line.mp3", "audio/mpeg")
-    r = await client.post("/elements", json={"kind": "character", "name": "Nova", "voice": {
-        "model_id": "eleven-v4", "params": {}, "sample_asset_id": speech}})
-    assert r.status_code == 201, r.text
+    nova = await character(client, "Nova", sample=speech, voice_id=None)
     p = await new_project(client)
-    shots = [{"key": "sone", "prompt": "Nova turns", "duration": 5,
-              "direction": {"dialogue": [{"who": "@nova", "text": "It goes dark tonight."}]}}]
+    shots = [{"key": "sone", "prompt": f"{nova} turns", "duration": 5,
+              "direction": {"dialogue": [{"who": nova, "text": "It goes dark tonight."}]}}]
     # Kling can't take the recording, and Eleven v4 can't speak from one
     r = await client.post("/pipelines/estimate", json={"recipe": "cinema_takes", "input": {
         "project_id": p["id"], "model_id": "kling-3.0", "shots": shots}})
@@ -611,7 +612,8 @@ async def test_old_free_text_dialogue_becomes_lines(client):
 
 async def test_a_scene_with_dialogue_turns_the_sound_on(client, in_memory_queue):
     p = await new_project(client)
-    scene = [{"key": "sone", "prompt": "Nova at the window", "duration": 4, "direction": {"dialogue": DIALOGUE[:1]}}]
+    scene = [{"key": "sone", "prompt": "Nova at the window", "duration": 4, "direction": {"dialogue": DIALOGUE[:1]}},
+             {"key": "stwo", "prompt": "Kai in the doorway", "duration": 4}]
     r = await client.post("/pipelines", json={"recipe": "cinema_scene", "input": {
         "project_id": p["id"], "model_id": "kling-3.0", "scene_key": "cone", "shots": scene}})
     assert r.status_code == 422 and "one by one" in r.text, r.text  # Kling would lose Nova's voice
