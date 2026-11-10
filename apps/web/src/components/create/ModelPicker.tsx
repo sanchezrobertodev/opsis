@@ -40,6 +40,12 @@ function price(m: ModelSummary): string | null {
 
 const isOpen = (m: ModelSummary) => m.license_tier.startsWith("open");
 
+/** Models as plain select options: the ones on this computer first, each marked free or paid. */
+export function modelOptions(models: ModelSummary[]) {
+  return [...models].sort((a, b) => Number(b.runs_on === "local") - Number(a.runs_on === "local"))
+    .map((m) => ({ value: m.id, label: `${m.name} · ${m.runs_on === "local" ? "free on your GPU" : "paid"}` }));
+}
+
 export function ModelPicker({
   models,
   value,

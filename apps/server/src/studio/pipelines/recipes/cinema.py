@@ -214,8 +214,20 @@ def _lines(shot: TakeShot | SceneShot) -> list[DialogueLine]:
     return [DialogueLine.model_validate(x) for x in (shot.direction or {}).get("dialogue") or []]
 
 
-def _voice_params(line: DialogueLine) -> dict[str, Any]:
-    return {"voice_id": line.voice_id} if line.voice_id else {}
+def clone_mode(voice: ModelSpec) -> Mode | None:
+    """A speech mode that speaks in the voice of a recording (Qwen3-TTS's clone)."""
+    return next((m for m in voice.modes if "tts" in m.ops and (s := m.slot("audio_references")) and s.required), None)
+
+
+def _speech(voice: ModelSpec, line: DialogueLine) -> tuple[Mode, dict[str, Any], list[dict[str, str]]]:
+    """How `voice` speaks a line: in the speaker's voice id for it, else from their recording when it can clone one,
+    else in its default voice. Returns the mode, its params and its media."""
+    clone = clone_mode(voice)
+    if line.voice_id or not (line.voice_sample_id and clone):
+        tts = mode_with_op(voice, "tts")
+        assert tts is not None
+        return tts, ({"voice_id": line.voice_id} if line.voice_id else {}), []
+    return clone, {}, [{"role": "audio_references", "asset_id": line.voice_sample_id}]
 
 
 def _voiced_lines(shot: TakeShot | SceneShot) -> list[DialogueLine]:
@@ -357,7 +369,7 @@ class CinemaTakesRecipe(Recipe):
                 return [f"{spec.name} doesn't voice dialogue, and {inp.voice_model!r} can't speak the lines"]
             if lip is None or lipsync_mode(lip, "video") is None:
                 return [f"{spec.name} doesn't voice dialogue, and {inp.lipsync_model_id!r} can't lip-sync a take"]
-            if inp.dialogue_voices == "characters":
+            if inp.dialogue_voices == "characters" and clone_mode(voice) is None:
                 lost = sorted({x.who for s in inp.shots if self._voiced_after(inp, spec, s, reg)
                                for x in _voiced_lines(s) if not x.voice_id})
                 if lost:
@@ -418,12 +430,14 @@ class CinemaTakesRecipe(Recipe):
             if self._voiced_after(inp, spec, shot, reg):
                 lines = _lines(shot)
                 voice = reg.models[inp.voice_model]
-                tts = mode_with_op(voice, "tts")
                 lip = reg.models[inp.lipsync_model_id]
                 lip_mode = lipsync_mode(lip, "video")
-                assert tts is not None and lip_mode is not None
-                out += [PlannedJob(voice.id, tts.id, _voice_params(line), prompt_chars=len(line.text), key=shot.key)
-                        for line in lines]
+                assert lip_mode is not None
+                for line in lines:
+                    mode, params, media = _speech(voice, line)
+                    out.append(PlannedJob(voice.id, mode.id, params, tuple(m["role"] for m in media),
+                                          prompt_chars=len(line.text), key=shot.key,
+                                          media=tuple((m["role"], m["asset_id"]) for m in media)))
                 speech = sum(len(x.text) for x in lines) / CHARS_PER_SECOND + LINE_GAP_S * (len(lines) - 1)
                 out += [PlannedJob(lip.id, lip_mode.id, {}, ("input_video", "input_audio"), planned_seconds=(
                     ("input_video", float(shot.duration or 5)), ("input_audio", max(1.0, speech))),
@@ -479,13 +493,14 @@ class CinemaTakesRecipe(Recipe):
         """Each line voiced, the lines joined into one track, and each take lip-synced to it (a new take)."""
         lines = _lines(shot)
         voice = reg.models[inp.voice_model]
-        tts = mode_with_op(voice, "tts")
-        assert tts is not None
         pid = str(inp.project_id)
         keys = [line_key(shot.key, k) for k in range(1, len(lines) + 1)]
-        specs = [StepSpec(key, StepKind.generate, f"{shot.key} line {k}: {line.text[:40]}", {
-            "model_id": voice.id, "mode": tts.id, "prompt": line.text, "params": _voice_params(line),
-            "project_id": pid}, optional=True) for k, (key, line) in enumerate(zip(keys, lines, strict=True), 1)]
+        specs = []
+        for k, (key, line) in enumerate(zip(keys, lines, strict=True), 1):
+            mode, params, media = _speech(voice, line)
+            specs.append(StepSpec(key, StepKind.generate, f"{shot.key} line {k}: {line.text[:40]}", {
+                "model_id": voice.id, "mode": mode.id, "prompt": line.text, "params": params,
+                **({"media": media} if media else {}), "project_id": pid}, optional=True))  # earlier plans unchanged
         voiced = [ok(settled, k) for k in keys]
         if not all(voiced):
             return specs

@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Qwen3-TTS (Qwen, Apache 2.0 code and weights; checked on Hugging Face 2026-11-09) on your own ComfyUI through the
+# ComfyUI-Qwen-TTS node pack (flybirdxx). Voices and their descriptions are Qwen's model card's; each speaks all ten
+# languages, best its own.
+id: qwen3-tts
+name: Qwen3-TTS (local)
+family: qwen
+vendor: alibaba
+description: >-
+  Open-weights text to speech on your own GPU. Free: nine stock voices, or any voice from a 2-30 s recording (a
+  character's voice sample). Ten languages.
+output_type: audio
+status: active
+license_tier: open_permissive   # Apache 2.0
+tags: [local, free, open-weights, voice]
+prompt: {max_chars: 1000, dialect: speech}
+
+parameters:
+  - name: voice_id
+    label: Voice
+    type: enum
+    modes: [tts]
+    default: Ryan
+    options: [Ryan, Aiden, Vivian, Serena, Uncle_fu, Dylan, Eric, Ono_anna, Sohee]
+    labels:
+      Ryan: "Ryan: dynamic English male"
+      Aiden: "Aiden: sunny American male"
+      Vivian: "Vivian: bright young Chinese female"
+      Serena: "Serena: warm, gentle Chinese female"
+      Uncle_fu: "Uncle Fu: low, mellow older Chinese male"
+      Dylan: "Dylan: youthful Beijing male"
+      Eric: "Eric: lively Chengdu male"
+      Ono_anna: "Ono Anna: playful Japanese female"
+      Sohee: "Sohee: warm Korean female"
+  - name: language
+    type: enum
+    default: Auto
+    options: [Auto, English, Chinese, Japanese, Korean, French, German, Spanish, Portuguese, Russian, Italian]
+    group: advanced
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: tts
+    label: Text to speech
+    ops: [tts]
+  - id: clone
+    label: A voice from a recording
+    ops: [tts]
+    medias:
+      - {role: audio_references, kinds: [audio], label: Voice recording, required: true, min_duration_s: 2,
+         max_duration_s: 30}
+
+routes:
+  - id: qwen3-tts@comfy_local
+    provider: comfy_local
+    modes:
+      tts: {endpoint: local_qwen_tts}
+      clone: {endpoint: local_qwen_clone}
+    map:
+      media: {audio_references: voice_sample}
+    pricing:
+      basis: per_request
+      rates: [{usd: 0}]
+      verified: 2026-11-09
+      source: your own GPU
+    eta: "30"  # an estimate for a line; the first run also downloads the model (4.5 GB)
+    timeout_s: 1800
+    output: {path: outputs, kind: audio}
+    notes: >-
+      Needs the ComfyUI-Qwen-TTS node pack (github.com/flybirdxx/ComfyUI-Qwen-TTS), which downloads each model on its
+      first use: 4.5 GB for the stock voices, 4.5 GB for cloning, into ComfyUI's models/qwen-tts/.
+
+examples:
+  - name: tts_smoke
+    mode: tts
+    prompt: The lighthouse keeper climbed the stairs one last time.
+    params: {voice_id: Aiden}
+    smoke: true
+    expect: {cost_usd_range: [0, 0]}
+  - name: clone
+    mode: clone
+    prompt: Then we light it by hand.
+    media: {audio_references: "fixture:audio/line.mp3"}

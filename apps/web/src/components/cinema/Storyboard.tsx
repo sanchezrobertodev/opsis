@@ -23,6 +23,7 @@ import { useModel, useRegistry, useRemove } from "@/lib/queries";
 import { useEstimateRun } from "@/lib/runs";
 import type { RunCreate } from "@/lib/runs";
 import { type Direction, DirectorPanel, mentionSlugs } from "@/components/create/DirectorPanel";
+import { modelOptions } from "@/components/create/ModelPicker";
 import { AspectPicker, Button, Field, Segmented, Select, Slider } from "@/components/ui/controls";
 import { ConfirmDelete, reportRemoval, SelectButton, SelectionBar, SelectMark, useSelection } from "@/components/ui/Selection";
 import type { Launch } from "./Editor";
@@ -838,14 +839,16 @@ function FilmSettings({ doc, update }: { doc: CinemaDoc; update: Update }) {
                    onChange={(v) => set({ dialogue_voices: v })} />
       </Field>
       <Field label="Lines voiced with" htmlFor="voice-model"
-             hint="Speaks each line in its speaker's voice when the take doesn't say it.">
+             hint={speakers.find((m) => m.id === (s.voice_model ?? "eleven-v4"))?.runs_on === "local"
+               ? "Speaks each line the take doesn't say, in its speaker's voice sample (set on their page), else its default voice."
+               : "Speaks each line in its speaker's voice when the take doesn't say it."}>
         <Select id="voice-model" value={s.voice_model ?? "eleven-v4"} onChange={(v) => set({ voice_model: v })}
-                options={speakers.map((m) => ({ value: m.id, label: m.name }))} />
+                options={modelOptions(speakers)} />
       </Field>
       <Field label="Lip-synced with" htmlFor="lipsync-model"
              hint="Moves the mouths in each take to its voiced lines.">
         <Select id="lipsync-model" value={s.lipsync_model_id ?? "sync-lipsync-3"} onChange={(v) => set({ lipsync_model_id: v })}
-                options={lipsyncers.map((m) => ({ value: m.id, label: m.name }))} />
+                options={modelOptions(lipsyncers)} />
       </Field>
       <Field label="Opening frames on" htmlFor="frame-model">
         <Select id="frame-model" value={s.image_model_id} onChange={(v) => set({ image_model_id: v })}

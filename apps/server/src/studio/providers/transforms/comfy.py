@@ -178,3 +178,23 @@ def upscaled_size(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -
     factor = float(req.params.get("scale", 2))
     payload["width"], payload["height"] = round(w * factor / 2) * 2, round(h * factor / 2) * 2
     return payload
+
+
+# InfiniteTalk (local_infinitetalk): 81 frames at 25 fps a pass, 72 more per extension (9 carried over), 3 extensions
+TALK_FPS, TALK_FIRST, TALK_MORE, TALK_EXTENSIONS = 25, 81, 72, 3
+TALK_MAX_SECONDS = (TALK_FIRST + TALK_MORE * TALK_EXTENSIONS) / TALK_FPS  # 11.88 s
+
+
+def infinitetalk_passes(*, spec: Any, route: Any, req: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    """Size the clip like the picture at 480p, turn on the extensions the speech needs and trim to the speech."""
+    picture = next((m for m in req.media if m.role == "character_image"), None)
+    w, h = (picture.width, picture.height) if picture is not None and picture.width and picture.height else (16, 9)
+    payload["width"], payload["height"] = WAN14B_SIZES[("480p", "16:9" if w > h * 1.2 else "9:16" if h > w * 1.2 else "1:1")]
+    speech = sum(m.duration_ms or 0 for m in req.media if m.role == "input_audio") / 1000
+    frames = max(5, min(math.ceil(speech * TALK_FPS) + 1, int(TALK_MAX_SECONDS * TALK_FPS)))
+    for k in range(1, TALK_EXTENSIONS + 1):
+        payload.pop(f"extend_{k}", None)
+        if frames > TALK_FIRST + TALK_MORE * (k - 1):
+            payload[f"extend_{k}"] = 9  # the motion frames it carries on from
+    payload["frames"] = frames
+    return payload

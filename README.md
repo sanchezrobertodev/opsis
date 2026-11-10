@@ -143,7 +143,7 @@ change the ports; rebuild after changing the API's, since the web app is built f
 
 Local routes are free, work offline and run in every mode, mock included. You need
 [ComfyUI](https://github.com/comfyanonymous/ComfyUI) 0.34 (portable or manual install) and an NVIDIA GPU with 12 GB of
-VRAM or more. The workflows use only built-in nodes, so no custom nodes are needed.
+VRAM or more. The video and image workflows use only built-in nodes; local voices need one node pack (below).
 
 1. Download the model files below into ComfyUI's `models/` folder, or let the downloader do it:
    `uv run python infra/runpod/wan-core/fetch_models.py --local --dest <ComfyUI>/models --group wan5b --group flux-klein`.
@@ -200,6 +200,7 @@ download groups that fetch them.
 | Uni3C: the camera of a reference clip | `core`, `uni3c` | 16 GB |
 | Wan Animate-2: motion transfer | `animate2`, `wan-shared` | 24 GB |
 | Wan VACE: masked edits (Object swap) | `vace`, `wan-shared` | 24 GB |
+| InfiniteTalk: a picture and a voice to a talking clip (480p, up to 11.8 s; Lipsync, Talking shot) | `infinitetalk` | 12 GB |
 
 ```bash
 uv run python infra/runpod/wan-core/fetch_models.py --local --dest <ComfyUI>/models --group ltx
@@ -211,6 +212,16 @@ ComfyUI notices new files within a minute. The memory figures and run times are 
 RunPod's 96 GB card and haven't been measured on a consumer one. Weights larger than the card are streamed from system
 RAM, which is slower, so 64 GB of RAM helps. LTX-2.5 and Animate-2 use int8 files made for the comfy-kitchen kernels
 that ComfyUI 0.34's CUDA 13 build (the portable download) turns on.
+
+### Voices on your GPU
+
+**Qwen3-TTS (local)** (Apache-2.0) speaks text in nine stock voices, or in the voice of a 2 to 30 s recording: give a
+character a voice sample on their page, pick Qwen3-TTS under Film settings > Lines voiced with, and Cinema Studio
+voices that character's lines from it. It needs the
+[ComfyUI-Qwen-TTS](https://github.com/flybirdxx/ComfyUI-Qwen-TTS) node pack (install it with ComfyUI-Manager, or clone
+it into `custom_nodes/` and `pip install -r requirements.txt` with ComfyUI's Python). The pack downloads each model on
+its first use into `models/qwen-tts/`: 4.5 GB for the stock voices, 4.5 GB more for cloning. Until the pack is there,
+its route names the missing pack.
 
 ### Your own workflows
 

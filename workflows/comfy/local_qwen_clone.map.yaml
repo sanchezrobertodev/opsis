@@ -1,0 +1,13 @@
+# Qwen3-TTS 1.7B Base (Qwen, Apache 2.0): text in the voice of a short recording (x-vector only, so no transcript of the
+# recording is needed). Needs the ComfyUI-Qwen-TTS node pack (flybirdxx, checked at v1.0.7 2026-11-09); on its first run
+# it downloads the model (4.5 GB) to models/qwen-tts/.
+description: Qwen3-TTS 1.7B, a voice cloned from a recording
+pack: {name: ComfyUI-Qwen-TTS, url: "https://github.com/flybirdxx/ComfyUI-Qwen-TTS"}
+inputs:
+  prompt: [{node: "2", input: target_text}]
+  voice_sample: [{node: "1", input: audio}]
+  language: [{node: "2", input: language}]
+  seed: [{node: "2", input: seed}]
+  filename_prefix: [{node: "3", input: filename_prefix}]
+outputs:
+  - {node: "3", kind: audio}

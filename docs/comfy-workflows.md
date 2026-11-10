@@ -67,6 +67,8 @@ Fix a wrong guess by editing the node ids. Two more things the map can say:
   chain uses `bypass` instead: with no LoRA picked, `optional: {lora: {node: "90", bypass: [model]}}` drops the
   loader and links what it fed to its own `model` input (a `LoraLoader` passes `[model, clip]`).
 - `outputs:` lists the save nodes and what they make.
+- `pack: {name, url}` names the custom node pack a graph needs (ComfyUI-Qwen-TTS for the local voices), so a
+  ComfyUI without its nodes is told which pack to install.
 
 **The model** (`data/registry/models/.../<id>.yaml`):
 

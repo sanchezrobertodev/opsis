@@ -676,6 +676,44 @@ async def _done(value):
     return value
 
 
+async def test_a_missing_node_pack_is_named(monkeypatch):
+    from studio.providers import local_status
+
+    route = REG.models["qwen3-tts"].route("qwen3-tts@comfy_local")
+    a = adapter()
+
+    async def stats(_url):
+        return {"devices": [{"vram_total": 12 * 2**30}]}
+
+    monkeypatch.setattr(local_status, "comfy_stats", stats)
+    monkeypatch.setattr(a, "_object_info", lambda classes: _done({"SaveAudio": {"input": {"required": {}}}}))
+    why = await a.unavailable(route, "tts")
+    assert why == ("ComfyUI has no FB_Qwen3TTSCustomVoice node; install the ComfyUI-Qwen-TTS node pack "
+                   "(https://github.com/flybirdxx/ComfyUI-Qwen-TTS)")
+
+
+def test_infinitetalk_runs_as_many_passes_as_the_speech_needs():
+    from types import SimpleNamespace
+
+    from studio.providers.comfy_workflows import load_template, registry_workflow_dirs
+    from studio.providers.transforms.comfy import infinitetalk_passes
+
+    spec = REG.models["infinitetalk"]
+    route = spec.route("infinitetalk@comfy_local")
+    template = load_template(registry_workflow_dirs(), "local_infinitetalk")
+    for seconds, frames, passes in ((2, 51, 0), (3.5, 89, 1), (7, 176, 2), (11.8, 296, 3)):
+        req = SimpleNamespace(media=[
+            SimpleNamespace(role="character_image", width=1280, height=720, duration_ms=None),
+            SimpleNamespace(role="input_audio", width=None, height=None, duration_ms=seconds * 1000)])
+        payload: dict = {}
+        infinitetalk_passes(spec=spec, route=route, req=req, payload=payload)
+        assert payload["frames"] == frames and [payload.get(f"extend_{k}") for k in (1, 2, 3)] == (
+            [9] * passes + [None] * (3 - passes))
+        graph, _ = template.render(payload)
+        last = graph["60"]["inputs"]["image"][0]  # the clip comes from the last pass that ran
+        assert last == {0: "25", 1: "37", 2: "47", 3: "57"}[passes]
+
+
 async def test_a_comfyui_too_busy_to_answer_reads_as_running(monkeypatch):
     import respx
 
@@ -791,3 +829,16 @@ def test_choices_endpoint_says_when_comfyui_is_off(monkeypatch):
     off = client.get("/local-engine/choices", params={"field": "LoraLoaderModelOnly.lora_name"}).json()
     assert not off["available"] and "Is it running?" in off["message"]
     assert client.get("/local-engine/choices", params={"field": "../etc"}).status_code == 422
+
+
+def test_local_infinitetalk_takes_at_most_its_passes_of_speech():
+    from types import SimpleNamespace
+
+    from studio.registry.routing import NormalizedRequest, _constraint_violation
+
+    route = REG.models["infinitetalk"].route("infinitetalk@comfy_local")
+    for seconds, why in ((11.8, None), (12.5, "takes at most 11.8 s of input_audio (12.5 s given)")):
+        media = [SimpleNamespace(role="input_audio", duration_ms=seconds * 1000)]
+        req = NormalizedRequest("infinitetalk", "avatar", "hi", None, {"resolution": "480p"}, media)
+        assert _constraint_violation(route, req) == why
+

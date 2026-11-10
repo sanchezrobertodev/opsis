@@ -137,7 +137,9 @@ class ComfyLocalAdapter(ProviderAdapter):
         files = model_files()
         classes, missing = unavailable_choices(template, info, files, _picked(route, mode, template))
         if classes:
-            return f"ComfyUI has no {', '.join(classes)} node; update ComfyUI to 0.34 or newer"
+            pack = template.map.pack
+            how = f"install the {pack.name} node pack ({pack.url})" if pack else "update ComfyUI to 0.34 or newer"
+            return f"ComfyUI has no {', '.join(classes)} node; {how}"
         if not missing:
             return None
         size = sum(files[name].get("bytes", 0) for name in missing if name in files)

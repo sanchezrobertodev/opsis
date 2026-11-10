@@ -5,8 +5,8 @@ name: InfiniteTalk
 family: wan
 vendor: meigen
 description: >-
-  Open-weights talking video (Wan-based) from a picture and a voice track, made for long speech. Runs on RunPod's
-  public endpoint at a flat price per clip.
+  Open-weights talking video (Wan-based) from a picture and a voice track. Free on your own GPU (480p, up to 11.8 s),
+  or on RunPod's public endpoint at a flat price per clip for long speech.
 output_type: video
 status: active
 license_tier: open_permissive
@@ -46,6 +46,28 @@ routes:
     notes: >-
       Priced per clip, not per second, so long speech is where it pays off. Adding its graph to wan-core would cost
       volume space and GPU time for no saving, so it stays on the public endpoint.
+
+  - id: infinitetalk@comfy_local
+    provider: comfy_local
+    modes:
+      avatar: {endpoint: local_infinitetalk}
+    transform: studio.providers.transforms.comfy:infinitetalk_passes
+    min_vram_gb: 12  # an estimate: Wan 2.1 14B in fp8 with ComfyUI moving weights to RAM; not yet run on 12 GB
+    constraints:
+      resolution: {options: ["480p"]}
+      media.input_audio: {max_seconds: 11.8}  # a first pass and three extensions
+    map:
+      params: {resolution: {to: null}}
+      media: {character_image: start_image, input_audio: input_audio}
+    pricing: {basis: per_request, rates: [{usd: 0}], verified: 2026-11-09, source: your own GPU}
+    # an estimate per pass of 81 frames (6 steps) until it's timed on a 12 GB card
+    eta: "240 * (1 + max(0, ceil((input_audio_seconds * 25 - 80) / 72)))"
+    timeout_s: 5400
+    output: {path: outputs, kind: video}
+    notes: >-
+      Free on your own GPU, from ComfyUI's own nodes (no node pack). 480p, up to 11.8 s of speech a clip; longer
+      speech goes to RunPod. The model files: fetch_models.py --local --group infinitetalk (about 30 GB with the
+      shared Wan files).
 
 examples:
   - name: avatar_smoke
