@@ -141,37 +141,62 @@ change the ports; rebuild after changing the API's, since the web app is built f
 
 ## Open models on your GPU
 
-Local routes are free, work offline and run in every mode, mock included. You need
-[ComfyUI](https://github.com/comfyanonymous/ComfyUI) 0.34 (portable or manual install) and an NVIDIA GPU with 12 GB of
-VRAM or more. The video and image workflows use only built-in nodes; local voices need one node pack (below).
+Local models are free, work offline and run in every mode, mock included. You need
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI) 0.34 (the portable download on Windows, or a manual install) and an
+NVIDIA GPU with 12 GB of memory or more.
 
-1. Download the model files below into ComfyUI's `models/` folder, or let the downloader do it:
-   `uv run python infra/runpod/wan-core/fetch_models.py --local --dest <ComfyUI>/models --group wan5b --group flux-klein`.
-2. Start ComfyUI on its default port. `.env` already points there: `COMFYUI_URL=http://127.0.0.1:8188`.
-3. Restart `pnpm dev`, then pick **Wan 2.2 5B (local)** in Create video or **FLUX.2 klein 4B (local)** in Create
-   image.
+1. Start ComfyUI on its default port. `.env` already points there: `COMFYUI_URL=http://127.0.0.1:8188`.
+2. In the Opsis folder, on the computer that runs ComfyUI, see what fits your GPU:
 
-**Wan 2.2 TI2V 5B** (Apache-2.0): text or a picture to video.
+   ```bash
+   uv run python scripts/setup_local.py
+   ```
 
-| File | Folder | Source |
+   It lists every local model as ready, too big for your GPU, or with what it still needs: a node pack, model files
+   and how many GB.
+3. Set up the ones you want, or every one that fits:
+
+   ```bash
+   uv run python scripts/setup_local.py --model wan-2.2-5b --model flux-2-klein-4b
+   uv run python scripts/setup_local.py --fits
+   ```
+
+   It says what it will do and asks first. It clones a model's node packs into `custom_nodes/` at the commit Opsis was
+   checked against, and installs their Python packages into ComfyUI's own Python, without changing its torch,
+   transformers or numpy. Then it downloads the model files into the folders ComfyUI reads; a download that stops
+   resumes where it left off. Restart ComfyUI when a node pack was added; new model files are seen within a minute.
+
+**Settings > Free models on your GPU** shows which local models are ready and what the others are missing. The model
+pickers list them first, marked free, and a form starts on one once it's ready. A model that also runs on RunPod or a hosted API runs on your GPU first, for free, once ComfyUI can run
+it.
+
+| Model | What it does | GPU memory |
 |---|---|---|
-| `wan2.2_ti2v_5B_fp16.safetensors` | `diffusion_models/` | [Comfy-Org/Wan_2.2_ComfyUI_Repackaged](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/diffusion_models) |
-| `wan2.2_vae.safetensors` | `vae/` | [Comfy-Org/Wan_2.2_ComfyUI_Repackaged](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae) |
-| `umt5_xxl_fp8_e4m3fn_scaled.safetensors` | `text_encoders/` | [Comfy-Org/Wan_2.1_ComfyUI_repackaged](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/tree/main/split_files/text_encoders) |
+| Wan 2.2 5B (local) | Text or a picture to video | 12 GB |
+| FLUX.2 klein 4B (local) | Text to image, upscaled 1.5× | 12 GB |
+| ESRGAN upscale (local) | A clip of up to 5 s and 720p made 2 to 4 times bigger (Edit video > Upscale) | 6 GB |
+| Qwen3-TTS (local) | Speech in nine stock voices, or in a character's voice from a recording (node pack) | 12 GB |
+| InfiniteTalk | A picture and a voice to a talking clip, 480p, up to 11.8 s (Lipsync, Talking shot) | 12 GB |
+| InfiniteTalk dub (local) | The mouths in a clip moved to a voice, 480p, up to 15 s (node pack) | 12 GB |
+| Wan 2.2 14B Fast | A picture to video | 16 GB |
+| Wan 2.2 Fun Camera | Camera moves from a picture | 16 GB |
+| Wan-Move | Motion paths drawn on a picture | 16 GB |
+| Wan 2.2 camera copy (Uni3C) | The camera of a reference clip | 16 GB |
+| LTX-2.5 | Text, a picture, or a first and last frame to video, with sound | 24 GB |
+| Wan Animate-2 | Motion transfer | 24 GB |
+| Wan VACE masked edit | Masked edits (Object swap) | 24 GB |
 
-On a recent 12 GB card a draft take (768×448, 3 s) takes about 70 seconds, and a standard one (1280×704, 5 s) about
-seven minutes. The first job after ComfyUI starts also loads the model, about 40 seconds more.
+The memory figures and run times are estimates, apart from Wan 2.2 5B and FLUX.2 klein: the bigger graphs were tuned
+on RunPod's 96 GB card and haven't been measured on a consumer one. Weights larger than the card are streamed from
+system RAM, which is slower, so 64 GB of RAM helps. LTX-2.5 and Animate-2 use int8 files made for the comfy-kitchen
+kernels that ComfyUI 0.34's CUDA 13 build (the portable download) turns on. LTX-2.5's files are gated: accept the
+license at [huggingface.co/Lightricks/LTX-2.5](https://huggingface.co/Lightricks/LTX-2.5) and set `HF_TOKEN` first.
+Every file, its folder and its source are listed in
+[`infra/runpod/wan-core/models.yaml`](infra/runpod/wan-core/models.yaml).
 
-**FLUX.2 klein 4B** (Apache-2.0): text to image, upscaled 1.5× with the NMKD Siax ESRGAN model.
-
-| File | Folder | Source |
-|---|---|---|
-| `flux-2-klein-base-4b-fp8.safetensors` | `diffusion_models/` | [black-forest-labs/FLUX.2-klein-base-4b-fp8](https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4b-fp8) |
-| `qwen_3_4b.safetensors` | `text_encoders/` | [Comfy-Org/flux2-klein-4B](https://huggingface.co/Comfy-Org/flux2-klein-4B/tree/main/split_files/text_encoders) |
-| `flux2-vae.safetensors` | `vae/` | [Comfy-Org/flux2-dev](https://huggingface.co/Comfy-Org/flux2-dev/tree/main/split_files/vae) |
-| `4x_NMKD-Siax_200k.pth` | `upscale_models/` | [uwg/upscaler](https://huggingface.co/uwg/upscaler/tree/main/ESRGAN) |
-
-Sample prompt: *A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.*
+On a recent 12 GB card, a Wan 2.2 5B draft take (768×448, 3 s) takes about 70 seconds and a standard one (1280×704,
+5 s) about seven minutes. The first job after ComfyUI starts also loads the model, about 40 seconds more. Sample prompt:
+*A small red sailboat drifts on a calm alpine lake at sunrise, gentle ripples, pine forest.*
 ([what Wan 2.2 5B made from it](docs/demo/wan22-5b-sailboat.mp4) on a 12 GB card.) While a take renders, its card
 shows ComfyUI's own progress and the sampler's latest frame, and a queued or running job can be canceled from its
 card. To see what runs, read [`workflows/comfy/wan22_ti2v_5b.json`](workflows/comfy/wan22_ti2v_5b.json) and its
@@ -180,54 +205,16 @@ card. To see what runs, read [`workflows/comfy/wan22_ti2v_5b.json`](workflows/co
 **LoRAs**: put a LoRA file in ComfyUI's `models/loras/` and pick it under **More settings** with Wan 2.2 5B or
 FLUX.2 klein, with a strength. The list is read from ComfyUI each time the form opens.
 
-**ESRGAN upscale (local)**: a clip of up to 5 s and 720p made 2 to 4 times bigger, frame by frame, with any model in
-`upscale_models/` (the Siax one above by default), keeping its frame rate and sound. Pick it under Upscale in Edit
-video. Three seconds of 480p take about two minutes on a 12 GB card.
+### Voices and lip sync on your GPU
 
-### Bigger open models on a bigger GPU
+**Qwen3-TTS (local)** (Apache-2.0): give a character a voice sample on their page, pick Qwen3-TTS under Film settings >
+Lines voiced with, and Cinema Studio voices that character's lines from the recording. Its node pack downloads each
+model the first time it speaks, into `models/qwen-tts/`: 4.5 GB for the stock voices, 4.5 GB more for cloning.
 
-The graphs the RunPod endpoint below runs also run on your own ComfyUI. Once ComfyUI has a model's files and the GPU
-has enough memory, Opsis runs that model there for free, ahead of RunPod or a hosted API. Until then the model runs
-where it did before, and its route explains why: the GPU memory it needs, or the files ComfyUI is missing and the
-download groups that fetch them.
-
-| Model | Download groups | GPU memory |
-|---|---|---|
-| LTX-2.5: text, a picture, or first and last frame to video, with sound | `ltx` | 24 GB |
-| Wan 2.2 14B Fast: a picture to video | `core` | 16 GB |
-| Fun Camera: camera moves from a picture | `camera`, `wan-shared` | 16 GB |
-| Wan-Move: motion paths drawn on a picture | `move`, `wan-shared` | 16 GB |
-| Uni3C: the camera of a reference clip | `core`, `uni3c` | 16 GB |
-| Wan Animate-2: motion transfer | `animate2`, `wan-shared` | 24 GB |
-| Wan VACE: masked edits (Object swap) | `vace`, `wan-shared` | 24 GB |
-| InfiniteTalk: a picture and a voice to a talking clip (480p, up to 11.8 s; Lipsync, Talking shot) | `infinitetalk` | 12 GB |
-| InfiniteTalk dub: the mouths in a clip moved to a voice (480p, up to 15 s; needs the [ComfyUI-WanVideoWrapper](https://github.com/kijai/ComfyUI-WanVideoWrapper) node pack) | `infinitetalk-dub` | 12 GB |
-
-```bash
-uv run python infra/runpod/wan-core/fetch_models.py --local --dest <ComfyUI>/models --group ltx
-```
-
-Run it with `--local` and no group to list every group's size (they are 2 to 40 GB). LTX-2.5's files are gated: accept
-the license at [huggingface.co/Lightricks/LTX-2.5](https://huggingface.co/Lightricks/LTX-2.5) and set `HF_TOKEN` first.
-ComfyUI notices new files within a minute. The memory figures and run times are estimates: these graphs were tuned on
-RunPod's 96 GB card and haven't been measured on a consumer one. Weights larger than the card are streamed from system
-RAM, which is slower, so 64 GB of RAM helps. LTX-2.5 and Animate-2 use int8 files made for the comfy-kitchen kernels
-that ComfyUI 0.34's CUDA 13 build (the portable download) turns on.
-
-### Voices on your GPU
-
-**Qwen3-TTS (local)** (Apache-2.0) speaks text in nine stock voices, or in the voice of a 2 to 30 s recording: give a
-character a voice sample on their page, pick Qwen3-TTS under Film settings > Lines voiced with, and Cinema Studio
-voices that character's lines from it. It needs the
-[ComfyUI-Qwen-TTS](https://github.com/flybirdxx/ComfyUI-Qwen-TTS) node pack (install it with ComfyUI-Manager, or clone
-it into `custom_nodes/` and `pip install -r requirements.txt` with ComfyUI's Python). The pack downloads each model on
-its first use into `models/qwen-tts/`: 4.5 GB for the stock voices, 4.5 GB more for cloning. Until the pack is there,
-its route names the missing pack.
-
-Film settings > Lip-synced with then picks how each take is matched to its lines, free or paid. **InfiniteTalk dub
-(local)** moves the mouths in the take, keeping its motion. **InfiniteTalk (local)**, like the paid avatar models,
-redraws the take from its first frame speaking the lines, so the take's own motion is lost. Both redraw the frame at
-480p, so the background can shift a little.
+Film settings > Lip-synced with picks how each take is matched to its lines, free or paid. **InfiniteTalk dub
+(local)** moves the mouths in the take, keeping its motion. **InfiniteTalk** on your GPU, like the paid avatar
+models, redraws the take from its first frame speaking the lines, so the take's own motion is lost. Both redraw the
+frame at 480p, so the background can shift a little.
 
 ### Your own workflows
 
@@ -344,7 +331,7 @@ billed (generation Mixed or Live, or Claude Live), Claude shows the estimate and
 | Symptom | Fix |
 |---|---|
 | "Local ComfyUI isn't running" | ComfyUI isn't reachable at `COMFYUI_URL`. Start it, or check the port. In Docker, the address is `OPSIS_COMFYUI_URL` (default `http://host.docker.internal:8188`); on Linux, ComfyUI must listen beyond 127.0.0.1 (`--listen`). |
-| "ComfyUI is missing ..." on a model | Run `fetch_models.py --local` with the groups it names and `--dest` set to ComfyUI's `models` folder. |
+| "ComfyUI is missing ..." or "ComfyUI has no ... node" on a model | Run `uv run python scripts/setup_local.py --model <id>` on the computer with ComfyUI. |
 | Out of memory on a local job | Use Draft quality or close other GPU apps. One local job runs at a time. |
 | The API won't start on Windows | Run it as `python -m studio.api` (what `pnpm dev` does), not bare uvicorn. |
 | The library is empty after updating | Before the rename to Opsis the database volume was `ai-media-studio_pgdata`. Stop both databases (`docker compose -p ai-media-studio -f infra/docker-compose.yml down`, then the same with `-p opsis`), remove the new empty volume (`docker volume rm opsis_pgdata`), copy the old one with `docker run --rm -v ai-media-studio_pgdata:/from -v opsis_pgdata:/to postgres:18 cp -a /from/. /to/`, then `pnpm db:up`. |

@@ -53,6 +53,7 @@ class ModelSummary(ApiModel):
     runs_on: Literal["local", "cloud_gpu", "hosted"] = Field(
         "hosted", description="Where it runs: this computer, your own cloud GPU endpoint, or a hosted API")
     voices: bool = Field(False, description="Speaks dialogue in a character's own voice, from a recording of it")
+    local_ready: bool = Field(False, description="This computer's engine can run it now, for free (a default to pick)")
 
 
 class RouteSummary(ApiModel):

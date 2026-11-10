@@ -255,7 +255,7 @@ docker compose up --build   # or all of it in containers (compose.yaml: db, migr
 pnpm gen        # OpenAPI -> packages/api-client/src/schema.d.ts (run after API schema changes)
 pnpm test       # pytest: unit, registry contract, DB integration (a separate studio_test database; STUDIO_TEST_DB names another),
                 #   then the web's unit tests (`node --test`, `apps/web/src/**/*.test.mts`)
-pnpm e2e        # Playwright against the mock provider (reuses a running `pnpm dev`)
+pnpm e2e        # Playwright against the mock provider (reuses a running `pnpm dev`; stop ComfyUI first, or forms start on a ready local model)
 pnpm lint       # ruff + eslint + tsc
 uv run python scripts/backup_db.py                 # dump the database to data/backups/ (14 days kept)
 uv run python scripts/restore_db.py --check        # restore the newest dump into a scratch copy and compare
@@ -550,12 +550,20 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   (`transforms/comfy.py:infinitetalk_dub`). It redraws the whole frame.
 - Local routes are free and run in every PROVIDER_MODE. Before routing, `adapter.unavailable()` checks an up ComfyUI
   can run the route (`local_status.local_blockers`): GPU memory from `/system_stats`, node classes and model files
-  from `/object_info` (60 s cache), naming the missing file and the `fetch_models.py --local --group ...` that gets
-  it (groups from `infra/runpod/wan-core/models.yaml`; `local_only` entries never go on the RunPod volume). A blocked
+  from `/object_info` (60 s cache), naming the missing file or node pack and `setup_local.py --model <id>`, which gets
+  it (files from `infra/runpod/wan-core/models.yaml`; `local_only` entries never go on the RunPod volume). A blocked
   route is left out with that reason. The mock gives way to a local route only when it can run, or when the model is
   local-only and ComfyUI is configured (then "isn't running" or the blocker shows instead of a mock result).
   A ComfyUI that takes the status call but answers late (it stalls for seconds while loading a model) is up and
   `busy` (`local_status.comfy_stats`), never "isn't running".
+- `scripts/setup_local.py` (`providers/local_setup.py`) sets local models up on the ComfyUI it runs beside: it asks
+  the running ComfyUI for its folders (`/internal/folder_paths`), GPU and Python, lists each `comfy_local` model as
+  ready, too big (`min_vram_gb`) or what it needs (its graphs' manifest files, its maps' `pack`), and after asking
+  clones packs at their `pack.ref`, pip-installs their requirements into ComfyUI's Python with its torch, transformers
+  and numpy held (`KEEP`), and downloads into the folder ComfyUI reads first (`fetch_models.fetch`). Settings lists the
+  same models from the API (`GET /local-engine/models`: ready, else the route's blocker), and `ModelSummary.local_ready`
+  makes forms start on a ready local model (`ModelPicker.tsx:defaultModel`; Film settings keep their voice and lip-sync
+  defaults, since Qwen would drop a character's ElevenLabs voice).
 - Both ComfyUI adapters draw a fresh seed per take unless one is given (`comfy_workflows.fresh_seed`) and re-time
   clips for `media_fps` routes (`retime_clip`).
 - Workflows live in `workflows/comfy/<name>.json` (API graph) + `<name>.map.yaml` (which node inputs to fill,

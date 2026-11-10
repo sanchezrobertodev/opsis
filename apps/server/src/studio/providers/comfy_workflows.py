@@ -56,6 +56,7 @@ class Pack(_Strict):
     """A custom node pack the workflow needs, named when ComfyUI lacks its nodes."""
     name: str
     url: str
+    ref: str | None = None  # the commit setup_local.py installs: the one the graph was checked against
 
 
 class TemplateMap(_Strict):

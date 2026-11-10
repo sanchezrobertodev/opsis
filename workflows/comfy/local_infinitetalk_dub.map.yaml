@@ -7,7 +7,8 @@
 # The whole frame is redrawn at 480p, so the background can drift a little. The speech is padded with silence to the
 # clip's length (`transforms/comfy.py:infinitetalk_dub`), so the dub is as long as the clip.
 description: InfiniteTalk 14B dub (Wan 2.1, 480p), a clip and a voice
-pack: {name: ComfyUI-WanVideoWrapper, url: "https://github.com/kijai/ComfyUI-WanVideoWrapper"}
+pack: {name: ComfyUI-WanVideoWrapper, url: "https://github.com/kijai/ComfyUI-WanVideoWrapper",
+       ref: "088128b224242e110d3906c6750e9a3a348a659b"}
 inputs:
   prompt: [{node: "7", input: text}]
   seed: [{node: "24", input: seed}]
