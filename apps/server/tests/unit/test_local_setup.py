@@ -129,6 +129,8 @@ def test_a_plan_counts_what_is_already_downloaded(tmp_path):
     folder.mkdir(parents=True)
     (folder / f"{f['name']}.part").write_bytes(b"x" * 10)  # a stopped download resumes, so it counts
     assert work.got_bytes() == 10 and work.free_bytes() > 0 and work.room()
+    (folder / f["name"]).write_bytes(b"x" * 20)  # a file of the wrong size is downloaded again: only the .part counts
+    assert plan([MODELS["esrgan-video"]], comfy).jobs and work.got_bytes() == 10
     assert on_this_computer("http://192.168.1.20:8188") == "ComfyUI runs on another computer"
     assert on_this_computer(None) == "COMFYUI_URL isn't set"
 

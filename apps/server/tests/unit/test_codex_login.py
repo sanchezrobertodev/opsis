@@ -126,6 +126,10 @@ async def test_on_a_server_the_runner_signs_in_when_settings_asks(fake, monkeypa
         assert client.post("/codex/login").json()["state"] == "starting"
         shown = await until(lambda: (s := client.get("/codex/login").json())["state"] == "waiting" and s)
         assert shown["code"] == "BIT6-GAMYL" and shown["link"] == "https://auth.openai.com/codex/device"
+        # asked again while it waits (Settings reloaded): the same sign-in shows again, not idle
+        assert client.post("/codex/login").json()["state"] == "starting"
+        again = await until(lambda: (s := client.get("/codex/login").json())["state"] == "waiting" and s)
+        assert again["code"] == "BIT6-GAMYL"
         (home / "approved").touch()
         await until(lambda: client.get("/codex/login").json()["state"] == "signed_in")
         # the heartbeat says so at once, so routing and Settings use Codex without waiting a minute

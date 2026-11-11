@@ -195,13 +195,15 @@ class Plan:
         return sum(f.get("bytes", 0) for f, _ in self.jobs)
 
     def got_bytes(self) -> int:
-        """How much of the downloads is on disk, finished or partial (a stopped download resumes from its .part)."""
+        """How much of the downloads is on disk: finished files, else what their .part has (a stopped download resumes
+        from it; a file of the wrong size is downloaded again, so it doesn't count)."""
         total = 0
         for f, d in self.jobs:
-            for p in (d / f["name"], d / f"{f['name']}.part"):
-                if p.is_file():
-                    total += p.stat().st_size
-                    break
+            final, part = d / f["name"], d / f"{f['name']}.part"
+            if final.is_file() and (not f.get("bytes") or final.stat().st_size == f["bytes"]):
+                total += final.stat().st_size
+            elif part.is_file():
+                total += part.stat().st_size
         return total
 
     def free_bytes(self) -> int | None:

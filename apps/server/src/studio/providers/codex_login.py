@@ -28,7 +28,8 @@ class DeviceLogin:
     """One `codex login --device-auth` at a time; each change of state goes to `write`."""
 
     def __init__(self, binary: Callable[[], list[str]], write: Callable[[dict[str, Any]], None]):
-        self.binary, self.write = binary, write
+        self.binary, self._write = binary, write
+        self.last: dict[str, Any] = {}
         self.proc: subprocess.Popen[str] | None = None
         self.thread: threading.Thread | None = None
         self.canceled = False
@@ -37,8 +38,13 @@ class DeviceLogin:
     def running(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
 
+    def write(self, state: dict[str, Any]) -> None:
+        self.last = state
+        self._write(state)
+
     def start(self) -> None:
         if self.running():
+            self._write(self.last)  # asked again (Settings reloaded, which cleared the answer): the same link and code
             return
         self.canceled = False
         self.write({"state": "starting"})
