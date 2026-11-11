@@ -14,7 +14,6 @@ import asyncio
 import json
 import logging
 import os
-import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -22,21 +21,14 @@ from typing import Any
 import anyio
 
 from studio.config import get_settings
-from studio.providers.codex import CodexAdapter, clear_session, codex_env, login_state, session_id
+from studio.providers.codex import CodexAdapter, check_login, clear_session, session_id
+from studio.providers.codex_login import CANCEL, REQUEST, runner_login, take_flag
 from studio.providers.common import write_json
 from studio.providers.local_tools import STALE_S
 
 log = logging.getLogger("studio.codex_runner")
 
 LOGIN_EVERY_S = 60.0
-
-
-def check_login(binary: list[str]) -> str:
-    try:
-        done = subprocess.run([*binary, "login", "status"], capture_output=True, text=True, timeout=15, env=codex_env())
-    except (OSError, subprocess.TimeoutExpired):
-        return "error"
-    return login_state(done.stdout + done.stderr)
 
 
 def claim(adapter: CodexAdapter, job: Path) -> dict[str, Any] | None:
@@ -73,7 +65,15 @@ async def serve(adapter: CodexAdapter, stop: asyncio.Event | None = None) -> Non
     requeue(root)
     stop = stop or asyncio.Event()
     login, checked = "", float("-inf")
+    signing_in = runner_login(root, adapter.command)  # Settings' "Sign in with ChatGPT"
     while not stop.is_set():
+        if take_flag(root / REQUEST):
+            signing_in.start()
+        if take_flag(root / CANCEL):
+            signing_in.cancel()
+        if signing_in.signed_in.is_set():  # say so in the heartbeat now, not within the minute
+            signing_in.signed_in.clear()
+            checked = float("-inf")
         if time.monotonic() - checked > LOGIN_EVERY_S:
             login, checked = await anyio.to_thread.run_sync(check_login, adapter.command()), time.monotonic()
         write_json(root / "runner.json", {"login": login})

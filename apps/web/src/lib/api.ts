@@ -13,6 +13,9 @@ export type Asset = Schemas["AssetOut"];
 export type Estimate = Schemas["EstimateOut"];
 export type Budget = Schemas["BudgetOut"];
 export type ProviderKey = Schemas["KeyOut"];
+export type Balance = Schemas["BalanceOut"];
+export type LocalSetup = Schemas["SetupOut"];
+export type LocalSetupJob = Schemas["SetupJobOut"];
 export type Param = ModelDetail["parameters"][number];
 
 /** Media paths from the API are relative to the API origin. */

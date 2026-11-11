@@ -87,7 +87,7 @@ def _download(f: dict[str, Any], dest: Path) -> str:
     size = part.stat().st_size
     if f.get("bytes") and size != f["bytes"]:
         raise RuntimeError(f"{f['name']}: got {size} bytes, expected {f['bytes']}")
-    part.rename(path)
+    part.replace(path)  # over a file of the wrong size too (rename refuses that on Windows)
     mb_s = size / 1e6 / max(time.monotonic() - started, 0.001)
     return f"got {path.name} ({size / 1e9:.1f} GB at {mb_s:.0f} MB/s)"
 

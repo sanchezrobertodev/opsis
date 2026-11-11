@@ -131,11 +131,10 @@ async def _codex(_: httpx.AsyncClient, binary: str) -> dict[str, Any]:
             return {"status": "error", "detail": f"CODEX_BIN doesn't run ({type(exc).__name__}); check the path"}
     if login == "chatgpt":
         return {"status": "ok", "detail": "signed in with ChatGPT: GPT Image comes from the plan's allowance"}
-    how = (f"podman exec -it opsis-codex {binary} login --device-auth" if get_settings().codex_runner
-           else "codex login")
     if login == "api_key":
-        return {"status": "unavailable", "detail": f"signed in with an API key, which bills per picture; run {how}"}
-    return {"status": "unavailable", "detail": f"not signed in; run {how} with your ChatGPT account"}
+        return {"status": "unavailable", "detail": "signed in with an API key, which bills per picture; sign in with "
+                                                   "ChatGPT instead"}
+    return {"status": "unavailable", "detail": "not signed in; sign in with your ChatGPT account"}
 
 
 READERS = {"fal": _fal, "runpod": _runpod, "runway": _runway, "elevenlabs": _elevenlabs, "pika": _pika, "codex": _codex}

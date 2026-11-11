@@ -16,6 +16,7 @@ from studio import keys as provider_keys
 from studio.api import mcp_tools
 from studio.api.routers import (
     assets,
+    codex,
     director,
     elements,
     faceless,
@@ -162,4 +163,5 @@ app.include_router(misc.router)
 app.include_router(keys.router)
 app.include_router(model_storage.router)
 app.include_router(local_engine.router)
+app.include_router(codex.router)
 app.router.routes.append(mcp_tools.route)  # the MCP server, for the Claude apps
