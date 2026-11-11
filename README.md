@@ -166,7 +166,7 @@ NVIDIA GPU with 12 GB of memory or more.
    transformers or numpy. Then it downloads the model files into the folders ComfyUI reads; a download that stops
    resumes where it left off. Restart ComfyUI when a node pack was added; new model files are seen within a minute.
 
-**Settings > Free models on your GPU** shows which local models are ready and what the others are missing. The model
+**Settings > Local models** shows which local models are ready and what the others are missing. The model
 pickers list them first, marked free, and a form starts on one once it's ready. A model that also runs on RunPod or a hosted API runs on your GPU first, for free, once ComfyUI can run
 it.
 
@@ -240,14 +240,14 @@ endpoint and a network volume for the 180 GB of model files (about $14 a month);
 
 ## Hosted models and spending
 
-1. Paste the keys you have in **Settings > Keys**; each one links to where you get it. They're stored encrypted in the
+1. Paste the keys you have in **Settings > Providers**; each one links to where you get it. They're stored encrypted in the
    database (with `KEYS_SECRET`, or `data/keys.secret`, made on first start: keep a copy, since a lost secret means
    pasting the keys again) and used at once, with no restart. Keys in `.env` work too; a key saved in Settings wins. A
    model whose provider has no key is simply unavailable.
 2. Raise `PROVIDER_MODE` to `mixed` or `live`, and `LLM_MODE` to `live` for Claude. This is a ceiling: the switch in
    Settings can pick that mode or a safer one, never more.
 3. Restart `pnpm dev`, set your daily and monthly limits in **Settings > Spending**, and pick the mode in
-   **Settings > Providers**.
+   **Settings > General**.
 
 To try one paid route at a time, use `PROVIDER_MODE=mixed` with only that route allowed, for example
 `LIVE_ROUTE_ALLOWLIST=kling-3.0@fal`. The price line under Takes names the provider a take will run on, and
@@ -273,7 +273,7 @@ for a desktop setup; on the Linux server see
    "Logged in using ChatGPT". An API-key sign-in bills per picture, which defeats the purpose.
 2. Set `CODEX_BIN` in `.env` to the full path of the `codex` program (`where codex` on Windows, `which codex`
    elsewhere), then restart the API and the worker.
-3. **Settings > Provider balances** shows **Codex (your ChatGPT plan): Ready**. The model picker then lists
+3. **Settings > Providers** shows **Codex (your ChatGPT plan): Ready**. The model picker then lists
    GPT Image 2.5 as Free.
 
 It follows the Mock / Mixed / Live switch like any provider. It is slow (about 90 s a picture), and Codex picks the

@@ -1370,6 +1370,11 @@ export interface components {
              * @description The provider's billing page
              */
             link: string;
+            /**
+             * Setting
+             * @description The key it reads with, as in /keys (codex_bin for Codex, which has none)
+             */
+            setting: string;
             /** Amount */
             amount?: number | null;
             /** Unit */

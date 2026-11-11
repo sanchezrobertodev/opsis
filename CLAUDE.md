@@ -228,7 +228,7 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   hourly log when it booked something, the weekly report, and `GET /budget/breakdown` (`routes`).
 
 ## Provider keys
-- Keys pasted in **Settings > Keys** (`/keys`, `api/routers/keys.py`) are stored encrypted in `provider_keys`
+- Keys pasted in **Settings > Providers** (`/keys`, `api/routers/keys.py`) are stored encrypted in `provider_keys`
   (Fernet, `KEYS_SECRET` or `data/keys.secret`; `studio/keys.py`) and never returned (status + last four only). Each
   process puts the owner's saved keys into its cached settings (`keys.apply`): the API at once on a save, the API and
   the worker every 5 s, so code keeps reading `get_settings().fal_key`. A saved key beats `.env`'s; removing it brings
@@ -240,7 +240,7 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `ANTHROPIC_API_KEY`).
 - Call Claude only through `studio/llm/client.structured()`: Pydantic structured output, refusal fallback,
   a budget pre-check, and a `spend_ledger` charge per call (prices in `llm/pricing.py`, with a verified date).
-- Which model: Settings > Providers picks one for scripts and plans (`smart`) and one for prompt help (`fast`):
+- Which model: Settings > General picks one for scripts and plans (`smart`) and one for prompt help (`fast`):
   `budget_policies.llm_smart_model` / `llm_fast_model`, NULL = `LLM_SMART_MODEL` / `LLM_FAST_MODEL` in `.env`. Offered:
   `pricing.CHOICES` (Opus 5.5, Sonnet 5.5, Haiku 5.5) plus `.env`'s. Call sites take
   `await llm.client.model_for(session, user_id, "smart" | "fast")`, never the setting. Haiku 5.5 has no server-side

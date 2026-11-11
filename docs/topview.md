@@ -11,7 +11,7 @@ API and price checked **2026-11-01**:
   with or without audio ($0.6596 for 4 seconds, $0.8245 for 5 seconds).
 - [Platform setup](https://platform.topview.ai/docs/quickstart)
 
-The person adds a **Topview API Platform** key in **Settings > Keys** (or `TOPVIEW_API_KEY` in their environment).
+The person adds a **Topview API Platform** key in **Settings > Providers** (or `TOPVIEW_API_KEY` in their environment).
 It needs `models:generate`, `requests:read`, and access to T1 text-to-video. Platform workspace funds and keys are
 separate from Topview consumer subscriptions and the legacy API. This integration does not fund the workspace,
 change the studio's mode, or run a paid smoke test. Use the mock provider until ready to authorize spending.

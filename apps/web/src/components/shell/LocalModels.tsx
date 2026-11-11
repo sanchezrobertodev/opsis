@@ -3,11 +3,35 @@
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, CircleDashed } from "lucide-react";
 import { api, unwrap } from "@/lib/api";
+import { useHealth } from "@/lib/queries";
+import { ModelStorage } from "@/components/shell/ModelStorage";
 
 const SETUP = "uv run python scripts/setup_local.py";
 
+/** Settings › Local models: your own ComfyUI, the free models it can run, and where it keeps them. */
+export function LocalSettings() {
+  const engine = useHealth().data?.local_engine;
+  return (
+    <>
+      {!engine ? null : !engine.configured ? (
+        <section className="space-y-4" aria-labelledby="local-models-title">
+          <h2 id="local-models-title" className="type-title text-xl">Free models on your GPU</h2>
+          <p className="rounded-[var(--radius-panel)] bg-panel p-4 text-xs leading-relaxed text-muted">
+            Open models can run free on your own ComfyUI. Set COMFYUI_URL in .env to its address
+            (http://127.0.0.1:8188 on this computer) and restart Opsis; the README&rsquo;s &ldquo;Open models on your
+            GPU&rdquo; walks through it.
+          </p>
+        </section>
+      ) : (
+        <LocalModels online={engine.online} gpu={engine.gpu?.replace(/^cuda:\d+\s*/, "").split(" : ")[0] ?? null} />
+      )}
+      <ModelStorage />
+    </>
+  );
+}
+
 /** Which free models your own ComfyUI can run now, and what each of the others still needs. */
-export function LocalModels({ online }: { online: boolean }) {
+function LocalModels({ online, gpu }: { online: boolean; gpu: string | null }) {
   const query = useQuery({
     queryKey: ["local-models"],
     queryFn: () => unwrap(api.GET("/local-engine/models")),
@@ -17,8 +41,13 @@ export function LocalModels({ online }: { online: boolean }) {
   const ready = query.data?.filter((m) => m.ready).length ?? 0;
 
   return (
-    <section className="space-y-5 lg:col-span-2" aria-labelledby="local-models-title">
-      <h2 id="local-models-title" className="type-title text-xl">Free models on your GPU</h2>
+    <section className="space-y-4" aria-labelledby="local-models-title">
+      <div>
+        <h2 id="local-models-title" className="type-title text-xl">Free models on your GPU</h2>
+        <p className="mt-1 text-xs text-muted">
+          {online ? `ComfyUI is running${gpu ? ` on ${gpu}` : ""}.` : "ComfyUI isn't running."}
+        </p>
+      </div>
       <div className="space-y-4 rounded-[var(--radius-panel)] bg-panel p-4">
         <p className="text-xs leading-relaxed text-muted">
           These run on your own ComfyUI at no cost, and the forms start on one once it&apos;s ready. To set them up,

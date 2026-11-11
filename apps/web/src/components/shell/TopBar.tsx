@@ -51,7 +51,7 @@ export function TopBar() {
           </Link>
         )}
         {budget && (
-          <Link href="/settings" className="readout rounded-full border border-line-soft px-3 py-1 transition-colors hover:bg-chalk/5 hover:text-chalk">
+          <Link href="/settings/spending" className="readout rounded-full border border-line-soft px-3 py-1 transition-colors hover:bg-chalk/5 hover:text-chalk">
             {usd(budget.today_usd)} today
           </Link>
         )}

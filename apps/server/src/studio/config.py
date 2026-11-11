@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     @classmethod
     def _from_repo_root(cls, v: Path) -> Path:
         return v if v.is_absolute() else REPO_ROOT / v
-    # Optional shared YAML read by the local ComfyUI launcher; enables Settings > Model storage.
+    # Optional shared YAML read by the local ComfyUI launcher; enables Settings > Local models > Local model storage.
     comfyui_model_paths_config: Path | None = None
 
     @property
