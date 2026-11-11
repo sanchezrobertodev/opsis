@@ -269,12 +269,12 @@ GPT Image 2.5 can draw from a ChatGPT plan's allowance through the
 for a desktop setup; on the Linux server see
 [infra/server/README.md](infra/server/README.md#gpt-image-through-your-chatgpt-plan) instead.
 
-1. Install the Codex CLI and sign in with your ChatGPT account: `codex login`. `codex login status` should say
-   "Logged in using ChatGPT". An API-key sign-in bills per picture, which defeats the purpose.
-2. Set `CODEX_BIN` in `.env` to the full path of the `codex` program (`where codex` on Windows, `which codex`
-   elsewhere), then restart the API and the worker.
-3. **Settings > Providers** shows **Codex (your ChatGPT plan): Ready**. The model picker then lists
-   GPT Image 2.5 as Free.
+1. Install the Codex CLI, set `CODEX_BIN` in `.env` to the full path of the `codex` program (`where codex` on
+   Windows, `which codex` elsewhere), then restart the API and the worker.
+2. In **Settings > Providers**, press **Sign in with ChatGPT** on the Codex row: open the link it shows and enter the
+   code, with the ChatGPT account whose plan should pay. (`codex login` in a terminal works too.) An API-key sign-in
+   bills per picture, which defeats the purpose.
+3. The Codex row then shows **Ready**, and the model picker lists GPT Image 2.5 as Free.
 
 It follows the Mock / Mixed / Live switch like any provider. It is slow (about 90 s a picture), and Codex picks the
 size, so pictures are cropped to the shape you asked for. A picture Codex can't draw (the plan's usage limit, a

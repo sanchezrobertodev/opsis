@@ -338,7 +338,7 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   picture and a restarted runner draws its jobs again. It sees only the Codex jobs, its own Codex home (signed in once,
   never the host's `~/.codex`) and the binary, read-only. `runner.json` beside the jobs is its heartbeat with the
   sign-in: routing (`reachable()` counts for every provider kind) and Settings read it, and it draws only when signed
-  in with ChatGPT. Reading a job folder never follows a link or waits on a pipe (`common.open_plain`, `touch_flag`).
+  in with ChatGPT. Settings > Providers signs it in (`codex_login.py`: `codex login --device-auth`'s link and code; the runner takes a `login.request` flag and answers in `login.json`, without a runner the API runs it). Reading a job folder never follows a link or waits on a pipe (`common.open_plain`, `touch_flag`).
   Without the runner (the Windows dev setup) a Codex that keeps its shell can read what the worker can.
 - `local_tools`: the `video-tools` model's modes (reframe, trim, retime, reverse, loop, interpolate, upscale,
   stabilize) run on this machine's ffmpeg (`studio/media/tools.py`). Free; local routes check

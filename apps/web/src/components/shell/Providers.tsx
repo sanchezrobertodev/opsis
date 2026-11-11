@@ -55,7 +55,7 @@ export function Providers() {
           {(set.length > 0 || keyless.length > 0) && (
             <ul aria-label="Connected providers" className="divide-y divide-line-soft rounded-[var(--radius-panel)] bg-panel">
               {set.map((k) => <KeyRow key={k.setting} k={k} balance={balance(k.setting)} />)}
-              {keyless.map((b) => <AccountRow key={b.provider} b={b} />)}
+              {keyless.map((b) => (b.provider === "codex" ? <CodexRow key={b.provider} b={b} /> : <AccountRow key={b.provider} b={b} />))}
             </ul>
           )}
           {unset.length > 0 && (
@@ -186,6 +186,105 @@ function AccountRow({ b }: { b: Balance }) {
     </li>
   );
 }
+
+/** Codex draws pictures on your ChatGPT plan: signed in from here, with the one-time code `codex login --device-auth`
+ * shows, wherever Codex runs (this server, or its Codex container). */
+function CodexRow({ b }: { b: Balance }) {
+  const qc = useQueryClient();
+  const [following, setFollowing] = useState(false);
+  const signedIn = async () => {
+    setFollowing(false);
+    toast("Codex is signed in with ChatGPT");
+    qc.setQueryData(["balances"], await unwrap(api.GET("/budget/balances", { params: { query: { refresh: true } } })));
+    void qc.invalidateQueries({ queryKey: queryKeys.registry });
+  };
+  const login = useQuery({
+    queryKey: ["codex-login"],
+    queryFn: async () => {
+      const state = await unwrap(api.GET("/codex/login"));
+      if (state.state === "signed_in") void signedIn();
+      return state;
+    },
+    enabled: following,
+    refetchInterval: (q) => (["starting", "waiting"].includes(q.state.data?.state ?? "starting") ? 1500 : false),
+  });
+  const act = async (call: () => Promise<{ state: string }>) => {
+    try {
+      qc.setQueryData(["codex-login"], await call());
+      setFollowing(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't reach Codex");
+    }
+  };
+  const start = () => act(() => unwrap(api.POST("/codex/login")));
+  const cancel = () => act(() => unwrap(api.DELETE("/codex/login")));
+  const s = following ? login.data : undefined;
+
+  return (
+    <li className="space-y-3 px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0 flex-1 basis-56">
+          <p className="text-sm">{b.label}</p>
+          <p className="mt-0.5 text-2xs text-faint">GPT Image from your plan&rsquo;s allowance instead of per-picture billing.</p>
+          {b.detail && (
+            <p className={cn("mt-1 text-xs", b.status === "ok" ? "text-muted" : b.status === "error" ? "text-fault" : "text-faint")}>
+              {b.detail.charAt(0).toUpperCase() + b.detail.slice(1)}
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <Amount b={b} />
+          {b.status !== "ok" && b.status !== "error" && !s && (
+            <Button size="sm" tone="quiet" onClick={() => void start()}>Sign in with ChatGPT</Button>
+          )}
+          <OutLink href={b.link}>Plans</OutLink>
+        </div>
+      </div>
+      {s && s.state !== "signed_in" && (
+        <div role="status" className="space-y-3 rounded-[var(--radius-control)] bg-bay p-3 text-xs">
+          {s.state === "starting" || (s.state === "waiting" && !(s.link && s.code)) ? (
+            <p className="flex items-center gap-2 text-muted">
+              <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> Asking Codex for a sign-in code&hellip;
+            </p>
+          ) : s.state === "waiting" ? (
+            <ol className="space-y-3">
+              <li>
+                <span className="text-muted">1. Open OpenAI&rsquo;s sign-in page and sign in with your ChatGPT account:</span>{" "}
+                <a href={s.link!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-chalk underline">
+                  {s.link} <ExternalLink className="size-3" aria-hidden />
+                </a>
+              </li>
+              <li className="flex flex-wrap items-center gap-3">
+                <span className="text-muted">2. Enter this code there:</span>
+                <code className="tabular rounded-[var(--radius-control)] bg-panel px-3 py-1.5 text-base tracking-widest text-chalk">{s.code}</code>
+                <Button size="sm" tone="ghost" onClick={() => void navigator.clipboard?.writeText(s.code!).then(() => toast("Code copied"))}>
+                  Copy
+                </Button>
+                {s.expires_at && <span className="text-faint">Expires at {TIME.format(new Date(s.expires_at * 1000))}</span>}
+              </li>
+            </ol>
+          ) : (
+            <p className={s.state === "failed" ? "text-fault" : "text-muted"}>
+              {s.state === "failed" ? `Not signed in: ${s.detail ?? "it didn't finish"}.` : "Sign-in stopped."}
+            </p>
+          )}
+          <div className="flex gap-2">
+            {s.state === "starting" || s.state === "waiting" ? (
+              <Button size="sm" tone="ghost" onClick={() => void cancel()}>Cancel</Button>
+            ) : (
+              <>
+                <Button size="sm" tone="quiet" onClick={() => void start()}>Try again</Button>
+                <Button size="sm" tone="ghost" onClick={() => setFollowing(false)}>Close</Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 
 function OutLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
