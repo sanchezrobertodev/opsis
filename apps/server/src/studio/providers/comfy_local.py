@@ -138,10 +138,9 @@ class ComfyLocalAdapter(ProviderAdapter):
         classes, missing = unavailable_choices(template, info, files, _picked(route, mode, template))
         setup = f"setup_local.py --model {route.id.partition('@')[0]}"
         if classes:
-            pack = template.map.pack
-            how = (f"install the {pack.name} node pack ({pack.url}), or run {setup}" if pack
-                   else "update ComfyUI to 0.34 or newer")
-            return f"ComfyUI has no {', '.join(classes)} node; {how}"
+            if pack := template.map.pack:  # its node names say less than the pack's
+                return f"ComfyUI lacks the {pack.name} node pack; install it ({pack.url}), or run {setup}"
+            return f"ComfyUI has no {', '.join(classes)} node; update ComfyUI to 0.34 or newer"
         if not missing:
             return None
         size = sum(files[name].get("bytes", 0) for name in missing if name in files)
