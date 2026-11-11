@@ -688,7 +688,7 @@ async def test_a_missing_node_pack_is_named(monkeypatch):
     monkeypatch.setattr(local_status, "comfy_stats", stats)
     monkeypatch.setattr(a, "_object_info", lambda classes: _done({"SaveAudio": {"input": {"required": {}}}}))
     why = await a.unavailable(route, "tts")
-    assert why == ("ComfyUI has no FB_Qwen3TTSCustomVoice node; install the ComfyUI-Qwen-TTS node pack "
+    assert why == ("ComfyUI lacks the ComfyUI-Qwen-TTS node pack; install it "
                    "(https://github.com/flybirdxx/ComfyUI-Qwen-TTS), or run setup_local.py --model qwen3-tts")
 
 

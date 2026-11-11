@@ -36,6 +36,7 @@ COPY apps/server apps/server
 COPY registry registry
 COPY workflows workflows
 COPY scripts scripts
+COPY infra/runpod/wan-core/models.yaml infra/runpod/wan-core/models.yaml
 RUN uv sync --frozen --no-dev
 
 # data/ (media, backups, logs, reports) is a bind mount; settings come from the environment, not a .env in the image

@@ -46,10 +46,13 @@ export function defaultModel(models: ModelSummary[], preferred?: string): string
     ?? models.find((m) => m.id === preferred) ?? models[0])?.id;
 }
 
-/** Models as plain select options: the ones on this computer first, each marked free or paid. */
+const local = (m: ModelSummary) => (m.local_ready ? 2 : m.runs_on === "local" ? 1 : 0);
+
+/** Models as plain select options: the ones ready on this computer first, each marked free, not set up, or paid. */
 export function modelOptions(models: ModelSummary[]) {
-  return [...models].sort((a, b) => Number(b.runs_on === "local") - Number(a.runs_on === "local"))
-    .map((m) => ({ value: m.id, label: `${m.name} · ${m.runs_on === "local" ? "free on your GPU" : "paid"}` }));
+  const note = ["paid", "free, not set up yet", "free on your GPU"];
+  return [...models].sort((a, b) => local(b) - local(a))
+    .map((m) => ({ value: m.id, label: `${m.name} · ${note[local(m)]}` }));
 }
 
 export function ModelPicker({

@@ -16,3 +16,5 @@ apps/web/test-results
 apps/web/playwright-report
 apps/server/tests
 infra/runpod
+# the model file list: local models' setup hints name each file's size and download group
+!infra/runpod/wan-core/models.yaml
