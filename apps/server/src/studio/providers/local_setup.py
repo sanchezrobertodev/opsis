@@ -3,15 +3,19 @@ this computer keeps them: what scripts/setup_local.py checks and installs."""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import ModuleType
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import yaml
@@ -165,3 +169,111 @@ def install_pack(pack: Pack, comfy: Comfy, python: Path) -> None:
             subprocess.run([str(python), "-m", "pip", "install", "-r", str(requirements), "-c", str(constraints)],
                            check=True)
         shutil.move(clone, comfy.custom_nodes / pack.name)
+
+
+def describe(m: LocalModel, comfy: Comfy) -> tuple[str, str]:
+    """(ready | needs | too big, what it still needs)."""
+    if not comfy.fits(m):
+        return "too big", f"needs a GPU with {m.min_vram_gb:g} GB"
+    work = plan([m], comfy)
+    needs = [f"the {p.name} node pack" for p in work.packs]
+    if work.jobs:
+        needs.append(f"{len(work.jobs)} model files, {work.bytes / 1e9:.1f} GB")
+    return ("ready", "") if not needs else ("needs", ", ".join(needs))
+
+
+@dataclass
+class Plan:
+    """What setting up some models still takes on this ComfyUI: node packs to install, and files to download, each
+    into the first folder ComfyUI reads it from."""
+
+    packs: list[Pack]
+    jobs: list[tuple[dict[str, Any], Path]]
+
+    @property
+    def bytes(self) -> int:
+        return sum(f.get("bytes", 0) for f, _ in self.jobs)
+
+    def got_bytes(self) -> int:
+        """How much of the downloads is on disk, finished or partial (a stopped download resumes from its .part)."""
+        total = 0
+        for f, d in self.jobs:
+            for p in (d / f["name"], d / f"{f['name']}.part"):
+                if p.is_file():
+                    total += p.stat().st_size
+                    break
+        return total
+
+    def free_bytes(self) -> int | None:
+        homes = {_existing(d) for _, d in self.jobs}
+        return min(shutil.disk_usage(h).free for h in homes) if homes else None
+
+    def room(self) -> bool:
+        """Enough free disk for what's left of the downloads, with a GB to spare."""
+        free = self.free_bytes()
+        return free is None or free >= self.bytes - self.got_bytes() + 10**9
+
+
+def plan(models: list[LocalModel], comfy: Comfy) -> Plan:
+    packs = list({p.url: p for m in models for p in m.packs if not comfy.has_pack(p)}.values())
+    files = list({(f["folder"], f["name"]): f for m in models for f in m.files if not comfy.has_file(f)}.values())
+    return Plan(packs, [(f, comfy.paths(f["folder"])[0]) for f in files])
+
+
+def python_problem(comfy: Comfy, python: Path | None) -> str | None:
+    """Why node packs can't be installed with `python`, if they can't."""
+    if python is None:
+        return "can't find ComfyUI's Python to install node packs into"
+    try:
+        version = python_version(python)
+    except (OSError, subprocess.CalledProcessError):
+        return f"{python} doesn't run"
+    if comfy.python_version and version != comfy.python_version:
+        return f"{python} isn't the Python ComfyUI runs on ({comfy.python_version.split()[0]})"
+    return None
+
+
+def carry_out(work: Plan, comfy: Comfy, python: Path | None, say: Callable[[str], None] = print) -> list[str]:
+    """Install the packs and download the files; what failed, if anything."""
+    failed = []
+    for p in work.packs:
+        say(f"Installing the {p.name} node pack")
+        try:
+            install_pack(p, comfy, python)  # type: ignore[arg-type]  # python_problem() said there is one
+        except subprocess.CalledProcessError as exc:
+            failed.append(f"{p.name}: {' '.join(map(str, exc.cmd[:4]))}... exited with {exc.returncode}")
+        except OSError as exc:  # no git
+            failed.append(f"{p.name}: {exc}")
+    if work.jobs:
+        say(f"Downloading {len(work.jobs)} model files")
+        _, bad = fetch_models().fetch([({**f, "folder": d.name}, d.parent) for f, d in work.jobs])
+        failed += bad
+    return failed
+
+
+def fetch_models() -> ModuleType:
+    """infra/runpod/wan-core/fetch_models.py: downloads the manifest's files (resumable, checked by size)."""
+    spec = importlib.util.spec_from_file_location("fetch_models", MANIFEST.with_name("fetch_models.py"))
+    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
+def on_this_computer(url: str | None) -> Comfy | str:
+    """The ComfyUI at `url` when its folders are on this computer, so it can be set up from here; else why not."""
+    if not url:
+        return "COMFYUI_URL isn't set"
+    if urlparse(url).hostname not in {"localhost", "127.0.0.1", "::1"}:
+        return "ComfyUI runs on another computer"
+    comfy = comfy_at(url)
+    if comfy is None:
+        return "ComfyUI isn't running"
+    if not comfy.custom_nodes.is_dir() or not MANIFEST.with_name("fetch_models.py").exists():
+        return "ComfyUI's folders aren't on the computer running Opsis"
+    return comfy
+
+
+def _existing(path: Path) -> Path:
+    while not path.exists() and path != path.parent:
+        path = path.parent
+    return path

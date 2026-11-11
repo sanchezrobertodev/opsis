@@ -1259,6 +1259,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/local-engine/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Setup Status
+         * @description Whether the local models can be set up from here, and what each still needs (packs, files, disk).
+         */
+        get: operations["setup_status_local_engine_setup_get"];
+        put?: never;
+        /**
+         * Start Setup
+         * @description Install what the models need into the ComfyUI on this computer: their node packs (at the commits their graphs
+         *     were checked with) and model files (from the manifest). Follow it with GET /local-engine/setup/job.
+         */
+        post: operations["start_setup_local_engine_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/local-engine/setup/job": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Setup Job */
+        get: operations["setup_job_local_engine_setup_job_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/codex/login": {
         parameters: {
             query?: never;
@@ -3868,6 +3910,98 @@ export interface components {
             type: "seed";
             /** Default */
             default?: number | null;
+        };
+        /** SetupIn */
+        SetupIn: {
+            /** Model Ids */
+            model_ids: string[];
+        };
+        /** SetupJobOut */
+        SetupJobOut: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "done" | "failed";
+            /** Model Ids */
+            model_ids: string[];
+            /** Step */
+            step?: string | null;
+            /**
+             * Done Bytes
+             * @default 0
+             */
+            done_bytes: number;
+            /**
+             * Total Bytes
+             * @default 0
+             */
+            total_bytes: number;
+            /** Failed */
+            failed?: string[];
+            /**
+             * Restart
+             * @description A node pack was added: ComfyUI loads it when restarted
+             * @default false
+             */
+            restart: boolean;
+        };
+        /** SetupModelOut */
+        SetupModelOut: {
+            /** Id */
+            id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "needs" | "too_big";
+            /**
+             * Needs
+             * @description What it still needs, e.g. the X node pack, 5 model files, 23.0 GB
+             * @default
+             */
+            needs: string;
+            /** Packs */
+            packs?: string[];
+            /**
+             * Files
+             * @default 0
+             */
+            files: number;
+            /**
+             * Bytes
+             * @description Download size
+             * @default 0
+             */
+            bytes: number;
+            /**
+             * Free Bytes
+             * @description Free disk where its files go
+             */
+            free_bytes?: number | null;
+            /**
+             * Room
+             * @default true
+             */
+            room: boolean;
+        };
+        /** SetupOut */
+        SetupOut: {
+            /** Available */
+            available: boolean;
+            /**
+             * Reason
+             * @description Why models can't be set up from here (then run the script)
+             */
+            reason?: string | null;
+            /**
+             * Python Problem
+             * @description Why node packs can't be installed
+             */
+            python_problem?: string | null;
+            /** Models */
+            models?: components["schemas"]["SetupModelOut"][];
+            job?: components["schemas"]["SetupJobOut"] | null;
         };
         /**
          * ShotDirection
@@ -7133,6 +7267,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_status_local_engine_setup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupOut"];
+                };
+            };
+        };
+    };
+    start_setup_local_engine_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_job_local_engine_setup_job_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupJobOut"] | null;
                 };
             };
         };

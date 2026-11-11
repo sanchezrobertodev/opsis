@@ -146,7 +146,9 @@ Local models are free, work offline and run in every mode, mock included. You ne
 NVIDIA GPU with 12 GB of memory or more.
 
 1. Start ComfyUI on its default port. `.env` already points there: `COMFYUI_URL=http://127.0.0.1:8188`.
-2. In the Opsis folder, on the computer that runs ComfyUI, see what fits your GPU:
+2. When Opsis runs on the same computer as ComfyUI, open **Settings > Local models** and press **Set up** on a model:
+   it shows what it will install and download, and the free disk, before it starts, then follows the download.
+   Otherwise, or from a terminal, in the Opsis folder on the computer that runs ComfyUI, see what fits your GPU:
 
    ```bash
    uv run python scripts/setup_local.py
@@ -166,7 +168,8 @@ NVIDIA GPU with 12 GB of memory or more.
    transformers or numpy. Then it downloads the model files into the folders ComfyUI reads; a download that stops
    resumes where it left off. Restart ComfyUI when a node pack was added; new model files are seen within a minute.
 
-**Settings > Local models** shows which local models are ready and what the others are missing. The model
+**Settings > Local models** shows which local models are ready and what the others are missing (sets them up when
+ComfyUI's folders are on the computer running Opsis). The model
 pickers list them first, marked free, and a form starts on one once it's ready. A model that also runs on RunPod or a hosted API runs on your GPU first, for free, once ComfyUI can run
 it.
 
@@ -331,7 +334,7 @@ billed (generation Mixed or Live, or Claude Live), Claude shows the estimate and
 | Symptom | Fix |
 |---|---|
 | "Local ComfyUI isn't running" | ComfyUI isn't reachable at `COMFYUI_URL`. Start it, or check the port. In Docker, the address is `OPSIS_COMFYUI_URL` (default `http://host.docker.internal:8188`); on Linux, ComfyUI must listen beyond 127.0.0.1 (`--listen`). |
-| "ComfyUI is missing ..." or "ComfyUI has no ... node" on a model | Run `uv run python scripts/setup_local.py --model <id>` on the computer with ComfyUI. |
+| "ComfyUI is missing ..." or "ComfyUI has no ... node" on a model | Press Set up in Settings > Local models, or run `uv run python scripts/setup_local.py --model <id>` on the computer with ComfyUI. |
 | Out of memory on a local job | Use Draft quality or close other GPU apps. One local job runs at a time. |
 | The API won't start on Windows | Run it as `python -m studio.api` (what `pnpm dev` does), not bare uvicorn. |
 | The library is empty after updating | Before the rename to Opsis the database volume was `ai-media-studio_pgdata`. Stop both databases (`docker compose -p ai-media-studio -f infra/docker-compose.yml down`, then the same with `-p opsis`), remove the new empty volume (`docker volume rm opsis_pgdata`), copy the old one with `docker run --rm -v ai-media-studio_pgdata:/from -v opsis_pgdata:/to postgres:18 cp -a /from/. /to/`, then `pnpm db:up`. |

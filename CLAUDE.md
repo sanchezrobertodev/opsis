@@ -560,7 +560,12 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   the running ComfyUI for its folders (`/internal/folder_paths`), GPU and Python, lists each `comfy_local` model as
   ready, too big (`min_vram_gb`) or what it needs (its graphs' manifest files, its maps' `pack`), and after asking
   clones packs at their `pack.ref`, pip-installs their requirements into ComfyUI's Python with its torch, transformers
-  and numpy held (`KEEP`), and downloads into the folder ComfyUI reads first (`fetch_models.fetch`). Settings lists the
+  and numpy held (`KEEP`), and downloads into the folder ComfyUI reads first (`fetch_models.fetch`). The plan and its
+  steps are shared (`local_setup.plan`, `carry_out`), so Settings > Local models can do the same: `GET
+  /local-engine/setup` says per model what it needs (packs, files, GB, free disk) when `COMFYUI_URL` is loopback and
+  ComfyUI's folders are on this computer (`on_this_computer`), `POST` (model ids only; URLs come from the manifest and
+  maps) runs one setup at a time in a thread of the API, and `GET /local-engine/setup/job` follows it (bytes from the
+  files and their `.part`s). Elsewhere (the server with the PC's ComfyUI) Settings shows the script. Settings lists the
   same models from the API (`GET /local-engine/models`: ready, else the route's blocker), and `ModelSummary.local_ready`
   makes forms start on a ready local model (`ModelPicker.tsx:defaultModel`; Film settings keep their voice and lip-sync
   defaults, since Qwen would drop a character's ElevenLabs voice).
