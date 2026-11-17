@@ -110,7 +110,9 @@ class FaceSwapRecipe(Recipe):
             return inp
         face = (await session.execute(select(ElementAsset.asset_id).where(
             ElementAsset.element_id == element.id, ElementAsset.look.is_(None),  # never a look's or a grid sheet
-            ElementAsset.view.not_in(UNATTACHED_VIEWS)).order_by(ElementAsset.is_primary.desc(), ElementAsset.sort)
+            ElementAsset.view.not_in(UNATTACHED_VIEWS))
+            # a reference sheet (several views on one picture) after their other pictures, as a talking shot does
+            .order_by(ElementAsset.is_primary.desc(), (ElementAsset.view == "sheet").asc(), ElementAsset.sort)
             .limit(1))).scalar_one_or_none() or element.cover_asset_id
         return inp.model_copy(update={"face_asset_id": face}) if face else inp
 

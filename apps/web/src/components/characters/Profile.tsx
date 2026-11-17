@@ -28,19 +28,20 @@ export function ProfileSection({ element, value, onChange }: {
 
   return (
     <section aria-labelledby="profile-title" className="space-y-3 rounded-[var(--radius-control)] border border-line-soft p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 id="profile-title" className="mr-auto flex items-center gap-2 text-sm text-chalk">
-          <UserRoundPen className="size-4 text-tungsten" aria-hidden />
-          Profile
-        </h3>
+      <h3 id="profile-title" className="flex items-center gap-2 text-sm text-chalk">
+        <UserRoundPen className="size-4 text-tungsten" aria-hidden />
+        Profile
+      </h3>
+      {/* the price beside the button, not in it: the column is narrow and the button would wrap */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Button type="button" size="sm" disabled={!element || busy}
                 onClick={() => element && draft.mutate(element.id, { onSuccess: (d) => onChange(draftOver(value, d.profile, yours)) })}
                 title={element ? `${claude.name} drafts it from the saved name, description, traits and looks`
                   : "Create the character first: Claude drafts from what's saved"}>
           {busy ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : <Sparkles className="size-3.5" aria-hidden />}
           {busy ? "Drafting…" : "Draft with Claude"}
-          {claude.price && <span className="font-normal text-muted">· {claude.price}</span>}
         </Button>
+        {claude.price && <span className="text-2xs text-faint">{claude.price}</span>}
       </div>
       <p className="text-2xs leading-relaxed text-faint">
         How they behave and talk, for the lines a vlog, a film or a Faceless episode writes for them; never sent to

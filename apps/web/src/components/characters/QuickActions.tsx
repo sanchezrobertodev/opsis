@@ -12,7 +12,7 @@ import type { RunCreate } from "@/lib/runs";
 import { useModelsFor } from "@/components/create/QuickGenerate";
 import { ModelSelect, quotePrice, quoteText, useRunQuote, useStartQuoted, useTakeQuote } from "@/components/runs/RunQuote";
 import { Button } from "@/components/ui/controls";
-import { GeneratePanel, useReferenceShot } from "./MakePanels";
+import { GeneratePanel, SAVE_FIRST, useReferenceShot } from "./MakePanels";
 
 export type QuickAction = "place" | "figure" | "hello";
 
@@ -21,9 +21,6 @@ const ACTIONS: [QuickAction, string, string][] = [
   ["figure", "3D figure", "A 3D model of them for 3D blocking, with a skeleton to move"],
   ["hello", "Say hello", "A short clip of them saying a line in their voice"],
 ];
-
-// each reads the saved character and leaves the editor, which would drop its edits
-const SAVE_FIRST = "Save your changes first";
 
 /** Quick things to make with a saved character, each priced in its panel before it starts. `open` is the editor's
  * panel showing, if it's one of these; `unsaved`: the editor holds changes, so none can start. */

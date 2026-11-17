@@ -75,8 +75,8 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
   const [members, setMembers] = useState<string[]>(() => existing?.members.map((m) => m.id) ?? []);
   const castSized = members.length >= CAST_SIZE[0] && members.length <= CAST_SIZE[1];
   const groupShot = useGroupShot();
-  // a group shot and the quick actions read the saved element on the server and leave the page, which would drop
-  // these edits: they must be saved first
+  // a group shot, the quick actions, sheets, more pictures and looks read the saved element on the server and leave
+  // the page, which would drop these edits: they must be saved first
   const unsaved = Boolean(existing && (name !== existing.name || description !== existing.description
     || members.join() !== existing.members.map((m) => m.id).join() || pending.length > 0 || sample !== undefined
     || voice !== savedVoice || JSON.stringify(profile) !== JSON.stringify(existing.profile)));
@@ -234,12 +234,12 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
         )}
       </div>
 
-      {existing && panel?.open === "sheet" && <SheetPanel element={existing} onClose={() => setPanel(null)} />}
+      {existing && panel?.open === "sheet" && <SheetPanel element={existing} unsaved={unsaved} onClose={() => setPanel(null)} />}
       {existing && panel?.open === "more" && (
-        <MorePictures key={panel.count} element={existing} count={panel.count} onClose={() => setPanel(null)} />
+        <MorePictures key={panel.count} element={existing} count={panel.count} unsaved={unsaved} onClose={() => setPanel(null)} />
       )}
-      {existing && panel?.open === "look" && <AddLookPanel element={existing} onClose={() => setPanel(null)} />}
-      {existing && panel?.open === "style" && <StyleLookPanel element={existing} onClose={() => setPanel(null)} />}
+      {existing && panel?.open === "look" && <AddLookPanel element={existing} unsaved={unsaved} onClose={() => setPanel(null)} />}
+      {existing && panel?.open === "style" && <StyleLookPanel element={existing} unsaved={unsaved} onClose={() => setPanel(null)} />}
       {existing && panel?.open === "place" && <PlacePanel element={existing} unsaved={unsaved} onClose={() => setPanel(null)} />}
       {existing && panel?.open === "figure" && <FigurePanel element={existing} unsaved={unsaved} onClose={() => setPanel(null)} />}
       {existing && panel?.open === "hello" && <HelloPanel element={existing} unsaved={unsaved} onClose={() => setPanel(null)} />}
