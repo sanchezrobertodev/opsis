@@ -184,6 +184,36 @@ export interface paths {
         delete: operations["remove_image_elements__element_id__images__asset_id__delete"];
         options?: never;
         head?: never;
+        /**
+         * Patch Image
+         * @description Change one of an element's pictures: the look it shows (null: a main picture again), its view, or make it the
+         *     first of its pictures (the main ones, or its look's), the one a mention attaches first.
+         */
+        patch: operations["patch_image_elements__element_id__images__asset_id__patch"];
+        trace?: never;
+    };
+    "/elements/{element_id}/looks/{look}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Look
+         * @description Make or rename one of a character's looks (`@handle:look`). Its pictures are the ones kept with that `look`,
+         *     which the `character_look` recipe draws.
+         */
+        put: operations["put_look_elements__element_id__looks__look__put"];
+        post?: never;
+        /**
+         * Delete Look
+         * @description Forget a look. Its pictures leave the character rather than become main ones; they stay in the library.
+         */
+        delete: operations["delete_look_elements__element_id__looks__look__delete"];
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -2361,7 +2391,7 @@ export interface components {
              * @default character
              * @enum {string}
              */
-            kind: "character" | "location" | "prop" | "style" | "voice";
+            kind: "character" | "location" | "prop" | "style" | "voice" | "cast";
             /** Name */
             name: string;
             /**
@@ -2382,6 +2412,11 @@ export interface components {
              */
             images: components["schemas"]["ElementImageIn"][];
             voice?: components["schemas"]["VoiceIn"] | null;
+            /**
+             * Members
+             * @description A cast (group)'s characters, 2-8, in order
+             */
+            members?: string[] | null;
         };
         /** ElementImageIn */
         ElementImageIn: {
@@ -2395,7 +2430,12 @@ export interface components {
              * @default front
              * @enum {string}
              */
-            view: "front" | "three_quarter" | "side" | "back" | "face" | "full_body" | "sheet" | "wide" | "detail" | "style";
+            view: "front" | "three_quarter" | "side" | "back" | "face" | "full_body" | "sheet" | "wide" | "detail" | "style" | "expressions" | "poses";
+            /**
+             * Look
+             * @description The character's look this picture shows (`@handle:look`); none for a main picture
+             */
+            look?: string | null;
         };
         /** ElementImageOut */
         ElementImageOut: {
@@ -2404,6 +2444,50 @@ export interface components {
             view: string;
             /** Is Primary */
             is_primary: boolean;
+            /** Look */
+            look?: string | null;
+        };
+        /** ElementImagePatch */
+        ElementImagePatch: {
+            /**
+             * Look
+             * @description Make it a picture of this look; null makes it a main picture again
+             */
+            look?: string | null;
+            /** View */
+            view?: ("front" | "three_quarter" | "side" | "back" | "face" | "full_body" | "sheet" | "wide" | "detail" | "style" | "expressions" | "poses") | null;
+            /**
+             * Primary
+             * @description True makes it the picture a mention attaches first
+             */
+            primary?: boolean | null;
+        };
+        /**
+         * ElementLook
+         * @description A character's look: an outfit, or the character in another picture style. `@handle:look` in a prompt attaches
+         *     its pictures first and reads its description after the character's.
+         */
+        ElementLook: {
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @description Read after the character's description: "wearing a red wool coat and boots", "drawn as a 2D anime character"
+             */
+            description: string;
+        };
+        /** ElementMemberOut */
+        ElementMemberOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Handle */
+            handle: string;
+            cover: components["schemas"]["AssetOut"] | null;
         };
         /** ElementOut */
         ElementOut: {
@@ -2416,7 +2500,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "character" | "location" | "prop" | "style" | "voice";
+            kind: "character" | "location" | "prop" | "style" | "voice" | "cast";
             /** Name */
             name: string;
             /** Slug */
@@ -2447,6 +2531,20 @@ export interface components {
             /** Images */
             images: components["schemas"]["ElementImageOut"][];
             /**
+             * Looks
+             * @description A character's looks by handle (`@handle:look`)
+             * @default {}
+             */
+            looks: {
+                [key: string]: components["schemas"]["ElementLook"];
+            };
+            /**
+             * Members
+             * @description A cast (group)'s characters in order; none for other kinds
+             * @default []
+             */
+            members: components["schemas"]["ElementMemberOut"][];
+            /**
              * Created At
              * Format: date-time
              */
@@ -2455,7 +2553,7 @@ export interface components {
         /** ElementPatch */
         ElementPatch: {
             /** Kind */
-            kind?: ("character" | "location" | "prop" | "style" | "voice") | null;
+            kind?: ("character" | "location" | "prop" | "style" | "voice" | "cast") | null;
             /** Name */
             name?: string | null;
             /** Description */
@@ -2482,6 +2580,11 @@ export interface components {
              * @default false
              */
             clear_lora: boolean;
+            /**
+             * Members
+             * @description A cast (group)'s characters, all of them, in order
+             */
+            members?: string[] | null;
         };
         /**
          * EmotionItem
@@ -5123,7 +5226,7 @@ export interface operations {
     list_elements_elements_get: {
         parameters: {
             query?: {
-                kind?: ("character" | "location" | "prop" | "style" | "voice") | null;
+                kind?: ("character" | "location" | "prop" | "style" | "voice" | "cast") | null;
                 q?: string | null;
             };
             header?: never;
@@ -5362,6 +5465,110 @@ export interface operations {
             path: {
                 element_id: string;
                 asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_image_elements__element_id__images__asset_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ElementImagePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_look_elements__element_id__looks__look__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+                look: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ElementLook"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_look_elements__element_id__looks__look__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+                look: string;
             };
             cookie?: never;
         };

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.base import uuid7
 from studio.db.models import Asset, Element, ElementAsset, PipelineRun, PipelineStep
+from studio.director.elements import UNATTACHED_VIEWS
 from studio.domain.derived import frame_of, save_derived
 from studio.domain.enums import AssetKind, AssetSource
 from studio.faceless.catalog import CaptionLook, get_catalog
@@ -458,19 +459,29 @@ async def attach_lora(session: AsyncSession, run: PipelineRun, step: PipelineSte
 
 
 async def add_element_image(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
-    """Keep a picture as one of a character's references (its first one becomes the cover and primary picture)."""
+    """Keep a picture as one of a character's references (its first one becomes the cover and primary picture), or
+    as one of a look's (`look`; the look is made from `look_name` and `look_description` if it's new)."""
     inp = step.input
     element = await _character(session, run, inp["element_id"])
     (picture,) = await _assets(session, run, [inp["asset_id"]])
     if picture.kind != AssetKind.image:
         raise StepFailed("only a picture can be a character's reference")
+    if look := inp.get("look"):
+        # locked: the run's other keeps, or another run's look, may be writing the looks too
+        await session.refresh(element, ["looks"], with_for_update=True)
+        if look not in (element.looks or {}):
+            element.looks = {**(element.looks or {}), look: {
+                "name": str(inp.get("look_name") or look).strip()[:40],
+                "description": str(inp.get("look_description") or "").strip()[:160]}}
+    # a look's picture or a grid sheet, which a plain mention never attaches: never the primary picture or the cover
+    aside = bool(look) or inp.get("view") in UNATTACHED_VIEWS
     links = (await session.execute(select(ElementAsset).where(ElementAsset.element_id == element.id))).scalars().all()
     if not any(x.asset_id == picture.id for x in links):  # a rerun of the step keeps one link
         # `first`: right after the main picture (a reference sheet), so it's among the two a mention attaches
         sort = min((x.sort for x in links), default=0) - 1 if inp.get("first") else len(links)
         session.add(ElementAsset(element_id=element.id, asset_id=picture.id, view=inp.get("view") or "front",
-                                 is_primary=not links, sort=sort))
-    if element.cover_asset_id is None:
+                                 is_primary=not links and not aside, sort=sort, look=look or None))
+    if element.cover_asset_id is None and not aside:
         element.cover_asset_id = picture.id
     return {"element_id": str(element.id), "asset_id": str(picture.id)}
 

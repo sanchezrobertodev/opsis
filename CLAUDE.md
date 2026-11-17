@@ -208,6 +208,42 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   purposes `character.from_photo` and `character.from_text`. The mock answers a picture with a starter chosen by its
   hash, a sentence with the options it names.
 
+## Looks and casts (groups)
+- A look is a character in an outfit or in another picture style: `elements.looks[slug] = {name (<=40), description
+  (<=160, read after the character's own: "wearing a red wool coat and boots")}`; its pictures are the
+  `element_assets` rows with that `look` (slug `[a-z0-9][a-z0-9-]{0,23}`, `director/elements.py:LOOK_SLUG`). Routes:
+  `PUT`/`DELETE /elements/{id}/looks/{slug}` (deleting takes its pictures off the character; the assets stay), `look`
+  on `POST /elements/{id}/images`, and `PATCH /elements/{id}/images/{asset_id}` `{look, view, primary}` (`primary`
+  puts it first among the main pictures, or among its look's). Adding a look's picture or a grid sheet never makes it
+  the primary picture or the cover. Only characters have looks.
+- Mentions: `MENTION` and `mentions()` read handles only; `resolve_mentions` uses `MENTION_LOOK` (`@maya:winter`, a
+  colon right before a letter or digit, so "@maya: she says" stays plain). A plain mention attaches only main pictures
+  (no `look`, never the `expressions`/`poses` sheets, `UNATTACHED_VIEWS`); `@maya:winter` attaches the look's first,
+  then main ones up to the character's two, and the first mention reads "Name, description, look description". A
+  prompt wears one look per character (the first it names); an unknown look warns and keeps its word in the text.
+  `request.mentions[]` carries `look`. Speakers and cast names drop the look (`director/compiler.py:handle_of`); a
+  reword or Enhance that drops one counts as dropping the mention (`elements.py:worn`).
+- `character_look` (the editor's "Add a look" and "Another style"): `look[NN]` pictures in the image model's
+  reference mode (`frame_mode`), drawn from the character's main pictures with the outfit and the same face, or in a
+  `style` (a catalog id or a saved `@slug`, sent as `direction.style`; only without one does "a photograph stays a
+  photograph"), then `keep[NN]` keeps each as the look's (`add_element_image` with `look`, which makes the look from
+  `look_name`/`look_description` when it's new). A look's slug has at most 24 characters, so "Another style"
+  shortens a longer style id.
+- A cast (group), `ElementKind.cast` (not Cinema Studio's cast), is 2-8 saved characters in order (`element_members`,
+  `CAST_SIZE`; characters only, so no nesting): `POST /elements` with `kind: cast` and `members`, `PATCH`
+  replaces them, `ElementOut.members` lists `{id, name, handle, cover}`. A character that's deleted or made another
+  kind leaves its casts. `@crew` stands for its characters: each attaches `per_member(room, n)` pictures (an even
+  share of the room left, one or two), one also mentioned on its own keeps the pictures it got, and the text lists
+  them ("Maya (Image 1), Kai (Image 2), <the cast's description>"); one that no picture or identity shows (too little
+  room, a model without references) is described after their name, as on their own. `names` maps the cast to the
+  list of names and each of its characters to their own label, for direction that names one of them.
+- Web: read mentions with `lib/mentions.ts` (`mentionsIn`, `typedMention`/`completeMention` for the PromptBox, which
+  suggests a character's looks after `@slug:`; `picturedMentions`/`hasPictures` know what attaches pictures), never a
+  regex of your own. Create counts a `refs_native` model's `ref_role` slot as filled when a mention brings pictures,
+  and estimates on the prompt's mentions so their pictures are priced. The editor's Looks section (`Looks.tsx`) and
+  "Add a look"/"Another style" (`MakePanels.tsx`) start `character_look`; casts are made from the Characters list's
+  selection, edited and drafted as a group shot in `Casts.tsx`.
+
 ## Adding a template (guided stories)
 - The Templates page (`/templates`, formerly Presets) shows presets and guided templates. A template is one YAML in
   `registry/templates/<id>.yaml`: `recipe`, a fixed recipe `input` whose string values may hold `{key}` blanks from
@@ -482,7 +518,10 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   so its shots keep what sets it apart in frame.
 - Reference sheets (`character_sheet` recipe, the character editor's "Make a reference sheet"): the image model's
   reference mode draws the character from several sides on one picture, kept right after its main picture
-  (`add_element_image` `first`), since a mention attaches a character's first two pictures.
+  (`add_element_image` `first`), since a mention attaches a character's first two pictures. `sheet: expressions` or
+  `poses` draws a 4 x 2 grid instead, with no text: eight feelings (each family of the director's `emotions` at its
+  middle level) or eight full-body poses, kept with view `expressions`/`poses`, which a mention never attaches (a grid
+  given as a reference comes back as a collage). The turnaround's steps are the same as before, so finished runs keep.
 - Episode length: the script aims at the words that fill `minutes` at the voice's measured pace (`llm_ops.voice_pace`,
   from its latest narrations' word timings; 150 a minute until there are some) after the cut's pauses
   (`writer.target_words`), and is shortened once when it comes out over. The script's `pace` lets the review show the
@@ -533,6 +572,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   keeps it as the reference and cover). Hero frames on a `refs_native` model attach it wherever they're mentioned.
   Until a mentioned character has a picture (the portrait is still drawing), a mode that needs reference images only
   for the mentions runs as the model's text mode instead, with a warning (`domain/generations.py:_text_mode_without_refs`).
+  A shot can also name a character's look (`@maya:winter`) or a cast (group) of saved characters (`@crew`; see Looks
+  and casts (groups)); the film's own cast and its lines match on the handle without the look.
 - The AI Director chat (`POST /projects/{id}/director`, `cinema/director_chat.py`, the editor's Director panel): Claude
   answers a request with edits by shot and scene id (update, add, move, remove), applied to the storyboard on screen
   and returned as proposed scenes plus a diff (`changes`, shots numbered as they'll read). An update keeps the shot's

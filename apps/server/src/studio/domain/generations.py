@@ -15,7 +15,7 @@ from studio.budget import guard, modes
 from studio.config import get_settings
 from studio.db.base import uuid7
 from studio.db.models import Asset, Generation, GenerationAttempt, Project
-from studio.director.compiler import Compiled, ShotDirection, compile_prompt
+from studio.director.compiler import Compiled, ShotDirection, compile_prompt, handle_of
 from studio.director.elements import resolve_mentions, style_slug, unknown_styles, with_style
 from studio.domain import fsm
 from studio.domain.enums import AssetStatus, AttemptStatus, GenStatus
@@ -265,7 +265,7 @@ async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, r
     # validation: the attached images count against the model's slot limits like any other input.
     # a shot's speakers count too: their voice samples go where the model takes reference audio
     lines = (body.direction or {}).get("dialogue") if isinstance(body.direction, dict) else None
-    speakers = [str(x.get("who"))[1:] for x in lines or [] if isinstance(x, dict) and str(x.get("who") or "").startswith("@")]
+    speakers = [s for x in lines or [] if isinstance(x, dict) and (s := handle_of(str(x.get("who") or "")))]
     mention = await resolve_mentions(session, user_id, spec, body.mode, text, body.media, speakers)
     if (instead := _text_mode_without_refs(spec, body.mode, body.media, mention.media, mention.elements)) is not None:
         mention.warnings.append(f"{spec.mode(body.mode).label} needs reference images and none of the mentioned "

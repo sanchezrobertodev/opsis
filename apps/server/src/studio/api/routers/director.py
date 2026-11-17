@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from studio.api.deps import current_user, get_session
 from studio.api.schemas import CompileIn, CompileOut, DirectorLibraryOut
 from studio.db.models import User
-from studio.director.compiler import compile_prompt
+from studio.director.compiler import compile_prompt, handle_of
 from studio.director.elements import resolve_mentions, style_slug, unknown_styles, with_style
 from studio.director.library import get_library
 from studio.registry.loader import get_registry
@@ -39,7 +39,7 @@ async def compile_preview(
         direction, prompt = direction.model_copy(update={"style": None}), with_style(prompt, slug)
     if body.mode is not None:
         media = [{"role": m.role, "asset_id": str(m.asset_id)} for m in body.media]
-        speakers = [x.who[1:] for x in (direction.dialogue if direction else []) if x.who.startswith("@")]
+        speakers = [s for x in (direction.dialogue if direction else []) if (s := handle_of(x.who))]
         mention = await resolve_mentions(session, user.id, spec, body.mode, prompt, media, speakers)
         prompt, warnings, names = mention.prompt, mention.warnings, mention.names
     c = compile_prompt(spec, prompt, direction, names=names)

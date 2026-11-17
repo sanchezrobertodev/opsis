@@ -30,16 +30,18 @@ export function useSelection() {
   };
 }
 
-export function SelectButton({ onClick }: { onClick: () => void }) {
+export function SelectButton({ onClick, title, ref }: {
+  onClick: () => void; title?: string; ref?: React.Ref<HTMLButtonElement>;
+}) {
   return (
-    <Button size="sm" tone="ghost" onClick={onClick}>
+    <Button ref={ref} size="sm" tone="ghost" onClick={onClick} title={title}>
       <ListChecks className="size-4" aria-hidden />
       Select
     </Button>
   );
 }
 
-/** Sits at the top of the grid while selecting: how many, all/none, delete, done. */
+/** Sits at the top of the grid while selecting: how many, all/none, delete (or `children`, other actions), done. */
 export function SelectionBar({
   count,
   selectable,
@@ -48,6 +50,7 @@ export function SelectionBar({
   onNone,
   onDelete,
   onDone,
+  children,
 }: {
   count: number;
   selectable: number;
@@ -55,8 +58,9 @@ export function SelectionBar({
   more?: boolean;
   onAll: () => void;
   onNone: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
   onDone: () => void;
+  children?: React.ReactNode;
 }) {
   return (
     <div
@@ -76,10 +80,13 @@ export function SelectionBar({
           Select none
         </Button>
       )}
-      <Button size="sm" tone="danger" onClick={onDelete} disabled={count === 0}>
-        <Trash2 className="size-4" aria-hidden />
-        Delete
-      </Button>
+      {onDelete && (
+        <Button size="sm" tone="danger" onClick={onDelete} disabled={count === 0}>
+          <Trash2 className="size-4" aria-hidden />
+          Delete
+        </Button>
+      )}
+      {children}
       <Button size="sm" tone="ghost" className="ml-auto" onClick={onDone}>
         Done
       </Button>

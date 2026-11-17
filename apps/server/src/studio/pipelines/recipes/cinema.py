@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import StepKind
-from studio.director.compiler import DialogueLine, ShotDirection
+from studio.director.compiler import DialogueLine, ShotDirection, handle_of
 from studio.director.elements import mentions, seconds_cap, voice_samples
 from studio.media.speech import CHARS_PER_SECOND
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
@@ -279,8 +279,7 @@ async def fill_voices(session: AsyncSession, user_id: uuid.UUID, shots: list[Any
     from studio.db.models import Element  # local import: models import nothing from recipes
 
     def slug(line: dict[str, Any]) -> str | None:
-        who = str(line.get("who") or "")
-        return who[1:].lower() if who.startswith("@") else None
+        return handle_of(str(line.get("who") or ""))
 
     wanted = {x for s in shots for line in (s.direction or {}).get("dialogue") or [] if (x := slug(line))}
     rows = (await session.execute(select(Element).where(

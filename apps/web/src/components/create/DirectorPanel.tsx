@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import type { Schemas } from "@opsis/api-client";
 import { api, unwrap } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { mentionsIn } from "@/lib/mentions";
 import { Dialog, Segmented } from "@/components/ui/controls";
 import { EmotionWheel, FAMILY_COLOR } from "./director/EmotionWheel";
 import { LightingConsole } from "./director/LightingConsole";
@@ -47,10 +48,9 @@ const TEMPO: Look = { key: "pacing", section: "pacing", label: "Tempo" };
 const LIGHTING: Look = { key: "lighting", section: "lighting", label: "Lighting" };
 const SUBJECT = "the subject";
 
-/** @mentions in a prompt, for the emotion wheel's cast. */
+/** @mentions in a prompt (their handles, a look left off), for the emotion wheel's cast. */
 export function mentionSlugs(text: string): string[] {
-  const found = [...(text ?? "").matchAll(/(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_-]{0,39})/g)].map((m) => m[1].toLowerCase());
-  return [...new Set(found)];
+  return [...new Set(mentionsIn(text).map((m) => m.slug))];
 }
 
 export const MAX_MOVES = 3;

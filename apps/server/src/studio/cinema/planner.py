@@ -23,8 +23,9 @@ from studio.director.compiler import (
     CastEmotion,
     MoveChoice,
     ShotDirection,
+    handle_of,
 )
-from studio.director.elements import MENTION
+from studio.director.elements import MENTION, MENTION_LOOK
 from studio.director.library import DirectorLibrary, get_library
 from studio.llm.client import LLMResult, model_for, structured
 
@@ -153,13 +154,13 @@ def _texts(shot: Shot) -> list[str]:
 
 
 def _unmention(scene: Scene, known: set[str]) -> Scene:
-    """An @handle nobody has (neither the cast nor a proposed character) becomes a plain word."""
+    """An @handle nobody has (neither the cast nor a proposed character) becomes a plain word, without its look."""
     def fix(text: str) -> str:
-        return MENTION.sub(lambda m: m.group(0) if m.group(1).lower() in known else m.group(1), text)
+        return MENTION_LOOK.sub(lambda m: m.group(0) if m.group(1).lower() in known else m.group(1), text)
 
     shots = []
     for shot in scene.shots:
-        emotions = [e for e in shot.direction.cast_emotions if e.who.lstrip("@").lower() in known]
+        emotions = [e for e in shot.direction.cast_emotions if (handle_of(e.who) or e.who.strip().lower()) in known]
         shots.append(shot.model_copy(update={
             "action": fix(shot.action), "lines": [x.model_copy(update={"who": fix(x.who)}) for x in shot.lines],
             "direction": shot.direction.model_copy(update={"cast_emotions": emotions})}))
@@ -183,7 +184,7 @@ def to_scenes(plan: ShotPlan, lib: DirectorLibrary, max_shots: int) -> tuple[lis
                 warnings.append(f"unknown camera moves dropped: {', '.join(dropped)}")
             feelings: dict[str, CastEmotion] = {}
             for e in p.emotions:
-                who = "@" + e.who.strip().lstrip("@").lower()
+                who = "@" + (handle_of("@" + e.who.strip().lstrip("@")) or "")  # the person: no look, one feeling
                 if lib.look("emotions", e.emotion) and len(who) > 1:
                     feelings.setdefault(who, CastEmotion(who=who, emotion=e.emotion))
             direction = ShotDirection(

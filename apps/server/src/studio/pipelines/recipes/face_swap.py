@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import StepKind
+from studio.director.elements import UNATTACHED_VIEWS
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import mode_with_op
 from studio.pipelines.recipes.vlog import SLUG
@@ -108,9 +109,10 @@ class FaceSwapRecipe(Recipe):
             Element.deleted_at.is_(None)))).scalar_one_or_none()
         if element is None:
             return inp
-        face = (await session.execute(select(ElementAsset.asset_id).where(ElementAsset.element_id == element.id)
-                                      .order_by(ElementAsset.is_primary.desc(), ElementAsset.sort).limit(1)
-                                      )).scalar_one_or_none() or element.cover_asset_id
+        face = (await session.execute(select(ElementAsset.asset_id).where(
+            ElementAsset.element_id == element.id, ElementAsset.look.is_(None),  # never a look's or a grid sheet
+            ElementAsset.view.not_in(UNATTACHED_VIEWS)).order_by(ElementAsset.is_primary.desc(), ElementAsset.sort)
+            .limit(1))).scalar_one_or_none() or element.cover_asset_id
         return inp.model_copy(update={"face_asset_id": face}) if face else inp
 
     def validate(self, inp: FaceSwapInput, reg: Registry) -> list[str]:

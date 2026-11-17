@@ -8,7 +8,9 @@ import { toast } from "sonner";
 import { api, ApiError, isActive, type ModelSummary, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { useDraft } from "@/lib/draft";
+import { useElements } from "@/lib/elements";
 import { useDebounced } from "@/lib/hooks";
+import { mentionsIn, picturedMentions } from "@/lib/mentions";
 import { type CreateBody, useCreateGeneration, useGenerations, useModel } from "@/lib/queries";
 import { KINDS, modeMatches, type StudioKind } from "@/lib/studioKinds";
 import { Button, Dialog, Field, Segmented, Select } from "@/components/ui/controls";
@@ -49,6 +51,7 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
       ? draft.modelId
       : defaultModel(models, preferred);
   const { data: model } = useModel(modelId);
+  const { data: elements } = useElements();
   // the ring on Generate turns while anything renders (same query as the top bar's count)
   const { data: gens } = useGenerations();
   const rendering = gens?.items.some((g) => isActive(g.status)) ?? false;
@@ -95,11 +98,18 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
         }
       : null;
 
+  // a model's reference slot that @mentions fill: their pictures are attached when the prompt is resolved
+  const refs = model?.elements as { strategy?: string; ref_role?: string } | null | undefined;
+  const refRole = refs?.strategy === "refs_native" ? (refs.ref_role ?? "image_references") : null;
+  const pictured = picturedMentions(draft.prompt, elements ?? []).length > 0;
   // say what's missing here rather than asking the server to refuse it
   const missingMedia = (mode?.medias ?? [])
-    .filter((slot) => slot.required && !slot.auto && !draft.media[slot.role]?.length)
+    .filter((slot) => slot.required && !slot.auto && !draft.media[slot.role]?.length
+      && !(pictured && slot.role === refRole))
     .map((slot) => `${slot.label ?? slot.role} is required`);
-  const estimateBody = useDebounced(body && !missingMedia.length ? { ...body, prompt: body.prompt ? "x" : "" } : null, 300);
+  // priced on the @mentions alone (the pictures they attach can cost), so typing the rest doesn't ask again
+  const estimateBody = useDebounced(body && !missingMedia.length
+    ? { ...body, prompt: body.prompt ? mentionsIn(body.prompt).map((m) => m.text).join(" ") || "x" : "" } : null, 300);
   // a route the model no longer has runs as Auto
   const stored = model && draft.routes?.[model.id];
   const pinned = stored && model.routes.some((r) => r.id === stored) ? stored : undefined;

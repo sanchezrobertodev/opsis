@@ -1,15 +1,17 @@
-"""Characters, locations, props and styles (Elements). Mention one as `@handle` in any prompt."""
+"""Characters, locations, props and styles (Elements), and casts: saved groups of characters. Mention one as
+`@handle` in any prompt, a character's look as `@handle:look`."""
 
 from __future__ import annotations
 
 import shutil
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.api.deps import current_user, get_session
@@ -17,8 +19,8 @@ from studio.api.schemas import AssetOut
 from studio.api.serializers import asset_out
 from studio.budget import modes
 from studio.config import get_settings
-from studio.db.models import Asset, Element, ElementAsset, ElementKind, User
-from studio.director.elements import unique_slug
+from studio.db.models import Asset, Element, ElementAsset, ElementKind, ElementMember, User
+from studio.director.elements import CAST_SIZE, LOOK_SLUG, UNATTACHED_VIEWS, cast_members, unique_slug
 from studio.domain.enums import AssetKind, AssetStatus
 from studio.media.ffmpeg import ffmpeg
 from studio.providers import elevenlabs
@@ -28,14 +30,28 @@ from studio.storage.local import get_storage
 
 router = APIRouter(prefix="/elements", tags=["elements"])
 
-Kind = Literal["character", "location", "prop", "style", "voice"]
-View = Literal["front", "three_quarter", "side", "back", "face", "full_body", "sheet", "wide", "detail", "style"]
+Kind = Literal["character", "location", "prop", "style", "voice", "cast"]
+# `expressions` and `poses` are grid sheets kept for people to see: a mention never attaches them
+View = Literal["front", "three_quarter", "side", "back", "face", "full_body", "sheet", "wide", "detail", "style",
+               "expressions", "poses"]
 
 
 class ElementImageIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     asset_id: uuid.UUID
     view: View = "front"
+    look: str | None = Field(None, pattern=LOOK_SLUG, description="The character's look this picture shows "
+                                                                   "(`@handle:look`); none for a main picture")
+
+
+class ElementLook(BaseModel):
+    """A character's look: an outfit, or the character in another picture style. `@handle:look` in a prompt attaches
+    its pictures first and reads its description after the character's."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    name: str = Field(min_length=1, max_length=40)
+    description: str = Field(max_length=160, description='Read after the character\'s description: "wearing a red '
+                                                         'wool coat and boots", "drawn as a 2D anime character"')
 
 
 class VoiceIn(BaseModel):
@@ -92,6 +108,7 @@ class ElementCreate(BaseModel):
     attributes: dict[str, Any] = {}
     images: list[ElementImageIn] = []
     voice: VoiceIn | None = None
+    members: list[uuid.UUID] | None = Field(None, description="A cast (group)'s characters, 2-8, in order")
 
 
 class ElementPatch(BaseModel):
@@ -105,12 +122,29 @@ class ElementPatch(BaseModel):
     voice: VoiceIn | None = Field(None, description="Set the voice; `clear_voice` removes it")
     clear_voice: bool = False
     clear_lora: bool = Field(False, description="Forget the trained identity (the LoRA files stay in the library)")
+    members: list[uuid.UUID] | None = Field(None, description="A cast (group)'s characters, all of them, in order")
+
+
+class ElementImagePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    look: str | None = Field(None, pattern=LOOK_SLUG, description="Make it a picture of this look; null makes it a "
+                                                                   "main picture again")
+    view: View | None = None
+    primary: bool | None = Field(None, description="True makes it the picture a mention attaches first")
 
 
 class ElementImageOut(BaseModel):
     asset: AssetOut
     view: str
     is_primary: bool
+    look: str | None = None
+
+
+class ElementMemberOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    handle: str
+    cover: AssetOut | None
 
 
 class ElementOut(BaseModel):
@@ -125,6 +159,8 @@ class ElementOut(BaseModel):
     lora: dict[str, Any] | None = Field(None, description="The trained identity: {base, trigger, low, high, steps, run_id, trained_at}; models with the lora strategy load it when the character is mentioned")
     cover: AssetOut | None
     images: list[ElementImageOut]
+    looks: dict[str, ElementLook] = Field({}, description="A character's looks by handle (`@handle:look`)")
+    members: list[ElementMemberOut] = Field([], description="A cast (group)'s characters in order; none for other kinds")
     created_at: datetime
 
 
@@ -143,17 +179,27 @@ async def _owned_assets(session: AsyncSession, user: User, ids: list[uuid.UUID],
     return found
 
 
+def _aside(look: str | None, view: str) -> bool:
+    """A look's picture or a grid sheet, which a plain mention never attaches: never the cover or the primary one."""
+    return bool(look) or view in UNATTACHED_VIEWS
+
+
 async def _out(session: AsyncSession, e: Element) -> ElementOut:
     links = (await session.execute(
         select(ElementAsset, Asset).join(Asset, Asset.id == ElementAsset.asset_id)
         .where(ElementAsset.element_id == e.id, Asset.deleted_at.is_(None))
         .order_by(ElementAsset.is_primary.desc(), ElementAsset.sort)
     )).all()
-    images = [ElementImageOut(asset=asset_out(a), view=link.view, is_primary=link.is_primary) for link, a in links]
-    cover = next((i.asset for i in images if str(i.asset.id) == str(e.cover_asset_id)), images[0].asset if images else None)
+    images = [ElementImageOut(asset=asset_out(a), view=link.view, is_primary=link.is_primary, look=link.look)
+              for link, a in links]
+    cover = next((i.asset for i in images if str(i.asset.id) == str(e.cover_asset_id)),
+                 next((i.asset for i in images if not _aside(i.look, i.view)), None))
+    crew = (await cast_members(session, [e.id])).get(e.id, []) if e.kind == ElementKind.cast else []
+    members = [ElementMemberOut(id=m.id, name=m.name, handle=f"@{m.slug}", cover=(await _out(session, m)).cover)
+               for m in crew]
     return ElementOut(id=e.id, kind=e.kind.value, name=e.name, slug=e.slug, handle=f"@{e.slug}",
                       description=e.description, attributes=e.attributes or {}, voice=e.voice or None, lora=e.lora or None,
-                      cover=cover, images=images, created_at=e.created_at)
+                      cover=cover, images=images, looks=e.looks or {}, members=members, created_at=e.created_at)
 
 
 async def _get(session: AsyncSession, user: User, element_id: uuid.UUID, lock: bool = False) -> Element:
@@ -161,6 +207,29 @@ async def _get(session: AsyncSession, user: User, element_id: uuid.UUID, lock: b
     if e is None or e.user_id != user.id or e.deleted_at is not None:
         raise HTTPException(404, "element not found")
     return e
+
+
+async def _members(session: AsyncSession, user: User, ids: list[uuid.UUID]) -> list[uuid.UUID]:
+    """A cast's characters: 2-8 of yours, each once. FOR SHARE, like pictures: a character being deleted meanwhile is
+    either found gone, or waits for this save and then leaves the cast."""
+    ids = list(dict.fromkeys(ids))
+    if not CAST_SIZE[0] <= len(ids) <= CAST_SIZE[1]:
+        raise HTTPException(422, f"a cast (group) has {CAST_SIZE[0]} to {CAST_SIZE[1]} different characters")
+    found = set((await session.execute(select(Element.id).where(
+        Element.id.in_(ids), Element.user_id == user.id, Element.kind == ElementKind.character,
+        Element.deleted_at.is_(None)).with_for_update(read=True))).scalars())
+    if missing := [str(i) for i in ids if i not in found]:
+        raise HTTPException(422, f"a cast (group) holds only your characters; these aren't: {', '.join(missing)}")
+    return ids
+
+
+def _add_members(session: AsyncSession, user: User, e: Element, ids: list[uuid.UUID]) -> None:
+    session.add_all(ElementMember(group_id=e.id, member_id=m, user_id=user.id, sort=n) for n, m in enumerate(ids))
+
+
+def _check_looks(e: Element, looks: Iterable[str | None]) -> None:
+    if unknown := sorted({x for x in looks if x and x not in (e.looks or {})}):
+        raise HTTPException(422, f"@{e.slug} has no look called {', '.join(unknown)}; make the look first")
 
 
 @router.get("", response_model=list[ElementOut])
@@ -180,6 +249,11 @@ async def list_elements(kind: Kind | None = None, q: str | None = Query(None, ma
 @router.post("", response_model=ElementOut, status_code=201)
 async def create_element(body: ElementCreate, session: AsyncSession = Depends(get_session),
                          user: User = Depends(current_user)) -> ElementOut:
+    if (body.kind == "cast") != (body.members is not None):
+        raise HTTPException(422, "a cast (group) needs its characters (members), and only a cast has them")
+    if any(i.look for i in body.images):
+        raise HTTPException(422, "a new character has no looks yet: add a look's pictures once it's made")
+    members = await _members(session, user, body.members) if body.members is not None else []
     assets = await _owned_assets(session, user, [i.asset_id for i in body.images])
     await _check_sample(session, user, body.voice)
     e = Element(user_id=user.id, kind=ElementKind(body.kind), name=body.name.strip(),
@@ -187,11 +261,13 @@ async def create_element(body: ElementCreate, session: AsyncSession = Depends(ge
                 attributes=body.attributes, voice=_check_voice(body.voice) if body.voice else {})
     session.add(e)
     await session.flush()
+    _add_members(session, user, e, members)
+    first = next((i for i in body.images if not _aside(i.look, i.view)), None)  # never a grid sheet
     for n, img in enumerate(body.images):
         session.add(ElementAsset(element_id=e.id, asset_id=assets[img.asset_id].id, view=img.view,
-                                 is_primary=n == 0, sort=n))
-    if body.images:
-        e.cover_asset_id = body.images[0].asset_id
+                                 is_primary=img is first, sort=n))
+    if first is not None:
+        e.cover_asset_id = first.asset_id
     await session.commit()
     return await _out(session, e)
 
@@ -266,10 +342,20 @@ async def get_element(element_id: uuid.UUID, session: AsyncSession = Depends(get
 async def patch_element(element_id: uuid.UUID, body: ElementPatch, session: AsyncSession = Depends(get_session),
                         user: User = Depends(current_user)) -> ElementOut:
     e = await _get(session, user, element_id, lock=True)
+    if body.kind is not None and (body.kind == "cast") != (e.kind == ElementKind.cast):
+        raise HTTPException(422, "a cast (group) stays a cast, and nothing else becomes one")
+    if body.members is not None:
+        if e.kind != ElementKind.cast:
+            raise HTTPException(422, "only a cast (group) has members")
+        members = await _members(session, user, body.members)
+        await session.execute(delete(ElementMember).where(ElementMember.group_id == e.id))
+        _add_members(session, user, e, members)
     if body.name is not None and body.name.strip() != e.name:
         e.name = body.name.strip()
         e.slug = await unique_slug(session, user.id, e.name, exclude=e.id)
     if body.kind is not None:
+        if e.kind == ElementKind.character and body.kind != "character":  # a cast holds characters only
+            await session.execute(delete(ElementMember).where(ElementMember.member_id == e.id))
         e.kind = ElementKind(body.kind)
     if body.description is not None:
         e.description = body.description.strip()
@@ -300,6 +386,9 @@ async def delete_element(element_id: uuid.UUID, session: AsyncSession = Depends(
             raise HTTPException(502, f"ElevenLabs couldn't remove the voice: {exc.message}") from exc
     e.deleted_at = datetime.now(UTC)
     e.slug = f"{e.slug[:29]}-del-{uuid.uuid4().hex[:6]}"  # frees the handle for reuse; fits slug's 40 characters
+    # a character leaves the casts it was in; a cast lets its characters go
+    await session.execute(delete(ElementMember).where(
+        or_(ElementMember.group_id == e.id, ElementMember.member_id == e.id)))
     await session.commit()
 
 
@@ -307,6 +396,7 @@ async def delete_element(element_id: uuid.UUID, session: AsyncSession = Depends(
 async def add_images(element_id: uuid.UUID, body: list[ElementImageIn], session: AsyncSession = Depends(get_session),
                      user: User = Depends(current_user)) -> ElementOut:
     e = await _get(session, user, element_id, lock=True)
+    _check_looks(e, (i.look for i in body))
     await _owned_assets(session, user, [i.asset_id for i in body])
     existing = set((await session.execute(select(ElementAsset.asset_id).where(
         ElementAsset.element_id == e.id))).scalars())
@@ -314,11 +404,11 @@ async def add_images(element_id: uuid.UUID, body: list[ElementImageIn], session:
     for img in body:
         if img.asset_id in existing:
             continue
-        session.add(ElementAsset(element_id=e.id, asset_id=img.asset_id, view=img.view, is_primary=count == 0,
-                                 sort=count))
+        session.add(ElementAsset(element_id=e.id, asset_id=img.asset_id, view=img.view, sort=count, look=img.look,
+                                 is_primary=count == 0 and not _aside(img.look, img.view)))
         count += 1
-    if e.cover_asset_id is None and body:
-        e.cover_asset_id = body[0].asset_id
+    if e.cover_asset_id is None and (main := [i for i in body if not _aside(i.look, i.view)]):
+        e.cover_asset_id = main[0].asset_id
     e.updated_at = datetime.now(UTC)
     await session.commit()
     return await _out(session, e)
@@ -334,5 +424,69 @@ async def remove_image(element_id: uuid.UUID, asset_id: uuid.UUID, session: Asyn
     await session.delete(link)
     if e.cover_asset_id == asset_id:
         e.cover_asset_id = None
+    await session.commit()
+    return await _out(session, e)
+
+
+@router.patch("/{element_id}/images/{asset_id}", response_model=ElementOut)
+async def patch_image(element_id: uuid.UUID, asset_id: uuid.UUID, body: ElementImagePatch,
+                      session: AsyncSession = Depends(get_session), user: User = Depends(current_user)) -> ElementOut:
+    """Change one of an element's pictures: the look it shows (null: a main picture again), its view, or make it the
+    first of its pictures (the main ones, or its look's), the one a mention attaches first."""
+    e = await _get(session, user, element_id, lock=True)
+    link = await session.get(ElementAsset, (e.id, asset_id))
+    if link is None:
+        raise HTTPException(404, "image not attached to this element")
+    if "look" in body.model_fields_set and body.look != link.look:
+        _check_looks(e, [body.look])
+        link.look, link.is_primary = body.look, False
+        if body.look and e.cover_asset_id == asset_id:  # a look's picture never covers
+            e.cover_asset_id = None
+    if body.view is not None:
+        link.view = body.view
+    if link.view in UNATTACHED_VIEWS:  # a grid sheet is never attached, so it never comes first or covers
+        if body.primary:
+            raise HTTPException(422, "a grid sheet is never attached, so it can't come first")
+        link.is_primary = False
+        if e.cover_asset_id == asset_id:
+            e.cover_asset_id = None
+    if body.primary:
+        same =ElementAsset.look.is_(None) if link.look is None else ElementAsset.look == link.look
+        await session.execute(update(ElementAsset).where(
+            ElementAsset.element_id == e.id, ElementAsset.asset_id != asset_id, same).values(is_primary=False))
+    if body.primary is not None:
+        link.is_primary = body.primary
+    e.updated_at = datetime.now(UTC)
+    await session.commit()
+    return await _out(session, e)
+
+
+@router.put("/{element_id}/looks/{look}", response_model=ElementOut)
+async def put_look(element_id: uuid.UUID, body: ElementLook, look: str = Path(pattern=LOOK_SLUG),
+                   session: AsyncSession = Depends(get_session), user: User = Depends(current_user)) -> ElementOut:
+    """Make or rename one of a character's looks (`@handle:look`). Its pictures are the ones kept with that `look`,
+    which the `character_look` recipe draws."""
+    e = await _get(session, user, element_id, lock=True)
+    if e.kind != ElementKind.character:
+        raise HTTPException(422, "only characters have looks")
+    e.looks = {**(e.looks or {}), look: body.model_dump()}
+    e.updated_at = datetime.now(UTC)
+    await session.commit()
+    return await _out(session, e)
+
+
+@router.delete("/{element_id}/looks/{look}", response_model=ElementOut)
+async def delete_look(element_id: uuid.UUID, look: str = Path(pattern=LOOK_SLUG),
+                      session: AsyncSession = Depends(get_session), user: User = Depends(current_user)) -> ElementOut:
+    """Forget a look. Its pictures leave the character rather than become main ones; they stay in the library."""
+    e = await _get(session, user, element_id, lock=True)
+    if look not in (e.looks or {}):
+        raise HTTPException(404, f"@{e.slug} has no look called {look}")
+    gone = set((await session.execute(delete(ElementAsset).where(
+        ElementAsset.element_id == e.id, ElementAsset.look == look).returning(ElementAsset.asset_id))).scalars())
+    if e.cover_asset_id in gone:
+        e.cover_asset_id = None
+    e.looks = {k: v for k, v in e.looks.items() if k != look}
+    e.updated_at = datetime.now(UTC)
     await session.commit()
     return await _out(session, e)

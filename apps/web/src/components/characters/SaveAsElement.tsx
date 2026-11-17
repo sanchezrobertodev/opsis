@@ -111,7 +111,7 @@ function SaveForm({ asset, prompt, onDone }: { asset: Asset; prompt?: string; on
           Save to
           <select value={target} onChange={(e) => setTarget(e.target.value)} className={`h-10 ${field}`}>
             <option value="new">A new character, location or prop</option>
-            {(elements ?? []).filter((e) => e.kind !== "voice").map((e) => (
+            {(elements ?? []).filter((e) => e.kind !== "voice" && e.kind !== "cast").map((e) => (
               <option key={e.id} value={e.id}>
                 {e.name} ({KIND_LABEL[e.kind].toLowerCase()}, {e.images.length} image{e.images.length === 1 ? "" : "s"})
               </option>

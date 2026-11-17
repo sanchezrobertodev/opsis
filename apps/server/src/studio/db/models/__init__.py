@@ -2,7 +2,7 @@
 
 from studio.db.models.assets import Asset, AssetLineage, AssetProviderUpload
 from studio.db.models.channels import Channel
-from studio.db.models.elements import Element, ElementAsset, ElementKind
+from studio.db.models.elements import Element, ElementAsset, ElementKind, ElementMember
 from studio.db.models.generations import Generation, GenerationAttempt, JobEvent
 from studio.db.models.keys import ProviderKey
 from studio.db.models.pipelines import PipelineRun, PipelineStep, RunStatus, StepKind, StepStatus
@@ -19,6 +19,7 @@ __all__ = [
     "Element",
     "ElementAsset",
     "ElementKind",
+    "ElementMember",
     "Generation",
     "GenerationAttempt",
     "JobEvent",

@@ -4,6 +4,7 @@ import { Images, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { type Element, usePatchElement } from "@/lib/elements";
+import { GRID_VIEWS } from "@/lib/mentions";
 import type { RunCreate } from "@/lib/runs";
 import { quotePrice, quoteText, useRunQuote, useStartQuoted } from "@/components/runs/RunQuote";
 import { Button, Segmented } from "@/components/ui/controls";
@@ -22,7 +23,9 @@ export function IdentityPanel({ element, onMore }: { element: Element; onMore: (
   const patch = usePatchElement();
   const [retrain, setRetrain] = useState(false);
   const [steps, setSteps] = useState<(typeof DEPTHS)[number]>(1000);
-  const photos = element.images.map((i) => i.asset.id).slice(0, MAX_PHOTOS);
+  // not a look's (another outfit, or another picture style) or a grid sheet: they'd teach it the wrong face
+  const photos = element.images.filter((i) => !i.look && !GRID_VIEWS.includes(i.view)).map((i) => i.asset.id)
+    .slice(0, MAX_PHOTOS);
   const training = !identity || retrain;
   const body: RunCreate | null = training && photos.length >= MIN_PHOTOS
     ? { recipe: "lora_train", input: { element_id: element.id, slug: element.slug, photos, steps } }
