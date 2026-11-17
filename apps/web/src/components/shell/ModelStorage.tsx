@@ -25,9 +25,11 @@ export function ModelStorage() {
   });
   const data = query.data;
   const directory = draft ?? data?.directory ?? "";
+  // only for a ComfyUI on this computer whose launcher reads the shared config: elsewhere, one line saying so
+  if (data && !data.available) return <p className="text-2xs text-faint">Local model storage: {data.message}</p>;
 
   return (
-    <section className="space-y-5 lg:col-span-2" aria-labelledby="model-storage-title">
+    <section className="space-y-4" aria-labelledby="model-storage-title">
       <div className="flex items-center justify-between gap-3">
         <h2 id="model-storage-title" className="type-title text-xl">Local model storage</h2>
         <Button size="sm" tone="ghost" aria-label="Refresh model storage" disabled={query.isFetching}
@@ -42,7 +44,6 @@ export function ModelStorage() {
         </p>
         {query.isPending && <p className="text-sm text-muted">Loading model storage…</p>}
         {query.error && <p role="alert" className="text-sm text-fault">{query.error.message}</p>}
-        {data && !data.available && <p role="status" className="text-sm text-muted">{data.message}</p>}
         {data?.available && (
           <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); save.mutate(directory.trim()); }}>
             <Field label="Model download folder" htmlFor="model-download-folder"

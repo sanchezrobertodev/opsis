@@ -14,10 +14,7 @@ afterwards when a node pack was added. Gated files (LTX-2.5) need HF_TOKEN and t
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import os
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -26,39 +23,14 @@ sys.path.insert(0, str(ROOT / "apps" / "server" / "src"))
 
 from studio.config import get_settings  # noqa: E402
 from studio.providers.local_setup import (  # noqa: E402
-    Comfy,
-    LocalModel,
+    carry_out,
     comfy_at,
-    install_pack,
+    describe,
     local_models,
-    python_version,
+    plan,
+    python_problem,
 )
 from studio.registry.loader import load_registry  # noqa: E402
-
-_spec = importlib.util.spec_from_file_location("fetch_models", ROOT / "infra" / "runpod" / "wan-core" / "fetch_models.py")
-fetch_models = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(fetch_models)
-
-
-def gb(files) -> float:
-    return sum(f.get("bytes", 0) for f in files) / 1e9
-
-
-def existing(path: Path) -> Path:
-    while not path.exists() and path != path.parent:
-        path = path.parent
-    return path
-
-
-def describe(m: LocalModel, comfy: Comfy) -> tuple[str, str]:
-    """(state, what it still needs)."""
-    if not comfy.fits(m):
-        return "too big", f"needs a GPU with {m.min_vram_gb:g} GB"
-    needs = [f"the {p.name} node pack" for p in m.packs if not comfy.has_pack(p)]
-    missing = [f for f in m.files if not comfy.has_file(f)]
-    if missing:
-        needs.append(f"{len(missing)} model files, {gb(missing):.1f} GB")
-    return ("ready", "") if not needs else ("needs", ", ".join(needs))
 
 
 def main() -> int:
@@ -102,58 +74,37 @@ def main() -> int:
         print(f"\n{', '.join(m.name for m in too_big)} won't run on this GPU, so they aren't set up.")
         return 2
 
-    packs = list({p.url: p for m in chosen for p in m.packs if not comfy.has_pack(p)}.values())
-    files = list({(f["folder"], f["name"]): f for m in chosen for f in m.files if not comfy.has_file(f)}.values())
-    if not packs and not files:
+    work = plan(chosen, comfy)
+    if not work.packs and not work.jobs:
         print("\nAlready set up: nothing to do.")
         return 0
     python = args.python or comfy.python()
-    if packs:
-        if python is None:
-            print("\nCan't find ComfyUI's Python to install the node packs into: pass --python.")
-            return 2
-        if comfy.python_version and python_version(python) != comfy.python_version:
-            print(f"\n{python} isn't the Python ComfyUI runs on ({comfy.python_version.split()[0]}): pass --python.")
-            return 2
-    jobs = [(f, comfy.paths(f["folder"])[0]) for f in files]
+    if work.packs and (problem := python_problem(comfy, python)):
+        print(f"\n{problem[0].upper()}{problem[1:]}: pass --python.")
+        return 2
     print("\nThis will:")
-    for p in packs:
+    for p in work.packs:
         at = f" at commit {p.ref[:8]}" if p.ref else ""
         print(f"  - clone the {p.name} node pack ({p.url}){at} into {comfy.custom_nodes},\n"
               f"    and install its Python packages with {python}")
-    if files:
-        homes = sorted({str(d) for _, d in jobs})
-        free = min(shutil.disk_usage(existing(Path(h))).free for h in homes) / 1e9
-        print(f"  - download {len(files)} model files, {gb(files):.1f} GB, into {', '.join(homes)} ({free:.0f} GB free)")
-        # a download that stopped resumes from its .part, so only the rest of it needs room
-        parts = sum(p.stat().st_size for f, d in jobs if (p := d / f"{f['name']}.part").is_file()) / 1e9
-        if free < gb(files) - parts + 1:
+    if work.jobs:
+        homes = ", ".join(sorted({str(d) for _, d in work.jobs}))
+        print(f"  - download {len(work.jobs)} model files, {work.bytes / 1e9:.1f} GB, into {homes}"
+              f" ({(work.free_bytes() or 0) / 1e9:.0f} GB free)")
+        if not work.room():
             print("Not enough free space for them.")
             return 2
     if not args.yes and input("Go ahead? [y/N] ").strip().lower() not in ("y", "yes"):
         print("Nothing changed.")
         return 1
 
-    failed = []
-    for p in packs:
-        print(f"\nInstalling {p.name}...")
-        try:
-            install_pack(p, comfy, python)
-        except subprocess.CalledProcessError as exc:
-            failed.append(f"{p.name}: {' '.join(map(str, exc.cmd[:4]))}... exited with {exc.returncode}")
-        except OSError as exc:  # no git
-            failed.append(f"{p.name}: {exc}")
-    if jobs:
-        print(f"\nDownloading {len(jobs)} files...")
-        # each into the folder ComfyUI reads it from
-        _, bad = fetch_models.fetch([({**f, "folder": d.name}, d.parent) for f, d in jobs])
-        failed += bad
+    failed = carry_out(work, comfy, python, say=lambda step: print(f"\n{step}..."))
     if failed:
         print("\nSome steps failed:\n  " + "\n  ".join(failed))
         if any(code in msg for msg in failed for code in ("401", "403")) and not os.environ.get("HF_TOKEN"):
             print("A gated file: accept its license on Hugging Face, set HF_TOKEN, and run this again.")
         return 1
-    print("\nDone." + (" Restart ComfyUI to load the new node packs." if packs else
+    print("\nDone." + (" Restart ComfyUI to load the new node packs." if work.packs else
                        " ComfyUI sees new model files within a minute."))
     return 0
 

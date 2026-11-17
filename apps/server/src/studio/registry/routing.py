@@ -186,7 +186,7 @@ def candidates(
                           f"{provider.hosting_setting.upper()} so they can be hosted")
         if reason is None and not env.reachable(route.provider):
             reason = (f"{provider.name} isn't running. Start it, then try again." if kind == "local"
-                      else f"{provider.name} isn't ready; see Settings > Provider balances")
+                      else f"{provider.name} isn't ready; see Settings > Providers")
         if reason is None and kind == "local":
             reason = env.blocked(route, req.mode)
         if reason is None:

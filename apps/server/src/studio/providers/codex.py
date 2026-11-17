@@ -193,6 +193,15 @@ def codex_env() -> dict[str, str]:
     }
 
 
+def check_login(binary: list[str]) -> str:
+    """`chatgpt`, `api_key`, `signed_out`, or `error` when the program doesn't run."""
+    try:
+        done = subprocess.run([*binary, "login", "status"], capture_output=True, text=True, timeout=15, env=codex_env())
+    except (OSError, subprocess.TimeoutExpired):
+        return "error"
+    return login_state(done.stdout + done.stderr)
+
+
 def login_state(said: str) -> str:
     """What `codex login status` printed, as `chatgpt`, `api_key` or `signed_out` (never echo the line: with an API
     key it shows part of the key)."""

@@ -82,14 +82,15 @@ in the worker: the worker leaves each job in `data/provider_results/codex/` and 
 - **What it sees:** those jobs, its own Codex home `~/.local/share/opsis/codex-home` (its sign-in and sessions) and
   `~/.codex/packages` (the binary), read-only. Not your `~/.codex` with its sessions, plugins and MCP servers, nor
   `.env`, the keys, media, backups or the database. It runs read-only with no capabilities, outside the pod.
-- **Sign it in once**, with the ChatGPT account whose plan should pay (it prints a link and a code to open on any
-  device):
+- **Sign it in once**, with the ChatGPT account whose plan should pay: **Sign in with ChatGPT** on the Codex row in
+  Settings > Providers asks the runner to sign in and shows the link and one-time code to open on any device. The
+  same from a shell:
   ```
   podman exec -it opsis-codex /home/<you>/.codex/packages/standalone/current/bin/codex login --device-auth
   ```
   Until it's signed in with ChatGPT (an API key would bill per picture, outside the studio's caps), Settings says so
   and GPT Image goes to fal.
-- **Checks:** Settings > Provider balances shows Codex as Ready. `journalctl --user -u opsis-codex` logs each job it
+- **Checks:** Settings > Providers shows Codex as Ready. `journalctl --user -u opsis-codex` logs each job it
   draws.
 
 ## Your own models and workflows

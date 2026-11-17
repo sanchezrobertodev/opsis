@@ -1,16 +1,14 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, LoaderCircle, RefreshCw } from "lucide-react";
+import { LoaderCircle, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { api, unwrap } from "@/lib/api";
-import { cn, usd } from "@/lib/cn";
+import { usd } from "@/lib/cn";
 import { useBudget, useHealth, useRegistry, useUpdateBudget } from "@/lib/queries";
 import { Button, Field, Segmented, Select, Switch } from "@/components/ui/controls";
-import { Keys } from "@/components/shell/Keys";
-import { LocalModels } from "@/components/shell/LocalModels";
-import { ModelStorage } from "@/components/shell/ModelStorage";
 
 const MODE_TEXT: Record<string, string> = {
   mock: "Every generation runs on the mock provider. Nothing is sent to a provider and nothing is billed.",
@@ -27,36 +25,158 @@ const CLAUDE_ROLES = [
   ["llm_fast_model", "Prompt help", "Enhance, topic ideas, rewording a refused prompt"],
 ] as const;
 
-export function Settings() {
+/** Settings › General: which modes generations and Claude run in, the look, and whether the studio's parts are up. */
+export function GeneralSettings() {
   const { data: budget } = useBudget();
-  const { data: registry } = useRegistry();
-  const { data: health } = useHealth();
   const update = useUpdateBudget();
 
   return (
-    <div className="h-full overflow-y-auto p-6 scrollbar-quiet">
-      <div className="grid max-w-4xl grid-cols-1 gap-10 lg:grid-cols-2">
-        <section className="space-y-5">
-          <h2 className="type-title text-xl">Spending</h2>
-          {budget && (
+    <>
+      <section className="space-y-4" aria-labelledby="modes-title">
+        <div>
+          <h2 id="modes-title" className="type-title text-xl">Modes</h2>
+          <p className="mt-1 text-xs text-muted">
+            Changes apply to the next generation, no restart needed.
+            {budget && (budget.provider_modes.length < 3 || budget.llm_modes.length < 2)
+              ? " PROVIDER_MODE and LLM_MODE in .env set the highest mode offered here; raise them there and restart for more."
+              : ""}
+          </p>
+        </div>
+        {budget && (
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <div className="space-y-2 rounded-[var(--radius-panel)] bg-panel p-4">
+              <p className="text-sm">Generation</p>
+              <Segmented
+                label="Generation mode"
+                value={budget.provider_mode}
+                options={budget.provider_modes as ("mock" | "mixed" | "live")[]}
+                render={(m) => MODE_NAME[m]}
+                onChange={(m) => update.mutate({ provider_mode: m })}
+              />
+              <p className="text-xs leading-relaxed text-muted">{MODE_TEXT[budget.provider_mode]}</p>
+              {budget.provider_mode === "mixed" && (
+                <p className="text-xs text-muted">
+                  {budget.live_route_allowlist.length
+                    ? `Live routes: ${budget.live_route_allowlist.join(", ")}`
+                    : "No routes are listed in LIVE_ROUTE_ALLOWLIST in .env, so everything stays mocked."}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2 rounded-[var(--radius-panel)] bg-panel p-4">
+              <p className="text-sm">Claude</p>
+              <Segmented
+                label="Claude mode"
+                value={budget.llm_mode}
+                options={budget.llm_modes as ("mock" | "live")[]}
+                render={(m) => MODE_NAME[m]}
+                onChange={(m) => update.mutate({ llm_mode: m })}
+              />
+              <p className="text-xs leading-relaxed text-muted">{CLAUDE_TEXT[budget.llm_mode]}</p>
+              <div className="grid gap-3 pt-1">
+                {CLAUDE_ROLES.map(([key, label, hint]) => (
+                  <Field key={key} label={label} hint={hint} htmlFor={key}>
+                    <Select
+                      id={key}
+                      value={budget[key]}
+                      options={budget.claude_models.map((m) => ({
+                        value: m.id,
+                        label: `${m.name} · ${usd(m.input_usd)} in, ${usd(m.output_usd)} out`,
+                      }))}
+                      onChange={(v) => update.mutate({ [key]: v })}
+                    />
+                  </Field>
+                ))}
+              </div>
+              <p className="text-2xs text-faint">
+                Prices are per million tokens. Run estimates include what Claude&apos;s writing costs.
+              </p>
+            </div>
+          </div>
+        )}
+      </section>
+      <Appearance />
+      <Status />
+    </>
+  );
+}
+
+/** Whether the studio's parts are up: the database, ffmpeg, the registry, your ComfyUI and Claude. */
+function Status() {
+  const { data: registry } = useRegistry();
+  const { data: health } = useHealth();
+  if (!health) return null;
+  const engine = health.local_engine;
+  return (
+    <section className="space-y-4" aria-labelledby="status-title">
+      <h2 id="status-title" className="type-title text-xl">Status</h2>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 rounded-[var(--radius-panel)] bg-panel p-4 text-sm">
+        <dt className="text-muted">Database</dt>
+        <dd>{health.database ? "Connected" : "Unreachable"}</dd>
+        <dt className="text-muted">ffmpeg</dt>
+        <dd>{health.ffmpeg ? "Found" : "Missing (install it and restart)"}</dd>
+        <dt className="text-muted">Model registry</dt>
+        <dd className="tabular">
+          {registry?.models.length ?? 0} models, version {health.registry_hash.slice(0, 8)}
+        </dd>
+        <dt className="text-muted">Local engine</dt>
+        <dd>
+          {!engine.configured
+            ? "Off (set COMFYUI_URL in .env)"
+            : engine.online
+              ? `Running${engine.gpu ? ` on ${engine.gpu.replace(/^cuda:\d+\s*/, "").split(" : ")[0]}` : ""}${
+                  engine.busy ? ", busy with a job" : engine.vram_free_gb != null ? `, ${engine.vram_free_gb} GB free` : ""
+                }. `
+              : "Not running. Start ComfyUI to use the local models. "}
+          {engine.configured && (
+            <Link href="/settings/local" className="text-muted underline hover:text-chalk">Local models</Link>
+          )}
+        </dd>
+        <dt className="text-muted">Claude</dt>
+        <dd>
+          {health.llm_mode === "mock" ? (
+            "Mock writer"
+          ) : health.llm_key_set ? (
+            "Live. Enhancements are billed to your budget."
+          ) : (
+            <>
+              Live mode, but there is no Claude key yet. Add one under{" "}
+              <Link href="/settings/providers" className="underline hover:text-chalk">Providers</Link>.
+            </>
+          )}
+        </dd>
+        <dt className="text-muted">Media folder</dt>
+        <dd className="truncate text-xs leading-5" title={health.media_root}>{health.media_root}</dd>
+      </dl>
+      {health.registry_errors && (
+        <div className="rounded-[var(--radius-panel)] border border-fault/40 p-4 text-xs text-fault">
+          The last registry edit was rejected, so the previous version is still active:
+          <ul className="mt-2 list-disc pl-4">
+            {health.registry_errors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Settings › Spending: what's been spent, the switch that stops paid work, the limits, and where the money went. */
+export function SpendingSettings() {
+  const { data: budget } = useBudget();
+  const update = useUpdateBudget();
+
+  return (
+    <>
+      <section className="space-y-4" aria-labelledby="spending-title">
+        <h2 id="spending-title" className="type-title text-xl">Spending</h2>
+        {budget && (
+          <>
             <dl className="tabular grid grid-cols-3 gap-3">
               <Stat label="Today" value={usd(budget.today_usd)} />
               <Stat label="This month" value={usd(budget.month_usd)} />
               <Stat label="Reserved for running jobs" value={usd(budget.reserved_usd)} />
             </dl>
-          )}
-          {budget && (
-            <BudgetForm
-              key={`${budget.daily_cap_usd}-${budget.monthly_cap_usd}-${budget.confirm_over_usd}`}
-              initial={{
-                daily: String(budget.daily_cap_usd),
-                monthly: String(budget.monthly_cap_usd),
-                confirm: String(budget.confirm_over_usd),
-              }}
-            />
-          )}
-
-          {budget && (
             <div className="flex items-center justify-between gap-4 rounded-[var(--radius-panel)] bg-panel p-4">
               <div>
                 <p className="text-sm">Allow paid generations</p>
@@ -68,124 +188,20 @@ export function Settings() {
                 onChange={(v) => update.mutate({ live_enabled: v })}
               />
             </div>
-          )}
-        </section>
-
-        <section className="space-y-5">
-          <h2 className="type-title text-xl">Providers</h2>
-          {budget && (
-            <div className="space-y-5 rounded-[var(--radius-panel)] bg-panel p-4">
-              <div className="space-y-2">
-                <p className="text-sm">Generation</p>
-                <Segmented
-                  label="Generation mode"
-                  value={budget.provider_mode}
-                  options={budget.provider_modes as ("mock" | "mixed" | "live")[]}
-                  render={(m) => MODE_NAME[m]}
-                  onChange={(m) => update.mutate({ provider_mode: m })}
-                />
-                <p className="text-xs leading-relaxed text-muted">{MODE_TEXT[budget.provider_mode]}</p>
-                {budget.provider_mode === "mixed" && (
-                  <p className="text-xs text-muted">
-                    {budget.live_route_allowlist.length
-                      ? `Live routes: ${budget.live_route_allowlist.join(", ")}`
-                      : "No routes are listed in LIVE_ROUTE_ALLOWLIST in .env, so everything stays mocked."}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm">Claude</p>
-                <Segmented
-                  label="Claude mode"
-                  value={budget.llm_mode}
-                  options={budget.llm_modes as ("mock" | "live")[]}
-                  render={(m) => MODE_NAME[m]}
-                  onChange={(m) => update.mutate({ llm_mode: m })}
-                />
-                <p className="text-xs leading-relaxed text-muted">{CLAUDE_TEXT[budget.llm_mode]}</p>
-                <div className="grid gap-3 pt-1">
-                  {CLAUDE_ROLES.map(([key, label, hint]) => (
-                    <Field key={key} label={label} hint={hint} htmlFor={key}>
-                      <Select
-                        id={key}
-                        value={budget[key]}
-                        options={budget.claude_models.map((m) => ({
-                          value: m.id,
-                          label: `${m.name} · ${usd(m.input_usd)} in, ${usd(m.output_usd)} out`,
-                        }))}
-                        onChange={(v) => update.mutate({ [key]: v })}
-                      />
-                    </Field>
-                  ))}
-                </div>
-                <p className="text-2xs text-faint">
-                  Prices are per million tokens. Run estimates include what Claude&apos;s writing costs.
-                </p>
-              </div>
-              <p className="text-2xs text-faint">
-                Changes apply to the next generation, no restart needed.
-                {budget.provider_modes.length < 3 || budget.llm_modes.length < 2
-                  ? " PROVIDER_MODE and LLM_MODE in .env set the highest mode offered here; raise them there and restart for more."
-                  : ""}
-              </p>
-            </div>
-          )}
-          {health && (
-            <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-              <dt className="text-muted">Database</dt>
-              <dd>{health.database ? "Connected" : "Unreachable"}</dd>
-              <dt className="text-muted">ffmpeg</dt>
-              <dd>{health.ffmpeg ? "Found" : "Missing (install it and restart)"}</dd>
-              <dt className="text-muted">Model registry</dt>
-              <dd className="tabular">
-                {registry?.models.length ?? 0} models, version {health.registry_hash.slice(0, 8)}
-              </dd>
-              <dt className="text-muted">Local engine</dt>
-              <dd>
-                {!health.local_engine.configured
-                  ? "Off (set COMFYUI_URL in .env)"
-                  : health.local_engine.online
-                    ? `Running${health.local_engine.gpu ? ` on ${health.local_engine.gpu.replace(/^cuda:\d+\s*/, "").split(" : ")[0]}` : ""}${
-                        health.local_engine.busy ? ", busy with a job"
-                          : health.local_engine.vram_free_gb != null ? `, ${health.local_engine.vram_free_gb} GB free` : ""
-                      }`
-                    : "Not running. Start ComfyUI to use the local models."}
-              </dd>
-              <dt className="text-muted">Claude</dt>
-              <dd>
-                {health.llm_mode === "mock"
-                  ? "Mock writer"
-                  : health.llm_key_set
-                    ? "Live. Enhancements are billed to your budget."
-                    : "Live mode, but there is no Claude key yet. Add one under Keys."}
-              </dd>
-              <dt className="text-muted">Media folder</dt>
-              <dd className="truncate text-xs" title={health.media_root}>
-                {health.media_root}
-              </dd>
-            </dl>
-          )}
-          {health?.registry_errors && (
-            <div className="rounded-[var(--radius-panel)] border border-fault/40 p-4 text-xs text-fault">
-              The last registry edit was rejected, so the previous version is still active:
-              <ul className="mt-2 list-disc pl-4">
-                {health.registry_errors.map((e) => (
-                  <li key={e}>{e}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
-
-        <Keys />
-        <Balances />
-        {health?.local_engine.configured && <LocalModels online={health.local_engine.online} />}
-        <ModelStorage />
-        <Appearance />
-        <WhereItWent />
-        <SpendHistory />
-      </div>
-    </div>
+            <BudgetForm
+              key={`${budget.daily_cap_usd}-${budget.monthly_cap_usd}-${budget.confirm_over_usd}`}
+              initial={{
+                daily: String(budget.daily_cap_usd),
+                monthly: String(budget.monthly_cap_usd),
+                confirm: String(budget.confirm_over_usd),
+              }}
+            />
+          </>
+        )}
+      </section>
+      <WhereItWent />
+      <SpendHistory />
+    </>
   );
 }
 
@@ -208,7 +224,7 @@ function setMotion(on: boolean) {
 function Appearance() {
   const motion = useSyncExternalStore(subscribeMotion, () => document.documentElement.dataset.motion !== "off", () => true);
   return (
-    <section className="space-y-5 lg:col-span-2">
+    <section className="space-y-4">
       <h2 className="type-title text-xl">Appearance</h2>
       <div className="flex items-center justify-between gap-4 rounded-[var(--radius-panel)] bg-panel p-4">
         <div>
@@ -222,71 +238,6 @@ function Appearance() {
       </div>
     </section>
   );
-}
-
-/** What's left on each provider account, for the providers that report it; links to the billing page for the rest. */
-function Balances() {
-  const qc = useQueryClient();
-  const [refreshing, setRefreshing] = useState(false);
-  const { data } = useQuery({
-    queryKey: ["balances"],
-    queryFn: () => unwrap(api.GET("/budget/balances")),
-    staleTime: 60_000,
-  });
-  const refresh = async () => {
-    setRefreshing(true);
-    try {
-      qc.setQueryData(["balances"], await unwrap(api.GET("/budget/balances", { params: { query: { refresh: true } } })));
-    } finally {
-      setRefreshing(false);
-    }
-  };
-  return (
-    <section className="space-y-4 lg:col-span-2" aria-label="Provider balances">
-      <div className="flex items-baseline justify-between gap-4">
-        <h2 className="type-title text-xl">Provider balances</h2>
-        <Button size="sm" tone="ghost" onClick={() => void refresh()} disabled={refreshing}>
-          {refreshing ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <RefreshCw className="size-4" aria-hidden />}
-          Check again
-        </Button>
-      </div>
-      {!data ? (
-        <p className="text-sm text-muted">Asking the providers&hellip;</p>
-      ) : data.length === 0 ? (
-        <p className="text-sm text-muted">
-          No provider keys yet. Add the ones you have under Keys above.
-        </p>
-      ) : (
-        <ul className="grid gap-2 sm:grid-cols-2">
-          {data.map((b) => (
-            <li key={b.provider} className="flex items-start justify-between gap-3 rounded-[var(--radius-panel)] bg-panel px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-sm">{b.label}</p>
-                <p className={cn("mt-0.5 text-2xs", b.status === "error" ? "text-fault" : "text-faint")}>
-                  {b.detail ?? (b.status === "ok" ? "Read just now" : "")}
-                </p>
-              </div>
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <span className="tabular text-sm text-chalk">{amountText(b)}</span>
-                <a href={b.link} target="_blank" rel="noreferrer"
-                   className="flex items-center gap-1 text-2xs text-muted hover:text-chalk">
-                  Billing <ExternalLink className="size-3" aria-hidden />
-                </a>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function amountText(b: { status: string; amount?: number | null; unit?: string | null; usd?: number | null }) {
-  if (b.status === "ok" && b.unit == null) return "Ready"; // nothing to read but whether it works (Codex)
-  if (b.status !== "ok" || b.amount == null) return "–";
-  if (b.unit === "usd") return usd(b.amount);
-  const credits = `${Math.round(b.amount).toLocaleString()} credits`;
-  return b.usd != null ? `${credits} (${usd(b.usd)})` : credits;
 }
 
 type Period = "today" | "month" | "all";
@@ -324,7 +275,7 @@ function WhereItWent() {
   };
 
   return (
-    <section className="space-y-4 lg:col-span-2" aria-label="Where it went">
+    <section className="space-y-4" aria-label="Where it went">
       <div className="flex flex-wrap items-baseline justify-between gap-4">
         <h2 className="type-title text-xl">Where it went</h2>
         <div className="flex items-center gap-3">
@@ -387,12 +338,14 @@ function SpendTable({ title, groups, total }: {
   );
 }
 
+const SHOWN_DAYS = 5;
 const DAY = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
 const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 
 /** Every charge, newest first, grouped by day, with this month's split by provider. */
 function SpendHistory() {
   const { data } = useQuery({ queryKey: ["spend-history"], queryFn: () => unwrap(api.GET("/budget/history")) });
+  const [all, setAll] = useState(false);
   if (!data) return null;
   const days = new Map<string, typeof data.entries>();
   for (const e of data.entries) {
@@ -400,7 +353,7 @@ function SpendHistory() {
     days.set(day, [...(days.get(day) ?? []), e]);
   }
   return (
-    <section className="space-y-5 lg:col-span-2">
+    <section className="space-y-4">
       <h2 className="type-title text-xl">Spend history</h2>
       {data.entries.length === 0 ? (
         <p className="text-sm text-muted">
@@ -420,7 +373,7 @@ function SpendHistory() {
             </p>
           )}
           <div className="space-y-6">
-            {[...days].map(([day, entries]) => (
+            {[...days].slice(0, all ? undefined : SHOWN_DAYS).map(([day, entries]) => (
               <div key={day}>
                 <h3 className="mb-2 flex justify-between text-xs text-muted">
                   {day}
@@ -445,6 +398,11 @@ function SpendHistory() {
               </div>
             ))}
           </div>
+          {days.size > SHOWN_DAYS && (
+            <Button size="sm" tone="ghost" onClick={() => setAll(!all)}>
+              {all ? "Show the last few days" : `Show all ${days.size} days`}
+            </Button>
+          )}
           <p className="text-2xs text-faint">* Estimated from the provider&rsquo;s published price; the provider didn&rsquo;t report the exact cost.</p>
         </>
       )}
@@ -458,7 +416,7 @@ function BudgetForm({ initial }: { initial: { daily: string; monthly: string; co
   const [form, setForm] = useState(initial);
   return (
     <form
-      className="space-y-5"
+      className="space-y-4 rounded-[var(--radius-panel)] bg-panel p-4"
       onSubmit={(e) => {
         e.preventDefault();
         update.mutate(
@@ -474,9 +432,11 @@ function BudgetForm({ initial }: { initial: { daily: string; monthly: string; co
         );
       }}
     >
-      <MoneyField id="daily" label="Daily limit" hint="Jobs that would go over wait until tomorrow." value={form.daily} onChange={(v) => setForm({ ...form, daily: v })} />
-      <MoneyField id="monthly" label="Monthly limit" value={form.monthly} onChange={(v) => setForm({ ...form, monthly: v })} />
-      <MoneyField id="confirm" label="Ask before runs over" hint="Anything estimated above this needs a second click." value={form.confirm} onChange={(v) => setForm({ ...form, confirm: v })} />
+      <div className="grid items-start gap-4 sm:grid-cols-3">
+        <MoneyField id="daily" label="Daily limit" hint="Jobs that would go over wait until tomorrow." value={form.daily} onChange={(v) => setForm({ ...form, daily: v })} />
+        <MoneyField id="monthly" label="Monthly limit" hint="The same, until next month." value={form.monthly} onChange={(v) => setForm({ ...form, monthly: v })} />
+        <MoneyField id="confirm" label="Ask before runs over" hint="Anything estimated above this needs a second click." value={form.confirm} onChange={(v) => setForm({ ...form, confirm: v })} />
+      </div>
       <Button type="submit" disabled={update.isPending}>
         Save limits
       </Button>
@@ -508,7 +468,7 @@ function MoneyField({
 }) {
   return (
     <Field label={label} htmlFor={id} hint={hint}>
-      <div className="flex h-10 max-w-48 items-center rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 focus-within:border-tungsten/60">
+      <div className="flex h-10 items-center rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 focus-within:border-tungsten/60">
         <span className="text-sm text-faint">$</span>
         <input
           id={id}

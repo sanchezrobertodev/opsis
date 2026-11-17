@@ -34,6 +34,7 @@ from studio.api.schemas import (
 )
 from studio.api.sse import hub
 from studio.budget import guard, modes
+from studio.budget.balances import PROVIDERS
 from studio.budget.balances import balances as read_balances
 from studio.budget.features import LABELS, claude_name, feature_of
 from studio.budget.reconcile import by_route
@@ -227,7 +228,7 @@ async def spend_history(
 async def provider_balances(refresh: bool = Query(False, description="Read again now, not from the last minute"),
                             user: User = Depends(current_user)) -> list[BalanceOut]:
     """What's left on each provider account with a key set (read from providers that report it; free)."""
-    return [BalanceOut(**vars(b)) for b in await read_balances(refresh=refresh)]
+    return [BalanceOut(**vars(b), setting=PROVIDERS[b.provider][2]) for b in await read_balances(refresh=refresh)]
 
 
 @router.post("/budget/reconcile", response_model=list[ReconcileOut], tags=["budget"])

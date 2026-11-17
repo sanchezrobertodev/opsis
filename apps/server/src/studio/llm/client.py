@@ -73,7 +73,7 @@ def get_client() -> anthropic.AsyncAnthropic:
     global _client, _client_key
     key = get_settings().anthropic_api_key
     if not key:
-        raise LLMUnavailable("Add a Claude key in Settings > Keys to use Claude, or switch Claude to Mock.")
+        raise LLMUnavailable("Add a Claude key in Settings > Providers to use Claude, or switch Claude to Mock.")
     if _client is None or key != _client_key:  # a key saved in Settings since
         # the SDK's default timeout (10 min, checked against max_tokens): an Opus plan can take minutes, and a
         # shorter one cut it off and sent it again
@@ -139,7 +139,7 @@ async def structured[T: BaseModel](
             **({} if model in NO_FALLBACK else {"betas": [FALLBACK_BETA], "fallbacks": "default"}),
         )
     except anthropic.AuthenticationError as exc:
-        raise LLMUnavailable("Anthropic rejected the Claude key (Settings > Keys).") from exc
+        raise LLMUnavailable("Anthropic rejected the Claude key (Settings > Providers).") from exc
     except anthropic.PermissionDeniedError as exc:
         raise LLMUnavailable(f"This Anthropic key can't use {model}.") from exc
     except anthropic.RateLimitError as exc:

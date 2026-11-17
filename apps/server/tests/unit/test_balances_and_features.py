@@ -136,7 +136,7 @@ async def test_codex_in_its_own_container_is_asked_through_the_runners_heartbeat
     heartbeat.write_text('{"login": "chatgpt"}')
     assert (await codex()).status == "ok"
     heartbeat.write_text('{"login": "api_key"}')
-    assert (await codex()).status == "unavailable" and "podman exec -it opsis-codex" in (await codex()).detail
+    assert (await codex()).status == "unavailable" and "sign in with ChatGPT" in (await codex()).detail
     os.utime(heartbeat, (time.time() - 120, time.time() - 120))  # the runner stopped
     assert "isn't running" in (await codex()).detail
 

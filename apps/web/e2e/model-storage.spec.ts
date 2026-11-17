@@ -24,7 +24,7 @@ test("Model storage: save, restart notice, persistence and validation", async ({
       libraries: ["D:\\Models\\Old"], free_bytes: 816.7 * 1024 ** 3,
     } });
   });
-  await page.goto("/settings");
+  await page.goto("/settings/local");
   const section = page.getByRole("region", { name: "Local model storage" });
   const input = section.getByLabel("Model download folder");
   await expect(input).toHaveValue(directory);
@@ -46,8 +46,8 @@ test("Model storage explains when no local installation is connected", async ({ 
   await page.route("**/local-engine/model-storage", (route) => route.fulfill({ json: {
     available: false, message: "Model storage is not connected to this studio.", libraries: [],
   } }));
-  await page.goto("/settings");
-  const section = page.getByRole("region", { name: "Local model storage" });
-  await expect(section.getByText("Model storage is not connected to this studio.")).toBeVisible();
-  await expect(section.getByRole("button", { name: "Save model folder" })).toHaveCount(0);
+  await page.goto("/settings/local");
+  // one line, not a section of its own
+  await expect(page.getByText("Model storage is not connected to this studio.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save model folder" })).toHaveCount(0);
 });

@@ -361,6 +361,7 @@ class BalanceOut(ApiModel):
     status: Literal["ok", "unavailable", "no_api", "error"] = Field(
         description="ok: read now; unavailable: the key can't read it; no_api: see the billing page; error: unreachable")
     link: str = Field(description="The provider's billing page")
+    setting: str = Field(description="The key it reads with, as in /keys (codex_bin for Codex, which has none)")
     amount: float | None = None
     unit: Literal["usd", "credits"] | None = None
     usd: float | None = Field(None, description="The amount in dollars, when credits have a known price")

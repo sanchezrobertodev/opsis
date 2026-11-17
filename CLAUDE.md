@@ -228,7 +228,7 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   hourly log when it booked something, the weekly report, and `GET /budget/breakdown` (`routes`).
 
 ## Provider keys
-- Keys pasted in **Settings > Keys** (`/keys`, `api/routers/keys.py`) are stored encrypted in `provider_keys`
+- Keys pasted in **Settings > Providers** (`/keys`, `api/routers/keys.py`) are stored encrypted in `provider_keys`
   (Fernet, `KEYS_SECRET` or `data/keys.secret`; `studio/keys.py`) and never returned (status + last four only). Each
   process puts the owner's saved keys into its cached settings (`keys.apply`): the API at once on a save, the API and
   the worker every 5 s, so code keeps reading `get_settings().fal_key`. A saved key beats `.env`'s; removing it brings
@@ -240,7 +240,7 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `ANTHROPIC_API_KEY`).
 - Call Claude only through `studio/llm/client.structured()`: Pydantic structured output, refusal fallback,
   a budget pre-check, and a `spend_ledger` charge per call (prices in `llm/pricing.py`, with a verified date).
-- Which model: Settings > Providers picks one for scripts and plans (`smart`) and one for prompt help (`fast`):
+- Which model: Settings > General picks one for scripts and plans (`smart`) and one for prompt help (`fast`):
   `budget_policies.llm_smart_model` / `llm_fast_model`, NULL = `LLM_SMART_MODEL` / `LLM_FAST_MODEL` in `.env`. Offered:
   `pricing.CHOICES` (Opus 5.5, Sonnet 5.5, Haiku 5.5) plus `.env`'s. Call sites take
   `await llm.client.model_for(session, user_id, "smart" | "fast")`, never the setting. Haiku 5.5 has no server-side
@@ -338,7 +338,7 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   picture and a restarted runner draws its jobs again. It sees only the Codex jobs, its own Codex home (signed in once,
   never the host's `~/.codex`) and the binary, read-only. `runner.json` beside the jobs is its heartbeat with the
   sign-in: routing (`reachable()` counts for every provider kind) and Settings read it, and it draws only when signed
-  in with ChatGPT. Reading a job folder never follows a link or waits on a pipe (`common.open_plain`, `touch_flag`).
+  in with ChatGPT. Settings > Providers signs it in (`codex_login.py`: `codex login --device-auth`'s link and code; the runner takes a `login.request` flag and answers in `login.json`, without a runner the API runs it). Reading a job folder never follows a link or waits on a pipe (`common.open_plain`, `touch_flag`).
   Without the runner (the Windows dev setup) a Codex that keeps its shell can read what the worker can.
 - `local_tools`: the `video-tools` model's modes (reframe, trim, retime, reverse, loop, interpolate, upscale,
   stabilize) run on this machine's ffmpeg (`studio/media/tools.py`). Free; local routes check
@@ -560,7 +560,12 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   the running ComfyUI for its folders (`/internal/folder_paths`), GPU and Python, lists each `comfy_local` model as
   ready, too big (`min_vram_gb`) or what it needs (its graphs' manifest files, its maps' `pack`), and after asking
   clones packs at their `pack.ref`, pip-installs their requirements into ComfyUI's Python with its torch, transformers
-  and numpy held (`KEEP`), and downloads into the folder ComfyUI reads first (`fetch_models.fetch`). Settings lists the
+  and numpy held (`KEEP`), and downloads into the folder ComfyUI reads first (`fetch_models.fetch`). The plan and its
+  steps are shared (`local_setup.plan`, `carry_out`), so Settings > Local models can do the same: `GET
+  /local-engine/setup` says per model what it needs (packs, files, GB, free disk) when `COMFYUI_URL` is loopback and
+  ComfyUI's folders are on this computer (`on_this_computer`), `POST` (model ids only; URLs come from the manifest and
+  maps) runs one setup at a time in a thread of the API, and `GET /local-engine/setup/job` follows it (bytes from the
+  files and their `.part`s). Elsewhere (the server with the PC's ComfyUI) Settings shows the script. Settings lists the
   same models from the API (`GET /local-engine/models`: ready, else the route's blocker), and `ModelSummary.local_ready`
   makes forms start on a ready local model (`ModelPicker.tsx:defaultModel`; Film settings keep their voice and lip-sync
   defaults, since Qwen would drop a character's ElevenLabs voice).
