@@ -71,7 +71,7 @@ class EnumParam(_ParamBase):
     options: list[str | int] = []
     default: str | int | None = None
     labels: dict[str, str] = {}  # option -> what the user sees, for options that are ids (voices)
-    # options come from this director list (registry/director/looks.yaml), filled in when the registry loads
+    # options come from this director list (registry/director/, registry/styles/), filled in when the registry loads
     director: str | None = None
     # also takes values that aren't listed (ids made per account, like cloned voices); the options are suggestions
     open: bool = False

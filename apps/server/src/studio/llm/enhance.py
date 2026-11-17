@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.director.compiler import ShotDirection
 from studio.director.elements import mentions
+from studio.director.library import get_library
 from studio.llm.client import LLMResult, model_for, structured
 from studio.registry.schema import ModelSpec
 
@@ -47,8 +48,10 @@ that the model will render well:
 - Never invent new main characters or change what happens.
 - Copy every @mention (like @maya or @old-town) exactly as written, including the @. Each stands for a
   saved character, location or prop that is inserted later, so don't describe what it looks like.
-- If the request lists shot direction that is already handled (camera moves, framing, lens, lighting,
-  palette, genre), leave those topics out of the prompt; they are appended separately.
+- If the request lists shot direction that is already handled (picture style, camera moves, framing, lens,
+  lighting, palette, genre), leave those topics out of the prompt; they are appended separately.
+- When a picture style is among them, describe only the content: never name a medium or art style
+  (photograph, oil painting, 3D render, anime and the like) other than that style.
 - Follow the dialect notes and stay under the character limit.
 - Return only the prompt text in `prompt`, with no preamble, quotes, headings or lists.
 - In `changes`, list up to three very short notes (under 8 words each) on what you added."""
@@ -64,11 +67,14 @@ def _covered(direction: ShotDirection | None) -> list[str]:
         return []
     d = direction
     out = []
+    # only a style the compiler will add: an unknown id is dropped there, so the user's own medium words must stay
+    if d.style and (style := get_library().look("styles", d.style)):
+        out.append(f"picture style ({style.label})")
     if d.camera_moves:
         out.append("camera movement")
     if d.shot_size or d.angle:
         out.append("framing and angle")
-    if d.lens or d.aperture or d.camera_body:
+    if d.lens or d.focal_length or d.aperture or d.camera_body:
         out.append("lens and camera")
     if d.lighting or d.palette:
         out.append("lighting and colour palette")

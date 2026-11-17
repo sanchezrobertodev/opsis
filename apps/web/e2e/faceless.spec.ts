@@ -15,7 +15,7 @@ test("Faceless: suggested topic, edited script, approval, finished captioned epi
   await page.getByRole("button", { name: /^The keeper of the last lighthouse/ }).click();
   await expect(page.getByLabel("Topic")).toHaveValue("The keeper of the last lighthouse");
 
-  await page.getByRole("radio", { name: "Poster Vector" }).click();
+  await page.getByRole("radio", { name: "Poster vector" }).click();
   await page.getByRole("switch", { name: "Thumbnail" }).click();
   await page.getByRole("switch", { name: "Music" }).click();
   await expect(page.getByText(/free on mock routes/)).toBeVisible();

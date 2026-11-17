@@ -279,6 +279,12 @@ export function Dialog({
       // React re-dispatches a nested <dialog>'s close to every ancestor dialog; only react to our own
       onClose={(e) => e.target === e.currentTarget && onClose()}
       onClick={(e) => e.target === ref.current && onClose()}
+      // A dialog drawn inside a form (the Create form's pickers) belongs to it: Enter in its search box would submit
+      // that form and start takes. A form inside the dialog still submits on Enter.
+      onKeyDown={(e) => {
+        const t = e.target;
+        if (e.key === "Enter" && t instanceof HTMLInputElement && t.form && !e.currentTarget.contains(t.form)) e.preventDefault();
+      }}
       className={cn(
         "m-auto w-[calc(100%-2rem)] rounded-[var(--radius-panel)] border border-line bg-sheet p-0 text-chalk backdrop:bg-black/60",
         wide === "full" ? "max-w-none" : wide ? "max-w-3xl" : "max-w-md",

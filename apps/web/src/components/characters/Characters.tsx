@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { ApiError, type MediaSlot, mediaUrl } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { CREATURE, describeCharacter, OUTFITS, outfitsFor, picks, pickTrait, togglePick, traitPicture } from "@/lib/designer";
+import { designerStyle } from "@/lib/styles";
 import type { SlotAsset } from "@/lib/draft";
 import { useDraft } from "@/lib/draft";
 import { uploadFile, useAsset } from "@/lib/queries";
@@ -24,6 +25,8 @@ import {
   usePatchElement,
   useRemoveElementImage,
 } from "@/lib/elements";
+import { useDirectorLibrary } from "@/components/create/DirectorPanel";
+import { StylePicker } from "@/components/create/director/StylePicker";
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { VOICE_MODEL, VoicePicker } from "@/components/voice/VoicePicker";
 import { useModelsFor } from "@/components/create/QuickGenerate";
@@ -342,8 +345,11 @@ function AddStarters({ starters }: { starters: typeof STARTERS }) {
  * draws a film's new cast). The card shows it when the run is done. */
 const PORTRAIT_MODEL = "nano-banana-2"; // cinema_cast's own default
 
-function portraitRun(e: Pick<Element, "id" | "slug">, modelId: string): RunCreate {
-  return { recipe: "cinema_cast", input: { characters: [{ element_id: e.id, slug: e.slug }], image_model_id: modelId } };
+function portraitRun(e: Pick<Element, "id" | "slug"> & Partial<Pick<Element, "attributes">>, modelId: string): RunCreate {
+  // in the picture style the designer gave it, which stays out of its description
+  const style = designerStyle((e.attributes?.traits as { style?: string } | undefined)?.style);
+  return { recipe: "cinema_cast", input: { characters: [{ element_id: e.id, slug: e.slug, ...(style ? { style } : {}) }],
+                                           image_model_id: modelId } };
 }
 
 /** Which image model draws a portrait, and what it costs on it. */
@@ -363,7 +369,7 @@ function PortraitModel({ value, onChange }: { value: string; onChange: (id: stri
 
 function useDrawPortrait() {
   const start = useStartRun();
-  async function draw(e: Pick<Element, "id" | "slug" | "handle">, modelId: string, confirmCost?: number): Promise<void> {
+  async function draw(e: Pick<Element, "id" | "slug" | "handle" | "attributes">, modelId: string, confirmCost?: number): Promise<void> {
     try {
       await start.mutateAsync({ ...portraitRun(e, modelId), confirm_cost_usd: confirmCost ?? null });
       toast.success(`Drawing ${e.handle}. The picture shows up on its card in about a minute.`);
@@ -805,12 +811,10 @@ function MorePictures({ element, count: wanted, onClose }: { element: Element; c
 
 type Trait = { key: string; label: string; options: string[]; multi?: boolean };
 
-const STYLE: Trait = { key: "style", label: "Style", options: ["photoreal", "cinematic film still", "anime", "stylized 3D animation", "graphic novel"] };
-
+// The style (`traits.style`, a catalog id) is picked from the style catalog beside the presentation, not as tiles.
 const TRAITS: Trait[] = [
   // first: the traits below, their pictures and Randomize's outfit follow it
   { key: "presentation", label: "Presentation", options: ["woman", "man", "androgynous person", CREATURE] },
-  STYLE,
   { key: "age", label: "Age", options: ["young", "teenage", "twenty-something", "thirty-something", "middle-aged", "elderly"] },
   { key: "build", label: "Build", options: ["slight", "athletic", "average", "broad", "heavyset", "very tall"] },
   { key: "hair", label: "Hair", options: ["short curly", "long straight", "shaved", "braided", "messy shoulder-length", "slicked back", "bald"] },
@@ -832,7 +836,6 @@ const HINTS: Record<ElementKind, [string, string]> = {
 
 /** A creature's own traits, in place of a person's (its describeCreature() reads these keys). */
 const CREATURE_TRAITS: Trait[] = [
-  STYLE,
   { key: "body", label: "Body shape", options: ["two-legged", "four-legged", "six-legged", "winged", "snake-like", "finned", "tentacled", "blob-like", "plant-like", "golem-like"] },
   { key: "likeness", label: "Animal likeness", options: ["wolf", "big cat", "bear", "owl", "lizard", "frog", "octopus", "moth", "beetle", "deer", "shark"] },
   { key: "size", label: "Size", options: ["pocket-sized", "cat-sized", "human-sized", "horse-sized", "towering"] },
@@ -861,19 +864,19 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
   const [zoom, setZoom] = useState<{ trait: Trait; option: string } | null>(null);
   const [name, setName] = useState("");
   const [drawWith, setDrawWith] = useState(PORTRAIT_MODEL);
+  const { data: lib } = useDirectorLibrary();
   const description = describeCharacter(traits, heritage.trim());
-  const style = traits.style; // none (Any) lets the model choose
+  const style = designerStyle(traits.style); // a catalog id; none lets the model choose
   const creature = traits.presentation === CREATURE;
   const create = useCreateElement();
   const portrait = useDrawPortrait();
   const pick = (key: string, value: string) => setTraits(pickTrait(traits, key, value));
 
-  /** Saves the character and draws its portrait here; a drawn style is part of its look, so it's in the description. */
+  /** Saves the character (the style stays in its traits, out of its description) and draws its portrait here. */
   async function save() {
     try {
       const e = await create.mutateAsync({
-        kind: "character", name: name.trim(), attributes: { traits }, images: [],
-        description: !style || style === "photoreal" ? description : `${style} style, ${description}`,
+        kind: "character", name: name.trim(), attributes: { traits }, images: [], description,
       });
       onClose();
       setTraits({});
@@ -886,7 +889,10 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
 
   function randomize() {
     const any = (xs: string[]) => xs[Math.floor(Math.random() * xs.length)];
-    const next: Record<string, string> = { presentation: any(TRAITS[0].options) };
+    const next: Record<string, string> = {
+      presentation: any(TRAITS[0].options),
+      style: any((lib?.styles ?? []).map((s) => s.id)) ?? "", // none until the catalog has loaded
+    };
     for (const t of traitsFor(next.presentation)) {
       const options = optionsOf(t, next.presentation);
       next[t.key] = t.multi ? [...new Set([any(options), any(options)])].join(", ") : any(options);
@@ -896,11 +902,12 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
 
   function generate() {
     setDraft("image", {
-      prompt: `${style ? `${style} character` : "Character"} portrait of ${description}. ${creature
+      prompt: `Character portrait of ${description}. ${creature
         ? "The whole body in frame, three-quarter view, soft studio light, plain background, sharp focus."
         : "Waist-up, facing the camera, soft studio light, plain background, sharp focus on the face."}`,
       takes: 2,
       mode: "t2i",
+      direction: style ? { style } : {}, // replaced, so an earlier look can't leak into the portraits
     });
     onClose();
     router.push("/create/image");
@@ -969,10 +976,13 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           {tiles(TRAITS[0])}
-          <label className="flex w-64 flex-col gap-1 text-2xs text-faint">
-            Picture size
-            <Slider value={size} min={72} max={256} step={8} onChange={setSize} format={(v) => `${v}px`} />
-          </label>
+          <div className="flex w-64 flex-col gap-4">
+            <StylePicker value={style || null} onChange={(id) => pick("style", id ?? "")} className="gap-1 text-2xs text-faint" />
+            <label className="flex flex-col gap-1 text-2xs text-faint">
+              Picture size
+              <Slider value={size} min={72} max={256} step={8} onChange={setSize} format={(v) => `${v}px`} />
+            </label>
+          </div>
         </div>
         {/* As many columns as fit about five pictures each, so a wide screen shows more traits at once */}
         <div className="grid gap-x-8 gap-y-4"

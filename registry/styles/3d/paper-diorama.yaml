@@ -1,0 +1,10 @@
+id: paper-diorama
+label: Paper diorama
+category: 3d
+summary: Layered cut-paper miniature sets.
+photographic: true
+prompt: >-
+  handmade layered paper diorama, cut-paper layers with visible depth and soft shadows between them, warm miniature
+  studio lighting, tactile craft materials
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Trebuchet MS, size: 58, bold: true, color: '#FFFFFF', outline: '#3B2A20', highlight: '#FFB347'}

@@ -64,7 +64,7 @@ export interface paths {
         };
         /**
          * Library
-         * @description Camera moves and cinema looks for the director panel.
+         * @description Camera moves and cinema looks for the director panel, and the picture styles for the style gallery.
          */
         get: operations["library_director_library_get"];
         put?: never;
@@ -1663,6 +1663,61 @@ export interface components {
             is_mock: boolean;
         };
         /**
+         * CaptionLook
+         * @description How Faceless Studio's burned-in captions look. Fonts are ones Windows ships (infra/server/fonts.conf maps them
+         *     to open stand-ins on a Linux server).
+         */
+        CaptionLook: {
+            /**
+             * Font
+             * @default Arial
+             */
+            font: string;
+            /**
+             * Size
+             * @description Font size for a 1080-pixel-tall frame
+             * @default 58
+             */
+            size: number;
+            /**
+             * Bold
+             * @default true
+             */
+            bold: boolean;
+            /**
+             * Color
+             * @default #FFFFFF
+             */
+            color: string;
+            /**
+             * Outline
+             * @default #000000
+             */
+            outline: string;
+            /**
+             * Highlight
+             * @description The word being spoken
+             * @default #FFD54A
+             */
+            highlight: string;
+            /**
+             * Uppercase
+             * @default false
+             */
+            uppercase: boolean;
+            /**
+             * Position
+             * @default bottom
+             */
+            position: string;
+            /**
+             * Max Chars
+             * @description Characters per caption line
+             * @default 30
+             */
+            max_chars: number;
+        };
+        /**
          * CastEmotion
          * @description How one cast member feels in the shot, from the emotion wheel.
          */
@@ -2055,6 +2110,11 @@ export interface components {
             pacing: components["schemas"]["LookItem"][];
             /** Emotions */
             emotions: components["schemas"]["EmotionItem"][];
+            /**
+             * Styles
+             * @description Picture styles by category (photo, illustration, 3d, painting, retro), then label
+             */
+            styles: components["schemas"]["StyleItem"][];
         };
         /** DirectorOut */
         DirectorOut: {
@@ -4043,6 +4103,11 @@ export interface components {
             /** Pacing */
             pacing?: string | null;
             /**
+             * Style
+             * @description A picture style from the style catalog (registry/styles/)
+             */
+            style?: string | null;
+            /**
              * Emotion
              * @description How the subject feels
              */
@@ -4329,6 +4394,45 @@ export interface components {
             label: string;
             /** Fields */
             fields: components["schemas"]["FieldChange"][];
+        };
+        /**
+         * StyleItem
+         * @description A picture style, shared by Create image, the character designer and Faceless Studio.
+         */
+        StyleItem: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Dialects
+             * @default {}
+             */
+            dialects: {
+                [key: string]: string;
+            };
+            /**
+             * Swatch
+             * @default []
+             */
+            swatch: string[];
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "photo" | "illustration" | "3d" | "painting" | "retro";
+            /** Summary */
+            summary: string;
+            /**
+             * Photographic
+             * @description A photograph or a photographed object: lens and camera apply
+             * @default false
+             */
+            photographic: boolean;
+            /** @description Faceless Studio offers the styles that have one */
+            caption?: components["schemas"]["CaptionLook"] | null;
         };
         /** StyleOut */
         StyleOut: {

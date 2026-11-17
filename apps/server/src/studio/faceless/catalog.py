@@ -1,8 +1,8 @@
-"""Faceless Studio themes and styles, loaded from registry/faceless/*.yaml (reloaded when the files change)."""
+"""Faceless Studio themes (registry/faceless/themes.yaml, reloaded when it changes) and styles: the picture styles of
+registry/styles/ that have a caption look, read from the director library on every call so its reloads show."""
 
 from __future__ import annotations
 
-import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -10,24 +10,11 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from studio.config import get_settings
-
-HEX = r"^#[0-9A-Fa-f]{6}$"
+from studio.director.library import CaptionLook, get_library  # CaptionLook stays importable from here
 
 
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-
-class CaptionLook(_Strict):
-    font: str = "Arial"
-    size: int = Field(58, ge=24, le=120, description="Font size for a 1080-pixel-tall frame")
-    bold: bool = True
-    color: str = Field("#FFFFFF", pattern=HEX)
-    outline: str = Field("#000000", pattern=HEX)
-    highlight: str = Field("#FFD54A", pattern=HEX, description="The word being spoken")
-    uppercase: bool = False
-    position: str = Field("bottom", pattern="^(bottom|middle|top)$")
-    max_chars: int = Field(30, ge=12, le=60, description="Characters per caption line")
 
 
 class Theme(_Strict):
@@ -49,7 +36,12 @@ class Style(_Strict):
 
 class FacelessCatalog(_Strict):
     themes: list[Theme]
-    styles: list[Style]
+
+    @property
+    def styles(self) -> list[Style]:
+        """The library's styles with a caption look, by category then label (the library's order)."""
+        return [Style(id=s.id, label=s.label, summary=s.summary, prompt=s.prompt, caption=s.caption)
+                for s in get_library().styles if s.caption]
 
     def theme(self, theme_id: str) -> Theme | None:
         return next((t for t in self.themes if t.id == theme_id), None)
@@ -59,17 +51,10 @@ class FacelessCatalog(_Strict):
 
 
 def _load(directory: Path, stamp: tuple[float, ...]) -> FacelessCatalog:
-    data: dict = {}
-    for name in ("themes.yaml", "styles.yaml"):
-        data.update(yaml.safe_load((directory / name).read_text(encoding="utf-8")) or {})
-    catalog = FacelessCatalog.model_validate(data)
-    for section in ("themes", "styles"):
-        ids = [i.id for i in getattr(catalog, section)]
-        if len(ids) != len(set(ids)):
-            raise ValueError(f"faceless {section}: duplicate ids")
-    for style in catalog.styles:
-        if re.search(r"\b(text|caption|logo|watermark)s?\b", style.prompt, re.I):
-            raise ValueError(f"faceless style {style.id}: keep words like 'text' out of the look (models render it)")
+    catalog = FacelessCatalog.model_validate(yaml.safe_load((directory / "themes.yaml").read_text(encoding="utf-8")))
+    ids = [t.id for t in catalog.themes]
+    if len(ids) != len(set(ids)):
+        raise ValueError("faceless themes: duplicate ids")
     return catalog
 
 

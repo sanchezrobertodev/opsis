@@ -138,19 +138,40 @@ def test_your_broken_graph_never_stops_the_studio_starting(tmp_path, monkeypatch
     assert registry_workflow_dirs() == (workflows, WORKFLOWS)
 
 
-async def test_open_pages_hear_of_your_first_file(tmp_path, monkeypatch):
+class _FailsOnce:
+    """A holder whose first check fails (a file gone between listing and reading it), then works."""
+
+    def __init__(self, holder: RegistryHolder):
+        self.holder, self.failed = holder, False
+
+    def __getattr__(self, name: str):
+        return getattr(self.holder, name)
+
+    @property
+    def current(self):
+        if not self.failed:
+            self.failed = True
+            raise FileNotFoundError("a file went mid-check")
+        return self.holder.current
+
+
+@pytest.mark.parametrize("fails_once", [False, True])
+async def test_open_pages_hear_of_your_first_file(tmp_path, monkeypatch, fails_once):
+    """Even after a check that failed: one bad pass mustn't end the watch."""
     from studio.api import main
 
     user = tmp_path / "registry"  # not there when the API starts
     holder = RegistryHolder(BUILTIN, check_every=0.01, user_dir=user)
     assert "my-sam" not in holder.current.models
     events: list[dict] = []
-    monkeypatch.setattr(main, "get_registry_holder", lambda: holder)
+    watched = _FailsOnce(holder) if fails_once else holder
+    monkeypatch.setattr(main, "get_registry_holder", lambda: watched)
     monkeypatch.setattr(main.hub, "publish", events.append)
     watcher = asyncio.create_task(main._watch_registry())
     try:
         await asyncio.sleep(0.05)
         assert events == []  # nothing changed, nothing said
+        assert not fails_once or watched.failed  # type: ignore[union-attr]  # the bad pass has happened
         _my_sam(user)
         deadline = time.monotonic() + 15
         while not events and time.monotonic() < deadline:

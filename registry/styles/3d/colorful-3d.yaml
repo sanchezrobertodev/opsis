@@ -1,0 +1,10 @@
+id: colorful-3d
+label: Colorful 3D
+category: 3d
+summary: Bright, toy-like 3D renders.
+photographic: true
+prompt: >-
+  vibrant colorful 3D render, rounded toy-like shapes, glossy materials, bright saturated colors, soft global
+  illumination
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Trebuchet MS, size: 62, bold: true, color: '#FFFFFF', outline: '#3A0CA3', highlight: '#FFD60A'}

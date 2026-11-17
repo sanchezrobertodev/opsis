@@ -16,6 +16,7 @@ from studio.registry.schema import PresetField, PresetSpec, TemplateSpec
 from studio.registry.validate import MediaRef, RequestError, normalize
 
 if TYPE_CHECKING:
+    from studio.director.library import DirectorLibrary
     from studio.registry.loader import Registry
 
 PLACEHOLDER = re.compile(r"\{([a-z][a-z0-9_]*)\}")
@@ -76,12 +77,13 @@ def render(preset: PresetSpec, values: dict[str, str], media: list[dict[str, str
     }
 
 
-def lint_presets(reg: Registry) -> list[str]:
+def lint_presets(reg: Registry, library: DirectorLibrary | None = None) -> list[str]:
+    """`library`: the vocabulary the registry loaded with (the studio's own by default)."""
     from studio.director.compiler import ShotDirection, unknown_ids
     from studio.director.library import get_library
 
     errors: list[str] = []
-    library = get_library()
+    library = library or get_library()
     for p in reg.presets.values():
         where = f"preset {p.id}"
         spec = reg.model(p.model_id)

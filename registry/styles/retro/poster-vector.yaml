@@ -1,0 +1,10 @@
+id: poster-vector
+label: Poster vector
+category: retro
+summary: Bold retro screen-print posters.
+photographic: false
+prompt: >-
+  bold retro poster in flat vector style, strong silhouettes, limited three-color screen-print palette, halftone
+  texture, dramatic composition
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Impact, size: 64, bold: false, color: '#FFF8E7', outline: '#1A1A1A', highlight: '#E63946', uppercase: true}

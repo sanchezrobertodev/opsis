@@ -1,0 +1,9 @@
+id: paper-collage
+label: Paper collage
+category: 3d
+summary: Torn paper, old photos and newsprint.
+photographic: true
+prompt: >-
+  mixed-media paper collage, torn paper edges, vintage photo cutouts, newsprint textures, layered and slightly askew
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Courier New, size: 58, bold: true, color: '#FFFFFF', outline: '#1E1E1E', highlight: '#F4A261'}

@@ -1,0 +1,7 @@
+id: instant-film
+label: Instant film
+category: photo
+summary: A soft, faded snapshot with light leaks.
+photographic: true
+prompt: >-
+  Instant film snapshot, slightly soft focus, faded warm colors, gentle light leaks, casual framing.

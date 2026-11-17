@@ -36,6 +36,12 @@ FULL = ShotDirection(
 # one model per dialect; wan-2.2-fun-camera also turns the first camera move into its native control
 CASES = ["veo-3.1", "kling-3.0", "wan-2.2-5b", "seedance-2.5", "runway-gen-4.5", "luma-ray-3.2", "nano-banana-2",
          "flux-2-klein-4b", "wan-2.2-fun-camera"]
+# a picture style (not photographic, so the lens and camera go), one model per way of writing it: a sentence after
+# the prompt, a `Style:` line, the last cue
+STYLED = ShotDirection(subject="Nova", style="watercolor-chronicle", camera_moves=[{"id": "crane_up"}],
+                       shot_size="medium_wide", angle="low", focal_length="normal_35", camera_body="film_35",
+                       lighting="volumetric", palette="cold_steel", genre="thriller")
+STYLED_CASES = ["nano-banana-2", "seedance-2.5", "kling-3.0"]
 
 
 def render(model_id: str, direction: ShotDirection) -> str:
@@ -53,21 +59,29 @@ def render(model_id: str, direction: ShotDirection) -> str:
     ])
 
 
-@pytest.mark.parametrize("model_id", CASES)
-def test_full_direction_matches_golden(model_id):
-    direction = FULL
-    if model_id == "wan-2.2-fun-camera":  # its native control takes the first move
-        direction = ShotDirection.model_validate(
-            {**FULL.model_dump(), "camera_moves": [{"id": "dolly_in"}, {"id": "pan_left"}]})
-    actual = render(model_id, direction)
-    path = GOLDEN / f"{model_id}.txt"
+def matches_golden(name: str, actual: str) -> None:
+    path = GOLDEN / f"{name}.txt"
     if os.environ.get("UPDATE_GOLDEN") or not path.exists():
         new = not path.exists()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(actual, encoding="utf-8", newline="\n")
         if new:
             pytest.fail(f"wrote a new golden file {path.name}; review it and run again")
-    assert actual == path.read_text(encoding="utf-8"), f"{model_id} compiled differently; see {path}"
+    assert actual == path.read_text(encoding="utf-8"), f"{name} compiled differently; see {path}"
+
+
+@pytest.mark.parametrize("model_id", CASES)
+def test_full_direction_matches_golden(model_id):
+    direction = FULL
+    if model_id == "wan-2.2-fun-camera":  # its native control takes the first move
+        direction = ShotDirection.model_validate(
+            {**FULL.model_dump(), "camera_moves": [{"id": "dolly_in"}, {"id": "pan_left"}]})
+    matches_golden(model_id, render(model_id, direction))
+
+
+@pytest.mark.parametrize("model_id", STYLED_CASES)
+def test_styled_direction_matches_golden(model_id):
+    matches_golden(f"styled-{model_id}", render(model_id, STYLED))
 
 
 def test_every_dialect_in_the_registry_is_covered():

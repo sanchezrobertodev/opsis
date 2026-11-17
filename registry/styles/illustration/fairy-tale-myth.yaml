@@ -1,0 +1,10 @@
+id: fairy-tale-myth
+label: Fairy tale & myth
+category: illustration
+summary: Storybook gouache with gilded, glowing light.
+photographic: false
+prompt: >-
+  storybook fairy-tale illustration, rich gouache textures, gilded details, soft glowing light, enchanted
+  atmosphere, painterly brushwork
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Georgia, size: 60, bold: false, color: '#FFF6E0', outline: '#2B1A0E', highlight: '#F2C14E'}

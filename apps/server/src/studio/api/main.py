@@ -52,14 +52,17 @@ async def _watch_registry() -> None:
     seen = holder.reloads
     while True:
         await asyncio.sleep(holder.check_every)
-        reg = holder.current
-        if holder.reloads != seen:
-            seen = holder.reloads
-            hub.publish({
-                "id": None, "topic": "system",
-                "type": "system.registry_error" if holder.last_error else "system.registry_reloaded",
-                "payload": {"hash": reg.hash, "errors": holder.last_error},
-            })
+        try:
+            reg = holder.current
+            if holder.reloads != seen:
+                seen = holder.reloads
+                hub.publish({
+                    "id": None, "topic": "system",
+                    "type": "system.registry_error" if holder.last_error else "system.registry_reloaded",
+                    "payload": {"hash": reg.hash, "errors": holder.last_error},
+                })
+        except Exception:  # one bad pass (a file gone mid-check) mustn't stop the next ones
+            log.exception("registry watch failed; trying again")
 
 
 @asynccontextmanager

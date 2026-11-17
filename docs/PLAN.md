@@ -289,6 +289,10 @@ P8 started: nightly database backups (pg_dump in the container, 14 days kept, re
 media needs its own copy) and a weekly provider schema check against saved baselines, which the contract tests also
 use offline. Character identities: a `lora_train` recipe trains a Wan 2.2 LoRA from a character's photos on fal and stores it on the Element; Wan 2.2 stills and video on fal load it when the character is mentioned. Still to come: auth and R2. The local gpu-worker was dropped (2026-10-31): hosted routes (SAM 3, Scribe, ElevenLabs) and
 local ffmpeg cover its models, and open models run on your ComfyUI.
+0.5 Images and characters started (2026-11-17): one catalog of 45 picture styles (`registry/styles/`, each with
+person, place and object samples) shared by Create image's style gallery, the character designer and Faceless
+Studio, which offers the 13 with a caption look; a shot's direction carries the style into each model's prompt
+dialect, and a broken style or vocabulary file no longer takes the routes down.
 - **Step 0 — Handoff:**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

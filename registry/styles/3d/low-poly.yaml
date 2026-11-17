@@ -1,0 +1,8 @@
+id: low-poly
+label: Low poly
+category: 3d
+summary: Faceted, flat-shaded 3D polygons.
+photographic: true
+prompt: >-
+  Low-poly 3D render: every surface is built from large flat-shaded triangular facets with hard visible edges, like
+  folded paper or a cut gem; simplified geometric forms, no smooth curves, no fine texture, soft pastel light.

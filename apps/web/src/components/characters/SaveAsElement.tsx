@@ -28,7 +28,7 @@ const VIEWS: { value: ElementView; label: string }[] = [
 /** The trait builder's portrait prompt carries the description; anything else is offered as-is. */
 function descriptionFrom(prompt: string | undefined): string {
   if (!prompt) return "";
-  const m = /character portrait of (.+?)\. Waist-up/.exec(prompt);
+  const m = /character portrait of (.+?)\. (?:Waist-up|The whole body)/i.exec(prompt);
   return (m ? m[1] : prompt).slice(0, 600);
 }
 

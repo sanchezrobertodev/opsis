@@ -344,13 +344,18 @@ function TakeFooter({
       params: Record<string, unknown>;
       media: { role: string; asset_id: string }[];
       route_policy?: string;
+      direction?: Record<string, unknown> | null;
+      compiled_prompt?: string;
     };
     // a fresh seed per take, so "another take" actually varies
     const params = Object.fromEntries(Object.entries(r.params ?? {}).filter(([k]) => k !== "seed"));
+    // a multi-shot take (its mode takes no prompt, so compiled_prompt is empty) stored its shots already compiled
+    // with the direction: sending it again would add it twice; other modes without a prompt ignore it
+    const direction = r.compiled_prompt === "" ? null : (r.direction ?? null);
     create.mutate(
       { model_id: r.model_id, mode: r.mode, prompt: r.prompt, negative_prompt: r.negative_prompt, params,
         media: (r.media ?? []).map((m) => ({ role: m.role, asset_id: m.asset_id })), confirm_cost_usd: confirmCost,
-        route_policy: r.route_policy }, // a pinned provider stays pinned
+        direction, route_policy: r.route_policy }, // a pinned provider stays pinned
       { onError: (e) => {
         if (e instanceof ApiError && e.status === 409) {
           const now = (e.body as { estimate_usd: number }).estimate_usd;
@@ -436,7 +441,11 @@ function TakeFooter({
         )}
         <IconButton
           label="Reuse this prompt"
-          onClick={() => setDraft(studio, { prompt, modelId: viaOf(gen)?.model_id ?? gen.model_id, mode: viaOf(gen)?.mode ?? gen.mode })}
+          onClick={() => setDraft(studio, { prompt, modelId: viaOf(gen)?.model_id ?? gen.model_id, mode: viaOf(gen)?.mode ?? gen.mode,
+                                            // only what this studio's form shows and can clear: no lines (a Cinema
+                                            // take's), and a style only where Create image's picker is
+                                            direction: Object.fromEntries(Object.entries((gen.request.direction ?? {}) as Record<string, unknown>)
+                                              .filter(([k]) => k !== "dialogue" && (studio === "image" || k !== "style"))) })}
         >
           <span className="text-2xs">Aa</span>
         </IconButton>

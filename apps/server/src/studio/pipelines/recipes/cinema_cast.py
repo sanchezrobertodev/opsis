@@ -22,6 +22,7 @@ PORTRAIT = ("Character reference portrait of @{slug}: front view, head and shoul
 class CastRef(BaseModel):
     element_id: uuid.UUID
     slug: str = Field(min_length=1, max_length=40)
+    style: str | None = Field(None, description="A picture style to draw it in (the designer's, a catalog id)")
 
 
 class CinemaCastInput(BaseModel):
@@ -61,9 +62,10 @@ class CinemaCastRecipe(Recipe):
         specs = []
         for c in inp.characters:
             key = f"portrait[{c.slug}]"
+            # not tagged with the film: a portrait isn't one of its takes
             specs.append(StepSpec(key, StepKind.generate, f"A portrait of @{c.slug}", {
                 "model_id": spec.id, "mode": mode.id, "prompt": PORTRAIT.format(slug=c.slug), "params": params,
-                "media": [], "direction": None}))  # not tagged with the film: a portrait isn't one of its takes
+                "media": [], "direction": {"style": c.style} if c.style else None}))
             if out := ok(settled, key):
                 specs.append(StepSpec(f"keep[{c.slug}]", StepKind.local, f"Keep it as @{c.slug}'s picture", {
                     "op": "add_element_image", "element_id": str(c.element_id), "asset_id": out["asset_id"],

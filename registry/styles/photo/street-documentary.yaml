@@ -1,0 +1,7 @@
+id: street-documentary
+label: Street documentary
+category: photo
+summary: A candid, unposed moment in available light.
+photographic: true
+prompt: >-
+  Candid documentary photograph, available light, 35mm lens, an honest unposed moment, fine grain.

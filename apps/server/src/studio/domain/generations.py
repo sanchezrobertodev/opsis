@@ -192,6 +192,11 @@ def compile_shots(spec: ModelSpec, param: ShotsParam, shots: list[Any], text: st
     for i, (shot, prompt) in enumerate(zip(shots, text.split(SHOT_BREAK), strict=True), 1):
         merged = {**_chosen(direction), **_chosen(shot.get("direction") if isinstance(shot, dict) else None)}
         c = compile_prompt(spec, prompt, ShotDirection.model_validate(merged) if merged else None, names=names)
+        # the shot fits, but what its direction adds and can't shed doesn't: say that, not "a shot's description"
+        if param.max_shot_chars and len(prompt.strip()) <= param.max_shot_chars < len(c.prompt):
+            raise RequestError([f"shot {i}: with its direction it comes to {len(c.prompt)} characters and "
+                                f"{spec.name} takes {param.max_shot_chars} a shot; shorten it or drop some of its "
+                                f"style, camera moves or lines"])
         warnings += [f"shot {i}: {w}" for w in c.warnings]
         native = native or c.native_params
         out.append({**{k: v for k, v in shot.items() if k != "direction"}, "prompt": c.prompt})

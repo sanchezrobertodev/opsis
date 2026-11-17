@@ -40,11 +40,11 @@ three short films in it.
 
 | Studio | What you get |
 |---|---|
-| **Create video and image** | Text or a picture to video and image across local, RunPod and hosted models, with a camera and look director |
+| **Create video and image** | Text or a picture to video and image across local, RunPod and hosted models, with a camera and look director and 45 picture styles |
 | **Shot sequence** | Shots that continue from each other's last frame, joined into one cut |
 | **Edit video, Motion control, Motion transfer** | Change or restyle a clip by instruction, stack camera moves from a library of 65, copy a performance onto a character |
 | **Object swap, Face swap** | Click an object, track it through the clip and replace it; swap a face in a picture or a clip |
-| **Characters** | Design a person or a creature from picture tiles, then `@mention` them in any prompt; reference sheets, trained LoRA identities |
+| **Characters** | Design a person or a creature from picture tiles and a picture style, then `@mention` them in any prompt; reference sheets, trained LoRA identities |
 | **Faceless Studio** | A topic becomes a narrated short: script review, shots, voice, music, captions, thumbnail |
 | **Cinema Studio** | Script to storyboard to takes to a timed cut, with an AI director chat and dialogue lip-sync |
 | **3D blocking and Worlds** | Block a scene with 3D models in Gaussian-splat worlds, then re-render the passes as live action |
