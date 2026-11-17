@@ -30,7 +30,7 @@ from studio.registry.schema import MediaSlot, ModelSpec
 
 MENTION = re.compile(r"(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_-]{0,39})")
 KIND_ORDER = {"character": 0, "location": 1, "prop": 2, "style": 3, "voice": 4}
-IMAGES_PER_KIND = {"character": 2, "location": 1, "prop": 1, "style": 1}
+IMAGES_PER_KIND = {"character": 2, "location": 1, "prop": 1, "style": 2}
 DESCRIPTION_LIMIT = 220
 
 
@@ -53,6 +53,31 @@ async def unique_slug(session: AsyncSession, user_id: uuid.UUID, name: str, excl
     while f"{base}-{n}"[:40] in taken:
         n += 1
     return f"{base}-{n}"[:40]
+
+
+def style_slug(style: Any) -> str | None:
+    """The handle of a saved style a direction names (`"@slug"`), or None for a catalog style id."""
+    return style[1:].lower() if isinstance(style, str) and style.startswith("@") else None
+
+
+def with_style(prompt: str, slug: str) -> str:
+    """The prompt naming a saved style at its end, so mention resolution phrases its look in (and attaches its
+    pictures where the mode takes references)."""
+    text = (prompt or "").rstrip()
+    if text and text[-1] not in ".!?":
+        text += "."
+    return f"{text} In the style of @{slug}.".lstrip()
+
+
+async def unknown_styles(session: AsyncSession, user_id: uuid.UUID, slugs: Any) -> list[str]:
+    """The handles in `slugs` that aren't saved styles of the user's."""
+    wanted = list(dict.fromkeys(s.lower() for s in slugs))
+    if not wanted:
+        return []
+    have = set((await session.execute(select(Element.slug).where(
+        Element.user_id == user_id, Element.kind == ElementKind.style, Element.slug.in_(wanted),
+        Element.deleted_at.is_(None)))).scalars())
+    return [s for s in wanted if s not in have]
 
 
 def mentions(prompt: str) -> list[str]:
@@ -206,7 +231,7 @@ async def resolve_mentions(
             other = next((m.label for m in spec.modes if voice_role and m.slot(voice_role)), None)
             res.warnings.append(f"{spec.name} {mode.label if mode else mode_id} speaks in its own voice, so "
                                 f"@{element.slug}'s voice isn't used" + (f" ({other} can take it)." if other else "."))
-        description = (element.description or "").strip()[:DESCRIPTION_LIMIT]
+        description = (element.description or "").strip()[:DESCRIPTION_LIMIT].rstrip(" .")
         first = f"{label}, {description}," if description else label
         replacements[element.slug] = (first, label)
         res.names[element.slug] = label
@@ -228,7 +253,7 @@ async def resolve_mentions(
         seen.add(slug)
         return first
 
-    res.prompt = MENTION.sub(substitute, prompt).replace(",,", ",").replace(", .", ".")
+    res.prompt = MENTION.sub(substitute, prompt).replace(",,", ",").replace(", .", ".").replace(",.", ".")
     return res
 
 

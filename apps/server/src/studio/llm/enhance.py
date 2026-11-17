@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.director.compiler import ShotDirection
-from studio.director.elements import mentions
+from studio.director.elements import mentions, style_slug
 from studio.director.library import get_library
 from studio.llm.client import LLMResult, model_for, structured
 from studio.registry.schema import ModelSpec
@@ -70,6 +70,8 @@ def _covered(direction: ShotDirection | None) -> list[str]:
     # only a style the compiler will add: an unknown id is dropped there, so the user's own medium words must stay
     if d.style and (style := get_library().look("styles", d.style)):
         out.append(f"picture style ({style.label})")
+    elif style_slug(d.style):  # a saved style is named at the prompt's end (an unknown one is refused)
+        out.append("picture style (one of the user's saved styles)")
     if d.camera_moves:
         out.append("camera movement")
     if d.shot_size or d.angle:

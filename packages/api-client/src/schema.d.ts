@@ -307,6 +307,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/llm/describe-style": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Describe Style
+         * @description Claude looks at one to four pictures and names and describes the look they share, for a saved style. Saves
+         *     nothing. Billed to your budget in live LLM mode.
+         */
+        post: operations["post_describe_style_llm_describe_style_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pipelines/recipes": {
         parameters: {
             query?: never;
@@ -2023,6 +2044,46 @@ export interface components {
             /** Threshold Usd */
             threshold_usd: number;
         };
+        /** DescribeStyleIn */
+        DescribeStyleIn: {
+            /**
+             * Asset Ids
+             * @description Pictures or clips (a clip gives its middle frame), in order
+             */
+            asset_ids: string[];
+        };
+        /** DescribeStyleOut */
+        DescribeStyleOut: {
+            /**
+             * Name
+             * @description One to three words
+             */
+            name: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "photo" | "illustration" | "3d" | "painting" | "retro";
+            /**
+             * Summary
+             * @description One short line for the gallery
+             */
+            summary: string;
+            /**
+             * Look
+             * @description The look in prompt words (a style Element's description), at most 200 characters
+             */
+            look: string;
+            /** Model */
+            model: string;
+            /**
+             * Mock
+             * @description LLM_MODE=mock: a canned answer, nothing was billed
+             */
+            mock: boolean;
+            /** Cost Usd */
+            cost_usd: number;
+        };
         /**
          * DialogueLine
          * @description One spoken line: who says it (an @mention of a cast member, or a name) and the words.
@@ -2256,7 +2317,10 @@ export interface components {
             name?: string | null;
             /** Description */
             description?: string | null;
-            /** Attributes */
+            /**
+             * Attributes
+             * @description Merged into the saved attributes by key (a key set to null is removed), so others are kept
+             */
             attributes?: {
                 [key: string]: unknown;
             } | null;
@@ -4104,7 +4168,7 @@ export interface components {
             pacing?: string | null;
             /**
              * Style
-             * @description A picture style from the style catalog (registry/styles/)
+             * @description A picture style from the style catalog (registry/styles/), or @handle for one of your saved styles
              */
             style?: string | null;
             /**
@@ -5314,6 +5378,58 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Claude failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No Anthropic key */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_describe_style_llm_describe_style_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DescribeStyleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DescribeStyleOut"];
+                };
+            };
+            /** @description Spending limit */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A picture that can't go */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Claude failed */
             502: {

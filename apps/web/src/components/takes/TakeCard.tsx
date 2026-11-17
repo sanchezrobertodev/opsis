@@ -346,15 +346,21 @@ function TakeFooter({
       route_policy?: string;
       direction?: Record<string, unknown> | null;
       compiled_prompt?: string;
+      mentions?: { attached?: string[] }[];
     };
     // a fresh seed per take, so "another take" actually varies
     const params = Object.fromEntries(Object.entries(r.params ?? {}).filter(([k]) => k !== "seed"));
     // a multi-shot take (its mode takes no prompt, so compiled_prompt is empty) stored its shots already compiled
     // with the direction: sending it again would add it twice; other modes without a prompt ignore it
-    const direction = r.compiled_prompt === "" ? null : (r.direction ?? null);
+    const compiled = r.compiled_prompt === "";
+    const direction = compiled ? null : (r.direction ?? null);
+    // what @mentions (and a saved style) attached comes back when the prompt is resolved again: sent as well, it
+    // would go twice. A multi-shot take's shots were stored resolved, so it keeps them.
+    const attached = new Set(compiled ? [] : (r.mentions ?? []).flatMap((m) => m.attached ?? []));
     create.mutate(
       { model_id: r.model_id, mode: r.mode, prompt: r.prompt, negative_prompt: r.negative_prompt, params,
-        media: (r.media ?? []).map((m) => ({ role: m.role, asset_id: m.asset_id })), confirm_cost_usd: confirmCost,
+        media: (r.media ?? []).filter((m) => !attached.has(m.asset_id)).map((m) => ({ role: m.role, asset_id: m.asset_id })),
+        confirm_cost_usd: confirmCost,
         direction, route_policy: r.route_policy }, // a pinned provider stays pinned
       { onError: (e) => {
         if (e instanceof ApiError && e.status === 409) {

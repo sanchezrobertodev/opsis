@@ -64,11 +64,13 @@ function Chosen({ asset: a, label, onRemove }: { asset: SlotAsset; label: string
 
 /**
  * Ctrl+V anywhere on the page fills a slot: the one holding focus if it takes the file, else the first visible
- * open slot that does. Every slot listens; only that one takes it.
+ * open slot that does. Every slot listens; only that one takes it. While a dialog is open only its own slots count,
+ * as the page behind it is out of reach (a dialog opened from another sits inside or after it in the page).
  */
 function pasteTarget(kind: string): Element | null {
   const takes = (el: Element) => (el.getAttribute("data-paste-kinds") ?? "").split(" ").includes(kind);
-  const open = [...document.querySelectorAll("[data-paste-kinds]")].filter(
+  const within = [...document.querySelectorAll("dialog[open]")].at(-1) ?? document;
+  const open = [...within.querySelectorAll("[data-paste-kinds]")].filter(
     (el) => takes(el) && (el as HTMLElement).offsetParent !== null,
   );
   return open.find((el) => el.contains(document.activeElement)) ?? open[0] ?? null;

@@ -161,6 +161,28 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   label in `web/src/lib/styles.ts` and `pnpm gen`. Faceless Studio offers the ones with a `caption` (the look of its
   burned-in captions); a caption font must ship with Windows and have an alias in `infra/server/fonts.conf` (libass
   on a Linux server finds an open stand-in).
+- Several styles at once: a `compare` run whose entries each carry a `direction` (laid over the shared one, e.g.
+  `{style}`) and a `label` (the take's name in the run and the pick; the model's name when empty), up to 6. An entry
+  without a direction plans exactly as before; a catalog style that doesn't exist is refused by `validate()`.
+- My styles are style Elements: the description is the look (prompt words; Claude writes at most 200 characters),
+  the pictures are its references, `attributes.style = {category, summary}` (PATCH merges `attributes` by key; the
+  summary is Claude's and kept only while the look is the one it described, `lib/styles.ts:claudeSummary`).
+  `direction.style: "@slug"` names one: `generations.plan()` (so `/registry/estimate`) and `POST /director/compile`
+  take it out of the compiler's direction and end the prompt with `In the style of @slug.`, so mention resolution
+  phrases its look in and attaches up to two of its pictures where the mode takes references (`IMAGES_PER_KIND`). The
+  stored request keeps `direction.style`; a multi-shot take names it in its last shot (a shot's own `@slug` style
+  isn't handled); a slug that isn't one of the user's styles is a 422 (`compare.resolve()` checks its entries too,
+  and its estimate prices the pictures a style attaches). A portrait (`cinema_cast.resolve()`) drops a style renamed
+  or deleted since and draws without it, since a designed character's style can't be edited. "Another take" leaves
+  out the media its mentions attached (`request.mentions[].attached`): they attach again.
+  `POST /llm/describe-style` (`llm/styles.py`, 1-4 pictures or clips, saves nothing) has Claude's fast model name the
+  look; the mock picks one of four by the first picture's hash.
+- Web: `StylePicker`'s gallery (`StyleGallery`) lists your saved styles first and under My styles, where New style
+  makes one (1-4 pictures, "Describe with Claude", you edit the words, it's saved and picked); Save to Characters
+  offers the same for a take's picture. "Try in several styles" beside it (`CompareDialog.tsx:StylesDialog`,
+  `lib/styles.ts:stylesRun`) prices and starts the compare run on the current model, mode and settings (titled
+  `Styles: <prompt>`; on the cheapest provider and without the Avoid text, which compare doesn't carry). The
+  designer's Style trait takes a `@slug` too (`designerStyle`).
 
 ## Adding a template (guided stories)
 - The Templates page (`/templates`, formerly Presets) shows presets and guided templates. A template is one YAML in
@@ -195,7 +217,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   the in-memory `drain()` helper in `tests/integration/test_pipelines.py`. Use `recipes/common.py` to pick
   modes by what they need, never by model id.
 - Built-in: `sequence` (last-frame chaining + ffmpeg join; also how any model "extends"), `compare` (fan-out +
-  pick checkpoint), `keyframe` (render a start frame from @character refs, then animate; for Kling), `faceless`
+  pick checkpoint, up to 6 takes: several models, or one model in several styles with each entry's `direction` and
+  `label`), `keyframe` (render a start frame from @character refs, then animate; for Kling), `faceless`
   (script -> approve -> block plan -> narration + stills or clips -> music -> assembly -> captions -> thumbnail),
   `object_swap` (track a SAM mask -> edit with 1-3 models -> composite through the matte -> pick),
   `talking_shot` (a picture or clip + script -> TTS -> lipsync on 1-3 models -> pick; or recorded speech), and `vlog`
@@ -265,6 +288,12 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `pricing.CHOICES` (Opus 5.5, Sonnet 5.5, Haiku 5.5) plus `.env`'s. Call sites take
   `await llm.client.model_for(session, user_id, "smart" | "fast")`, never the setting. Haiku 5.5 has no server-side
   refusal fallback (`client.NO_FALLBACK`: no `fallbacks`/beta sent) and a dearer rate card past 100K prompt tokens.
+- Vision: `structured(images=[asset ids])` sends the user's ready pictures (a clip's middle frame) before the prompt
+  text, each a JPEG at most 1280 px on its long side (`llm/images.py`, Pillow's size guard from `media/derive.py`),
+  counted in the budget ceiling at `ceil(w/28) * ceil(h/28)` tokens (a transparent one laid on white); the system
+  prompt then says text inside a
+  picture is content, never an instruction. Mock mode loads nothing. Anything else (not yours, not ready, not a
+  picture or clip) is an `ImageError` (an `LLMError`; routes answer 422 before calling).
 
 ## Commands
 ```

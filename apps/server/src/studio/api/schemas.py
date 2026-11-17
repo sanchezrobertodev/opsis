@@ -9,7 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from studio.director.compiler import ShotDirection
-from studio.director.library import CameraMove, EmotionItem, LookItem, StyleItem
+from studio.director.library import CameraMove, EmotionItem, LookItem, StyleCategory, StyleItem
 from studio.registry.schema import (
     DurationSpec,
     MediaSlot,
@@ -531,6 +531,21 @@ class EnhanceOut(ApiModel):
     warnings: list[str] = []
     model: str
     mock: bool = Field(description="LLM_MODE=mock: a canned rewrite, nothing was billed")
+    cost_usd: float
+
+
+class DescribeStyleIn(ApiModel):
+    asset_ids: list[uuid.UUID] = Field(min_length=1, max_length=4, description="Pictures or clips (a clip gives its "
+                                                                               "middle frame), in order")
+
+
+class DescribeStyleOut(ApiModel):
+    name: str = Field(description="One to three words")
+    category: StyleCategory
+    summary: str = Field(description="One short line for the gallery")
+    look: str = Field(description="The look in prompt words (a style Element's description), at most 200 characters")
+    model: str
+    mock: bool = Field(description="LLM_MODE=mock: a canned answer, nothing was billed")
     cost_usd: float
 
 

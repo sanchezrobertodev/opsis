@@ -7,7 +7,7 @@ from studio.api.deps import current_user, get_session
 from studio.api.schemas import CompileIn, CompileOut, DirectorLibraryOut
 from studio.db.models import User
 from studio.director.compiler import compile_prompt
-from studio.director.elements import resolve_mentions
+from studio.director.elements import resolve_mentions, style_slug, unknown_styles, with_style
 from studio.director.library import get_library
 from studio.registry.loader import get_registry
 
@@ -32,12 +32,16 @@ async def compile_preview(
         raise HTTPException(404, f"unknown model {body.model_id}")
     if body.mode is not None and spec.mode(body.mode) is None:
         raise HTTPException(422, f"{spec.name} has no mode {body.mode!r}")
-    prompt, warnings, names = body.prompt, [], None
+    direction, prompt, warnings, names = body.direction, body.prompt, [], None
+    if direction is not None and (slug := style_slug(direction.style)):  # a saved style, named like a generation does
+        if await unknown_styles(session, user.id, [slug]):
+            raise HTTPException(422, f"unknown style @{slug}")
+        direction, prompt = direction.model_copy(update={"style": None}), with_style(prompt, slug)
     if body.mode is not None:
         media = [{"role": m.role, "asset_id": str(m.asset_id)} for m in body.media]
-        speakers = [x.who[1:] for x in (body.direction.dialogue if body.direction else []) if x.who.startswith("@")]
-        mention = await resolve_mentions(session, user.id, spec, body.mode, body.prompt, media, speakers)
+        speakers = [x.who[1:] for x in (direction.dialogue if direction else []) if x.who.startswith("@")]
+        mention = await resolve_mentions(session, user.id, spec, body.mode, prompt, media, speakers)
         prompt, warnings, names = mention.prompt, mention.warnings, mention.names
-    c = compile_prompt(spec, prompt, body.direction, names=names)
+    c = compile_prompt(spec, prompt, direction, names=names)
     return CompileOut(prompt=c.prompt, warnings=[*warnings, *c.warnings], dialect=c.dialect,
                       max_chars=spec.prompt.max_chars)

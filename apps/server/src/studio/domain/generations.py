@@ -16,7 +16,7 @@ from studio.config import get_settings
 from studio.db.base import uuid7
 from studio.db.models import Asset, Generation, GenerationAttempt, Project
 from studio.director.compiler import Compiled, ShotDirection, compile_prompt
-from studio.director.elements import resolve_mentions
+from studio.director.elements import resolve_mentions, style_slug, unknown_styles, with_style
 from studio.domain import fsm
 from studio.domain.enums import AssetStatus, AttemptStatus, GenStatus
 from studio.domain.health import load_health
@@ -224,6 +224,25 @@ def _text_mode_without_refs(spec: ModelSpec, mode_id: str, given: list[dict[str,
     return next((m for m in spec.modes if m.prompt != "none" and not any(s.required for s in m.medias)), None)
 
 
+async def _saved_style(session: AsyncSession, user_id: uuid.UUID, spec: ModelSpec, body: CreateRequest, text: str,
+                       multi_shot: bool) -> tuple[str, dict[str, Any] | None, list[str]]:
+    """A saved style (`direction.style: "@slug"`, one of the user's style Elements) is named at the end of the prompt
+    text, so it resolves like any @mention: its look phrased in, its pictures attached where the mode takes
+    references. Returns the text, the direction for the compiler (without that style) and warnings."""
+    slug = style_slug(body.direction.get("style")) if isinstance(body.direction, dict) else None
+    if not slug:
+        return text, body.direction, []
+    if await unknown_styles(session, user_id, [slug]):
+        raise GenerationRequestError([f"unknown style @{slug}"])
+    look = {k: v for k, v in body.direction.items() if k != "style"}
+    if multi_shot:  # the take has no prompt of its own: the shots carry them
+        *before, last = text.split(SHOT_BREAK)
+        return (SHOT_BREAK.join([*before, with_style(last, slug)]), look,
+                [f"a multi-shot take has no prompt of its own, so its last shot names the style @{slug}"])
+    mode = spec.mode(body.mode)
+    return (text if mode is not None and mode.prompt == "none" else with_style(text, slug)), look, []
+
+
 async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, reg: Registry | None = None) -> Plan:
     reg = reg or get_registry()
     spec = reg.model(body.model_id)
@@ -241,6 +260,7 @@ async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, r
     shots = body.params.get(shots_param.name) if shots_param else None
     shots = shots if isinstance(shots, list) and all(isinstance(s, dict) for s in shots) and shots else None
     text = SHOT_BREAK.join(str(s.get("prompt") or "") for s in shots) if shots else body.prompt
+    text, look_direction, style_warnings = await _saved_style(session, user_id, spec, body, text, bool(shots))
     # @mentions of saved characters/locations/props may attach reference images, so resolve them before
     # validation: the attached images count against the model's slot limits like any other input.
     # a shot's speakers count too: their voice samples go where the model takes reference audio
@@ -255,10 +275,10 @@ async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, r
     mode = spec.mode(body.mode)
     promptless = mode is not None and mode.prompt == "none"
     try:
-        direction = ShotDirection.model_validate(body.direction) if body.direction else None
+        direction = ShotDirection.model_validate(look_direction) if look_direction else None
         params = body.params
         if shots and shots_param:
-            compiled_shots, compiled = compile_shots(spec, shots_param, shots, mention.prompt, body.direction,
+            compiled_shots, compiled = compile_shots(spec, shots_param, shots, mention.prompt, look_direction,
                                                      mention.names)
             params = {**params, shots_param.name: compiled_shots}
         else:
@@ -274,7 +294,7 @@ async def plan(session: AsyncSession, user_id: uuid.UUID, body: CreateRequest, r
     except ValidationError as exc:
         raise GenerationRequestError(
             [f"direction: {e['msg']} at {'.'.join(map(str, e['loc']))}" for e in exc.errors()]) from None
-    req.warnings.extend(virtual.warnings + mention.warnings + native_warnings)
+    req.warnings.extend(virtual.warnings + mention.warnings + native_warnings + style_warnings)
     env = await routing_env(session, reg, user_id)
     cands = candidates(reg, spec, req, env, body.route_policy)
     chosen = next((c for c in cands if c.eligible), None)

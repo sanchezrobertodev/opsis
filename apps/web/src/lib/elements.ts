@@ -45,6 +45,14 @@ export function usePatchElement() {
   });
 }
 
+/** Claude names and describes the look one to four pictures share, for a saved style (a canned answer in mock mode).
+ * Nothing is saved. */
+export function useDescribeStyle() {
+  return useMutation({
+    mutationFn: (assetIds: string[]) => unwrap(api.POST("/llm/describe-style", { body: { asset_ids: assetIds } })),
+  });
+}
+
 /** Clone a voice from recordings (an ElevenLabs instant clone; a stand-in in mock mode). */
 export function useCloneVoice() {
   const invalidate = useInvalidate();

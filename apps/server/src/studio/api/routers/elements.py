@@ -99,7 +99,8 @@ class ElementPatch(BaseModel):
     kind: Kind | None = None
     name: str | None = Field(None, min_length=1, max_length=80)
     description: str | None = Field(None, max_length=600)
-    attributes: dict[str, Any] | None = None
+    attributes: dict[str, Any] | None = Field(None, description="Merged into the saved attributes by key (a key "
+                                                                "set to null is removed), so others are kept")
     cover_asset_id: uuid.UUID | None = None
     voice: VoiceIn | None = Field(None, description="Set the voice; `clear_voice` removes it")
     clear_voice: bool = False
@@ -273,7 +274,7 @@ async def patch_element(element_id: uuid.UUID, body: ElementPatch, session: Asyn
     if body.description is not None:
         e.description = body.description.strip()
     if body.attributes is not None:
-        e.attributes = body.attributes
+        e.attributes = {k: v for k, v in {**(e.attributes or {}), **body.attributes}.items() if v is not None}
     if body.cover_asset_id is not None:
         await _owned_assets(session, user, [body.cover_asset_id])  # only a picture of yours can be the cover
         e.cover_asset_id = body.cover_asset_id

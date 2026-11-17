@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { type Asset, mediaUrl } from "@/lib/api";
 import {
@@ -11,6 +11,8 @@ import {
   useCreateElement,
   useElements,
 } from "@/lib/elements";
+import { claudeSummary } from "@/lib/styles";
+import { DescribeStyleButton, LOOK_MAX } from "@/components/create/director/StylePicker";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 
 const VIEWS: { value: ElementView; label: string }[] = [
@@ -59,18 +61,37 @@ function SaveForm({ asset, prompt, onDone }: { asset: Asset; prompt?: string; on
   const [kind, setKind] = useState<ElementKind>("character");
   const [description, setDescription] = useState(() => descriptionFrom(prompt));
   const [view, setView] = useState<ElementView>("front");
+  // Claude's answer for a style: its gallery category, its look and the gallery line for that look
+  const [style, setStyle] = useState<{ category: string; look: string; summary: string } | null>(null);
+  const typed = useRef({ name: false, description: false }); // Claude's answer leaves what you wrote
   const busy = create.isPending || addImages.isPending;
+  // a style's picture shows its look, not an angle
+  const styled = (target === "new" ? kind : elements?.find((e) => e.id === target)?.kind) === "style";
+  const shows: ElementView = styled ? "style" : view;
+  const tooLong = kind === "style" && description.length > LOOK_MAX; // a longer look is cut short in prompts
+
+  function changeKind(k: ElementKind) {
+    setKind(k);
+    // the prompt names the take's subjects, not a look: a style starts from Claude's look or nothing, the others from
+    // the prompt, unless you've written your own
+    if (!(typed.current.description && description.trim())) {
+      setDescription(k === "style" ? (style?.look ?? "") : descriptionFrom(prompt));
+    }
+  }
 
   async function save() {
     try {
       if (target === "new") {
         const e = await create.mutateAsync({
-          name: name.trim(), kind, description: description.trim(), attributes: {},
-          images: [{ asset_id: asset.id, view }],
+          name: name.trim(), kind, description: description.trim(),
+          // the gallery line only while the look is still the one it was written for
+          attributes: kind === "style" && style
+            ? { style: { category: style.category, summary: claudeSummary(description, style) } } : {},
+          images: [{ asset_id: asset.id, view: shows }],
         });
         toast(`Saved as ${e.handle}. Use it in any prompt.`);
       } else {
-        const e = await addImages.mutateAsync({ id: target, images: [{ asset_id: asset.id, view }] });
+        const e = await addImages.mutateAsync({ id: target, images: [{ asset_id: asset.id, view: shows }] });
         toast(`Added to ${e.name}`);
       }
       onDone();
@@ -104,36 +125,53 @@ function SaveForm({ asset, prompt, onDone }: { asset: Asset; prompt?: string; on
         <>
           <label className="flex flex-col gap-1.5 text-xs text-muted">
             Name
-            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoFocus
-                   placeholder="e.g. Maya Ortiz" className={`h-10 ${field}`} />
+            <input value={name} onChange={(e) => { typed.current.name = true; setName(e.target.value); }} maxLength={80}
+                   autoFocus placeholder="e.g. Maya Ortiz" className={`h-10 ${field}`} />
           </label>
           <Segmented label="Type" value={kind} options={["character", "location", "prop", "style"] as const}
-                     render={(k) => KIND_LABEL[k]} onChange={setKind} />
+                     render={(k) => KIND_LABEL[k]} onChange={changeKind} />
+          {kind === "style" && (
+            <DescribeStyleButton assetIds={[asset.id]} onAnswer={(r) => {
+              setName((n) => (typed.current.name && n.trim() ? n : r.name));
+              setDescription((d) => (typed.current.description && d.trim() ? d : r.look));
+              setStyle({ category: r.category, look: r.look, summary: r.summary });
+            }} />
+          )}
           <label className="flex flex-col gap-1.5 text-xs text-muted">
-            Description
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} maxLength={600} rows={3}
-                      placeholder="What makes them recognisable." className={`resize-y py-2 leading-relaxed ${field}`} />
+            {kind === "style" ? (
+              <span className="flex items-baseline justify-between">
+                Look
+                <span className={`readout text-2xs ${tooLong ? "text-fault" : "text-faint"}`}>{description.length} / {LOOK_MAX}</span>
+              </span>
+            ) : "Description"}
+            <textarea value={description} maxLength={kind === "style" ? LOOK_MAX : 600} rows={3}
+                      onChange={(e) => { typed.current.description = true; setDescription(e.target.value); }}
+                      placeholder={kind === "style" ? "The look only: medium, palette, light, line, texture, era."
+                        : "What makes them recognisable."}
+                      className={`resize-y py-2 leading-relaxed ${field}`} />
           </label>
         </>
       )}
 
-      <label className="flex flex-col gap-1.5 text-xs text-muted">
-        This image shows
-        <select value={view} onChange={(e) => setView(e.target.value as ElementView)} className={`h-10 ${field}`}>
-          {VIEWS.map((v) => (
-            <option key={v.value} value={v.value}>
-              {v.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {!styled && (
+        <label className="flex flex-col gap-1.5 text-xs text-muted">
+          This image shows
+          <select value={view} onChange={(e) => setView(e.target.value as ElementView)} className={`h-10 ${field}`}>
+            {VIEWS.map((v) => (
+              <option key={v.value} value={v.value}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <div className="flex justify-end gap-2 pt-1">
         <Button type="button" tone="ghost" onClick={onDone}>
           Cancel
         </Button>
-        <Button type="button" tone="primary" onClick={() => void save()} disabled={busy || (target === "new" && !name.trim())}>
-          {target === "new" ? "Save character" : "Add image"}
+        <Button type="button" tone="primary" onClick={() => void save()} disabled={busy || (target === "new" && (!name.trim() || tooLong))}>
+          {target === "new" ? `Save ${KIND_LABEL[kind].toLowerCase()}` : "Add image"}
         </Button>
       </div>
     </div>

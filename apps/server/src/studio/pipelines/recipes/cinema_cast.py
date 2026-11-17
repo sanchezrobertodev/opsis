@@ -8,8 +8,10 @@ import uuid
 from typing import Any
 
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import StepKind
+from studio.director.elements import style_slug, unknown_styles
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import text_mode, with_param
 from studio.registry.loader import Registry
@@ -22,7 +24,8 @@ PORTRAIT = ("Character reference portrait of @{slug}: front view, head and shoul
 class CastRef(BaseModel):
     element_id: uuid.UUID
     slug: str = Field(min_length=1, max_length=40)
-    style: str | None = Field(None, description="A picture style to draw it in (the designer's, a catalog id)")
+    style: str | None = Field(None, description="A picture style to draw it in (the designer's): a catalog id, or "
+                                                 "@handle for a saved style")
 
 
 class CinemaCastInput(BaseModel):
@@ -40,6 +43,16 @@ class CinemaCastRecipe(Recipe):
 
     def title(self, inp: CinemaCastInput) -> str:
         return "Pictures of " + ", ".join(f"@{c.slug}" for c in inp.characters)
+
+    async def resolve(self, session: AsyncSession, user_id: uuid.UUID, inp: CinemaCastInput,
+                      reg: Registry) -> CinemaCastInput:
+        # a saved style renamed or deleted since the character was designed: drawn without it, like a catalog style
+        # that's gone. Refusing would leave the character without a picture for good (its traits can't be edited).
+        gone = set(await unknown_styles(session, user_id, [s for c in inp.characters if (s := style_slug(c.style))]))
+        if not gone:
+            return inp
+        return inp.model_copy(update={"characters": [
+            c.model_copy(update={"style": None}) if style_slug(c.style) in gone else c for c in inp.characters]})
 
     def validate(self, inp: CinemaCastInput, reg: Registry) -> list[str]:
         spec = reg.model(inp.image_model_id)
