@@ -292,7 +292,11 @@ local ffmpeg cover its models, and open models run on your ComfyUI.
 0.5 Images and characters started (2026-11-17): one catalog of 45 picture styles (`registry/styles/`, each with
 person, place and object samples) shared by Create image's style gallery, the character designer and Faceless
 Studio, which offers the 13 with a caption look; a shot's direction carries the style into each model's prompt
-dialect, and a broken style or vocabulary file no longer takes the routes down.
+dialect, and a broken style or vocabulary file no longer takes the routes down. Several styles at once: one prompt
+in 2-6 styles as a `compare` run (each entry its own direction and label), priced first, picked side by side. My
+styles: style Elements made from 1-4 pictures that Claude looks at and describes (`POST /llm/describe-style`, vision
+in `structured(images=)`), used as `direction.style: "@slug"` (the look phrased in, its pictures attached as
+references where the mode takes them).
 - **Step 0 — Handoff:**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

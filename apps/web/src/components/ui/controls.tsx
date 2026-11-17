@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useId, useRef } from "react";
+import { forwardRef, useEffect, useId, useLayoutEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 
 // ---------------------------------------------------------------- Button
@@ -261,6 +261,7 @@ export function Dialog({
   wide?: boolean | "full";
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const pressed = useRef(false); // the last press began on the backdrop
   const titleId = useId();
   useEffect(() => {
     const el = ref.current;
@@ -272,13 +273,22 @@ export function Dialog({
     }
     if (!open && el.open) el.close();
   }, [open]);
+  // Taken off the page while open (its parent stopped drawing it): close it first, so focus goes back to what opened
+  // it instead of the page's start. A layout cleanup runs while it's still on the page.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    return () => el?.close();
+  }, []);
   return (
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      // React re-dispatches a nested <dialog>'s close to every ancestor dialog; only react to our own
-      onClose={(e) => e.target === e.currentTarget && onClose()}
-      onClick={(e) => e.target === ref.current && onClose()}
+      // React re-dispatches a nested <dialog>'s close to every ancestor dialog; only react to our own, and not to one
+      // shown again since (React's development double mount closes and reopens it)
+      onClose={(e) => e.target === e.currentTarget && !e.currentTarget.open && onClose()}
+      onPointerDown={(e) => { pressed.current = e.target === ref.current; }}
+      // a click on the backdrop closes it, but not the end of a drag that began inside (selecting text past its edge)
+      onClick={(e) => e.target === ref.current && pressed.current && onClose()}
       // A dialog drawn inside a form (the Create form's pickers) belongs to it: Enter in its search box would submit
       // that form and start takes. A form inside the dialog still submits on Enter.
       onKeyDown={(e) => {

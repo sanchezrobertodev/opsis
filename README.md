@@ -40,7 +40,7 @@ three short films in it.
 
 | Studio | What you get |
 |---|---|
-| **Create video and image** | Text or a picture to video and image across local, RunPod and hosted models, with a camera and look director and 45 picture styles |
+| **Create video and image** | Text or a picture to video and image across local, RunPod and hosted models, with a camera and look director and 45 picture styles; try one prompt in up to six styles side by side, or save your own style from a few pictures, which Claude describes |
 | **Shot sequence** | Shots that continue from each other's last frame, joined into one cut |
 | **Edit video, Motion control, Motion transfer** | Change or restyle a clip by instruction, stack camera moves from a library of 65, copy a performance onto a character |
 | **Object swap, Face swap** | Click an object, track it through the clip and replace it; swap a face in a picture or a clip |

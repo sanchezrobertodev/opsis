@@ -46,12 +46,16 @@ test("another take keeps the take's direction; reusing its prompt keeps what the
     id, model_id: request.model_id, output_type, mode: request.mode, status: "canceled", assets: [], routing: {},
     created_at: "2026-11-17T12:00:00Z", request: { params: {}, media: [], ...request },
   });
+  // a picture of yours, and one an @mention attached (it comes back when the prompt is resolved again)
+  const media = [{ role: "image_references", asset_id: "mine" }, { role: "image_references", asset_id: "nova-1" }];
+  const mentions = [{ id: "e1", slug: "nova", name: "Nova", attached: ["nova-1"] }];
   const items = [
     take("styled", "video", { model_id: "kling-x", mode: "t2v", prompt: "A chase", compiled_prompt: "A chase, anime",
-                              direction: { style: "anime", genre: "thriller", dialogue: lines } }),
+                              direction: { style: "anime", genre: "thriller", dialogue: lines }, media, mentions }),
     // a multi-shot take: its mode takes no prompt, and its shots were stored compiled with the direction
     take("shots", "video", { model_id: "kling-x", mode: "multi_shot", prompt: "", compiled_prompt: "",
-                             params: { shots: [{ prompt: "A chase, thriller", duration: 3 }] }, direction: { genre: "thriller" } }),
+                             params: { shots: [{ prompt: "A chase, thriller", duration: 3 }] }, direction: { genre: "thriller" },
+                             media, mentions }),
     take("still", "image", { model_id: "still-x", mode: "t2i", prompt: "A portrait", compiled_prompt: "A portrait. Anime.",
                              direction: { style: "anime", dialogue: lines } }),
   ];
@@ -71,7 +75,9 @@ test("another take keeps the take's direction; reusing its prompt keeps what the
   for (const i of [0, 1]) await cards.nth(i).getByRole("button", { name: "Generate another take with the same settings" }).click();
   await expect.poll(() => sent.length).toBe(2);
   expect(sent[0].direction).toEqual({ style: "anime", genre: "thriller", dialogue: lines }); // the same settings
+  expect(sent[0].media).toEqual([media[0]]); // the mention attaches its picture again, so it isn't sent twice
   expect(sent[1].direction).toBeNull(); // not compiled into its shots a second time
+  expect(sent[1].media).toEqual(media); // its shots name the pictures already
 
   await cards.nth(0).getByRole("button", { name: "Reuse this prompt" }).click();
   await cards.nth(2).getByRole("button", { name: "Reuse this prompt" }).click();

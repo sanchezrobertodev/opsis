@@ -425,9 +425,12 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
   async function save() {
     try {
       if (existing) {
+        // a saved style's gallery line was written for its old look: with a new one, the look itself shows
+        const style = existing.attributes.style as { category?: string; summary?: string } | undefined;
+        const relook = existing.kind === "style" && style?.summary && description.trim() !== existing.description;
         await patch.mutateAsync({ id: existing.id, name, kind, description,
                                   voice: voiceBody, clear_voice: !voiceBody,
-                                  clear_lora: false });
+                                  clear_lora: false, ...(relook ? { attributes: { style: { category: style.category } } } : {}) });
         if (pending.length) {
           await addImages.mutateAsync({ id: existing.id, images: pending.map((p) => ({ asset_id: p.id, view: "front" as const })) });
         }
@@ -811,7 +814,8 @@ function MorePictures({ element, count: wanted, onClose }: { element: Element; c
 
 type Trait = { key: string; label: string; options: string[]; multi?: boolean };
 
-// The style (`traits.style`, a catalog id) is picked from the style catalog beside the presentation, not as tiles.
+// The style (`traits.style`, a catalog id or a saved style's `@slug`) is picked from the style gallery beside the
+// presentation, not as tiles.
 const TRAITS: Trait[] = [
   // first: the traits below, their pictures and Randomize's outfit follow it
   { key: "presentation", label: "Presentation", options: ["woman", "man", "androgynous person", CREATURE] },
@@ -866,7 +870,7 @@ function TraitBuilder({ open, onClose }: { open: boolean; onClose: () => void })
   const [drawWith, setDrawWith] = useState(PORTRAIT_MODEL);
   const { data: lib } = useDirectorLibrary();
   const description = describeCharacter(traits, heritage.trim());
-  const style = designerStyle(traits.style); // a catalog id; none lets the model choose
+  const style = designerStyle(traits.style); // a catalog id or a saved style's @slug; none lets the model choose
   const creature = traits.presentation === CREATURE;
   const create = useCreateElement();
   const portrait = useDrawPortrait();

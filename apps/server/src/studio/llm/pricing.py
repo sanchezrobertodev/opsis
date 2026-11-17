@@ -76,6 +76,7 @@ TYPICAL_CALLS = {
     "music_video.plan": ("smart", 2_500, 2_500),  # the lyrics by section; a visual per shot
     "cinema.plan": ("smart", 4_000, 1_500),  # a script and the director's lists; a dozen shots
     "cinema.director": ("smart", 5_000, 1_500),  # the storyboard and the talk so far; a few edits
+    "style.describe": ("fast", 9_200, 1_200),  # up to four pictures (about 2,100 tokens each); a name and a look
 }
 
 

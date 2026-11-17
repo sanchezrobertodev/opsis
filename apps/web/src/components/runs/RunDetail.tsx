@@ -298,9 +298,11 @@ function StepRow({ run, step }: { run: Run; step: Step }) {
               const asset = o.asset as Asset | null | undefined;
               return (
                 <li key={String(o.value)} className="flex flex-col gap-2">
-                  {asset && <Media asset={asset} className="aspect-video w-full rounded-[var(--radius-frame)] object-cover" />}
+                  {/* each at its own shape, uncropped: square or tall pictures as much as wide clips */}
+                  {asset && <Media asset={asset} className="w-full rounded-[var(--radius-frame)]" />}
                   <Button
                     size="sm"
+                    className="mt-auto"
                     onClick={() => answer.mutate({ id: run.id, key: step.key, choice: String(o.value) })}
                     disabled={answer.isPending}
                   >

@@ -80,7 +80,8 @@ class ShotDirection(BaseModel):
     palette: str | None = None
     genre: str | None = None
     pacing: str | None = None
-    style: str | None = Field(None, description="A picture style from the style catalog (registry/styles/)")
+    style: str | None = Field(None, description="A picture style from the style catalog (registry/styles/), or "
+                                                 "@handle for one of your saved styles")
     emotion: str | None = Field(None, description="How the subject feels")
     cast_emotions: list[CastEmotion] = Field(default_factory=list, max_length=MAX_CAST_EMOTIONS,
                                              description="How each @mentioned cast member feels")

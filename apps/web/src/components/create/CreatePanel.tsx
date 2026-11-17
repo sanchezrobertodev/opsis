@@ -12,7 +12,7 @@ import { useDebounced } from "@/lib/hooks";
 import { type CreateBody, useCreateGeneration, useGenerations, useModel } from "@/lib/queries";
 import { KINDS, modeMatches, type StudioKind } from "@/lib/studioKinds";
 import { Button, Dialog, Field, Segmented, Select } from "@/components/ui/controls";
-import { CompareDialog } from "./CompareDialog";
+import { CompareDialog, StylesDialog } from "./CompareDialog";
 import { CostPanel } from "./CostPanel";
 import { KeyframeHint } from "./KeyframeHint";
 import { type Direction, DirectorPanel, mentionSlugs } from "./DirectorPanel";
@@ -129,6 +129,7 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
 
   const create = useCreateGeneration();
   const [comparing, setComparing] = useState(false);
+  const [styling, setStyling] = useState(false);
   const [confirm, setConfirm] = useState<{ estimate: number; route: string } | null>(null);
   const [showMore, setShowMore] = useState(false);
 
@@ -241,6 +242,17 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
           <StylePicker
             value={draft.direction.style as string | null | undefined}
             onChange={(style) => setDraft(studio, { direction: { ...draft.direction, style } })}
+            aside={
+              <button
+                type="button"
+                onClick={() => setStyling(true)}
+                disabled={blockers.length > 0 || !body}
+                title="The same take in 2 to 6 styles side by side; then you keep the one you like"
+                className="text-2xs text-muted hover:text-chalk disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Try in several styles
+              </button>
+            }
           />
         )}
 
@@ -395,6 +407,7 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
         <CompareDialog open={comparing} onClose={() => setComparing(false)} body={body} ops={mode.ops}
                        models={models.filter((m) => m.modes.some((x) => modeMatches(x, mode.ops)))} />
       )}
+      {body && styling && <StylesDialog open={styling} onClose={() => setStyling(false)} body={body} ops={mode.ops} />}
 
       <Dialog
         open={confirm !== null}

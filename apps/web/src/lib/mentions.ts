@@ -43,3 +43,22 @@ function fit(text: string, room: number): string {
   if (room < 12) return "";
   return text.slice(0, room - 1).replace(/[\s,;]+\S*$/, "") + "…";
 }
+
+/**
+ * The inputs to send again for another take: the stored media without what its @mentions attached, which attaches
+ * again when the prompt is resolved. Resolution appends what it attaches after the inputs given, so each attached
+ * picture is the last of its copies: dropping those keeps the same picture given in a role of its own (a start frame
+ * that is also the mentioned character's portrait). A voice listed for a second speaker or already given has no copy
+ * of its own; dropping it is harmless, as resolving attaches it again in the same role.
+ */
+export function retryMedia<M extends { asset_id: string }>(media: M[], mentions: { attached?: string[] }[]): M[] {
+  const left = new Map<string, number>();
+  for (const id of mentions.flatMap((m) => m.attached ?? [])) left.set(id, (left.get(id) ?? 0) + 1);
+  const kept: M[] = [];
+  for (const m of [...media].reverse()) {
+    const n = left.get(m.asset_id) ?? 0;
+    if (n > 0) left.set(m.asset_id, n - 1);
+    else kept.push(m);
+  }
+  return kept.reverse();
+}
