@@ -174,7 +174,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   isn't handled); a slug that isn't one of the user's styles is a 422 (`compare.resolve()` checks its entries too,
   and its estimate prices the pictures a style attaches). A portrait (`cinema_cast.resolve()`) drops a style renamed
   or deleted since and draws without it, since a designed character's style can't be edited. "Another take" leaves
-  out the media its mentions attached (`request.mentions[].attached`): they attach again.
+  out the media its mentions attached (`request.mentions[].attached`, the last copies, `lib/mentions.ts:retryMedia`,
+  so the same picture given in a role of its own stays): they attach again.
   `POST /llm/describe-style` (`llm/styles.py`, 1-4 pictures or clips, saves nothing) has Claude's fast model name the
   look; the mock picks one of four by the first picture's hash.
 - Web: `StylePicker`'s gallery (`StyleGallery`) lists your saved styles first and under My styles, where New style

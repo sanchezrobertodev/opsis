@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ApiError, type Asset, type Generation, isActive, mediaUrl, viaOf } from "@/lib/api";
 import { cn, seconds, timecode, usd } from "@/lib/cn";
 import { useDraft } from "@/lib/draft";
+import { retryMedia } from "@/lib/mentions";
 import {
   useCancelGeneration,
   useContinueFromLastFrame,
@@ -356,10 +357,10 @@ function TakeFooter({
     const direction = compiled ? null : (r.direction ?? null);
     // what @mentions (and a saved style) attached comes back when the prompt is resolved again: sent as well, it
     // would go twice. A multi-shot take's shots were stored resolved, so it keeps them.
-    const attached = new Set(compiled ? [] : (r.mentions ?? []).flatMap((m) => m.attached ?? []));
+    const media = compiled ? (r.media ?? []) : retryMedia(r.media ?? [], r.mentions ?? []);
     create.mutate(
       { model_id: r.model_id, mode: r.mode, prompt: r.prompt, negative_prompt: r.negative_prompt, params,
-        media: (r.media ?? []).filter((m) => !attached.has(m.asset_id)).map((m) => ({ role: m.role, asset_id: m.asset_id })),
+        media: media.map((m) => ({ role: m.role, asset_id: m.asset_id })),
         confirm_cost_usd: confirmCost,
         direction, route_policy: r.route_policy }, // a pinned provider stays pinned
       { onError: (e) => {
