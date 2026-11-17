@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import StepKind
+from studio.director.elements import SLUG
 from studio.faceless.catalog import get_catalog
 from studio.llm.client import LLMError, LLMResult, model_for, structured
 from studio.media.assemble import GAP_S
@@ -40,9 +41,6 @@ from studio.registry.schema import Mode, ModelSpec
 # without this, a shot describing two moments comes back as a collage of panels
 SINGLE_FRAME = "One single image of one moment, full frame: not a collage, grid, split screen or panels."
 LINE_CHARS = 90  # about one spoken sentence (6 s), what the writer aims for per shot
-
-
-SLUG = r"^[a-z0-9][a-z0-9-]{0,39}$"  # an Element's handle, as written after @
 
 
 class VlogInput(BaseModel):
@@ -108,10 +106,12 @@ natural, like a creator on Shorts or Reels. Each shot is one or two short spoken
 
 
 async def write_vlog(session: AsyncSession, user_id: uuid.UUID, *, idea: str, shots: int, name: str = "",
-                     language: str = "English", notes: str = "") -> LLMResult[VlogScript]:
+                     language: str = "English", notes: str = "", profile: str = "") -> LLMResult[VlogScript]:
+    """`profile`: the star's profile lines (characters/profile.py:profile_block), so their lines sound like them."""
     prompt = "\n".join(line for line in [
         f"Idea: {idea}",
         f"The person is called {name}." if name else "",
+        f"Write their lines in character:\n{profile}" if profile else "",
         f"Shots: exactly {shots}, each line about {LINE_CHARS // 6} words.",
         f"Language: {language}.",
         f"Extra notes from the creator: {notes}" if notes else "",

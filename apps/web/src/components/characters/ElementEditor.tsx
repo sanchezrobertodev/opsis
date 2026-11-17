@@ -16,6 +16,7 @@ import {
   useRemoveElementImage,
 } from "@/lib/elements";
 import { hasPictures } from "@/lib/mentions";
+import { EMPTY_PROFILE, type Profile } from "@/lib/profile";
 import { useAsset } from "@/lib/queries";
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { VOICE_MODEL, VoicePicker } from "@/components/voice/VoicePicker";
@@ -25,6 +26,8 @@ import { IdentityPanel } from "./IdentityPanel";
 import { LooksSection } from "./Looks";
 import { AddLookPanel, MorePictures, SheetPanel, StyleLookPanel } from "./MakePanels";
 import { PORTRAIT_MODEL, PortraitModel, useDrawPortrait } from "./portrait";
+import { ProfileSection } from "./Profile";
+import { FigurePanel, HelloPanel, MakeSection, PlacePanel, type QuickAction } from "./QuickActions";
 
 const VOICE_SAMPLE_SLOT: MediaSlot = { role: "audio_references", kinds: ["audio"], label: "Voice sample (optional)", max: 1, min: 0, required: false, auto: false };
 const REF_SLOT: MediaSlot = { role: "image_references", kinds: ["image"], label: "Reference images", max: 80, min: 0, required: false, auto: false };
@@ -50,8 +53,8 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
   const [name, setName] = useState(existing?.name ?? "");
   const [kind, setKind] = useState<ElementKind>(existing?.kind ?? newKind);
   const [description, setDescription] = useState(existing?.description ?? "");
-  const [voice, setVoice] = useState<string | null>(
-    ((existing?.voice as { params?: { voice_id?: string } } | null)?.params?.voice_id) ?? null);
+  const savedVoice = (existing?.voice as { params?: { voice_id?: string } } | null)?.params?.voice_id ?? null;
+  const [voice, setVoice] = useState<string | null>(savedVoice);
   const savedSample = (existing?.voice as { sample_asset_id?: string } | null)?.sample_asset_id ?? null;
   const { data: savedSampleAsset } = useAsset(savedSample ?? undefined);
   // undefined: the saved one stands; null: removed
@@ -62,18 +65,21 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
   const voiceBody = voice || sampleId
     ? { model_id: VOICE_MODEL, params: voice ? { voice_id: voice } : {}, ...(sampleId ? { sample_asset_id: sampleId } : {}) }
     : null;
+  const [profile, setProfile] = useState<Profile>(existing?.profile ?? EMPTY_PROFILE);
   const [pending, setPending] = useState<SlotAsset[]>([]);
   const [drawIt, setDrawIt] = useState(true);
   const [drawWith, setDrawWith] = useState(PORTRAIT_MODEL);
-  const [panel, setPanel] = useState<{ open: "sheet" | "more" | "look" | "style"; count?: number } | null>(null);
+  const [panel, setPanel] = useState<{ open: "sheet" | "more" | "look" | "style" | QuickAction; count?: number } | null>(null);
   const portrait = useDrawPortrait();
   const cast = kind === "cast";
   const [members, setMembers] = useState<string[]>(() => existing?.members.map((m) => m.id) ?? []);
   const castSized = members.length >= CAST_SIZE[0] && members.length <= CAST_SIZE[1];
   const groupShot = useGroupShot();
-  // a group shot mentions the saved cast, which the server reads: edits here must be saved first
+  // a group shot, the quick actions, sheets, more pictures and looks read the saved element on the server and leave
+  // the page, which would drop these edits: they must be saved first
   const unsaved = Boolean(existing && (name !== existing.name || description !== existing.description
-    || members.join() !== existing.members.map((m) => m.id).join()));
+    || members.join() !== existing.members.map((m) => m.id).join() || pending.length > 0 || sample !== undefined
+    || voice !== savedVoice || JSON.stringify(profile) !== JSON.stringify(existing.profile)));
   // what a plain mention attaches, which looks, sheets and more pictures are drawn from (a cast: its characters')
   const drawable = existing ? hasPictures(existing) : false;
 
@@ -89,6 +95,8 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
   const pictureless = kind === "character" && images.length === 0;
 
   async function save() {
+    // only a character has one; its other data (traits, looks, identity) stays as saved
+    const profileBody = kind === "character" ? { profile } : {};
     try {
       if (existing) {
         // a saved style's gallery line was written for its old look: with a new one, the look itself shows
@@ -96,7 +104,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
         const relook = existing.kind === "style" && style?.summary && description.trim() !== existing.description;
         await patch.mutateAsync({ id: existing.id, name, kind, description,
                                   voice: voiceBody, clear_voice: !voiceBody, clear_lora: false,
-                                  ...(cast ? { members } : {}),
+                                  ...(cast ? { members } : {}), ...profileBody,
                                   ...(relook ? { attributes: { style: { category: style.category } } } : {}) });
         if (pending.length) {
           await addImages.mutateAsync({ id: existing.id, images: pending.map((p) => ({ asset_id: p.id, view: "front" as const })) });
@@ -106,7 +114,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
         const e = await create.mutateAsync({
           name, kind, description, attributes: {},
           images: pending.map((p) => ({ asset_id: p.id, view: "front" as const })),
-          ...(voiceBody ? { voice: voiceBody } : {}),
+          ...(voiceBody ? { voice: voiceBody } : {}), ...profileBody,
         });
         toast(`Created ${e.handle}. Use it in any prompt.`);
         if (pictureless && drawIt && description.trim()) await portrait.draw(e, drawWith);
@@ -159,6 +167,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
         </label>
         {kind === "character" && (
           <>
+            <ProfileSection element={existing} value={profile} onChange={setProfile} />
             <VoicePicker value={voice} onChange={setVoice} allowNone
                          label="Voice (for dialogue and talking shots)" />
             <MediaSlotField slot={VOICE_SAMPLE_SLOT} value={samples} onAdd={(a) => setSample(a)} onRemove={() => setSample(null)} />
@@ -218,17 +227,22 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
             <LooksSection element={existing} open={panel?.open}
                           onAdd={() => setPanel(panel?.open === "look" ? null : { open: "look" })}
                           onStyle={() => setPanel(panel?.open === "style" ? null : { open: "style" })} />
+            <MakeSection element={existing} open={panel?.open} unsaved={unsaved}
+                         onOpen={(action) => setPanel(panel?.open === action ? null : { open: action })} />
             <IdentityPanel element={existing} onMore={(count) => setPanel({ open: "more", count })} />
           </>
         )}
       </div>
 
-      {existing && panel?.open === "sheet" && <SheetPanel element={existing} onClose={() => setPanel(null)} />}
+      {existing && panel?.open === "sheet" && <SheetPanel element={existing} unsaved={unsaved} onClose={() => setPanel(null)} />}
       {existing && panel?.open === "more" && (
-        <MorePictures key={panel.count} element={existing} count={panel.count} onClose={() => setPanel(null)} />
+        <MorePictures key={panel.count} element={existing} count={panel.count} unsaved={unsaved} onClose={() => setPanel(null)} />
       )}
-      {existing && panel?.open === "look" && <AddLookPanel element={existing} onClose={() => setPanel(null)} />}
-      {existing && panel?.open === "style" && <StyleLookPanel element={existing} onClose={() => setPanel(null)} />}
+      {existing && panel?.open === "look" && <AddLookPanel element={existing} unsaved={unsaved} onClose={() => setPanel(null)} />}
+      {existing && panel?.open === "style" && <StyleLookPanel element={existing} unsaved={unsaved} onClose={() => setPanel(null)} />}
+      {existing && panel?.open === "place" && <PlacePanel element={existing} unsaved={unsaved} onClose={() => setPanel(null)} />}
+      {existing && panel?.open === "figure" && <FigurePanel element={existing} unsaved={unsaved} onClose={() => setPanel(null)} />}
+      {existing && panel?.open === "hello" && <HelloPanel element={existing} unsaved={unsaved} onClose={() => setPanel(null)} />}
 
       <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-4 md:col-span-2">
         {existing && existing.kind === "character" && (

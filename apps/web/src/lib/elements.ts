@@ -7,6 +7,7 @@ import { api, unwrap } from "./api";
 export type Element = Schemas["ElementOut"];
 export type ElementKind = Element["kind"];
 export type ElementView = Schemas["ElementImageIn"]["view"];
+export type Likeness = Schemas["LikenessOut"];
 
 export const KIND_LABEL: Record<ElementKind, string> = {
   character: "Character",
@@ -51,6 +52,29 @@ export function usePatchElement() {
 export function useDescribeStyle() {
   return useMutation({
     mutationFn: (assetIds: string[]) => unwrap(api.POST("/llm/describe-style", { body: { asset_ids: assetIds } })),
+  });
+}
+
+/** Claude drafts a character's profile from its saved name, description, traits and looks (a canned draft in mock
+ * mode). Nothing is saved. */
+export function useDraftProfile() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(api.POST("/elements/{element_id}/profile/draft", { params: { path: { element_id: id } } })),
+  });
+}
+
+/** Claude compares a picture or clip with a character's pictures (a canned answer in mock mode). The answer is kept on
+ * the asset (`metadata.consistency[<character id>]`), so the take cards and the viewer read it again. */
+export function useCheckLikeness() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, assetId }: { id: string; assetId: string }) =>
+      unwrap(api.POST("/elements/{element_id}/check", { params: { path: { element_id: id } }, body: { asset_id: assetId } })),
+    onSuccess: (_, { assetId }) => {
+      void qc.invalidateQueries({ queryKey: ["generations"] });
+      void qc.invalidateQueries({ queryKey: ["asset", assetId] });
+    },
   });
 }
 

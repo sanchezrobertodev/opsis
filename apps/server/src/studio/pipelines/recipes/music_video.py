@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import StepKind
+from studio.director.elements import SLUG
 from studio.faceless.catalog import get_catalog
 from studio.faceless.writer import (
     LINES_PER_SECTION,
@@ -40,7 +41,7 @@ from studio.pipelines.recipes.common import (
     text_mode,
     with_param,
 )
-from studio.pipelines.recipes.vlog import SINGLE_FRAME, SLUG, frame_mode
+from studio.pipelines.recipes.vlog import SINGLE_FRAME, frame_mode
 from studio.registry.loader import Registry
 from studio.registry.schema import Mode, ModelSpec
 

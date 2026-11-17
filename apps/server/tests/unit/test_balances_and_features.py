@@ -24,6 +24,7 @@ REG = load_registry(get_settings().resolve_registry_dir())
     ("compare", None, "topaz-video", "upscale", "edit"),         # or from Edit video
     ("sequence", None, "kling-3.0", "i2v", "create_video"),
     ("character_look", None, "nano-banana-2", "edit", "characters"),
+    ("character_figure", None, "tripo-h3.1", "image_to_3d", "characters"),  # a character's 3D figure, not 3D blocking
     (None, "cinema", "sync-lipsync-3", "lipsync", "cinema"),  # a take of a film shot is the film's
     (None, None, "sync-lipsync-3", "lipsync", "lipsync"),
     (None, None, "kling-3.0-motion-control", "transfer", "motion"),

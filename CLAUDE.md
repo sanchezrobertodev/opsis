@@ -244,6 +244,49 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   "Add a look"/"Another style" (`MakePanels.tsx`) start `character_look`; casts are made from the Characters list's
   selection, edited and drafted as a group shot in `Casts.tsx`.
 
+## Profiles, likeness checks and quick actions
+- A character's profile (`elements.profile`, `characters/profile.py:ElementProfile`): `personality` (<=300),
+  `backstory` (<=600), `speech` (how they talk, <=200) and up to 5 `catchphrases` (<=120 each). Characters only (422
+  for other kinds, casts included). `PATCH /elements/{id}` `profile` merges the fields it sends, so saving one never
+  wipes the others; `ElementOut.profile` always carries all four. `POST /elements/{id}/profile/draft` has Claude's
+  fast model propose one from the name, description, traits and looks (purpose `character.profile`; saves nothing;
+  the mock writes one from the name and description).
+- Writers get it where they write lines, never in `resolve_mentions` (no picture or video model sees it):
+  `profile_block` (Personality, How they talk, Catchphrases; "" when empty; never the backstory) goes into the vlog's
+  script (`write_vlog` `profile`), the Faceless star's (`write_script` `star_profile`) and the cast list of the
+  cinema plan and the director chat (`planner.cast_text`: a member a line, their profile indented under it;
+  `projects.py:_cast` finds them by `handle_of`).
+- Likeness check: `POST /elements/{id}/check` `{asset_id}` has Claude's fast model compare a picture, or a clip's
+  middle frame, with the character's references (`characters/likeness.py`, purpose `character.check`): the look's
+  pictures (up to 4) when the asset's generation mentioned `@handle:look`, else the first two main pictures, never the
+  checked asset itself. It answers `{verdict: match|close|different, differences: [{aspect, detail}], summary, model,
+  mock, cost_usd}` and keeps the answer on the asset as `metadata.consistency[<element id>]` (with `look` and
+  `checked_at`). The mock says `match`, or `different` when the generation's prompt holds `[[mock:inconsistent]]`. An
+  asset Claude can't take or a character with no pictures is a 422; Claude's errors are 402/503/502 as elsewhere.
+- Quick actions (the character editor's Make section, each priced before it starts): Place in a location puts
+  "@char at @place" (same face and outfit, the place's light) in the Create image draft in a reference mode; 3D figure
+  starts `character_figure`; Say hello starts `talking_shot` with `character`, a catchphrase (or "Hi, I'm <name>.")
+  and one lipsync model.
+- `character_figure`: `pose` (the image model's reference mode draws `@handle` head to feet in an A-pose on white;
+  skipped when `picture_asset_id` names one of their main pictures) -> `model` (a mode with op `to_3d` whose one
+  required slot takes a picture; `tripo-h3.1` by default) -> `rig` (op `rig`, `meshy-rigging` by default; optional, so
+  a figure it can't rig is kept unrigged; off by default for a non-human creature) -> `keep` (local op `tag_assets`:
+  the GLBs carry `metadata.element_id` and `character`, for finding a character's figures later; nothing reads them
+  yet). `resolve()` checks the character and writes its `element_id` into the input.
+- `talking_shot` takes `character` (a handle) in place of a picture: `resolve()` fills in their main picture
+  (`director/elements.py:PORTRAIT_ORDER`, which face swap shares: any single view before a reference sheet, even a
+  sheet marked primary, then the primary one) and, for a script with no voice
+  picked, their saved voice, and notes the handle in `resolved_for`. The stored input keeps all three, which
+  validation accepts: a revise keeps them even once the character is renamed or deleted, and one naming another
+  character takes that one's picture and voice. The talking-photo template offers the character as the alternative
+  to a portrait.
+- Web: the editor's Profile section (`Profile.tsx`; a draft fills only the empty fields and those a draft wrote, never
+  what was saved or typed, `lib/profile.ts`, and nothing is kept until Save) and Make section (`QuickActions.tsx`;
+  Place in a location shares `MakePanels.tsx:useReferenceShot` with the cast's group shot; like the group shot, the
+  actions wait until the editor's changes are saved, since they leave the page and read the saved character). Take
+  cards with one picture or clip, and the asset viewer, offer "Check likeness" for each character with pictures the
+  take's `request.mentions` names (`Likeness.tsx`), the answer as a badge.
+
 ## Adding a template (guided stories)
 - The Templates page (`/templates`, formerly Presets) shows presets and guided templates. A template is one YAML in
   `registry/templates/<id>.yaml`: `recipe`, a fixed recipe `input` whose string values may hold `{key}` blanks from
@@ -281,10 +324,11 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `label`), `keyframe` (render a start frame from @character refs, then animate; for Kling), `faceless`
   (script -> approve -> block plan -> narration + stills or clips -> music -> assembly -> captions -> thumbnail),
   `object_swap` (track a SAM mask -> edit with 1-3 models -> composite through the matte -> pick),
-  `talking_shot` (a picture or clip + script -> TTS -> lipsync on 1-3 models -> pick; or recorded speech), and `vlog`
-  (a picture + an idea -> Claude's shots -> each shot drawn from the picture, voiced, then lip-synced on camera or
-  animated as a cutaway; a failed one falls back to its picture -> music -> cut -> captions). A narrated cut's block
-  with `hold: true` (a lip-synced clip) is never slowed to fill its block; its last frame is held instead.
+  `talking_shot` (a picture, a saved character or a clip + script -> TTS -> lipsync on 1-3 models -> pick; or
+  recorded speech), and `vlog` (a picture + an idea -> Claude's shots -> each shot drawn from the picture, voiced,
+  then lip-synced on camera or animated as a cutaway; a failed one falls back to its picture -> music -> cut ->
+  captions). A narrated cut's block with `hold: true` (a lip-synced clip) is never slowed to fill its block; its last
+  frame is held instead.
 - `music_video`: a song (+ an optional star's picture) -> `transcribe` (a speech-to-text model, op `transcribe`;
   `scribe-v2`, ElevenLabs Scribe v2 on fal, $0.008/min) -> `shots` (local op `lyric_shots`, `media/transcript.py:shots`:
   cut at the breaths nearest ~6 s, 3-10 s each) -> `plan` (Claude: a visual per section from its lyrics) -> a picture

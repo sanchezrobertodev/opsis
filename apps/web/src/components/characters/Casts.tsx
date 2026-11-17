@@ -1,15 +1,13 @@
 "use client";
 
 import { Plus, X } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { mediaUrl } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { useDraft } from "@/lib/draft";
 import { type Element, useCreateElement, useElements } from "@/lib/elements";
 import { Button, Dialog } from "@/components/ui/controls";
-import { REFS_MODEL, useRefModels } from "./MakePanels";
+import { useReferenceShot } from "./MakePanels";
 
 // A cast is a saved group of characters with one handle (`@crew`), not a film's cast in Cinema Studio.
 
@@ -143,21 +141,8 @@ function MakeCastForm({ members, onCancel, onMade }: { members: Element[]; onCan
 /** Opens Create image with a group shot of the cast drafted in a reference mode, so its characters' pictures come
  * along with the mention. */
 export function useGroupShot() {
-  const router = useRouter();
-  const current = useDraft((s) => s.image.modelId);
-  const setDraft = useDraft((s) => s.set);
-  const models = useRefModels();
-  return (cast: Pick<Element, "handle">) => {
-    const model = models.find((m) => m.id === current) ?? models.find((m) => m.id === REFS_MODEL) ?? models[0];
-    const mode = model?.modes.find((m) => m.ops.includes("multi_ref"));
-    if (!model || !mode) {
-      toast.error("No image model here can draw from reference pictures.");
-      return;
-    }
-    // the mention brings the pictures, so earlier references would only take their room
-    setDraft("image", { modelId: model.id, mode: mode.id, media: {},
-                        prompt: `Group shot of ${cast.handle}, standing side by side and facing the camera.` });
-    router.push("/create/image");
-    toast(`Their pictures come along with ${cast.handle}. Describe the scene, then generate.`);
-  };
+  const shot = useReferenceShot();
+  return (cast: Pick<Element, "handle">) =>
+    shot.open(`Group shot of ${cast.handle}, standing side by side and facing the camera.`,
+              `Their pictures come along with ${cast.handle}. Describe the scene, then generate.`);
 }

@@ -15,10 +15,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from studio.db.models import StepKind
+from studio.director.elements import SLUG
 from studio.director.library import get_library
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import mention_refs, with_param
-from studio.pipelines.recipes.vlog import SLUG, frame_mode
+from studio.pipelines.recipes.vlog import frame_mode
 from studio.registry.loader import Registry
 
 # every full-body view shows the whole body: a "wings spread" view once came back as a plain eagle, no lion half

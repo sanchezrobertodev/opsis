@@ -486,6 +486,15 @@ async def add_element_image(session: AsyncSession, run: PipelineRun, step: Pipel
     return {"element_id": str(element.id), "asset_id": str(picture.id)}
 
 
+async def tag_assets(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
+    """Note on each of the run's assets what it was made for (`meta` merged into its metadata, e.g. a character's 3D
+    figure carries its `element_id`)."""
+    assets = await _assets(session, run, step.input["asset_ids"])
+    for a in assets:
+        a.metadata_ = {**(a.metadata_ or {}), **step.input["meta"]}
+    return {"asset_id": str(assets[0].id), "asset_ids": [str(a.id) for a in assets]}
+
+
 async def _character(session: AsyncSession, run: PipelineRun, element_id: str) -> Element:
     """The run owner's character that a trained identity is for; it must still exist."""
     try:
@@ -517,4 +526,5 @@ LOCAL_OPS: dict[str, Callable[[AsyncSession, PipelineRun, PipelineStep], Awaitab
     "lora_dataset": lora_dataset,
     "attach_lora": attach_lora,
     "add_element_image": add_element_image,
+    "tag_assets": tag_assets,
 }

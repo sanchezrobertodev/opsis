@@ -24,6 +24,7 @@ from studio.cinema.planner import (
     PlannedShot,
     ShotPlan,
     _vocabulary,
+    cast_text,
     to_scenes,
 )
 from studio.director.compiler import MoveChoice
@@ -165,7 +166,7 @@ async def revise(session: AsyncSession, user_id: uuid.UUID, *, doc: CinemaDocume
     talk = "\n".join(turns)
     prompt = "\n".join(part for part in [
         f"Logline: {doc.logline}" if doc.logline else "",
-        "Cast (use these handles): " + "; ".join(f"@{slug}: {desc}" for slug, desc in cast) if cast else NO_CAST,
+        cast_text(cast) if cast else NO_CAST,
         _vocabulary(lib),
         f"\nStoryboard:\n{_storyboard(doc)}",
         f"\nThe conversation so far:\n{talk}" if talk else "",

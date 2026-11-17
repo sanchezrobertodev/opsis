@@ -203,7 +203,7 @@ CLAUDE.md                         conventions + "how to add a model" checklist
 - **Users and budget:** `users`, `budget_policies`.
 - **Assets:** `assets` (kind, status, source, storage_key, media facts, derivatives/metadata/provider_refs JSONB),
   `asset_lineage` (child, parent, relation: media role or derivation), `asset_provider_uploads`.
-- **Elements:** `elements` (kind, slug for @mention, description, prompt fragments, voice/lora/looks JSONB),
+- **Elements:** `elements` (kind, slug for @mention, description, prompt fragments, voice/lora/looks/profile JSONB),
   `element_assets` (view: front, side, face_closeup…; `look`: a look's pictures), `element_members` (a cast's
   characters, in order).
 - **Generations:** `generations` (model, mode, status, request/compiled/routing JSONB, estimated/actual cost,
@@ -304,6 +304,13 @@ traits; traits can be locked through Randomize, and Claude fills them in from a 
 pictures by the `character_look` recipe and mentioned as `@handle:look` (its pictures first, its words after the
 character's; a plain mention never attaches them). Expression and pose sheets (4 x 2 grids, kept, never attached).
 Casts (groups): 2-8 saved characters as one Element (`@crew`), each attaching a share of the reference slots.
+Profiles: personality, backstory, how they talk and catchphrases (Claude drafts one,
+`POST /elements/{id}/profile/draft`), read by the vlog, Faceless and Cinema writers where they write a character's
+lines, never sent to picture or video models. Likeness check: Claude compares a take with the character's pictures
+(the look's, for `@handle:look`) and says what differs (`POST /elements/{id}/check`, kept on the asset). Quick
+actions in the character editor: place them in a location (a Create image draft), a 3D figure (`character_figure`:
+an A-pose picture -> a 3D model -> an optional rig, kept in the Library with the character's id) and say hello
+(`talking_shot` with a character: their main picture and saved voice).
 - **Step 0 — Handoff:**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

@@ -70,7 +70,7 @@ async function studio(page: Page) {
     const e = { id: "e1", kind: "style", name: body.name, slug: "faded-film", handle: "@faded-film",
                 description: body.description, attributes: body.attributes, voice: null, lora: null, cover: STREET,
                 images: [{ asset: STREET, view: "style", is_primary: true }], looks: {}, members: [],
-                created_at: "2026-11-17T10:00:00Z" };
+                profile: { personality: "", backstory: "", catchphrases: [], speech: "" }, created_at: "2026-11-17T10:00:00Z" };
     saved.unshift(e);
     return route.fulfill({ status: 201, json: e });
   });

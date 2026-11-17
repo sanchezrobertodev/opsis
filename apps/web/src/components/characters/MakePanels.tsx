@@ -1,7 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { cn } from "@/lib/cn";
+import { useDraft } from "@/lib/draft";
 import type { Element } from "@/lib/elements";
 import { lookSlug, styleLook } from "@/lib/mentions";
 import type { RunCreate } from "@/lib/runs";
@@ -11,17 +14,41 @@ import { ModelSelect, quotePrice, quoteText, useRunQuote, useStartQuoted } from 
 import { Button, Segmented } from "@/components/ui/controls";
 
 // character_sheet's, character_photos' and character_look's own default
-export const REFS_MODEL = "nano-banana-pro";
+const REFS_MODEL = "nano-banana-pro";
 const REFS_TRADEOFF = "Nano Banana Pro keeps the face closest to the references; other models cost less or more but "
   + "can drift from the likeness.";
 const FIELD = "rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60";
+/** Every run here reads the saved character and leaves the editor, which would drop its edits. */
+export const SAVE_FIRST = "Save your changes first";
 
 /** Models that draw from a character's pictures (their reference mode). */
-export function useRefModels() {
+function useRefModels() {
   return useModelsFor("multi_ref").filter((m) => m.output_type === "image");
 }
 
-function GeneratePanel({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+/** Opens Create image with a prompt drafted in a reference mode (Create's model when it has one, else REFS_MODEL), so
+ * the pictures of what it mentions come along. `model` and `mode` are the ones it uses, to price a take first. */
+export function useReferenceShot() {
+  const router = useRouter();
+  const current = useDraft((s) => s.image.modelId);
+  const setDraft = useDraft((s) => s.set);
+  const models = useRefModels();
+  const model = models.find((m) => m.id === current) ?? models.find((m) => m.id === REFS_MODEL) ?? models[0];
+  const mode = model?.modes.find((m) => m.ops.includes("multi_ref"));
+  function open(prompt: string, note: string) {
+    if (!model || !mode) {
+      toast.error("No image model here can draw from reference pictures.");
+      return;
+    }
+    // the mentions bring the pictures, so earlier references would only take their room
+    setDraft("image", { modelId: model.id, mode: mode.id, media: {}, prompt });
+    router.push("/create/image");
+    toast(note);
+  }
+  return { model, mode, open };
+}
+
+export function GeneratePanel({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   const ref = useRef<HTMLElement>(null);
   // it opens under both columns, which the button that opened it may be far above
   useEffect(() => { ref.current?.scrollIntoView({ block: "nearest" }); }, []);
@@ -45,7 +72,7 @@ const GRID_NOTE = "It joins their pictures for you to look at; prompts never bri
 
 /** One picture of the character from every side, kept right after its main picture so a mention attaches both; or a
  * grid of its expressions or poses, kept with its pictures. */
-export function SheetPanel({ element, onClose }: { element: Element; onClose: () => void }) {
+export function SheetPanel({ element, unsaved, onClose }: { element: Element; unsaved: boolean; onClose: () => void }) {
   const models = useRefModels();
   const [model, setModel] = useState(REFS_MODEL);
   const [sheet, setSheet] = useState<Sheet>("turnaround");
@@ -76,8 +103,8 @@ export function SheetPanel({ element, onClose }: { element: Element; onClose: ()
                      tradeoff={REFS_TRADEOFF} />
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" tone="primary" size="sm"
-                disabled={quote.count == null || Boolean(quote.error) || start.pending}
+        <Button type="button" tone="primary" size="sm" title={unsaved ? SAVE_FIRST : undefined}
+                disabled={unsaved || quote.count == null || Boolean(quote.error) || start.pending}
                 onClick={() => void start.go(body, quote)}>
           Make the sheet{quotePrice(quote) && ` · ${quotePrice(quote)}`}
         </Button>
@@ -92,7 +119,9 @@ const COUNTS = [4, 8, 12, 16] as const;
 
 /** New pictures of the character from other angles, with other expressions, light and framing, added to its
  * pictures: the varied photos a trained identity needs, made from the few it has. */
-export function MorePictures({ element, count: wanted, onClose }: { element: Element; count?: number; onClose: () => void }) {
+export function MorePictures({ element, count: wanted, unsaved, onClose }: {
+  element: Element; count?: number; unsaved: boolean; onClose: () => void;
+}) {
   const models = useRefModels();
   const [model, setModel] = useState(REFS_MODEL);
   const [count, setCount] = useState<(typeof COUNTS)[number]>(COUNTS.find((c) => c >= (wanted ?? 8)) ?? 16);
@@ -131,8 +160,8 @@ export function MorePictures({ element, count: wanted, onClose }: { element: Ele
         {!vary.length && <span className="text-2xs text-faint">Nothing varied: every picture comes out alike.</span>}
       </fieldset>
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" tone="primary" size="sm"
-                disabled={quote.count == null || Boolean(quote.error) || start.pending}
+        <Button type="button" tone="primary" size="sm" title={unsaved ? SAVE_FIRST : undefined}
+                disabled={unsaved || quote.count == null || Boolean(quote.error) || start.pending}
                 onClick={() => void start.go(body, quote)}>
           Make {count} pictures{quotePrice(quote) && ` · ${quotePrice(quote)}`}
         </Button>
@@ -158,7 +187,7 @@ function LookHandle({ element, look }: { element: Element; look: string }) {
 }
 
 /** How many pictures of a look and on which model, priced, then the run that draws them and keeps them as the look's. */
-function DrawLook({ element, input, ready }: { element: Element; input: LookInput; ready: boolean }) {
+function DrawLook({ element, input, ready, unsaved }: { element: Element; input: LookInput; ready: boolean; unsaved: boolean }) {
   const models = useRefModels();
   const [model, setModel] = useState(REFS_MODEL);
   const [count, setCount] = useState<(typeof LOOK_COUNTS)[number]>(1);
@@ -180,8 +209,8 @@ function DrawLook({ element, input, ready }: { element: Element; input: LookInpu
                      tradeoff={REFS_TRADEOFF} />
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" tone="primary" size="sm"
-                disabled={!ready || quote.count == null || Boolean(quote.error) || start.pending}
+        <Button type="button" tone="primary" size="sm" title={unsaved ? SAVE_FIRST : undefined}
+                disabled={!ready || unsaved || quote.count == null || Boolean(quote.error) || start.pending}
                 onClick={() => void start.go(body, quote)}>
           Draw the look{quotePrice(quote) && ` · ${quotePrice(quote)}`}
         </Button>
@@ -192,7 +221,7 @@ function DrawLook({ element, input, ready }: { element: Element; input: LookInpu
 }
 
 /** The character in another outfit, drawn from its pictures and kept as a look (`@handle:look`). */
-export function AddLookPanel({ element, onClose }: { element: Element; onClose: () => void }) {
+export function AddLookPanel({ element, unsaved, onClose }: { element: Element; unsaved: boolean; onClose: () => void }) {
   const [name, setName] = useState("");
   const [outfit, setOutfit] = useState("");
   const look = lookSlug(name);
@@ -221,14 +250,14 @@ export function AddLookPanel({ element, onClose }: { element: Element; onClose: 
           Put a letter from a to z or a digit in the name: it becomes the look&rsquo;s handle, like {element.handle}:winter.
         </p>
       )}
-      <DrawLook element={element} ready={Boolean(look && outfit.trim())}
+      <DrawLook element={element} ready={Boolean(look && outfit.trim())} unsaved={unsaved}
                 input={{ look, name: name.trim(), outfit: outfit.trim() }} />
     </GeneratePanel>
   );
 }
 
 /** The character drawn in another picture style (a catalog style or one of yours), kept as a look named after it. */
-export function StyleLookPanel({ element, onClose }: { element: Element; onClose: () => void }) {
+export function StyleLookPanel({ element, unsaved, onClose }: { element: Element; unsaved: boolean; onClose: () => void }) {
   const { catalog, mine } = useStyleTiles();
   const [style, setStyle] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null); // null: the style's own words
@@ -250,7 +279,7 @@ export function StyleLookPanel({ element, onClose }: { element: Element; onClose
         </label>
       </div>
       <LookHandle element={element} look={look} />
-      <DrawLook element={element} ready={Boolean(look && name)}
+      <DrawLook element={element} ready={Boolean(look && name)} unsaved={unsaved}
                 input={{ look, name, description: description.trim(), style: style ?? "" }} />
     </GeneratePanel>
   );

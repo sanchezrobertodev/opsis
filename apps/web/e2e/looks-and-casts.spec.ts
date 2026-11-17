@@ -31,7 +31,8 @@ const asset = (id: string, title: string) => ({
 });
 const element = (id: string, kind: string, name: string, more: Record<string, unknown> = {}) => ({
   id, kind, name, slug: id, handle: `@${id}`, description: "", attributes: {}, voice: null, lora: null, cover: null,
-  images: [], looks: {}, members: [], created_at: "2026-11-17T10:00:00Z", ...more,
+  images: [], looks: {}, members: [], profile: { personality: "", backstory: "", catchphrases: [], speech: "" },
+  created_at: "2026-11-17T10:00:00Z", ...more,
 });
 const MAYA_FRONT = asset("maya-front", "Maya");
 const KAI_FRONT = asset("kai-front", "Kai");

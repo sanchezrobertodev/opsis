@@ -79,6 +79,8 @@ TYPICAL_CALLS = {
     "style.describe": ("fast", 9_200, 1_200),  # up to four pictures (about 2,100 tokens each); a name and a look
     "character.from_photo": ("fast", 4_200, 800),  # a picture, the designer's options and the styles; the picks
     "character.from_text": ("fast", 2_500, 800),  # a sentence, the designer's options and the styles; the picks
+    "character.profile": ("fast", 900, 1_200),  # the name, description, traits and looks; a profile
+    "character.check": ("fast", 9_000, 800),  # up to four references and the take (about 2,100 tokens each); a verdict
 }
 
 

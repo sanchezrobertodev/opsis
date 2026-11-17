@@ -37,10 +37,14 @@ MENTION = re.compile(r"(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_-]{0,39})")
 # resolve_mentions reads looks; everything else wants the handles alone (`mentions()`).
 MENTION_LOOK = re.compile(MENTION.pattern + r"(?::([A-Za-z0-9][A-Za-z0-9-]{0,23}))?")
 LOOK_SLUG = r"^[a-z0-9][a-z0-9-]{0,23}$"  # a look's handle, as written after @handle:
+SLUG = r"^[a-z0-9][a-z0-9-]{0,39}$"  # an Element's handle, as written after @
 KIND_ORDER = {"character": 0, "cast": 1, "location": 2, "prop": 3, "style": 4, "voice": 5}
 IMAGES_PER_KIND = {"character": 2, "cast": 2, "location": 1, "prop": 1, "style": 2}  # a cast's: at most, per member
 # sheets a mention never attaches: a grid given as a reference tends to come back as a collage
 UNATTACHED_VIEWS = ("expressions", "poses")
+# the one picture that stands for a character (a talking shot speaks from it, a face swap takes its face): any picture
+# of a single view before a reference sheet (several views on one picture), even a sheet marked primary
+PORTRAIT_ORDER = ((ElementAsset.view == "sheet").asc(), ElementAsset.is_primary.desc(), ElementAsset.sort)
 CAST_SIZE = (2, 8)
 # what a first mention says of an element: room for the character designer's longest description (about 255
 # characters for a person, 295 for a creature with every feature; web lib/designer.ts), mirrored by the web's LOOK_MAX

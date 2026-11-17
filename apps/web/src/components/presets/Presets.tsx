@@ -1,7 +1,6 @@
 "use client";
 
 import { BookOpen, Package, Palette, Scissors, Smartphone, Sparkles, UserRound } from "lucide-react";
-import type { Schemas } from "@opsis/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -25,7 +24,7 @@ import { useClonedVoices, useElements } from "@/lib/elements";
 import { useEstimateRun, useStartRun } from "@/lib/runs";
 import { glyphClass } from "@/components/create/DirectorPanel";
 import { MediaSlotField } from "@/components/create/MediaSlots";
-import { type Quote, quotePrice, quoteText, sameRequest, useRunQuote } from "@/components/runs/RunQuote";
+import { quotePrice, quoteText, sameRequest, useRunQuote, useTakeQuote } from "@/components/runs/RunQuote";
 import { Button, Dialog, Segmented, Select } from "@/components/ui/controls";
 import { GLASS_CARD, Lit } from "@/components/ui/Glass";
 
@@ -221,24 +220,6 @@ function useRendered<A, T>(key: string, answers: A | null, render: (answers: A) 
   return { data: current ? (q.data ?? null) : null, error: current && q.error instanceof Error ? q.error.message : null };
 }
 
-/** What one take of a preset costs where it would run now (mock mode: what it would cost live), as a run's quote. */
-function usePresetQuote(req: Schemas["PresetRenderOut"] | null): Quote {
-  const est = useQuery({
-    queryKey: ["estimate", req],
-    queryFn: () => unwrap(api.POST("/registry/estimate", {
-      body: { ...req!, direction: req!.direction ?? null, route_policy: "cheapest_healthy" } })),
-    enabled: Boolean(req),
-    retry: false,
-  });
-  const d = req ? est.data : undefined;
-  const chosen = d?.candidates.find((c) => c.route_id === d.chosen_route_id);
-  const noRoute = d && !chosen ? (d.candidates.find((c) => !c.is_mock)?.reason ?? "No provider can run this right now.") : null;
-  const error = !req ? null : est.error instanceof Error ? est.error.message : noRoute;
-  const mock = chosen?.is_mock ?? false;
-  return { usd: chosen ? ((mock ? d?.live_reference?.estimate_usd : d?.estimate_usd) ?? null) : null,
-           claude: null, charged: d?.estimate_usd ?? null, count: chosen ? 1 : null, mock, error };
-}
-
 function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) {
   const router = useRouter();
   const draft = useDraft();
@@ -262,7 +243,7 @@ function PresetForm({ preset, onDone }: { preset: Preset; onDone: () => void }) 
   };
   const preview = useRendered(`preset:${preset.id}`, missing.length ? null : answers, (body) =>
     unwrap(api.POST("/presets/{preset_id}/render", { params: { path: { preset_id: preset.id } }, body })));
-  const priced = usePresetQuote(preview.data);
+  const priced = useTakeQuote(preview.data);
   const quote = preview.error ? { ...priced, error: preview.error } : priced;
 
   async function rendered() {

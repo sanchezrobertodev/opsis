@@ -87,6 +87,12 @@ class ProposedCharacter(BaseModel):
     name: str
     description: str
 
+
+def cast_text(cast: list[tuple[str, str]]) -> str:
+    """The cast for Claude, a member to a line: `@handle: who they are`, their profile's lines indented under it."""
+    return "Cast (use these handles):\n" + "\n".join(f"- @{slug}: {desc}".replace("\n", "\n  ") for slug, desc in cast)
+
+
 SYSTEM = """You are a film director breaking a script into a shot list for AI video generation.
 
 Each shot is one continuous camera setup of 3 to 10 seconds that a video model renders on its own. For every shot:
@@ -120,7 +126,7 @@ async def plan_shots(session: AsyncSession, user_id: uuid.UUID, *, script: str, 
     cast = cast or []
     prompt = "\n".join(line for line in [
         f"Logline: {logline}" if logline else "",
-        "Cast (use these handles): " + "; ".join(f"@{slug}: {desc}" for slug, desc in cast) if cast else "",
+        cast_text(cast) if cast else "",
         NEW_PEOPLE,
         f"Shot budget: at most {max_shots} shots in total.",
         f"Director's notes: {notes}" if notes else "",

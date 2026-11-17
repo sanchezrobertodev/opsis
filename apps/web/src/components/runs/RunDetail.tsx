@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Check, Circle, LoaderCircle, Minus, X } from "lucide-react";
+import { Box, Check, Circle, LoaderCircle, Minus, X } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { api, type Asset, mediaUrl, unwrap } from "@/lib/api";
@@ -28,6 +28,7 @@ const OUTPUT_TEXT: Record<string, string> = {
   keyframe: "The animated shot; its opening frame is in the library too.",
   object_swap: "The take you kept. The other takes and the tracked mask are in the library too.",
   faceless: "The finished episode. The clean master, the captions file and the thumbnail are in the library too.",
+  character_figure: "The 3D figure, with its skeleton when it could be rigged.",
 };
 
 const KIND_TEXT: Record<string, string> = {
@@ -193,12 +194,30 @@ function StepAsset({ asset }: { asset: Asset }) {
 }
 
 function Output({ run }: { run: Run }) {
-  if (!run.output_asset) return null;
+  const out = run.output_asset;
+  if (!out) return null;
+  // a GLB (a character's 3D figure): its library picture once one is drawn, and where to use it
+  const model = out.kind === "model3d";
   return (
     <section className="max-w-3xl">
-      <Media asset={run.output_asset} className="w-full rounded-[var(--radius-frame)]" />
+      {model ? (
+        <span className="grid aspect-video w-full max-w-sm place-items-center overflow-hidden rounded-[var(--radius-frame)] bg-bay">
+          {out.thumb_url
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={mediaUrl(out.thumb_url)} alt="" className="size-full object-cover" />
+            : <Box className="size-8 text-faint" aria-hidden />}
+        </span>
+      ) : (
+        <Media asset={out} className="w-full rounded-[var(--radius-frame)]" />
+      )}
       <p className="mt-2 text-xs text-muted">
         {OUTPUT_TEXT[run.recipe] ?? "The result."}{" "}
+        {model && (
+          <>
+            <Link href="/jutsu3d" className="text-chalk underline">Open 3D blocking</Link>, then in a scene Add a model,
+            Your models, to place it.{" "}
+          </>
+        )}
         <Link href="/library" className="text-chalk underline">
           Open the library
         </Link>{" "}
