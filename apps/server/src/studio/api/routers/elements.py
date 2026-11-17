@@ -4,42 +4,59 @@ talk, for the lines writers give them) and a likeness check (Claude compares a t
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
+from pathlib import Path as FilePath
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from pydantic import BaseModel, ConfigDict, Field
+import anyio
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, UploadFile
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.background import BackgroundTask
 
 from studio.api.deps import current_user, get_session
+from studio.api.routers.assets import file_type, store_file
 from studio.api.schemas import AssetOut
 from studio.api.serializers import asset_out
 from studio.budget import modes
 from studio.budget.guard import BudgetBlocked
+from studio.characters import bundle
 from studio.characters.likeness import MAX_REFERENCES, Likeness, check_likeness
 from studio.characters.profile import ElementProfile, draft_profile
 from studio.config import get_settings
+from studio.db.base import uuid7
 from studio.db.models import Asset, Element, ElementAsset, ElementKind, ElementMember, Generation, User
-from studio.director.elements import CAST_SIZE, LOOK_SLUG, UNATTACHED_VIEWS, cast_members, unique_slug
-from studio.domain.enums import AssetKind, AssetStatus
+from studio.director.elements import (
+    CAST_SIZE,
+    LOOK_SLUG,
+    UNATTACHED_VIEWS,
+    ElementLook,
+    View,
+    cast_members,
+    identities,
+    slugify,
+    unique_slug,
+)
+from studio.domain.enums import AssetKind, AssetSource, AssetStatus
 from studio.llm.client import LLMError, LLMUnavailable
 from studio.llm.images import ImageError, load
 from studio.media.ffmpeg import ffmpeg
 from studio.providers import elevenlabs
 from studio.providers.base import ProviderError
 from studio.registry.loader import get_registry
+from studio.registry.schema import EnumParam
 from studio.storage.local import get_storage
+from studio.worker.tasks.assets import defer_derive
 
 router = APIRouter(prefix="/elements", tags=["elements"])
 
 Kind = Literal["character", "location", "prop", "style", "voice", "cast"]
-# `expressions` and `poses` are grid sheets kept for people to see: a mention never attaches them
-View = Literal["front", "three_quarter", "side", "back", "face", "full_body", "sheet", "wide", "detail", "style",
-               "expressions", "poses"]
 
 
 class ElementImageIn(BaseModel):
@@ -48,16 +65,6 @@ class ElementImageIn(BaseModel):
     view: View = "front"
     look: str | None = Field(None, pattern=LOOK_SLUG, description="The character's look this picture shows "
                                                                    "(`@handle:look`); none for a main picture")
-
-
-class ElementLook(BaseModel):
-    """A character's look: an outfit, or the character in another picture style. `@handle:look` in a prompt attaches
-    its pictures first and reads its description after the character's."""
-
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-    name: str = Field(min_length=1, max_length=40)
-    description: str = Field(max_length=160, description='Read after the character\'s description: "wearing a red '
-                                                         'wool coat and boots", "drawn as a 2D anime character"')
 
 
 class VoiceIn(BaseModel):
@@ -129,10 +136,16 @@ class ElementPatch(BaseModel):
     cover_asset_id: uuid.UUID | None = None
     voice: VoiceIn | None = Field(None, description="Set the voice; `clear_voice` removes it")
     clear_voice: bool = False
-    clear_lora: bool = Field(False, description="Forget the trained identity (the LoRA files stay in the library)")
+    clear_lora: str | None = Field(None, max_length=80, description="Forget the trained identity for this LoRA base "
+                                                                   "(the LoRA files stay in the library)")
     members: list[uuid.UUID] | None = Field(None, description="A cast (group)'s characters, all of them, in order")
     profile: ElementProfile | None = Field(None, description="A character's profile: the fields sent replace the "
                                                              "saved ones, the others are kept")
+
+    @field_validator("clear_lora", mode="before")
+    @classmethod
+    def _old_page(cls, v: Any) -> Any:
+        return None if v is False else v  # a page loaded before identities were per base sends false with every save
 
 
 class ElementImagePatch(BaseModel):
@@ -166,7 +179,9 @@ class ElementOut(BaseModel):
     description: str
     attributes: dict[str, Any]
     voice: dict[str, Any] | None = Field(None, description="{model_id, params}: how this character speaks")
-    lora: dict[str, Any] | None = Field(None, description="The trained identity: {base, trigger, low, high, steps, run_id, trained_at}; models with the lora strategy load it when the character is mentioned")
+    lora: dict[str, dict[str, Any]] | None = Field(
+        None, description="Trained identities by LoRA base: {base: {base, trigger, low, high, steps, run_id, "
+                          "trained_at}}; a model with the lora strategy loads its base's when the character is mentioned")
     cover: AssetOut | None
     images: list[ElementImageOut]
     looks: dict[str, ElementLook] = Field({}, description="A character's looks by handle (`@handle:look`)")
@@ -210,7 +225,7 @@ async def _out(session: AsyncSession, e: Element) -> ElementOut:
     members = [ElementMemberOut(id=m.id, name=m.name, handle=f"@{m.slug}", cover=(await _out(session, m)).cover)
                for m in crew]
     return ElementOut(id=e.id, kind=e.kind.value, name=e.name, slug=e.slug, handle=f"@{e.slug}",
-                      description=e.description, attributes=e.attributes or {}, voice=e.voice or None, lora=e.lora or None,
+                      description=e.description, attributes=e.attributes or {}, voice=e.voice or None, lora=identities(e.lora) or None,
                       cover=cover, images=images, looks=e.looks or {}, members=members,
                       profile=ElementProfile.model_validate(e.profile or {}), created_at=e.created_at)
 
@@ -388,7 +403,7 @@ async def patch_element(element_id: uuid.UUID, body: ElementPatch, session: Asyn
     elif body.clear_voice:
         e.voice = {}
     if body.clear_lora:
-        e.lora = {}
+        e.lora = {base: ident for base, ident in identities(e.lora).items() if base != body.clear_lora}
     if body.profile is not None:
         e.profile = {**(e.profile or {}), **body.profile.model_dump(exclude_unset=True)}
     await session.commit()
@@ -509,6 +524,173 @@ async def delete_look(element_id: uuid.UUID, look: str = Path(pattern=LOOK_SLUG)
     e.looks = {k: v for k, v in e.looks.items() if k != look}
     e.updated_at = datetime.now(UTC)
     await session.commit()
+    return await _out(session, e)
+
+
+# ---------------------------------------------------------------- export and import (a zip)
+
+
+def _portable_voice(voice: dict[str, Any]) -> bundle.BundleVoice | None:
+    """A voice as another studio can use it: its model and params, without an id only this studio's accounts know
+    (a cloned or stand-in voice: an open choice that isn't one of the model's own) or its recording."""
+    spec = get_registry().model(str(voice.get("model_id") or ""))
+    if spec is None:
+        return None
+    params = {k: v for k, v in (voice.get("params") or {}).items()
+              if not (isinstance(p := spec.param(k), EnumParam) and p.open and v not in p.options)}
+    return bundle.BundleVoice(model_id=spec.id, params=params)
+
+
+@contextlib.contextmanager
+def _in_zip(name: str) -> Iterator[None]:
+    """An upload check that refuses one of a zip's files says which one."""
+    try:
+        yield
+    except HTTPException as exc:
+        raise HTTPException(exc.status_code, f"{name} in the zip: {exc.detail}") from None
+
+
+@router.get("/{element_id}/export", response_class=FileResponse,
+            responses={200: {"content": {"application/zip": {}}, "description": "The element as a zip"},
+                       422: {"description": "A cast or a voice, or files too large to export"}})
+async def export_element(element_id: uuid.UUID, session: AsyncSession = Depends(get_session),
+                         user: User = Depends(current_user)) -> FileResponse:
+    """The element as a zip to keep, or to import here or into another studio (`POST /elements/import`):
+    `character.json` (name, handle, description, traits, profile, looks, voice, trained identities and which picture
+    is which) and its pictures and LoRA files under `files/`. Ids, cloned voices, voice recordings and runs stay here.
+    Casts and voices aren't exported; a cast's characters are, one by one."""
+    e = await _get(session, user, element_id)
+    if e.kind in (ElementKind.cast, ElementKind.voice):
+        raise HTTPException(422, "a cast or a voice can't be exported; export a cast's characters one by one")
+    links = (await session.execute(
+        select(ElementAsset, Asset).join(Asset, Asset.id == ElementAsset.asset_id)
+        .where(ElementAsset.element_id == e.id, Asset.deleted_at.is_(None), Asset.status == AssetStatus.ready,
+               Asset.kind == AssetKind.image)
+        .order_by(ElementAsset.sort, Asset.created_at))).all()
+    storage = get_storage()
+
+    def kept(a: Asset) -> bool:  # a file gone from data/media (a database restored without it) stays out, not the rest
+        return storage.path_for(a.storage_key).is_file()
+
+    files: dict[str, FilePath] = {}
+    images: list[bundle.BundleImage] = []
+    cover = None
+    # numbered in their order: imported pictures are all made at once, so the order can't rest on when they were
+    for n, (link, a) in enumerate((link, a) for link, a in links if kept(a)):
+        name = f"files/{n + 1:03d}-{link.view}{FilePath(a.storage_key).suffix.lower()}"
+        files[name] = storage.path_for(a.storage_key)
+        images.append(bundle.BundleImage(file=name, type=a.mime, view=link.view, primary=link.is_primary, sort=n,
+                                         look=link.look))
+        cover = name if a.id == e.cover_asset_id else cover
+    ids = identities(e.lora)
+    wanted = [uuid.UUID(str(i[k])) for i in ids.values() for k in ("low", "high") if i.get(k)]
+    weights = {str(a.id): a for a in (await session.execute(select(Asset).where(
+        Asset.id.in_(wanted), Asset.user_id == user.id, Asset.deleted_at.is_(None), Asset.status == AssetStatus.ready,
+        Asset.kind == AssetKind.lora))).scalars() if kept(a)} if wanted else {}
+    lora: dict[str, bundle.BundleIdentity] = {}
+    for base, ident in ids.items():
+        if str(ident.get("low")) not in weights:  # its weights are gone: nothing would load
+            continue
+        named: dict[str, str] = {}
+        for expert in ("low", "high"):
+            if a := weights.get(str(ident.get(expert))):
+                named[expert] = f"files/lora-{slugify(base)}-{expert}.safetensors"
+                files[named[expert]] = storage.path_for(a.storage_key)
+        lora[base] = bundle.BundleIdentity(trigger=str(ident.get("trigger") or e.slug), steps=ident.get("steps"),
+                                           trained_at=ident.get("trained_at"), **named)
+    manifest = bundle.Manifest(
+        kind=e.kind.value, name=e.name, slug=e.slug, description=e.description, attributes=e.attributes or {},
+        profile=ElementProfile.model_validate(e.profile or {}), looks=e.looks or {},
+        voice=_portable_voice(e.voice) if e.voice else None, lora=lora, images=images, cover=cover)
+    if sum(p.stat().st_size for p in files.values()) > bundle.MAX_UNPACKED:
+        raise HTTPException(422, f"its files come to more than {bundle.MAX_UNPACKED >> 20} MB, too large to export")
+    dest = storage.temp_dir() / f"export-{uuid7().hex}.zip"
+    try:
+        await anyio.to_thread.run_sync(bundle.pack, dest, manifest, files)
+    except BaseException:
+        dest.unlink(missing_ok=True)
+        raise
+    return FileResponse(dest, media_type="application/zip", filename=f"{e.slug}.zip",
+                        background=BackgroundTask(dest.unlink, missing_ok=True))
+
+
+@router.post("/import", response_model=ElementOut, status_code=201,
+             responses={413: {"description": "The zip is too large"},
+                        415: {"description": "A file in it isn't a picture or LoRA weights"},
+                        422: {"description": "Not a character zip, or one the studio can't take"}})
+async def import_element(file: UploadFile, session: AsyncSession = Depends(get_session),
+                         user: User = Depends(current_user)) -> ElementOut:
+    """Make a new element of yours from a zip `GET /elements/{id}/export` made, here or in another studio: its
+    pictures (checked like uploads), looks, profile, voice and trained identities (their LoRA files). It keeps its
+    handle when that's free. A cloned voice never travels: the voice is one of its model's own, or its default, and
+    stays behind when no model here can speak it."""
+    storage = get_storage()
+    work = storage.temp_dir() / f"import-{uuid7().hex}"
+    (work / "files").mkdir(parents=True)
+    stored: list[Asset] = []
+    try:
+        src, size = work / "bundle.zip", 0
+        async with await anyio.open_file(src, "wb") as out:
+            while chunk := await file.read(bundle.CHUNK):
+                size += len(chunk)
+                if size > bundle.MAX_BYTES:
+                    raise HTTPException(413, f"a character zip can be up to {bundle.MAX_BYTES >> 30} GB")
+                await out.write(chunk)
+        try:
+            manifest, files = await anyio.to_thread.run_sync(bundle.unpack, src, work / "files")
+        except bundle.BundleError as exc:
+            raise HTTPException(422, str(exc)) from None
+        voice: dict[str, Any] = {}
+        portable = _portable_voice(manifest.voice.model_dump()) if manifest.voice else None
+        with contextlib.suppress(HTTPException):  # a voice no model here speaks stays behind, not the character
+            voice = _check_voice(VoiceIn(**portable.model_dump())) if portable else {}
+        types: dict[str, tuple[AssetKind, str, str]] = {}
+        for i in manifest.images:
+            with _in_zip(i.file):
+                types[i.file] = file_type(i.type, i.file)
+        if bad := [name for name, (kind, _, _) in types.items() if kind != AssetKind.image]:
+            raise HTTPException(422, f"a character's pictures must be pictures: {', '.join(bad)}")
+
+        async def keep(name: str, kind: AssetKind, mime: str, ext: str, **metadata: str) -> Asset:
+            f = files[name]
+            with _in_zip(name):
+                asset = await store_file(session, user.id, f.path, kind=kind, mime=mime, ext=ext, size=f.size,
+                                         content_hash=f.sha256, source=AssetSource.import_, title=FilePath(name).name,
+                                         metadata={"original_filename": FilePath(name).name, **metadata})
+            stored.append(asset)
+            return asset
+
+        pictures = {i.file: await keep(i.file, *types[i.file]) for i in manifest.images}
+        lora: dict[str, dict[str, Any]] = {}
+        for base, x in manifest.lora.items():
+            low = await keep(x.low, AssetKind.lora, "application/octet-stream", ".safetensors", expert="low", base=base)
+            high = await keep(x.high, AssetKind.lora, "application/octet-stream", ".safetensors", expert="high",
+                              base=base) if x.high else None
+            lora[base] = {"base": base, "trigger": x.trigger, "low": str(low.id), "high": str(high.id) if high else None,
+                          "steps": x.steps, "trained_at": x.trained_at}
+        e = Element(user_id=user.id, kind=ElementKind(manifest.kind), name=manifest.name.strip(),
+                    slug=await unique_slug(session, user.id, manifest.slug), description=manifest.description.strip(),
+                    attributes=manifest.attributes, voice=voice, lora=lora,
+                    looks={k: v.model_dump() for k, v in manifest.looks.items()},
+                    profile=manifest.profile.model_dump(exclude_defaults=True))
+        session.add(e)
+        await session.flush()
+        for img in manifest.images:  # a grid sheet never comes first
+            session.add(ElementAsset(element_id=e.id, asset_id=pictures[img.file].id, view=img.view, look=img.look,
+                                     is_primary=img.primary and img.view not in UNATTACHED_VIEWS, sort=img.sort))
+        main = [i.file for i in sorted(manifest.images, key=lambda i: (not i.primary, i.sort))
+                if not _aside(i.look, i.view)]
+        if main:
+            e.cover_asset_id = pictures[manifest.cover if manifest.cover in main else main[0]].id
+        await session.commit()
+    except BaseException:
+        for a in stored:  # a refused import's files go too
+            await anyio.to_thread.run_sync(storage.delete_prefix, a.storage_key.rsplit("/", 1)[0])
+        raise
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    for a in pictures.values():
+        await defer_derive(a.id)
     return await _out(session, e)
 
 

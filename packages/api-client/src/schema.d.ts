@@ -217,6 +217,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/elements/{element_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Element
+         * @description The element as a zip to keep, or to import here or into another studio (`POST /elements/import`):
+         *     `character.json` (name, handle, description, traits, profile, looks, voice, trained identities and which picture
+         *     is which) and its pictures and LoRA files under `files/`. Ids, cloned voices, voice recordings and runs stay here.
+         *     Casts and voices aren't exported; a cast's characters are, one by one.
+         */
+        get: operations["export_element_elements__element_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elements/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Element
+         * @description Make a new element of yours from a zip `GET /elements/{id}/export` made, here or in another studio: its
+         *     pictures (checked like uploads), looks, profile, voice and trained identities (their LoRA files). It keeps its
+         *     handle when that's free. A cloned voice never travels: the voice is one of its model's own, or its default, and
+         *     stays behind when no model here can speak it.
+         */
+        post: operations["import_element_elements_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/elements/{element_id}/profile/draft": {
         parameters: {
             query?: never;
@@ -1592,6 +1638,11 @@ export interface components {
              */
             checked_at: string;
         };
+        /** Body_import_element_elements_import_post */
+        Body_import_element_elements_import_post: {
+            /** File */
+            file: string;
+        };
         /** Body_set_thumbnail_assets__asset_id__thumbnail_post */
         Body_set_thumbnail_assets__asset_id__thumbnail_post: {
             /** File */
@@ -2580,10 +2631,12 @@ export interface components {
             } | null;
             /**
              * Lora
-             * @description The trained identity: {base, trigger, low, high, steps, run_id, trained_at}; models with the lora strategy load it when the character is mentioned
+             * @description Trained identities by LoRA base: {base: {base, trigger, low, high, steps, run_id, trained_at}}; a model with the lora strategy loads its base's when the character is mentioned
              */
             lora?: {
-                [key: string]: unknown;
+                [key: string]: {
+                    [key: string]: unknown;
+                };
             } | null;
             cover: components["schemas"]["AssetOut"] | null;
             /** Images */
@@ -2644,10 +2697,9 @@ export interface components {
             clear_voice: boolean;
             /**
              * Clear Lora
-             * @description Forget the trained identity (the LoRA files stay in the library)
-             * @default false
+             * @description Forget the trained identity for this LoRA base (the LoRA files stay in the library)
              */
-            clear_lora: boolean;
+            clear_lora?: string | null;
             /**
              * Members
              * @description A cast (group)'s characters, all of them, in order
@@ -3499,6 +3551,11 @@ export interface components {
              * @default false
              */
             local_ready: boolean;
+            /**
+             * Lora Base
+             * @description The trained identities it's about: the LoRA base it loads for a mentioned character, or a trainer's, the one it trains for
+             */
+            lora_base?: string | null;
         };
         /** MoveChoice */
         MoveChoice: {
@@ -5741,6 +5798,80 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    export_element_elements__element_id__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The element as a zip */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                };
+            };
+            /** @description A cast or a voice, or files too large to export */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    import_element_elements_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_element_elements_import_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElementOut"];
+                };
+            };
+            /** @description The zip is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A file in it isn't a picture or LoRA weights */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a character zip, or one the studio can't take */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

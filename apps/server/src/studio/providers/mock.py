@@ -152,8 +152,9 @@ class MockAdapter(ProviderAdapter):
         if output.kind == "model3d":
             await anyio.to_thread.run_sync(lambda: mock_media.make_glb(dest, seed=seed))
             return "model/gltf-binary"
-        if output.kind == "lora":  # stand-in weights: never loaded, only passed back to LoRA routes
-            await anyio.Path(dest).write_bytes(b"MOCK-LORA " + str(output.meta.get("expert", "")).encode())
+        if output.kind == "lora":  # stand-in weights (a .safetensors file without tensors): never loaded
+            header = json.dumps({"__metadata__": {"mock": str(output.meta.get("expert", ""))}}).encode()
+            await anyio.Path(dest).write_bytes(len(header).to_bytes(8, "little") + header)
             return "application/octet-stream"
         if output.kind == "splat":
             await anyio.to_thread.run_sync(lambda: mock_media.make_splat_ply(dest, seed=seed))

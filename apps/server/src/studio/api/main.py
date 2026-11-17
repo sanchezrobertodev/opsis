@@ -91,7 +91,7 @@ app = FastAPI(
 MAX_BODY_BYTES = MAX_UPLOAD_BYTES + (16 << 20)  # the largest upload plus the form around it
 MAX_JSON_BYTES = 16 << 20  # any other body, which is read into memory whole
 # the routes that take files, which the form parser spools to disk; any other route reads a body whole, whatever its type
-FILE_ROUTES = re.compile(r"/uploads|/projects/[^/]+/renders/[^/]+/frames")
+FILE_ROUTES = re.compile(r"/uploads|/elements/import|/projects/[^/]+/renders/[^/]+/frames")
 _web = get_settings().web_origin
 # 127.0.0.1 is the same dev web app as localhost; a deployed API trusts only its own web app
 ORIGINS = [_web, *(["http://127.0.0.1:3000"] if _web.startswith("http://localhost") else [])]

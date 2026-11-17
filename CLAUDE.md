@@ -421,7 +421,8 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   `tests/integration/test_mcp.py` (in-process `mcp.Client`).
 - Every route checks the Host (this machine and `WEB_ORIGIN`'s host, against DNS rebinding; the integration tests add
   `test` in their conftest) and POST/PUT/PATCH/DELETE check the Origin. Bodies over 16 MB are refused, except
-  multipart uploads on the file routes (`main.py:FILE_ROUTES`: a new route taking files goes there); chunked bodies get 411.
+  multipart uploads on the file routes (`main.py:FILE_ROUTES`: `/uploads`, `/elements/import`, render frames; a new
+  route taking files goes there); chunked bodies get 411.
 - Run the API via `python -m studio.api`, not bare uvicorn: on Windows it must use `asyncio:SelectorEventLoop`.
   `pnpm dev` adds `--reload`, so saving server code restarts the API and drops requests in flight (`/health`
   reports `reloads_on_change`). For a long live run, start it without `--reload` or don't edit `apps/server/src`
@@ -650,14 +651,33 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
 
 ## Trained characters (Soul ID)
 - The `lora_train` recipe learns a character's face: `dataset` (local op `lora_dataset`: 10-80 of its photos zipped
-  into an `archive` asset) -> `train` (`wan-2.2-lora-trainer`, fal's Wan 2.2 trainer, $0.0045/step, captions written by
-  fal) -> `attach` (local op `attach_lora`: `element.lora = {base, trigger, low, high, steps, run_id, trained_at}`) ->
-  an optional portrait preview. The trigger word defaults to a made-up word from the name; the character page's
-  "Trained identity" panel starts runs and can forget one (`PATCH /elements/{id}` `clear_lora`).
-- Models with `elements: {strategy: lora, lora_base: wan-2.2-a14b}` (`wan-2.2-image` stills, `wan-2.2-lora` video on
-  fal) load a mentioned character's LoRA: the resolver attaches the files in the mode's `auto` slots (`lora`,
+  into an `archive` asset) -> `train` (the `trainer_model_id` input, a model whose mode does `lora_train`: by default
+  `wan-2.2-lora-trainer`, fal's Wan 2.2 trainer, $0.0045/step, captions written by fal; or
+  `flux-3-klein-lora-trainer`, fal's FLUX 3 Klein base trainer, $0.0043/step, 100 at least; params a trainer lacks
+  drop out) -> `attach` (local op `attach_lora`) -> an optional portrait from the first still model (by id) that loads
+  the trainer's base and has a text mode. The trigger word defaults to a made-up word from the name; the character
+  page's "Trained identity" panel lists one identity per base with the models that load it (`lora_base` on the model
+  summary), picks the trainer (`useModelsFor("lora_train")`), starts runs and forgets one base at a time (`PATCH
+  /elements/{id}` `clear_lora: <base>`).
+- A character keeps one identity per LoRA base: `element.lora = {base: {base, trigger, low, high, steps, run_id,
+  trained_at}}` (`director/elements.py:identities()` reads it, and one stored flat before the migration as its base's).
+  The base is the trainer route's `output.meta.base` (`ModelSpec.lora_base()`, also on the model summary); training
+  again for a base replaces only that one.
+- Models with `elements: {strategy: lora, lora_base: <base>}` (`wan-2.2-image` stills and `wan-2.2-lora` video for
+  `wan-2.2-a14b`; `flux-3-klein` stills for `flux-3-klein`, with prompt expansion off so the trigger word stays) load a
+  mentioned character's identity for their base: the resolver attaches the files in the mode's `auto` slots (`lora`,
   `lora_high`; never shown in forms) and the mention reads "Name (trigger)". The `lora_list` transform turns the staged
-  links into fal's `loras` (high-noise file on the high expert, low on low; a single file on both).
+  links into fal's `loras`: on a mode with a `lora_high` slot (Wan's two experts) high-noise file on the high expert,
+  low on low and a single file on both (`transformer`); elsewhere plain `{path, scale}`.
+- Export and import (`GET /elements/{id}/export`, the editor's Export, downloaded with credentials;
+  `POST /elements/import`, Import on the Characters page; `characters/bundle.py`): a zip of
+  `character.json` (format 1: kind, name, the handle, description, traits, profile, looks, the voice's model and params
+  without a cloned or stand-in voice id, the identities' trigger, steps and files, and each picture's view, look, first
+  and order) and the files under `files/`. Never an id, an owner, a cloned voice, a voice recording or a run; casts and
+  voices aren't exported. An import reads only the members the manifest names (one level under `files/`, stored or
+  deflated, no links), with caps on the zip (2 GB), its entries (500, counted from its end record before zipfile reads
+  them) and what they unpack to; pictures go through the upload checks (`assets.py:file_type`/`store_file`), LoRA files
+  through `check_safetensors`, as `import` assets; a refused import removes what it stored.
 - Route map targets starting with `_` are parked for a payload hook and never sent; the schema check skips them.
 - LoRA files (`lora`) and zips (`archive`) are never probed and stay out of the default library listing.
 

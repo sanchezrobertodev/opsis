@@ -310,7 +310,10 @@ lines, never sent to picture or video models. Likeness check: Claude compares a 
 (the look's, for `@handle:look`) and says what differs (`POST /elements/{id}/check`, kept on the asset). Quick
 actions in the character editor: place them in a location (a Create image draft), a 3D figure (`character_figure`:
 an A-pose picture -> a 3D model -> an optional rig, kept in the Library with the character's id) and say hello
-(`talking_shot` with a character: their main picture and saved voice).
+(`talking_shot` with a character: their main picture and saved voice). Trained identities per LoRA base: a character
+keeps one for Wan 2.2 and one for FLUX 3 Klein (`flux-3-klein-lora-trainer` and `flux-3-klein` stills on fal; the
+`lora_train` recipe takes the trainer as `trainer_model_id`, Wan's by default). Export and import: a character as a zip
+(`character.json` and its pictures and LoRA files; never ids, runs or cloned voices) that another studio imports.
 - **Step 0 — Handoff:**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

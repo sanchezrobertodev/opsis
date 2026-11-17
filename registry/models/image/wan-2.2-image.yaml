@@ -5,9 +5,9 @@ name: Wan 2.2 stills
 family: wan
 vendor: alibaba
 description: >-
-  Wan 2.2 A14B as a still-image model on fal, and the one that wears your trained characters: @mention a character
-  with a trained identity and its LoRA loads, so the face holds from picture to picture. Good start frames for
-  Wan 2.2 video.
+  Wan 2.2 A14B as a still-image model on fal that wears your trained characters: @mention a character with a
+  Wan 2.2 identity and its LoRA loads, so the face holds from picture to picture. Good start frames for Wan 2.2
+  video.
 output_type: image
 status: active
 license_tier: open_permissive   # Apache 2.0 weights, run on fal

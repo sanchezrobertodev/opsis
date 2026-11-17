@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.base import uuid7
 from studio.db.models import Asset, Element, ElementAsset, PipelineRun, PipelineStep
-from studio.director.elements import UNATTACHED_VIEWS
+from studio.director.elements import UNATTACHED_VIEWS, identities
 from studio.domain.derived import frame_of, save_derived
 from studio.domain.enums import AssetKind, AssetSource
 from studio.faceless.catalog import CaptionLook, get_catalog
@@ -442,19 +442,23 @@ async def lora_dataset(session: AsyncSession, run: PipelineRun, step: PipelineSt
 
 
 async def attach_lora(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
-    """Store a trained identity on the character: the LoRA files for each expert, the base and the trigger word."""
+    """Store a trained identity on the character, next to those it has for other bases (one for this base is
+    replaced): the LoRA files for each expert, the base and the trigger word."""
     inp = step.input
     files = await _assets(session, run, inp["assets"])
     by_expert = {str((a.metadata_ or {}).get("expert") or "low"): a for a in files if a.kind == AssetKind.lora}
     low = by_expert.get("low")
     if low is None:
         raise StepFailed("the trainer returned no LoRA file")
+    base = (low.metadata_ or {}).get("base")
+    if not base:
+        raise StepFailed("the trainer's LoRA doesn't say which model it's for")
     element = await _character(session, run, inp["element_id"])
+    await session.refresh(element, ["lora"], with_for_update=True)  # another base's training may be finishing too
     high = by_expert.get("high")
-    lora = {"base": (low.metadata_ or {}).get("base"), "trigger": inp["trigger"], "low": str(low.id),
-            "high": str(high.id) if high else None, "steps": inp.get("steps"), "run_id": str(run.id),
-            "trained_at": datetime.now(UTC).isoformat()}
-    element.lora = lora
+    lora = {"base": base, "trigger": inp["trigger"], "low": str(low.id), "high": str(high.id) if high else None,
+            "steps": inp.get("steps"), "run_id": str(run.id), "trained_at": datetime.now(UTC).isoformat()}
+    element.lora = {**identities(element.lora), base: lora}
     return lora
 
 

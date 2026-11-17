@@ -40,7 +40,7 @@ def _wrapped(reg: Registry, spec: ModelSpec) -> list[ModelSpec]:
 
 # Part of the summary's ETag: bump it when what the summary computes changes (from-prices), so browsers holding the
 # last copy fetch it again even though the registry files didn't change.
-SUMMARY_VERSION = 7
+SUMMARY_VERSION = 8
 STAND_IN_SECONDS = 5  # a typical input clip or sound, for modes priced by input length (video edits)
 STAND_IN_PROMPT = "x" * 300  # a short script, for routes priced by the text (speech)
 
@@ -145,7 +145,7 @@ async def get_registry_summary(
             modes=[ModeSummary(id=m.id, label=m.label, ops=list(m.ops)) for m in spec.modes],
             from_price_usd=_from_price(reg, spec, env), runnable=await _runnable(reg, spec, env),
             runs_on=_runs_on(reg, spec, env), voices=bool((spec.elements or {}).get("voice_role")),
-            local_ready=_local_ready(reg, spec, env),
+            local_ready=_local_ready(reg, spec, env), lora_base=spec.lora_base(),
         ))
     return RegistryOut(hash=reg.hash, provider_mode=mode, models=models,
                        warnings=reg.warnings)

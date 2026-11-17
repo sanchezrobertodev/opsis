@@ -335,11 +335,12 @@ export function useUpdateBudget() {
   });
 }
 
-/** Multipart upload with progress (fetch has no upload progress, so this uses XHR). */
-export function uploadFile(file: File, onProgress?: (fraction: number) => void): Promise<Asset> {
+/** Multipart upload with progress (fetch has no upload progress, so this uses XHR), to `/uploads` or another route
+ * that takes one file as `file`. */
+export function uploadFile<T = Asset>(file: File, onProgress?: (fraction: number) => void, path = "/uploads"): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${API_URL}/uploads`);
+    xhr.open("POST", `${API_URL}${path}`);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress?.(e.loaded / e.total);
     };
@@ -350,7 +351,7 @@ export function uploadFile(file: File, onProgress?: (fraction: number) => void):
       } catch {
         /* non-JSON error page */
       }
-      if (xhr.status >= 200 && xhr.status < 300) resolve(body as Asset);
+      if (xhr.status >= 200 && xhr.status < 300) resolve(body as T);
       else reject(new ApiError(xhr.status, body));
     };
     xhr.onerror = () => reject(new ApiError(0, { message: "Upload failed: the API is unreachable." }));
