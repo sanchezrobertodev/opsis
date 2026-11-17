@@ -42,6 +42,9 @@ KIND_ORDER = {"character": 0, "cast": 1, "location": 2, "prop": 3, "style": 4, "
 IMAGES_PER_KIND = {"character": 2, "cast": 2, "location": 1, "prop": 1, "style": 2}  # a cast's: at most, per member
 # sheets a mention never attaches: a grid given as a reference tends to come back as a collage
 UNATTACHED_VIEWS = ("expressions", "poses")
+# the one picture that stands for a character (a talking shot speaks from it, a face swap takes its face): any picture
+# of a single view before a reference sheet (several views on one picture), even a sheet marked primary
+PORTRAIT_ORDER = ((ElementAsset.view == "sheet").asc(), ElementAsset.is_primary.desc(), ElementAsset.sort)
 CAST_SIZE = (2, 8)
 # what a first mention says of an element: room for the character designer's longest description (about 255
 # characters for a person, 295 for a creature with every feature; web lib/designer.ts), mirrored by the web's LOOK_MAX

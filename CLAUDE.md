@@ -273,8 +273,9 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   a figure it can't rig is kept unrigged; off by default for a non-human creature) -> `keep` (local op `tag_assets`:
   the GLBs carry `metadata.element_id` and `character`, for finding a character's figures later; nothing reads them
   yet). `resolve()` checks the character and writes its `element_id` into the input.
-- `talking_shot` takes `character` (a handle) in place of a picture: `resolve()` fills in their main picture (the one
-  a mention attaches first, a reference sheet after their other pictures) and, for a script with no voice
+- `talking_shot` takes `character` (a handle) in place of a picture: `resolve()` fills in their main picture
+  (`director/elements.py:PORTRAIT_ORDER`, which face swap shares: any single view before a reference sheet, even a
+  sheet marked primary, then the primary one) and, for a script with no voice
   picked, their saved voice, and notes the handle in `resolved_for`. The stored input keeps all three, which
   validation accepts: a revise keeps them even once the character is renamed or deleted, and one naming another
   character takes that one's picture and voice. The talking-photo template offers the character as the alternative

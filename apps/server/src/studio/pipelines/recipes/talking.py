@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import StepKind
-from studio.director.elements import SLUG, UNATTACHED_VIEWS
+from studio.director.elements import PORTRAIT_ORDER, SLUG, UNATTACHED_VIEWS
 from studio.media.speech import CHARS_PER_SECOND
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import mode_with_op
@@ -100,8 +100,8 @@ class TalkingShotRecipe(Recipe):
 
     async def resolve(self, session: AsyncSession, user_id: uuid.UUID, inp: TalkingShotInput,
                       reg: Registry) -> TalkingShotInput:
-        """A saved character's main picture (the first a mention attaches, a reference sheet after their other
-        pictures, since several views on one picture can't speak) and, for a script with no voice picked, their saved
+        """A saved character's main picture (PORTRAIT_ORDER: a reference sheet after any single view, even one marked
+        primary, since several views on one picture can't speak) and, for a script with no voice picked, their saved
         voice, written into the input so the estimate and the run use them. A stored input keeps what was filled in for
         its character, even once that one is renamed or deleted; naming another character takes theirs instead."""
         if not inp.character:
@@ -126,8 +126,7 @@ class TalkingShotRecipe(Recipe):
                     ElementAsset.element_id == element.id, ElementAsset.look.is_(None),  # never a look's or a grid
                     ElementAsset.view.not_in(UNATTACHED_VIEWS), Asset.kind == "image",
                     Asset.status == AssetStatus.ready, Asset.deleted_at.is_(None))
-                .order_by(ElementAsset.is_primary.desc(), (ElementAsset.view == "sheet").asc(), ElementAsset.sort,
-                          Asset.created_at).limit(1)
+                .order_by(*PORTRAIT_ORDER, Asset.created_at).limit(1)
             )).scalar_one()  # find_star found one
         saved = element.voice or {}
         spec = reg.model(saved.get("model_id", ""))

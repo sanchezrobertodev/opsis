@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import StepKind
-from studio.director.elements import SLUG, UNATTACHED_VIEWS
+from studio.director.elements import PORTRAIT_ORDER, SLUG, UNATTACHED_VIEWS
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import mode_with_op
 from studio.registry.loader import Registry
@@ -110,9 +110,7 @@ class FaceSwapRecipe(Recipe):
             return inp
         face = (await session.execute(select(ElementAsset.asset_id).where(
             ElementAsset.element_id == element.id, ElementAsset.look.is_(None),  # never a look's or a grid sheet
-            ElementAsset.view.not_in(UNATTACHED_VIEWS))
-            # a reference sheet (several views on one picture) after their other pictures, as a talking shot does
-            .order_by(ElementAsset.is_primary.desc(), (ElementAsset.view == "sheet").asc(), ElementAsset.sort)
+            ElementAsset.view.not_in(UNATTACHED_VIEWS)).order_by(*PORTRAIT_ORDER)
             .limit(1))).scalar_one_or_none() or element.cover_asset_id
         return inp.model_copy(update={"face_asset_id": face}) if face else inp
 

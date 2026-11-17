@@ -445,9 +445,10 @@ async def test_a_saved_character_says_hello_in_their_own_voice(client, in_memory
             f"/elements/{hal['id']}", json={"voice": {"model_id": "eleven-v4", "params": lily}}
         )
     ).status_code == 200
-    # he speaks from a main picture that shows him once: not his reference sheet, not the first of a look's pictures
+    # he speaks from a main picture that shows him once: not his reference sheet, even marked primary, and not the
+    # first of a look's pictures
     pictures = f"/elements/{hal['id']}/images"
-    r = await client.patch(f"{pictures}/{main[0]}", json={"view": "sheet", "primary": False})
+    r = await client.patch(f"{pictures}/{main[0]}", json={"view": "sheet", "primary": True})
     assert r.status_code == 200, r.text
     await client.put(f"/elements/{hal['id']}/looks/suit", json={"name": "Suit", "description": "a grey suit"})
     suit = await upload(client, (90, 90, 90))
