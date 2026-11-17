@@ -3,8 +3,9 @@
 How a mention becomes something the model understands depends on the model's `elements` strategy:
 - refs_native: the element's images are attached as reference images (in the model's ref role, within the
   slot's limit) and the mention becomes its name plus the model's reference token, e.g. "Maya ([Image 1])".
-- lora: a character trained for the model's LoRA base (`element.lora`, from the lora_train recipe) attaches its
-  weights in the auto `lora` / `lora_high` slots and the mention carries its trigger word, e.g. "Maya (mayaxq)".
+- lora: a character with a trained identity for the model's LoRA base (`element.lora` keeps one per base, from the
+  lora_train recipe) attaches its weights in the auto `lora` / `lora_high` slots and the mention carries its trigger
+  word, e.g. "Maya (mayaxq)".
 - keyframe_first / text_only: the mention becomes the name plus its short description, with a hint on how
   to get a consistent look.
 A model that also takes reference audio (`elements.voice_role`, e.g. MiniMax H3's reference mode) gets a character's
@@ -23,8 +24,9 @@ import re
 import unicodedata
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +40,7 @@ MENTION = re.compile(r"(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_-]{0,39})")
 MENTION_LOOK = re.compile(MENTION.pattern + r"(?::([A-Za-z0-9][A-Za-z0-9-]{0,23}))?")
 LOOK_SLUG = r"^[a-z0-9][a-z0-9-]{0,23}$"  # a look's handle, as written after @handle:
 SLUG = r"^[a-z0-9][a-z0-9-]{0,39}$"  # an Element's handle, as written after @
+TRIGGER = r"^[a-z][a-z0-9]{3,23}$"  # a trained identity's made-up word, which a mention writes into the prompt
 KIND_ORDER = {"character": 0, "cast": 1, "location": 2, "prop": 3, "style": 4, "voice": 5}
 IMAGES_PER_KIND = {"character": 2, "cast": 2, "location": 1, "prop": 1, "style": 2}  # a cast's: at most, per member
 # sheets a mention never attaches: a grid given as a reference tends to come back as a collage
@@ -45,10 +48,33 @@ UNATTACHED_VIEWS = ("expressions", "poses")
 # the one picture that stands for a character (a talking shot speaks from it, a face swap takes its face): any picture
 # of a single view before a reference sheet (several views on one picture), even a sheet marked primary
 PORTRAIT_ORDER = ((ElementAsset.view == "sheet").asc(), ElementAsset.is_primary.desc(), ElementAsset.sort)
+# what a picture of an element shows; `expressions` and `poses` are grid sheets kept for people to see
+View = Literal["front", "three_quarter", "side", "back", "face", "full_body", "sheet", "wide", "detail", "style",
+               "expressions", "poses"]
 CAST_SIZE = (2, 8)
 # what a first mention says of an element: room for the character designer's longest description (about 255
 # characters for a person, 295 for a creature with every feature; web lib/designer.ts), mirrored by the web's LOOK_MAX
 DESCRIPTION_LIMIT = 300
+
+
+class ElementLook(BaseModel):
+    """A character's look: an outfit, or the character in another picture style. `@handle:look` in a prompt attaches
+    its pictures first and reads its description after the character's."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    name: str = Field(min_length=1, max_length=40)
+    description: str = Field(max_length=160, description='Read after the character\'s description: "wearing a red '
+                                                         'wool coat and boots", "drawn as a 2D anime character"')
+
+
+def identities(lora: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    """A character's trained identities by LoRA base: {base: {base, trigger, low, high, steps, run_id, trained_at}}.
+    One kept before they were per base (an old worker may still attach one while a deploy migrates) reads as its
+    base's."""
+    lora = lora or {}
+    if "low" in lora:
+        return {str(lora["base"]): lora} if lora.get("base") else {}
+    return {str(base): ident for base, ident in lora.items() if isinstance(ident, dict)}
 
 
 def clip(text: str, limit: int, *, at_comma: bool = False) -> str:
@@ -71,18 +97,18 @@ def slugify(name: str) -> str:
 
 
 async def unique_slug(session: AsyncSession, user_id: uuid.UUID, name: str, exclude: uuid.UUID | None = None) -> str:
-    """An @mention name from `name` that none of the user's other elements has."""
+    """An @mention name from `name` that none of the user's other elements has: the name, else the name numbered, cut
+    short where it's long so the number fits in 40 characters."""
     base = slugify(name)
     taken = set((await session.execute(select(Element.slug).where(
-        Element.user_id == user_id, Element.slug.like(f"{base}%"),
+        Element.user_id == user_id, Element.slug.like(f"{base[:30]}%"),  # what a numbered one still starts with
         *( [Element.id != exclude] if exclude else []),
     ))).scalars())
-    if base not in taken:
-        return base
-    n = 2
-    while f"{base}-{n}"[:40] in taken:
+    slug, n = base, 1
+    while slug in taken:
         n += 1
-    return f"{base}-{n}"[:40]
+        slug = f"{base[:39 - len(str(n))].rstrip('-')}-{n}"
+    return slug
 
 
 def style_slug(style: Any) -> str | None:
@@ -222,7 +248,8 @@ async def resolve_mentions(
     next_index = used + 1
     lora_room = {r: max(0, (mode.slot(r).max if mode and mode.slot(r) else 0)
                         - sum(1 for m in existing_media if m.get("role") == r)) for r in ("lora", "lora_high")}
-    trained = await _ready_loras(session, people) if strategy == "lora" else set()
+    lora_base = str((spec.elements or {}).get("lora_base") or "")
+    trained = await _ready_loras(session, people, lora_base) if strategy == "lora" else set()
     voice_role = (spec.elements or {}).get("voice_role")
     voice_token = (spec.elements or {}).get("voice_token") or "Audio {n}"
     vslot = mode.slot(voice_role) if mode and voice_role else None
@@ -272,10 +299,9 @@ async def resolve_mentions(
         elif strategy == "refs_native" and capacity <= 0:
             res.warnings.append(f"no reference slots left for @{element.slug}; described in words")
         elif strategy == "lora":
-            lora = element.lora or {}
-            base = (spec.elements or {}).get("lora_base")
+            lora = identities(element.lora).get(lora_base) or {}
             low, high = str(lora.get("low") or ""), str(lora.get("high") or "")
-            if lora.get("base") == base and low in trained and lora_room["lora"] > 0:
+            if low in trained and lora_room["lora"] > 0:
                 shown = True
                 lora_room["lora"] -= 1
                 if high in trained and lora_room["lora_high"] > 0:
@@ -287,7 +313,7 @@ async def resolve_mentions(
                     attached.append(low)
                 if lora.get("trigger"):
                     label = f"{element.name} ({lora['trigger']})"
-            elif lora.get("base") == base and low in trained:
+            elif low in trained:
                 res.warnings.append(f"no room for another character's identity, so @{element.slug} is described in words")
             elif element.kind.value == "character":
                 res.warnings.append(f"@{element.slug} has no trained identity for {spec.name}, so it's described in "
@@ -431,9 +457,10 @@ async def voice_samples(session: AsyncSession, user_id: uuid.UUID, elements: Any
     return {eid: (str(s), ready[str(s)]) for eid, s in own.items() if s and str(s) in ready}
 
 
-async def _ready_loras(session: AsyncSession, rows: Any) -> set[str]:
-    """The LoRA files the mentioned elements point at that still exist and are ready."""
-    ids = [uuid.UUID(str(v)) for e in rows for k, v in (e.lora or {}).items() if k in ("low", "high") and v]
+async def _ready_loras(session: AsyncSession, rows: Any, base: str) -> set[str]:
+    """The LoRA files of the mentioned elements' identities for `base` that still exist and are ready."""
+    ids = [uuid.UUID(str(v)) for e in rows for k, v in (identities(e.lora).get(base) or {}).items()
+           if k in ("low", "high") and v]
     if not ids:
         return set()
     found = (await session.execute(select(Asset.id).where(

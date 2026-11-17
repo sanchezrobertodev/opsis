@@ -58,8 +58,8 @@ async def test_a_large_or_unsized_body_is_refused_before_it_is_read(client):
     form = {**big, "content-type": "multipart/form-data; boundary=x"}
     for path in ("/elements", f"/assets/{uuid.uuid4()}/frames"):
         assert (await client.post(path, content=b"--x--", headers=form)).status_code == 413, path
-    path = f"/projects/{uuid.uuid4()}/renders/{uuid.uuid4()}/frames?pass=beauty"
-    assert (await client.post(path, content=b"--x--", headers=form)).status_code != 413
+    for path in (f"/projects/{uuid.uuid4()}/renders/{uuid.uuid4()}/frames?pass=beauty", "/elements/import"):
+        assert (await client.post(path, content=b"--x--", headers=form)).status_code != 413, path
 
     async def chunked():
         yield b"{}"

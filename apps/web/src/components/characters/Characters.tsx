@@ -1,10 +1,11 @@
 "use client";
 
-import { AudioLines, Mic, Plus, Sparkles, UsersRound } from "lucide-react";
+import { AudioLines, Mic, Plus, Sparkles, Upload, UsersRound } from "lucide-react";
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { mediaUrl } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { type Element, type ElementKind, KIND_LABEL, useElements } from "@/lib/elements";
+import { type Element, type ElementKind, KIND_LABEL, useElements, useImportElement } from "@/lib/elements";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
 import { ZoomButton } from "@/components/ui/PictureViewer";
 import { GLASS_CARD, Lit } from "@/components/ui/Glass";
@@ -17,6 +18,7 @@ import { AddVoice, VoiceDialog } from "./Voices";
 
 const FILTERS = ["all", "character", "cast", "location", "prop", "style", "voice"] as const;
 type Filter = (typeof FILTERS)[number];
+const MAX_ZIP = 2 * 1024 ** 3; // what POST /elements/import takes (characters/bundle.py:MAX_BYTES)
 
 export function Characters() {
   const [filter, setFilter] = useState<Filter>("all");
@@ -33,6 +35,9 @@ export function Characters() {
   const design = useDesign(); // the designer's picks, kept while it's closed; a starter can fill them
   // a starter opens a new designer: an earlier one's photo, sentence and Claude's answer (one still coming too) go
   const [designer, setDesigner] = useState(0);
+  const importer = useRef<HTMLInputElement>(null);
+  const [sent, setSent] = useState(0); // of the zip being imported
+  const importing = useImportElement(setSent);
   const { data, isLoading } = useElements(filter === "all" ? undefined : filter, q);
   const items = data ?? [];
   // the open one as the list has it now, so the editor shows the looks and pictures just made
@@ -79,6 +84,25 @@ export function Characters() {
             <Sparkles className="size-4" aria-hidden />
             Design a character
           </Button>
+          <Button tone="quiet" size="sm" onClick={() => importer.current?.click()} disabled={importing.isPending}
+                  title="A character, location, prop or style from a zip exported here or in another studio">
+            <Upload className="size-4" aria-hidden />
+            {importing.isPending ? `Importing… ${Math.round(sent * 100)}%` : "Import"}
+          </Button>
+          <input ref={importer} type="file" accept=".zip,application/zip" hidden
+                 onChange={(ev) => {
+                   const zip = ev.target.files?.[0];
+                   ev.target.value = ""; // the same zip can be picked again
+                   if (zip && zip.size > MAX_ZIP) toast.error("A character zip can be up to 2 GB");
+                   else if (zip) {
+                     setSent(0);
+                     importing.mutate(zip, {
+                       // shown in the list too, so the editor follows its changes (it reads the list's copy)
+                       onSuccess: (e) => { toast(`Imported ${e.handle}`); setFilter("all"); setQ(""); setEditing(e); },
+                       onError: (err) => toast.error(err instanceof Error ? err.message : "Couldn't import it"),
+                     });
+                   }
+                 }} />
           <Button tone="primary" size="sm" onClick={() => setEditing("new")}>
             <Plus className="size-4" aria-hidden />
             {newKind ? `New ${KIND_LABEL[newKind].toLowerCase()}` : "New from images"}

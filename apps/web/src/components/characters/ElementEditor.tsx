@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Images, Sparkles, Trash2, UsersRound } from "lucide-react";
+import { Copy, Download, Images, Sparkles, Trash2, UsersRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { MediaSlot } from "@/lib/api";
@@ -12,6 +12,7 @@ import {
   useAddElementImages,
   useCreateElement,
   useDeleteElement,
+  useExportElement,
   usePatchElement,
   useRemoveElementImage,
 } from "@/lib/elements";
@@ -24,7 +25,7 @@ import { Button, Dialog, Segmented } from "@/components/ui/controls";
 import { CAST_SIZE, CastMembers, useGroupShot } from "./Casts";
 import { IdentityPanel } from "./IdentityPanel";
 import { LooksSection } from "./Looks";
-import { AddLookPanel, MorePictures, SheetPanel, StyleLookPanel } from "./MakePanels";
+import { AddLookPanel, MorePictures, SAVE_FIRST, SheetPanel, StyleLookPanel } from "./MakePanels";
 import { PORTRAIT_MODEL, PortraitModel, useDrawPortrait } from "./portrait";
 import { ProfileSection } from "./Profile";
 import { FigurePanel, HelloPanel, MakeSection, PlacePanel, type QuickAction } from "./QuickActions";
@@ -48,6 +49,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
   const create = useCreateElement();
   const patch = usePatchElement();
   const remove = useDeleteElement();
+  const exporting = useExportElement();
   const addImages = useAddElementImages();
   const removeImage = useRemoveElementImage();
   const [name, setName] = useState(existing?.name ?? "");
@@ -103,7 +105,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
         const style = existing.attributes.style as { category?: string; summary?: string } | undefined;
         const relook = existing.kind === "style" && style?.summary && description.trim() !== existing.description;
         await patch.mutateAsync({ id: existing.id, name, kind, description,
-                                  voice: voiceBody, clear_voice: !voiceBody, clear_lora: false,
+                                  voice: voiceBody, clear_voice: !voiceBody,
                                   ...(cast ? { members } : {}), ...profileBody,
                                   ...(relook ? { attributes: { style: { category: style.category } } } : {}) });
         if (pending.length) {
@@ -262,7 +264,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
         )}
         {existing && cast && (
           <Button type="button" size="sm" onClick={() => groupShot(existing)} disabled={!drawable || unsaved}
-                  title={!drawable ? "Its characters have no pictures yet" : unsaved ? "Save your changes first"
+                  title={!drawable ? "Its characters have no pictures yet" : unsaved ? SAVE_FIRST
                     : "Opens Create image with a group shot of the cast, drawn from their pictures"}>
             <UsersRound className="size-4" aria-hidden />
             Group shot
@@ -274,6 +276,15 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
                   title={existing.description.trim() ? "Draws a front portrait from the description" : "Write a description first"}>
             <Sparkles className="size-4" aria-hidden />
             Draw a picture
+          </Button>
+        )}
+        {existing && !cast && (
+          // the saved one: edits not saved yet would be left out of the zip
+          <Button type="button" size="sm" disabled={unsaved || exporting.isPending}
+                  title={unsaved ? SAVE_FIRST : "Saves it as a zip, to keep or to import into another studio"}
+                  onClick={() => exporting.mutate(existing)}>
+            <Download className="size-4" aria-hidden />
+            {exporting.isPending ? "Exporting…" : "Export"}
           </Button>
         )}
         {existing && (

@@ -5,7 +5,7 @@ name: Wan 2.2 with characters
 family: wan
 vendor: alibaba
 description: >-
-  Wan 2.2 A14B text- and image-to-video on fal with LoRA support: @mention a character with a trained identity and
+  Wan 2.2 A14B text- and image-to-video on fal with LoRA support: @mention a character with a Wan 2.2 identity and
   its LoRA loads, so the same face appears shot after shot without reference pictures. Up to 10 s at 720p.
 output_type: video
 status: active

@@ -1,5 +1,5 @@
-"""Training a character's identity on the mock provider: photos -> zip -> trainer -> the LoRA on the Element ->
-Wan 2.2 loads it whenever the character is mentioned."""
+"""Training a character's identity on the mock provider: photos -> zip -> trainer -> the LoRA on the Element, one per
+LoRA base -> Wan 2.2 (or FLUX 3 Klein, for its own) loads it whenever the character is mentioned."""
 
 from __future__ import annotations
 
@@ -61,8 +61,8 @@ async def test_a_trained_identity_lands_on_the_character_and_loads_when_mentione
     assert train.model_id == "wan-2.2-lora-trainer"
     assert train.request["params"] == {"trigger_phrase": trigger, "steps": 600, "face_crop": False}
 
-    # the character now carries both experts' LoRA files
-    lora = (await client.get(f"/elements/{el['id']}")).json()["lora"]
+    # the character now carries both experts' LoRA files, kept under their base
+    lora = (await client.get(f"/elements/{el['id']}")).json()["lora"]["wan-2.2-a14b"]
     assert lora["base"] == "wan-2.2-a14b" and lora["trigger"] == trigger and lora["high"] and lora["low"]
     async with session_scope() as s:
         files = {str(a.id): a for a in (await s.execute(select(Asset).where(
@@ -83,7 +83,7 @@ async def test_a_trained_identity_lands_on_the_character_and_loads_when_mentione
     other, _ = await _character(client, 0)
     async with session_scope() as s:
         row = await s.get(Element, uuid.UUID(other["id"]))
-        row.lora = {"base": "wan-2.2-a14b", "trigger": "solozqtest", "low": lora["high"], "high": None}
+        row.lora = {"wan-2.2-a14b": {"base": "wan-2.2-a14b", "trigger": "solozqtest", "low": lora["high"], "high": None}}
     out = await client.post("/generations", json={"model_id": "wan-2.2-image", "mode": "t2i",
                                                   "prompt": f"@{other['slug']} and @{el['slug']} on a pier"})
     assert out.status_code == 201, out.text
@@ -92,8 +92,44 @@ async def test_a_trained_identity_lands_on_the_character_and_loads_when_mentione
     assert [m["asset_id"] for m in media if m["role"] == "lora_high"] == [lora["high"]]
 
     # forgetting the identity puts the character back to words
-    cleared = (await client.patch(f"/elements/{el['id']}", json={"clear_lora": True})).json()
+    cleared = (await client.patch(f"/elements/{el['id']}", json={"clear_lora": "wan-2.2-a14b"})).json()
     assert cleared["lora"] is None
+
+
+async def test_a_character_keeps_an_identity_per_base_and_flux_klein_loads_its_own(client, in_memory_queue):
+    from tests.integration.test_pipelines import drain, get, start
+
+    el, photos = await _character(client, 10)
+    trigger = default_trigger(el["slug"], el["id"])
+    for trainer in ("wan-2.2-lora-trainer", "flux-3-klein-lora-trainer"):
+        run = await start(client, "lora_train", element_id=el["id"], slug=el["slug"], photos=photos, trigger=trigger,
+                          steps=200, trainer_model_id=trainer)
+        await drain(in_memory_queue)
+        done = await get(client, run["id"])
+        assert done["status"] == "succeeded", done["error"]
+    steps = {s["key"]: s for s in done["steps"]}
+    async with session_scope() as s:
+        train = await s.get(Generation, uuid.UUID(steps["train"]["generation_id"]))
+        preview = await s.get(Generation, uuid.UUID(steps["preview"]["generation_id"]))
+    # FLUX's trainer has no face crop, so the recipe leaves it out
+    assert train.model_id == "flux-3-klein-lora-trainer" and train.request["params"]["steps"] == 200
+    assert "face_crop" not in train.request["params"]
+
+    lora = (await client.get(f"/elements/{el['id']}")).json()["lora"]
+    assert set(lora) == {"wan-2.2-a14b", "flux-3-klein"}
+    flux, wan = lora["flux-3-klein"], lora["wan-2.2-a14b"]
+    assert flux["base"] == "flux-3-klein" and flux["trigger"] == trigger and flux["high"] is None
+    # the portrait came from the still model that loads FLUX identities, with that one alone
+    assert preview.model_id == "flux-3-klein"
+    assert [(m["role"], m["asset_id"]) for m in preview.request["media"]] == [("lora", flux["low"])]
+    assert f"({trigger})" in preview.compiled["prompt"]
+    out = await client.post("/generations", json={"model_id": "wan-2.2-image", "mode": "t2i",
+                                                  "prompt": f"@{el['slug']} on a pier"})
+    assert {m["asset_id"] for m in out.json()["request"]["media"]} == {wan["low"], wan["high"]}
+
+    # forgetting one base keeps the other
+    cleared = (await client.patch(f"/elements/{el['id']}", json={"clear_lora": "wan-2.2-a14b"})).json()
+    assert list(cleared["lora"]) == ["flux-3-klein"]
 
 
 async def test_a_missing_character_stops_the_run_before_the_paid_trainer(client, in_memory_queue):
@@ -118,3 +154,8 @@ async def test_training_needs_enough_photos_and_a_usable_trigger(client):
     assert r.status_code == 422
     errors = " ".join(r.json()["errors"])
     assert "10 to 80 photos" in errors and "trigger word" in errors
+    # the trainer's own range of steps (Wan's starts at 200), and only a trainer trains
+    for trainer, why in (("wan-2.2-lora-trainer", "200 to 3000 steps"), ("wan-2.2-image", "isn't a LoRA trainer")):
+        r = await client.post("/pipelines", json={"recipe": "lora_train", "input": {
+            "element_id": el["id"], "slug": el["slug"], "photos": photos, "steps": 100, "trainer_model_id": trainer}})
+        assert r.status_code == 422 and why in " ".join(r.json()["errors"])

@@ -54,6 +54,8 @@ class ModelSummary(ApiModel):
         "hosted", description="Where it runs: this computer, your own cloud GPU endpoint, or a hosted API")
     voices: bool = Field(False, description="Speaks dialogue in a character's own voice, from a recording of it")
     local_ready: bool = Field(False, description="This computer's engine can run it now, for free (a default to pick)")
+    lora_base: str | None = Field(None, description="The trained identities it's about: the LoRA base it loads for a "
+                                                    "mentioned character, or a trainer's, the one it trains for")
 
 
 class RouteSummary(ApiModel):

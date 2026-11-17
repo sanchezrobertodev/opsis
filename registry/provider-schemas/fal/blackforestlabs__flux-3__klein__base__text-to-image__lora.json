@@ -1,0 +1,86 @@
+{
+ "endpoint": "blackforestlabs/flux-3/klein/base/text-to-image/lora",
+ "variant": null,
+ "input": {
+  "bounding_boxes": {
+   "type": "array<object<BoundingBox>>|null",
+   "maxItems": 32
+  },
+  "enable_prompt_expansion": {
+   "type": "boolean",
+   "default": true
+  },
+  "enable_safety_checker": {
+   "type": "boolean",
+   "default": true
+  },
+  "guidance_scale": {
+   "type": "number",
+   "default": 3.5,
+   "minimum": 0,
+   "maximum": 20
+  },
+  "image_size": {
+   "type": "object<ImageSize>|string",
+   "enum": [
+    "square_hd",
+    "square",
+    "portrait_4_3",
+    "portrait_16_9",
+    "landscape_4_3",
+    "landscape_16_9"
+   ],
+   "default": "square_hd"
+  },
+  "loras": {
+   "type": "array<object<LoRAInput>>",
+   "default": [],
+   "maxItems": 3
+  },
+  "negative_prompt": {
+   "type": "string",
+   "default": ""
+  },
+  "num_images": {
+   "type": "integer",
+   "default": 1,
+   "minimum": 1,
+   "maximum": 4
+  },
+  "num_inference_steps": {
+   "type": "integer",
+   "default": 50,
+   "minimum": 4,
+   "maximum": 50
+  },
+  "output_format": {
+   "type": "string",
+   "enum": [
+    "jpeg",
+    "png",
+    "webp"
+   ],
+   "default": "png"
+  },
+  "prompt": {
+   "type": "string"
+  },
+  "seed": {
+   "type": "integer|null"
+  },
+  "sync_mode": {
+   "type": "boolean"
+  }
+ },
+ "required": [
+  "prompt"
+ ],
+ "output": [
+  "has_nsfw_concepts",
+  "images",
+  "prompt",
+  "seed",
+  "timings"
+ ],
+ "deprecated": false
+}

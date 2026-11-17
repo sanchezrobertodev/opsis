@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import mimetypes
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
@@ -105,23 +106,91 @@ def _kind_for(mime: str, filename: str = "") -> AssetKind:
     raise HTTPException(415, f"unsupported file type {mime!r}; upload an image, video, audio or GLB file")
 
 
+def file_type(content_type: str | None, filename: str) -> tuple[AssetKind, str, str]:
+    """The kind, type and extension a file sent as `filename` is kept as (415 for SVG and what isn't media or 3D).
+    3D files are kept as what their first bytes say (`store_file` checks), never under the name sent: ".html" is a
+    page."""
+    mime = _sent_or_guessed(content_type, filename)
+    kind = _kind_for(mime, filename)
+    if kind == AssetKind.model3d:
+        return kind, "model/gltf-binary", ".glb"
+    if kind == AssetKind.splat:  # _kind_for took it for one by its .spz or .ply name
+        mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        return kind, mime, ".ply" if filename.lower().endswith(".ply") else ".spz"
+    return kind, mime, _extension(mime, filename)
+
+
+def check_safetensors(path: Path) -> None:
+    """LoRA weights (.safetensors): an 8-byte header length, a JSON header naming each tensor's type, shape and where
+    its bytes lie in the rest of the file, then those bytes. A file that isn't one is refused (415)."""
+    size = path.stat().st_size
+    with path.open("rb") as fh:
+        length = int.from_bytes(fh.read(8), "little")
+        raw = fh.read(length) if 2 <= length <= min(100 << 20, size - 8) else b""
+    try:
+        header = json.loads(raw) if raw else None
+    except (ValueError, RecursionError):  # not JSON, or nested too deep to read
+        header = None
+    data = size - 8 - length
+
+    def tensor(t: Any) -> bool:
+        offsets = t.get("data_offsets") if isinstance(t, dict) else None
+        return (isinstance(t, dict) and isinstance(t.get("dtype"), str) and isinstance(t.get("shape"), list)
+                and isinstance(offsets, list) and len(offsets) == 2 and all(type(o) is int for o in offsets)
+                and 0 <= offsets[0] <= offsets[1] <= data)
+
+    if not isinstance(header, dict) or not all(
+            isinstance(v, dict) if k == "__metadata__" else tensor(v) for k, v in header.items()):
+        raise HTTPException(415, "this doesn't look like LoRA weights (a .safetensors file)")
+
+
+async def store_file(session: AsyncSession, user_id: uuid.UUID, tmp: Path, *, kind: AssetKind, mime: str, ext: str,
+                     size: int, content_hash: str, source: AssetSource, title: str,
+                     metadata: dict[str, Any] | None = None) -> Asset:
+    """Check a file written to `tmp` as every upload is checked (no playlists or lists of other files; 3D files and
+    LoRA weights by what they hold; media that ffprobe reads), move it into storage and add it as a ready asset. The
+    caller commits, then defers its derivatives (`defer_derive`)."""
+    async with await anyio.open_file(tmp, "rb") as fh:
+        start = await fh.read(PROBE_BYTES)
+    if _names_other_files(start):
+        raise HTTPException(415, "playlists and lists of other files can't be uploaded; upload the media itself")
+    unprobed = Probe(None, None, None, None, False, None, None, {})
+    if kind == AssetKind.lora:
+        await anyio.to_thread.run_sync(check_safetensors, tmp)
+        info = unprobed
+    elif kind in NOT_MEDIA:
+        if not start[:4].startswith(NOT_MEDIA[kind]):
+            raise HTTPException(415, f"this doesn't look like a {'GLB' if kind == AssetKind.model3d else 'splat'} file")
+        info = unprobed
+    else:
+        try:
+            info = await probe(tmp)
+        except FFmpegError:
+            raise HTTPException(415, "could not read this file as media") from None
+        if set((info.format_name or "").split(",")) & POINTS_ELSEWHERE:
+            raise HTTPException(415, "playlists and lists of other files can't be uploaded; upload the media itself")
+    asset_id = uuid7()
+    key = asset_key(user_id, asset_id, f"original{ext}")
+    get_storage().put_file(key, tmp, move=True)
+    asset = Asset(
+        id=asset_id, user_id=user_id, kind=kind, status=AssetStatus.ready, source=source, mime=mime,
+        storage_key=key, size_bytes=size, content_hash=content_hash, width=info.width, height=info.height,
+        duration_ms=info.duration_ms if kind != AssetKind.image else None, fps=info.fps if kind == AssetKind.video else None,
+        has_audio=info.has_audio, codec=info.codec, title=title[:200], metadata_=metadata or {},
+    )
+    session.add(asset)
+    await session.flush()
+    await fsm.emit(session, user_id=user_id, topic="asset", type="asset.created", subject_id=asset_id,
+                   payload={"asset_id": str(asset_id), "kind": kind.value})
+    return asset
+
+
 @router.post("/uploads", response_model=AssetOut, status_code=201)
 async def upload(
     file: UploadFile, session: AsyncSession = Depends(get_session), user: User = Depends(current_user)
 ) -> AssetOut:
-    mime = _sent_or_guessed(file.content_type, file.filename or "")
-    kind = _kind_for(mime, file.filename or "")
-    # 3D files are stored as what their first bytes say (checked below), never under the name sent: ".html" is a page
-    if kind == AssetKind.model3d:
-        mime, ext = "model/gltf-binary", ".glb"
-    elif kind == AssetKind.splat:  # _kind_for took it for one by its .spz or .ply name
-        mime = mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
-        ext = ".ply" if (file.filename or "").lower().endswith(".ply") else ".spz"
-    else:
-        ext = _extension(mime, file.filename or "")
-    storage = get_storage()
-    asset_id = uuid7()
-    tmp = storage.temp_dir() / f"upload-{asset_id.hex}{ext}"
+    kind, mime, ext = file_type(file.content_type, file.filename or "")
+    tmp = get_storage().temp_dir() / f"upload-{uuid7().hex}{ext}"
     digest = hashlib.sha256()
     size = 0
     try:
@@ -132,41 +201,14 @@ async def upload(
                     raise HTTPException(413, "file too large")
                 digest.update(chunk)
                 await out.write(chunk)
-        async with await anyio.open_file(tmp, "rb") as fh:
-            start = await fh.read(PROBE_BYTES)
-        if _names_other_files(start):
-            raise HTTPException(415, "playlists and lists of other files can't be uploaded; upload the media itself")
-        if kind in NOT_MEDIA:
-            head = start[:4]
-            if not head.startswith(NOT_MEDIA[kind]):
-                raise HTTPException(415, f"this doesn't look like a {'GLB' if kind == AssetKind.model3d else 'splat'} file")
-            info = Probe(None, None, None, None, False, None, None, {})
-        else:
-            try:
-                info = await probe(tmp)
-            except FFmpegError:
-                raise HTTPException(415, "could not read this file as media") from None
-            if set((info.format_name or "").split(",")) & POINTS_ELSEWHERE:
-                raise HTTPException(415, "playlists and lists of other files can't be uploaded; upload the media itself")
-        key = asset_key(user.id, asset_id, f"original{ext}")
-        storage.put_file(key, tmp, move=True)
+        asset = await store_file(session, user.id, tmp, kind=kind, mime=mime, ext=ext, size=size,
+                                 content_hash=digest.hexdigest(), source=AssetSource.upload,
+                                 title=file.filename or "upload", metadata={"original_filename": file.filename})
     finally:
         if tmp.exists():
             tmp.unlink()
-
-    asset = Asset(
-        id=asset_id, user_id=user.id, kind=kind, status=AssetStatus.ready, source=AssetSource.upload, mime=mime,
-        storage_key=key, size_bytes=size, content_hash=digest.hexdigest(), width=info.width, height=info.height,
-        duration_ms=info.duration_ms if kind != AssetKind.image else None, fps=info.fps if kind == AssetKind.video else None,
-        has_audio=info.has_audio, codec=info.codec, title=(file.filename or "upload")[:200],
-        metadata_={"original_filename": file.filename},
-    )
-    session.add(asset)
-    await session.flush()
-    await fsm.emit(session, user_id=user.id, topic="asset", type="asset.created", subject_id=asset_id,
-                   payload={"asset_id": str(asset_id), "kind": kind.value})
     await session.commit()
-    await defer_derive(asset_id)
+    await defer_derive(asset.id)
     return asset_out(asset)
 
 

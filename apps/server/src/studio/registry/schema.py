@@ -419,6 +419,15 @@ class ModelSpec(_Strict):
     def route(self, route_id: str) -> Route | None:
         return next((r for r in self.routes if r.id == route_id), None)
 
+    def lora_base(self) -> str | None:
+        """Which trained identities this model is about: the LoRA base it loads when a trained character is mentioned
+        (`elements.lora_base`), or for a trainer, the base its LoRA is for (its route's `output.meta.base`)."""
+        if base := (self.elements or {}).get("lora_base"):
+            return str(base)
+        if self.output_type != "lora":
+            return None
+        return next((str(r.output.meta["base"]) for r in self.routes if r.output.meta.get("base")), None)
+
 
 class ProviderSpec(_Strict):
     id: str

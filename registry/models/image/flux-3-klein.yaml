@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=../../schema/model.schema.json
+# Contract verified 2026-11-17 from fal's per-endpoint OpenAPI (blackforestlabs/flux-3/klein/base/text-to-image/lora)
+# and its model page.
+id: flux-3-klein
+name: FLUX 3 Klein stills
+family: flux
+vendor: black-forest-labs
+description: >-
+  FLUX 3 Image Klein (base) on fal, the FLUX model that wears your trained characters: @mention a character with a
+  FLUX 3 Klein identity and its LoRA loads, so the face holds from picture to picture.
+output_type: image
+status: active
+license_tier: commercial_api
+tags: [keyframes, characters, lora]
+prompt: {max_chars: 3000, dialect: flux, supports_negative: true}
+aspect_ratios: ["16:9", "9:16", "1:1", "4:3", "3:4"]
+
+parameters:
+  - {name: aspect_ratio, label: Aspect, type: enum, options: ["16:9", "9:16", "1:1", "4:3", "3:4"], default: "16:9", ui: aspect}
+  - {name: lora_scale, label: Identity strength, type: float, min: 0, max: 2, step: 0.05, default: 1, group: advanced,
+     help: "How strongly a mentioned character's trained identity applies."}
+  - {name: seed, type: seed, group: advanced}
+
+modes:
+  - id: t2i
+    label: Text to image
+    ops: [t2i]
+    medias:
+      - {role: lora, kinds: [lora], max: 3, auto: true}
+
+# @mentions of characters with a trained FLUX 3 Klein identity load its LoRA (and its trigger word goes in the prompt)
+elements: {strategy: lora, lora_base: flux-3-klein}
+
+routes:
+  - id: flux-3-klein@fal
+    provider: fal
+    modes:
+      # prompt expansion is on by default and could rewrite the made-up trigger word the identity answers to
+      t2i: {endpoint: blackforestlabs/flux-3/klein/base/text-to-image/lora, fixed: {enable_prompt_expansion: false}}
+    transform: studio.providers.transforms.lora:lora_list
+    map:
+      params:
+        aspect_ratio:
+          to: image_size
+          transform: enum_map
+          args: {values: {"16:9": landscape_16_9, "9:16": portrait_16_9, "1:1": square_hd, "4:3": landscape_4_3,
+                          "3:4": portrait_4_3}}
+        lora_scale: {to: null}  # read by the lora_list transform
+        seed: seed
+      media: {lora: "_lora[]"}
+    pricing:
+      basis: per_image
+      # $0.035 a megapixel; every size offered here fits in 1024x1024, which counts as one
+      rates: [{usd: 0.035}]
+      verified: 2026-11-17
+      source: "https://fal.ai/models/blackforestlabs/flux-3/klein/base/text-to-image/lora/llms.txt ($0.035 per megapixel; up to 1024x1024 counts as 1 megapixel)"
+    output: {path: images, kind: image, multiple: true}
+
+examples:
+  - name: t2i_smoke
+    mode: t2i
+    prompt: A lighthouse keeper in a yellow raincoat on a stormy pier, cinematic still.
+    params: {aspect_ratio: "16:9"}
+    smoke: true
+    expect: {cost_usd_range: [0.035, 0.035]}

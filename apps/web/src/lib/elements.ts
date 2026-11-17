@@ -2,7 +2,9 @@
 
 import type { Schemas } from "@opsis/api-client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, unwrap } from "./api";
+import { toast } from "sonner";
+import { api, API_URL, ApiError, unwrap } from "./api";
+import { uploadFile } from "./queries";
 
 export type Element = Schemas["ElementOut"];
 export type ElementKind = Element["kind"];
@@ -93,6 +95,31 @@ export function useClonedVoices(): [string, string][] {
   return (data ?? []).flatMap((e) => {
     const id = (e.voice as { params?: { voice_id?: string } } | null)?.params?.voice_id;
     return id ? [[id, `${e.name} (your voice)`] as [string, string]] : [];
+  });
+}
+
+/** Save an element as a zip (`character.json` and its pictures and LoRA files), to keep, or to import here or into
+ * another studio. Casts and voices aren't exported. */
+export function useExportElement() {
+  return useMutation({
+    mutationFn: async (e: Element) => {
+      const r = await fetch(`${API_URL}/elements/${e.id}/export`, { credentials: "include" });
+      if (!r.ok) throw new ApiError(r.status, await r.json().catch(() => null));
+      const href = URL.createObjectURL(await r.blob());
+      Object.assign(document.createElement("a"), { href, download: `${e.slug}.zip` }).click();
+      setTimeout(() => URL.revokeObjectURL(href), 60_000); // not at once: the browser may read it after click() returns
+    },
+    // here, not in mutate(): the editor may have closed by the time a large zip has come or failed
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Couldn't export it"),
+  });
+}
+
+/** Make a new element from a zip an export saved, here or in another studio; `onProgress` follows the upload. */
+export function useImportElement(onProgress?: (fraction: number) => void) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (file: File) => uploadFile<Element>(file, onProgress, "/elements/import"),
+    onSuccess: invalidate,
   });
 }
 

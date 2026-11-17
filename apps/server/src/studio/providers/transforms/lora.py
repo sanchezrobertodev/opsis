@@ -1,5 +1,6 @@
 """LoRA payloads: a mentioned character's trained weights arrive as staged links in the `lora` (and, on two-expert
-Wan 2.2 models, `lora_high`) roles; fal wants them as one `loras` list of {path, scale, transformer}."""
+Wan 2.2 models, `lora_high`) roles; fal wants them as one `loras` list of {path, scale}, plus the `transformer` each
+goes on where the model has two experts."""
 
 from __future__ import annotations
 
@@ -12,18 +13,23 @@ LOW, HIGH = "_lora", "_lora_high"  # where the route's media map parks the stage
 
 
 def lora_list(*, spec: ModelSpec, route: Route, req: NormalizedRequest, payload: dict[str, Any]) -> dict[str, Any]:
-    """Pair each high-noise LoRA with its low-noise partner on Wan 2.2's two experts; a single-file LoRA (no
-    `lora_high`) goes on both. Pairing is by position: the elements resolver lists two-expert characters first, in the
-    same order in both roles, and single files after them."""
+    """On a mode with a `lora_high` slot (Wan 2.2's two experts), pair each high-noise LoRA with its low-noise partner;
+    a single-file LoRA goes on both. Pairing is by position: the elements resolver lists two-expert characters first,
+    in the same order in both roles, and single files after them. A one-transformer model (FLUX 3 Klein) takes each
+    file as plain {path, scale}."""
     low, high = _links(payload.pop(LOW, None)), _links(payload.pop(HIGH, None))
     scale = float(req.params.get("lora_scale", 1.0))
+    mode = spec.mode(req.mode)
     loras: list[dict[str, Any]] = []
-    for i, path in enumerate(low):
-        if i < len(high):
-            loras += [{"path": high[i], "scale": scale, "transformer": "high"},
-                      {"path": path, "scale": scale, "transformer": "low"}]
-        else:
-            loras.append({"path": path, "scale": scale, "transformer": "both"})
+    if mode is None or mode.slot("lora_high") is None:
+        loras = [{"path": path, "scale": scale} for path in low]
+    else:
+        for i, path in enumerate(low):
+            if i < len(high):
+                loras += [{"path": high[i], "scale": scale, "transformer": "high"},
+                          {"path": path, "scale": scale, "transformer": "low"}]
+            else:
+                loras.append({"path": path, "scale": scale, "transformer": "both"})
     if loras:
         payload["loras"] = loras
     return payload

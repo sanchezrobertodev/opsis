@@ -35,7 +35,7 @@ class Element(IdMixin, TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, default="")  # canonical identity text, kept short
     attributes: Mapped[dict[str, Any]] = mapped_column(default=dict)  # trait builder choices
     voice: Mapped[dict[str, Any]] = mapped_column(default=dict)
-    lora: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    lora: Mapped[dict[str, Any]] = mapped_column(default=dict)  # trained identities by LoRA base: {base: identity}
     # a character's looks, `@slug:look`: {look: {name, description}}; their pictures are links with that `look`
     looks: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=text("'{}'::jsonb"))
     # a character's personality, backstory, catchphrases and how they talk (characters/profile.py:ElementProfile)
@@ -51,7 +51,7 @@ class ElementAsset(Base):
 
     element_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("elements.id"), primary_key=True)
     asset_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("assets.id"), primary_key=True)
-    view: Mapped[str] = mapped_column(String(24), default="front")  # routers/elements.py:View (front, side, sheet, the expressions and poses grids...)
+    view: Mapped[str] = mapped_column(String(24), default="front")  # director/elements.py:View (front, side, sheet, the expressions and poses grids...)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     sort: Mapped[int] = mapped_column(Integer, default=0)
     look: Mapped[str | None] = mapped_column(String(24))  # one of the element's looks; NULL: a main picture
