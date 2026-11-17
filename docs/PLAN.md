@@ -203,8 +203,9 @@ CLAUDE.md                         conventions + "how to add a model" checklist
 - **Users and budget:** `users`, `budget_policies`.
 - **Assets:** `assets` (kind, status, source, storage_key, media facts, derivatives/metadata/provider_refs JSONB),
   `asset_lineage` (child, parent, relation: media role or derivation), `asset_provider_uploads`.
-- **Elements:** `elements` (kind, slug for @mention, description, prompt fragments, voice/lora JSONB),
-  `element_assets` (view: front, side, face_closeup…).
+- **Elements:** `elements` (kind, slug for @mention, description, prompt fragments, voice/lora/looks JSONB),
+  `element_assets` (view: front, side, face_closeup…; `look`: a look's pictures), `element_members` (a cast's
+  characters, in order).
 - **Generations:** `generations` (model, mode, status, request/compiled/routing JSONB, estimated/actual cost,
   idempotency key, project_id + shot_key, pipeline_step_id, parent_generation_id for edit threads),
   `generation_attempts` (route, provider_job_id, scrubbed payload, cost basis, polling state), `job_events`.
@@ -299,7 +300,10 @@ in `structured(images=)`), used as `direction.style: "@slug"` (the look phrased 
 references where the mode takes them). Character designer: its vocabulary and eight starter characters are registry
 data (`registry/characters/`, `GET /characters/catalog`, checked on load), with new expression, accessory and colors
 traits; traits can be locked through Randomize, and Claude fills them in from a photo or a sentence
-(`POST /characters/draft`, saves nothing).
+(`POST /characters/draft`, saves nothing). Looks: a character in another outfit or picture style, drawn from its
+pictures by the `character_look` recipe and mentioned as `@handle:look` (its pictures first, its words after the
+character's; a plain mention never attaches them). Expression and pose sheets (4 x 2 grids, kept, never attached).
+Casts (groups): 2-8 saved characters as one Element (`@crew`), each attaching a share of the reference slots.
 - **Step 0 — Handoff:**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

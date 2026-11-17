@@ -25,6 +25,12 @@ LOOK_FIELDS = ("shot_size", "angle", "lens", "focal_length", "aperture", "camera
                "genre", "pacing", "emotion", "style")
 
 
+def handle_of(who: str) -> str | None:
+    """The handle an @mention names, without its look (`@maya:winter` -> "maya"); None for a plain name."""
+    who = who.strip()
+    return who[1:].split(":", 1)[0].lower() if who.startswith("@") else None
+
+
 class MoveChoice(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str
@@ -100,7 +106,7 @@ class ShotDirection(BaseModel):
 
     @model_validator(mode="after")
     def _one_emotion_each(self) -> ShotDirection:
-        who = [c.who.strip().lstrip("@").lower() for c in self.cast_emotions]
+        who = [handle_of(c.who) or c.who.strip().lower() for c in self.cast_emotions]
         if len(who) != len(set(who)):
             raise ValueError("one emotion per cast member")
         return self
@@ -219,8 +225,7 @@ def _phrase_cast(lib: DirectorLibrary, d: ShotDirection, dialect: str, names: di
             warnings.append(f"unknown emotion {ce.emotion!r} for {ce.who} ignored")
             continue
         who = ce.who.strip()
-        if who.startswith("@") and names is not None:
-            slug = who[1:].lower()
+        if (slug := handle_of(who)) is not None and names is not None:
             if slug not in names:
                 warnings.append(f"{who} isn't in this shot, so their emotion was left out")
                 continue
@@ -232,8 +237,8 @@ def _phrase_cast(lib: DirectorLibrary, d: ShotDirection, dialect: str, names: di
 def _speaker(who: str, names: dict[str, str] | None) -> str:
     """A line's speaker as the prompt names them: an @mention resolved like the prompt's, else the name as written."""
     who = who.strip()
-    if who.startswith("@"):
-        return (names or {}).get(who[1:].lower(), who[1:])
+    if (slug := handle_of(who)) is not None:
+        return (names or {}).get(slug, who[1:].split(":", 1)[0])
     return who
 
 

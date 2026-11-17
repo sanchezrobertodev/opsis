@@ -44,7 +44,7 @@ three short films in it.
 | **Shot sequence** | Shots that continue from each other's last frame, joined into one cut |
 | **Edit video, Motion control, Motion transfer** | Change or restyle a clip by instruction, stack camera moves from a library of 65, copy a performance onto a character |
 | **Object swap, Face swap** | Click an object, track it through the clip and replace it; swap a face in a picture or a clip |
-| **Characters** | Design a person or a creature from picture tiles and a picture style, or start from a photo or a sentence (Claude fills in the traits) or one of eight starter characters; lock the traits you like and randomize the rest, then `@mention` them in any prompt; reference sheets, trained LoRA identities |
+| **Characters** | Design a person or a creature from picture tiles and a picture style, or start from a photo or a sentence (Claude fills in the traits) or one of eight starter characters; lock the traits you like and randomize the rest, then `@mention` them in any prompt; looks (an outfit or another style, `@maya:winter`), casts of characters for group shots (`@crew`), reference, expression and pose sheets, trained LoRA identities |
 | **Faceless Studio** | A topic becomes a narrated short: script review, shots, voice, music, captions, thumbnail |
 | **Cinema Studio** | Script to storyboard to takes to a timed cut, with an AI director chat and dialogue lip-sync |
 | **3D blocking and Worlds** | Block a scene with 3D models in Gaussian-splat worlds, then re-render the passes as live action |
@@ -74,7 +74,8 @@ Across every studio:
 - **Mock first.** By default every hosted and RunPod model answers with a labelled test clip, so the app works
   without a GPU or keys. Local models run for real once ComfyUI is up and has their files.
 - **Characters stay themselves.** A saved character's pictures attach to any prompt that mentions them; models that
-  take a LoRA load their trained identity instead.
+  take a LoRA load their trained identity instead. A look (`@maya:winter`) attaches that outfit's pictures first, and
+  a cast (`@crew`) shares the reference slots among its characters.
 - **Models are data.** Each model is one YAML file in [`registry/`](registry/): its modes, parameters, prices and
   the providers that run it.
 

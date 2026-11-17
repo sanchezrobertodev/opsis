@@ -11,6 +11,10 @@ A model that also takes reference audio (`elements.voice_role`, e.g. MiniMax H3'
 voice sample there (`voice.sample_asset_id`), named with `voice_token`: "Maya (Image 1; voice Audio 1)". So do the
 speakers of a shot's dialogue that the prompt doesn't mention (`speakers`).
 The first mention of each element carries its description; later ones just the name.
+A look (`@maya:winter`: an outfit, or the character in another picture style) attaches its own pictures first and adds
+its description after the character's; a plain mention attaches only the main pictures. A cast (a saved group,
+`@crew`) stands for its characters: each attaches a share of the room and the mention lists them by name, with the
+description of any that no picture or identity shows.
 """
 
 from __future__ import annotations
@@ -24,13 +28,20 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from studio.db.models import Asset, Element, ElementAsset, ElementKind
+from studio.db.models import Asset, Element, ElementAsset, ElementKind, ElementMember
 from studio.domain.enums import AssetStatus
 from studio.registry.schema import MediaSlot, ModelSpec
 
 MENTION = re.compile(r"(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_-]{0,39})")
-KIND_ORDER = {"character": 0, "location": 1, "prop": 2, "style": 3, "voice": 4}
-IMAGES_PER_KIND = {"character": 2, "location": 1, "prop": 1, "style": 2}
+# the same with a look: a colon right before a letter or digit, so "@maya: she says" stays a plain mention. Only
+# resolve_mentions reads looks; everything else wants the handles alone (`mentions()`).
+MENTION_LOOK = re.compile(MENTION.pattern + r"(?::([A-Za-z0-9][A-Za-z0-9-]{0,23}))?")
+LOOK_SLUG = r"^[a-z0-9][a-z0-9-]{0,23}$"  # a look's handle, as written after @handle:
+KIND_ORDER = {"character": 0, "cast": 1, "location": 2, "prop": 3, "style": 4, "voice": 5}
+IMAGES_PER_KIND = {"character": 2, "cast": 2, "location": 1, "prop": 1, "style": 2}  # a cast's: at most, per member
+# sheets a mention never attaches: a grid given as a reference tends to come back as a collage
+UNATTACHED_VIEWS = ("expressions", "poses")
+CAST_SIZE = (2, 8)
 # what a first mention says of an element: room for the character designer's longest description (about 255
 # characters for a person, 295 for a creature with every feature; web lib/designer.ts), mirrored by the web's LOOK_MAX
 DESCRIPTION_LIMIT = 300
@@ -104,14 +115,46 @@ def mentions(prompt: str) -> list[str]:
     return seen
 
 
+def worn(prompt: str) -> list[str]:
+    """Each handle with the look it wears (`maya:winter`, or `maya`; a prompt wears the first look it names for a
+    character), once: what a rewording must keep."""
+    looks: dict[str, str | None] = {}
+    for m in MENTION_LOOK.finditer(prompt or ""):
+        slug = m.group(1).lower()
+        if looks.get(slug) is None:
+            looks[slug] = (m.group(2) or "").lower() or None
+    return [f"{slug}:{look}" if look else slug for slug, look in looks.items()]
+
+
 @dataclass
 class Resolution:
     prompt: str
     media: list[dict[str, str]] = field(default_factory=list)  # [{role, asset_id}] to attach
     warnings: list[str] = field(default_factory=list)
-    elements: list[dict[str, Any]] = field(default_factory=list)  # [{id, slug, name, attached}]
-    # every @slug in the prompt -> how the prompt names it now (for direction that refers to cast members)
+    elements: list[dict[str, Any]] = field(default_factory=list)  # [{id, slug, name, attached, look}]
+    # every @slug in the prompt (and a mentioned cast's characters) -> how the prompt names it now (for direction
+    # that refers to cast members)
     names: dict[str, str] = field(default_factory=dict)
+
+
+def per_member(capacity: int, members: int) -> int:
+    """How many pictures each character of a cast attaches: an even share of the room left, two at most and one at
+    least (so with too little room the last ones get none and are described in words)."""
+    return max(1, min(IMAGES_PER_KIND["cast"], capacity // max(1, members)))
+
+
+async def cast_members(session: AsyncSession, cast_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[Element]]:
+    """Each cast (group)'s characters that are still there, in order."""
+    if not cast_ids:
+        return {}
+    rows = await session.execute(
+        select(ElementMember.group_id, Element).join(Element, Element.id == ElementMember.member_id)
+        .where(ElementMember.group_id.in_(cast_ids), Element.kind == ElementKind.character,
+               Element.deleted_at.is_(None)).order_by(ElementMember.sort))
+    out: dict[uuid.UUID, list[Element]] = {}
+    for group_id, element in rows:
+        out.setdefault(group_id, []).append(element)
+    return out
 
 
 async def resolve_mentions(
@@ -135,18 +178,35 @@ async def resolve_mentions(
     for slug in slugs:
         if slug not in by_slug:
             res.warnings.append(f"no saved character, location or prop called @{slug}; left as written")
+    members = await cast_members(session, [e.id for e in rows if e.kind == ElementKind.cast])
+    people = list({e.id: e for e in [*rows, *(m for crew in members.values() for m in crew)]}.values())
 
-    images: dict[uuid.UUID, list[uuid.UUID]] = {}
-    if rows:
+    # (element, look) -> its pictures in order; look None: the main ones, all a plain mention attaches
+    images: dict[tuple[uuid.UUID, str | None], list[uuid.UUID]] = {}
+    if people:
         links = (await session.execute(
-            select(ElementAsset.element_id, ElementAsset.asset_id)
+            select(ElementAsset.element_id, ElementAsset.look, ElementAsset.asset_id)
             .join(Asset, Asset.id == ElementAsset.asset_id)
-            .where(ElementAsset.element_id.in_([e.id for e in rows]), Asset.status == AssetStatus.ready,
-                   Asset.deleted_at.is_(None), Asset.kind == "image")
+            .where(ElementAsset.element_id.in_([e.id for e in people]), Asset.status == AssetStatus.ready,
+                   Asset.deleted_at.is_(None), Asset.kind == "image", ElementAsset.view.not_in(UNATTACHED_VIEWS))
             .order_by(ElementAsset.is_primary.desc(), ElementAsset.sort, Asset.created_at)
         )).all()
-        for element_id, asset_id in links:
-            images.setdefault(element_id, []).append(asset_id)
+        for element_id, look, asset_id in links:
+            images.setdefault((element_id, look), []).append(asset_id)
+
+    looks: dict[str, str] = {}  # slug -> the look its mentions wear: the first one it has
+    for m in MENTION_LOOK.finditer(prompt or ""):
+        slug, word = m.group(1).lower(), (m.group(2) or "").lower()
+        if not word or slug not in by_slug:
+            continue
+        if word not in (by_slug[slug].looks or {}):
+            warning = f"@{slug} has no look called {word}, so it's shown as it is"
+        elif looks.setdefault(slug, word) != word:
+            warning = f"@{slug} wears one look in a prompt: {looks[slug]}, not {word}"
+        else:
+            continue
+        if warning not in res.warnings:
+            res.warnings.append(warning)
 
     strategy = (spec.elements or {}).get("strategy", "text_only")
     ref_role = (spec.elements or {}).get("ref_role", "image_references")
@@ -158,7 +218,7 @@ async def resolve_mentions(
     next_index = used + 1
     lora_room = {r: max(0, (mode.slot(r).max if mode and mode.slot(r) else 0)
                         - sum(1 for m in existing_media if m.get("role") == r)) for r in ("lora", "lora_high")}
-    trained = await _ready_loras(session, rows) if strategy == "lora" else set()
+    trained = await _ready_loras(session, people) if strategy == "lora" else set()
     voice_role = (spec.elements or {}).get("voice_role")
     voice_token = (spec.elements or {}).get("voice_token") or "Audio {n}"
     vslot = mode.slot(voice_role) if mode and voice_role else None
@@ -172,30 +232,35 @@ async def resolve_mentions(
         have = {str(i): ms for i, ms in (await session.execute(select(Asset.id, Asset.duration_ms).where(
             Asset.id.in_([uuid.UUID(a) for a in ids]), Asset.user_id == user_id))).all()} if ids else {}
         vleft -= sum((have.get(str(m.get("asset_id"))) or 0) / 1000 for m in existing_media if m.get("role") == voice_role)
-    samples = await voice_samples(session, user_id, rows) if vslot else {}
+    samples = await voice_samples(session, user_id, people) if vslot else {}
     ordered = sorted((by_slug[s] for s in slugs if s in by_slug), key=lambda e: KIND_ORDER.get(e.kind.value, 9))
+    # a cast's characters stand in its place: pictures, identities and voices are handed out in this order
+    everyone = list({e.id: e for x in ordered for e in (members.get(x.id) or [x])}.values())
     talking = {s.lower() for s in speakers}
     # the dialogue's speakers first, so someone who only appears in the shot can't take the room their voices need
-    chosen, tried, vroom = pick_voices([e.id for e in sorted(ordered, key=lambda e: e.slug not in talking)], samples,
+    chosen, tried, vroom = pick_voices([e.id for e in sorted(everyone, key=lambda e: e.slug not in talking)], samples,
                                        vslot, vroom, vleft, set(vtokens)) if vslot else (set(), set(), vroom)
     # lora_list pairs the two roles by position, so two-expert characters go first and single files after them
     lora_pairs: list[tuple[str, str]] = []
     lora_singles: list[str] = []
 
-    replacements: dict[str, tuple[str, str]] = {}  # slug -> (first mention text, later mention text)
-    for element in ordered:
-        attached: list[str] = []
-        label = element.name
+    def attach(element: Element, want: int, look: str | None, attached: list[str]) -> tuple[str, bool]:
+        """Give one element up to `want` pictures (a look's first, then its main ones), its trained identity and
+        its voice, adding what it attached to `attached`. Returns how the prompt names it, and whether a picture or
+        an identity shows it (if not, it's described in words)."""
+        nonlocal capacity, next_index, vnext
+        label, shown = element.name, False
+        pictures = [*(images.get((element.id, look), []) if look else []), *images.get((element.id, None), [])]
         if strategy == "refs_native" and slot is not None and capacity > 0:
-            for asset_id in images.get(element.id, [])[: min(IMAGES_PER_KIND.get(element.kind.value, 1), capacity)]:
-                res.media.append({"role": ref_role, "asset_id": str(asset_id)})
-                attached.append(str(asset_id))
-            capacity -= len(attached)
-            if attached and token:
-                tokens = [token.format(n=next_index + i) for i in range(len(attached))]
-                label = f"{element.name} ({', '.join(tokens)})"
-            next_index += len(attached)
-            if not images.get(element.id):
+            mine = [str(a) for a in pictures[: min(want, capacity)]]
+            res.media.extend({"role": ref_role, "asset_id": a} for a in mine)
+            attached += mine
+            capacity -= len(mine)
+            shown = bool(mine)
+            if mine and token:
+                label = f"{element.name} ({', '.join(token.format(n=next_index + i) for i in range(len(mine)))})"
+            next_index += len(mine)
+            if not pictures:
                 res.warnings.append(f"@{element.slug} has no reference images yet; described in words")
         elif strategy == "refs_native" and slot is None:
             res.warnings.append(f"{spec.name} {mode.label if mode else mode_id} can't take reference images, so "
@@ -207,6 +272,7 @@ async def resolve_mentions(
             base = (spec.elements or {}).get("lora_base")
             low, high = str(lora.get("low") or ""), str(lora.get("high") or "")
             if lora.get("base") == base and low in trained and lora_room["lora"] > 0:
+                shown = True
                 lora_room["lora"] -= 1
                 if high in trained and lora_room["lora_high"] > 0:
                     lora_room["lora_high"] -= 1
@@ -246,12 +312,42 @@ async def resolve_mentions(
             other = next((m.label for m in spec.modes if voice_role and m.slot(voice_role)), None)
             res.warnings.append(f"{spec.name} {mode.label if mode else mode_id} speaks in its own voice, so "
                                 f"@{element.slug}'s voice isn't used" + (f" ({other} can take it)." if other else "."))
-        # a long one ends after its last whole phrase that fits, never mid-word
+        return label, shown
+
+    done: dict[uuid.UUID, str] = {}  # element -> how the prompt names it, once it has had its share
+    replacements: dict[str, tuple[str, str]] = {}  # slug -> (first mention text, later mention text)
+    for element in ordered:
+        attached: list[str] = []
+        look = looks.get(element.slug)
+        if crew := members.get(element.id):
+            # one of them mentioned on their own already has their pictures (characters go first): named the same
+            todo = [who for who in crew if who.id not in done]
+            share = per_member(capacity, len(todo))
+            told: dict[uuid.UUID, str] = {}  # those nothing shows are described after their name, as on their own
+            for who in todo:
+                done[who.id], shown = attach(who, share, None, attached)
+                if not shown:
+                    told[who.id] = clip(who.description or "", DESCRIPTION_LIMIT, at_comma=True).rstrip(" .")
+            label = ", ".join(done[who.id] for who in crew)
+            intro = ", ".join(x for who in crew for x in (done[who.id], told.get(who.id)) if x)
+            for who in crew:  # a shot's direction may name one of them (a line, a feeling)
+                res.names.setdefault(who.slug, done[who.id])
+        else:
+            if element.kind == ElementKind.cast:
+                res.warnings.append(f"@{element.slug} has no characters in it yet; described in words")
+            label, _ = attach(element, IMAGES_PER_KIND.get(element.kind.value, 1), look, attached)
+            done[element.id] = intro = label
+        # a long one ends after its last whole phrase that fits, never mid-word; a look's words come after it
         description = clip(element.description or "", DESCRIPTION_LIMIT, at_comma=True).rstrip(" .")
-        first = f"{label}, {description}," if description else label
+        worn = str(((element.looks or {}).get(look) or {}).get("description") or "") if look else ""
+        said = ", ".join(x for x in (description, " ".join(worn.split()).rstrip(" ,;.")) if x)
+        first = ", ".join(x for x in (intro, said) if x)
+        if first != label:  # words after the name end with a comma, so the sentence goes on: "Maya, a dancer, waves"
+            first += ","
         replacements[element.slug] = (first, label)
         res.names[element.slug] = label
-        res.elements.append({"id": str(element.id), "slug": element.slug, "name": element.name, "attached": attached})
+        res.elements.append({"id": str(element.id), "slug": element.slug, "name": element.name, "attached": attached,
+                             "look": look})
 
     for low, high in lora_pairs:
         res.media += [{"role": "lora", "asset_id": low}, {"role": "lora_high", "asset_id": high}]
@@ -260,16 +356,16 @@ async def resolve_mentions(
     seen: set[str] = set()
 
     def substitute(m: re.Match[str]) -> str:
-        slug = m.group(1).lower()
+        slug, word = m.group(1).lower(), m.group(2)
         if slug not in replacements:
             return m.group(0)
         first, later = replacements[slug]
-        if slug in seen:
-            return later
+        text = later if slug in seen else first
         seen.add(slug)
-        return first
+        # a look it doesn't have (or a second one) stays readable, as the word it was
+        return f"{text} {word}" if word and word.lower() != looks.get(slug) else text
 
-    res.prompt = MENTION.sub(substitute, prompt).replace(",,", ",").replace(", .", ".").replace(",.", ".")
+    res.prompt = MENTION_LOOK.sub(substitute, prompt).replace(",,", ",").replace(", .", ".").replace(",.", ".")
     return res
 
 

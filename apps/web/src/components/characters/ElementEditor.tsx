@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Images, Sparkles, Trash2 } from "lucide-react";
+import { Copy, Images, Sparkles, Trash2, UsersRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { MediaSlot } from "@/lib/api";
@@ -15,12 +15,15 @@ import {
   usePatchElement,
   useRemoveElementImage,
 } from "@/lib/elements";
+import { hasPictures } from "@/lib/mentions";
 import { useAsset } from "@/lib/queries";
 import { MediaSlotField } from "@/components/create/MediaSlots";
 import { VOICE_MODEL, VoicePicker } from "@/components/voice/VoicePicker";
 import { Button, Dialog, Segmented } from "@/components/ui/controls";
+import { CAST_SIZE, CastMembers, useGroupShot } from "./Casts";
 import { IdentityPanel } from "./IdentityPanel";
-import { MorePictures, SheetPanel } from "./MakePanels";
+import { LooksSection } from "./Looks";
+import { AddLookPanel, MorePictures, SheetPanel, StyleLookPanel } from "./MakePanels";
 import { PORTRAIT_MODEL, PortraitModel, useDrawPortrait } from "./portrait";
 
 const VOICE_SAMPLE_SLOT: MediaSlot = { role: "audio_references", kinds: ["audio"], label: "Voice sample (optional)", max: 1, min: 0, required: false, auto: false };
@@ -62,18 +65,28 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
   const [pending, setPending] = useState<SlotAsset[]>([]);
   const [drawIt, setDrawIt] = useState(true);
   const [drawWith, setDrawWith] = useState(PORTRAIT_MODEL);
-  const [panel, setPanel] = useState<{ open: "sheet" | "more"; count?: number } | null>(null);
+  const [panel, setPanel] = useState<{ open: "sheet" | "more" | "look" | "style"; count?: number } | null>(null);
   const portrait = useDrawPortrait();
-  const pictureless = kind === "character" && pending.length === 0 && !existing?.images.length;
+  const cast = kind === "cast";
+  const [members, setMembers] = useState<string[]>(() => existing?.members.map((m) => m.id) ?? []);
+  const castSized = members.length >= CAST_SIZE[0] && members.length <= CAST_SIZE[1];
+  const groupShot = useGroupShot();
+  // a group shot mentions the saved cast, which the server reads: edits here must be saved first
+  const unsaved = Boolean(existing && (name !== existing.name || description !== existing.description
+    || members.join() !== existing.members.map((m) => m.id).join()));
+  // what a plain mention attaches, which looks, sheets and more pictures are drawn from (a cast: its characters')
+  const drawable = existing ? hasPictures(existing) : false;
 
   const images: SlotAsset[] = useMemo(
     () => [
-      ...(existing?.images ?? []).map((i, n) => ({ id: i.asset.id, kind: "image", thumb: i.asset.thumb_url, url: i.asset.url,
-                                                   title: `${existing?.name}, picture ${n + 1}` })),
+      // a look's pictures are shown with the look, not with the main ones a plain mention attaches
+      ...(existing?.images ?? []).filter((i) => !i.look).map((i, n) => ({
+        id: i.asset.id, kind: "image", thumb: i.asset.thumb_url, url: i.asset.url, title: `${existing?.name}, picture ${n + 1}` })),
       ...pending,
     ],
     [existing, pending],
   );
+  const pictureless = kind === "character" && images.length === 0;
 
   async function save() {
     try {
@@ -82,8 +95,9 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
         const style = existing.attributes.style as { category?: string; summary?: string } | undefined;
         const relook = existing.kind === "style" && style?.summary && description.trim() !== existing.description;
         await patch.mutateAsync({ id: existing.id, name, kind, description,
-                                  voice: voiceBody, clear_voice: !voiceBody,
-                                  clear_lora: false, ...(relook ? { attributes: { style: { category: style.category } } } : {}) });
+                                  voice: voiceBody, clear_voice: !voiceBody, clear_lora: false,
+                                  ...(cast ? { members } : {}),
+                                  ...(relook ? { attributes: { style: { category: style.category } } } : {}) });
         if (pending.length) {
           await addImages.mutateAsync({ id: existing.id, images: pending.map((p) => ({ asset_id: p.id, view: "front" as const })) });
         }
@@ -118,7 +132,9 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
         </label>
         {existing ? (
           // fixed once saved: only characters star in runs, speak or train an identity, and its mentions read as one
-          <p className="text-xs text-muted">Type <span className="ml-1 text-chalk">{KIND_LABEL[kind]}</span></p>
+          <p className="text-xs text-muted">
+            Type <span className="ml-1 text-chalk">{cast ? "Cast (a saved group of characters)" : KIND_LABEL[kind]}</span>
+          </p>
         ) : (
           <div className="flex flex-col gap-1.5 text-xs text-muted">
             Type
@@ -136,7 +152,10 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
             placeholder={HINTS[kind][1]}
             className="resize-y rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 py-2 text-sm leading-relaxed text-chalk outline-none placeholder:text-faint focus:border-tungsten/60"
           />
-          <span className="text-2xs text-faint">Models that can’t take images get this text instead. Keep it short.</span>
+          <span className="text-2xs text-faint">
+            {cast ? "Every prompt that mentions the cast reads this after their names. Keep it short."
+              : "Models that can’t take images get this text instead. Keep it short."}
+          </span>
         </label>
         {kind === "character" && (
           <>
@@ -151,7 +170,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
         )}
         {existing && (
           <p className="flex items-center gap-2 text-xs text-muted">
-            Write <span className="text-tungsten">{existing.handle}</span> in a prompt to use it.
+            Write <span className="text-tungsten">{existing.handle}</span> in a prompt to {cast ? "bring them all" : "use it"}.
             <button
               type="button"
               onClick={() => void navigator.clipboard.writeText(existing.handle).then(() => toast("Copied"))}
@@ -165,18 +184,25 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
       </div>
 
       <div className="space-y-4">
-        <MediaSlotField
-          slot={REF_SLOT}
-          value={images}
-          onAdd={(a) => setPending((p) => (p.some((x) => x.id === a.id) || images.some((x) => x.id === a.id) ? p : [...p, a]))}
-          onRemove={(id) => {
-            if (pending.some((p) => p.id === id)) setPending((p) => p.filter((x) => x.id !== id));
-            else if (existing) removeImage.mutate({ id: existing.id, assetId: id });
-          }}
-        />
-        <p className="text-2xs text-faint">
-          Clear, well-lit images work best: a front view first, then other angles. The first image is the cover.
-        </p>
+        {cast ? (
+          // a cast's pictures are its characters'
+          <CastMembers value={members} onChange={setMembers} known={existing?.members ?? []} />
+        ) : (
+          <>
+            <MediaSlotField
+              slot={REF_SLOT}
+              value={images}
+              onAdd={(a) => setPending((p) => (p.some((x) => x.id === a.id) || images.some((x) => x.id === a.id) ? p : [...p, a]))}
+              onRemove={(id) => {
+                if (pending.some((p) => p.id === id)) setPending((p) => p.filter((x) => x.id !== id));
+                else if (existing) removeImage.mutate({ id: existing.id, assetId: id });
+              }}
+            />
+            <p className="text-2xs text-faint">
+              Clear, well-lit images work best: a front view first, then other angles. The first image is the cover.
+            </p>
+          </>
+        )}
         {pictureless && !existing && (
           <label className="flex items-start gap-2 text-sm text-muted">
             <input type="checkbox" className="mt-1" checked={drawIt} onChange={(e) => setDrawIt(e.target.checked)} />
@@ -188,7 +214,12 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
         )}
         {pictureless && (existing || drawIt) && <PortraitModel value={drawWith} onChange={setDrawWith} />}
         {existing && existing.kind === "character" && (
-          <IdentityPanel element={existing} onMore={(count) => setPanel({ open: "more", count })} />
+          <>
+            <LooksSection element={existing} open={panel?.open}
+                          onAdd={() => setPanel(panel?.open === "look" ? null : { open: "look" })}
+                          onStyle={() => setPanel(panel?.open === "style" ? null : { open: "style" })} />
+            <IdentityPanel element={existing} onMore={(count) => setPanel({ open: "more", count })} />
+          </>
         )}
       </div>
 
@@ -196,22 +227,32 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
       {existing && panel?.open === "more" && (
         <MorePictures key={panel.count} element={existing} count={panel.count} onClose={() => setPanel(null)} />
       )}
+      {existing && panel?.open === "look" && <AddLookPanel element={existing} onClose={() => setPanel(null)} />}
+      {existing && panel?.open === "style" && <StyleLookPanel element={existing} onClose={() => setPanel(null)} />}
 
       <div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-4 md:col-span-2">
         {existing && existing.kind === "character" && (
           <>
             <Button type="button" size="sm" onClick={() => setPanel(panel?.open === "sheet" ? null : { open: "sheet" })}
-                    disabled={!existing.images.length} aria-expanded={panel?.open === "sheet"}
-                    title={existing.images.length ? "Draws it from every side on one picture" : "Add a picture first"}>
+                    disabled={!drawable} aria-expanded={panel?.open === "sheet"}
+                    title={drawable ? "Draws it from every side, or its expressions or poses, on one picture" : "Add a picture first"}>
               Make a reference sheet
             </Button>
             <Button type="button" size="sm" onClick={() => setPanel(panel?.open === "more" ? null : { open: "more" })}
-                    disabled={!existing.images.length} aria-expanded={panel?.open === "more"}
-                    title={existing.images.length ? "New pictures from other angles, with other expressions and light" : "Add a picture first"}>
+                    disabled={!drawable} aria-expanded={panel?.open === "more"}
+                    title={drawable ? "New pictures from other angles, with other expressions and light" : "Add a picture first"}>
               <Images className="size-4" aria-hidden />
               More pictures
             </Button>
           </>
+        )}
+        {existing && cast && (
+          <Button type="button" size="sm" onClick={() => groupShot(existing)} disabled={!drawable || unsaved}
+                  title={!drawable ? "Its characters have no pictures yet" : unsaved ? "Save your changes first"
+                    : "Opens Create image with a group shot of the cast, drawn from their pictures"}>
+            <UsersRound className="size-4" aria-hidden />
+            Group shot
+          </Button>
         )}
         {existing && pictureless && (
           <Button type="button" size="sm" onClick={() => void portrait.draw(existing, drawWith)}
@@ -236,7 +277,8 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
           </Button>
         )}
         <Button type="button" tone="primary" className="ml-auto" onClick={() => void save()}
-                disabled={!name.trim() || create.isPending || patch.isPending}>
+                disabled={!name.trim() || create.isPending || patch.isPending || (cast && !castSized)}
+                title={cast && !castSized ? `A cast holds ${CAST_SIZE[0]} to ${CAST_SIZE[1]} characters` : undefined}>
           {existing ? "Save changes" : "Create"}
         </Button>
       </div>
@@ -247,6 +289,7 @@ function ElementForm({ existing, newKind, onDone }: { existing: Element | null; 
 /** The name and description placeholders for each kind. */
 const HINTS: Record<ElementKind, [string, string]> = {
   character: ["e.g. Maya Ortiz", "What makes them recognisable: age, build, hair, outfit, signature details."],
+  cast: ["e.g. The crew", "What they share, read after their names: a band on tour, in matching denim jackets."],
   location: ["e.g. Harbour", "The place: setting, time of day, light, weather, the details that mark it."],
   prop: ["e.g. Brass compass", "The object: shape, size, material, colour, wear."],
   style: ["e.g. Noir", "The look: medium, palette, light, texture, era."],

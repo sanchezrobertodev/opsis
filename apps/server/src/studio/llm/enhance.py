@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.director.compiler import ShotDirection
-from studio.director.elements import mentions, style_slug
+from studio.director.elements import style_slug, worn
 from studio.director.library import get_library
 from studio.llm.client import LLMResult, model_for, structured
 from studio.registry.schema import ModelSpec
@@ -46,8 +46,9 @@ that the model will render well:
 - Keep the user's subject, action, setting and intent. Add specific, visible detail that serves it:
   appearance, the order of action beats, materials, weather, light quality, small environmental motion.
 - Never invent new main characters or change what happens.
-- Copy every @mention (like @maya or @old-town) exactly as written, including the @. Each stands for a
-  saved character, location or prop that is inserted later, so don't describe what it looks like.
+- Copy every @mention (like @maya or @old-town) exactly as written, including the @ and a look after its colon
+  (@maya:winter). Each stands for a saved character, location or prop that is inserted later, so don't describe
+  what it looks like.
 - If the request lists shot direction that is already handled (picture style, camera moves, framing, lens,
   lighting, palette, genre), leave those topics out of the prompt; they are appended separately.
 - When a picture style is among them, describe only the content: never name a medium or art style
@@ -149,7 +150,7 @@ async def enhance(
     out.prompt = " ".join(out.prompt.split())[: spec.prompt.max_chars]
     out.changes = out.changes[:3]
     warnings = [f"@{m} was dropped; add it back if you need it"
-                for m in mentions(prompt) if m not in mentions(out.prompt)]
+                for m in worn(prompt) if m not in worn(out.prompt)]
 
     _cache[key] = result
     if len(_cache) > CACHE_SIZE:

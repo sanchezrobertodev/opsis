@@ -1,16 +1,21 @@
 """A reference sheet for a saved character: one picture with it drawn from several sides, made from the pictures it
 already has and kept as its second reference (right after its main picture). Models that take references attach a
 character's first two pictures, so the sheet tells them its whole shape (a griffin's lion half too), where a single
-picture shows one side and leaves the rest to guesswork."""
+picture shows one side and leaves the rest to guesswork.
+
+The same recipe draws an expression sheet (eight feelings from the director's emotion wheel) or a pose sheet (eight
+full-body poses), each a 4 x 2 grid kept with the character's pictures for people to see, never attached by a
+mention."""
 
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from studio.db.models import StepKind
+from studio.director.library import get_library
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import with_param
 from studio.pipelines.recipes.vlog import SLUG, frame_mode
@@ -23,11 +28,38 @@ SHEET = ("Character reference sheet of @{slug}: one plain light grey canvas show
          "wide. Then a close-up of its head. Every view has exactly the anatomy, proportions, colours and markings of "
          "its reference picture, and its medium: a photograph stays a photograph, with real texture and soft studio "
          "light.")
+GRID = ("{what} of @{slug}: one plain light grey canvas divided into a grid of four columns and two rows, the same "
+        "character {framing} in every cell at the same scale, with no text, labels, numbers or captions anywhere. Top "
+        "row, left to right: {top}. Bottom row, left to right: {bottom}. Every cell has exactly the {same} of its "
+        "reference picture, and its medium: a photograph stays a photograph, with real texture and soft studio light.")
+# a grid sheet: what it's called, how each cell frames the character, and what must match its pictures
+GRIDS = {"expressions": ("Expression sheet", "head and shoulders, facing the camera", "face, hair, colours and markings"),
+         "poses": ("Pose sheet", "full body from head to feet", "anatomy, proportions, colours, clothing and markings")}
+POSES = ("standing", "walking", "running", "sitting", "jumping", "pointing", "arms crossed", "waving")
+
+
+def cells(sheet: str) -> list[str]:
+    """The eight cells of a grid sheet: a plain feeling of each family of the emotion wheel (its middle level), or
+    eight poses."""
+    if sheet == "poses":
+        return list(POSES)
+    return [e.label.lower() for e in get_library().emotions if e.level == 2]
+
+
+def sheet_prompt(sheet: str, slug: str) -> str:
+    if sheet == "turnaround":
+        return SHEET.format(slug=slug)
+    what, framing, same = GRIDS[sheet]
+    eight = cells(sheet)
+    return GRID.format(what=what, slug=slug, framing=framing, top=", ".join(eight[:4]), bottom=", ".join(eight[4:8]),
+                       same=same)
 
 
 class CharacterSheetInput(BaseModel):
     element_id: uuid.UUID
     slug: str = Field(pattern=SLUG)
+    sheet: Literal["turnaround", "expressions", "poses"] = Field(
+        "turnaround", description="From several sides (kept as its reference), or a grid of expressions or poses")
     image_model_id: str = "nano-banana-pro"
     aspect_ratio: str = "16:9"
 
@@ -35,11 +67,11 @@ class CharacterSheetInput(BaseModel):
 class CharacterSheetRecipe(Recipe):
     id = "character_sheet"
     name = "Reference sheet"
-    summary = "A character drawn from several sides on one picture, kept as its reference."
+    summary = "A character drawn from several sides on one picture (kept as its reference), or its expressions or poses."
     Input = CharacterSheetInput
 
     def title(self, inp: CharacterSheetInput) -> str:
-        return f"Reference sheet of @{inp.slug}"
+        return f"{GRIDS[inp.sheet][0] if inp.sheet in GRIDS else 'Reference sheet'} of @{inp.slug}"
 
     async def resolve(self, session: Any, user_id: uuid.UUID, inp: CharacterSheetInput,
                       reg: Registry) -> CharacterSheetInput:
@@ -71,13 +103,18 @@ class CharacterSheetRecipe(Recipe):
 
     def plan(self, inp: CharacterSheetInput, settled: Settled, reg: Registry) -> list[StepSpec]:
         model_id, mode_id, params = self._job(inp, reg)
-        specs = [StepSpec("sheet", StepKind.generate, f"Draw @{inp.slug} from every side", {
-            "model_id": model_id, "mode": mode_id, "prompt": SHEET.format(slug=inp.slug), "params": params,
+        turnaround = inp.sheet == "turnaround"
+        draw = f"Draw @{inp.slug} from every side" if turnaround else f"Draw @{inp.slug}'s {inp.sheet}"
+        specs = [StepSpec("sheet", StepKind.generate, draw, {
+            "model_id": model_id, "mode": mode_id, "prompt": sheet_prompt(inp.sheet, inp.slug), "params": params,
             "media": []})]  # the @mention attaches its pictures
         if out := ok(settled, "sheet"):
-            specs.append(StepSpec("keep", StepKind.local, f"Keep it as @{inp.slug}'s reference", {
-                "op": "add_element_image", "element_id": str(inp.element_id), "asset_id": out["asset_id"],
-                "view": "sheet", "first": True}, ("sheet",)))
+            # the turnaround goes right after the main picture, among the two a mention attaches; a grid never is
+            keep, label = (({"view": "sheet", "first": True}, f"Keep it as @{inp.slug}'s reference") if turnaround
+                           else ({"view": inp.sheet}, f"Keep it with @{inp.slug}'s pictures"))
+            specs.append(StepSpec("keep", StepKind.local, label, {
+                "op": "add_element_image", "element_id": str(inp.element_id), "asset_id": out["asset_id"], **keep},
+                ("sheet",)))
         return specs
 
     def result(self, inp: CharacterSheetInput, settled: Settled) -> dict[str, Any] | None:

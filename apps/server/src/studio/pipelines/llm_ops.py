@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.budget.guard import BudgetBlocked
 from studio.db.models import Asset, Element, ElementAsset, ElementKind, Generation, PipelineRun, PipelineStep
-from studio.director.elements import mentions
+from studio.director.elements import UNATTACHED_VIEWS, worn
 from studio.domain.enums import AssetStatus
 from studio.faceless.catalog import get_catalog
 from studio.faceless.writer import (
@@ -123,7 +123,8 @@ async def find_star(session: AsyncSession, user_id: uuid.UUID, slug: str) -> tup
     pictures = (await session.execute(select(func.count()).select_from(ElementAsset).join(
         Asset, Asset.id == ElementAsset.asset_id).where(
         ElementAsset.element_id == element.id, Asset.kind == "image", Asset.status == AssetStatus.ready,
-        Asset.deleted_at.is_(None)))).scalar_one()  # only ready pictures attach to a mention
+        Asset.deleted_at.is_(None), ElementAsset.look.is_(None), ElementAsset.view.not_in(UNATTACHED_VIEWS),
+    ))).scalar_one()  # only what a plain mention attaches: ready main pictures (no look's, no grid sheet)
     if not pictures:
         return None, f"@{slug} has no pictures yet; add one on the Characters page so their face carries through"
     return element, None
@@ -177,9 +178,9 @@ studio are false positives: ordinary film scenes whose wording reads as more gra
 
 Reword each prompt so it shows the same scene, action, framing and mood with gentler wording: describe peril, injury,
 weapons or conflict without graphic detail, drop real people's and brands' names, and avoid wording that could read
-as sexual, as involving minors, or as drug or medical detail. Keep every @handle exactly as written, keep the
-language, stay within each prompt's character limit, and don't add anything the scene didn't have. Return as many
-prompts as you were given, in order.
+as sexual, as involving minors, or as drug or medical detail. Keep every @handle exactly as written, with the look
+after its colon when it has one (@maya:winter), keep the language, stay within each prompt's character limit, and
+don't add anything the scene didn't have. Return as many prompts as you were given, in order.
 
 If a prompt asks for something that shouldn't be made at all, return it unchanged and say so."""
 
@@ -207,7 +208,7 @@ async def reword(session: AsyncSession, run: PipelineRun, prompts: list[str], re
     if all(n == old.strip() for n, old in zip(new, prompts, strict=True)):
         raise StepFailed(f"Claude kept the prompt as it was: {out.changed}")
     for n, old in zip(new, prompts, strict=True):
-        if missing := [m for m in mentions(old) if m not in mentions(n)]:
+        if missing := [m for m in worn(old) if m not in worn(n)]:  # a look dropped is a mention dropped
             raise StepFailed(f"the reworded prompt dropped {', '.join('@' + m for m in missing)}")
     return Reworded(prompts=new, changed=out.changed)
 

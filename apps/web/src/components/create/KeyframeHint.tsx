@@ -6,12 +6,12 @@ import { toast } from "sonner";
 import { ApiError, type ModelDetail } from "@/lib/api";
 import { usd } from "@/lib/cn";
 import { useElements } from "@/lib/elements";
+import { picturedMentions } from "@/lib/mentions";
 import { useStartRun } from "@/lib/runs";
 import { ModelSelect, quotePrice, quoteText, useRunQuote } from "@/components/runs/RunQuote";
 import { Button } from "@/components/ui/controls";
 import { useModelsFor } from "./QuickGenerate";
 
-const MENTION = /(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_-]{0,39})/g;
 const FRAME_MODEL = "nano-banana-2"; // the keyframe recipe's own default
 
 /**
@@ -38,10 +38,9 @@ export function KeyframeHint({
   const [imageModel, setImageModel] = useState(FRAME_MODEL);
   const [confirm, setConfirm] = useState<number | null>(null);
   const strategy = (model.elements as { strategy?: string } | null)?.strategy;
-  const slugs = new Set([...prompt.matchAll(MENTION)].map((m) => m[1].toLowerCase()));
-  const characters = (elements ?? []).filter((e) => slugs.has(e.slug) && e.images.length > 0);
-  const shown = strategy === "keyframe_first" && !hasStartFrame && characters.length > 0;
-  const names = characters.map((c) => c.handle);
+  // the mentions with pictures (a look's, a cast's characters'), as written
+  const names = picturedMentions(prompt, elements ?? []).map((m) => m.text);
+  const shown = strategy === "keyframe_first" && !hasStartFrame && names.length > 0;
   // priced on the mentions alone, so typing the rest of the prompt doesn't ask again (its words don't change the price)
   const quote = useRunQuote(shown ? { recipe: "keyframe", input: {
     model_id: model.id, prompt: names.join(" "), params, direction, image_model_id: imageModel } } : null);

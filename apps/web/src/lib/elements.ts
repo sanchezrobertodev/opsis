@@ -10,6 +10,7 @@ export type ElementView = Schemas["ElementImageIn"]["view"];
 
 export const KIND_LABEL: Record<ElementKind, string> = {
   character: "Character",
+  cast: "Cast", // a saved group of characters, not a film's cast in Cinema Studio
   location: "Location",
   prop: "Prop",
   style: "Style",
@@ -84,6 +85,26 @@ export function useAddElementImages() {
   return useMutation({
     mutationFn: ({ id, images }: { id: string; images: Schemas["ElementImageIn"][] }) =>
       unwrap(api.POST("/elements/{element_id}/images", { params: { path: { element_id: id } }, body: images })),
+    onSuccess: invalidate,
+  });
+}
+
+/** Make or rename one of a character's looks (`@handle:look`). */
+export function usePutLook() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, look, ...body }: { id: string; look: string } & Schemas["ElementLook"]) =>
+      unwrap(api.PUT("/elements/{element_id}/looks/{look}", { params: { path: { element_id: id, look } }, body })),
+    onSuccess: invalidate,
+  });
+}
+
+/** Forget a look: its pictures leave the character and stay in the library. */
+export function useDeleteLook() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, look }: { id: string; look: string }) =>
+      unwrap(api.DELETE("/elements/{element_id}/looks/{look}", { params: { path: { element_id: id, look } } })),
     onSuccess: invalidate,
   });
 }

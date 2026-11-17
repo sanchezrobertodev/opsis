@@ -4,13 +4,14 @@ import { useMutation } from "@tanstack/react-query";
 import { LoaderCircle, Sparkles } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { toast } from "sonner";
-import { api, type ModelDetail, mediaUrl, unwrap } from "@/lib/api";
+import { api, type Asset, type ModelDetail, mediaUrl, unwrap } from "@/lib/api";
 import { cn, usd } from "@/lib/cn";
 import { KIND_LABEL, useElements } from "@/lib/elements";
+import { completeMention, hasPictures, typedMention } from "@/lib/mentions";
 import { useClaudeCost } from "@/components/llm/ClaudeCost";
 
-/** An `@partial` right before the caret (same rule as the server's mention parser). */
-const TRIGGER = /(?:^|[^\w@])@([A-Za-z0-9_-]{0,40})$/;
+/** One entry of the mention list: what picking it writes after the @, and how it shows. */
+type Suggestion = { key: string; text: string; name: string; handle: string; note: string; cover: Asset | null };
 
 export function PromptBox({
   model,
@@ -32,7 +33,7 @@ export function PromptBox({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const id = useId();
-  const [query, setQuery] = useState<string | null>(null);
+  const [query, setQuery] = useState<{ slug: string; look: string | null } | null>(null);
   const [active, setActive] = useState(0);
   const { data: elements } = useElements();
   const max = model.prompt.max_chars;
@@ -58,37 +59,50 @@ export function PromptBox({
     }
   }
 
-  const matches =
-    query === null
-      ? []
-      : (elements ?? [])
-          .filter((e) => e.slug.startsWith(query) || e.name.toLowerCase().includes(query))
-          .slice(0, 6);
+  /** The saved elements whose handle or name starts what's typed, or after `@handle:` that character's looks. */
+  function suggestions(): Suggestion[] {
+    if (query === null) return [];
+    const { slug: typed, look: partial } = query;
+    if (partial !== null) {
+      const e = elements?.find((x) => x.slug === typed);
+      return e ? Object.entries(e.looks)
+        .filter(([slug, l]) => slug.startsWith(partial) || l.name.toLowerCase().includes(partial))
+        .slice(0, 6)
+        .map(([slug, l]) => ({ key: slug, text: `${e.slug}:${slug}`, name: `${e.name}, ${l.name}`,
+                               handle: `${e.handle}:${slug}`, note: "look",
+                               cover: e.images.find((i) => i.look === slug)?.asset ?? e.cover })) : [];
+    }
+    return (elements ?? [])
+      .filter((e) => e.slug.startsWith(typed) || e.name.toLowerCase().includes(typed))
+      .slice(0, 6)
+      .map((e) => ({ key: e.id, text: e.slug, name: e.name, handle: e.handle,
+                     note: KIND_LABEL[e.kind].toLowerCase() + (e.kind === "cast"
+                       ? `, ${e.members.length} character${e.members.length === 1 ? "" : "s"}`
+                       : hasPictures(e) ? "" : ", no images"),
+                     cover: e.cover ?? e.members[0]?.cover ?? null }));
+  }
+  const matches = suggestions();
   const open = matches.length > 0;
 
   function sync(el: HTMLTextAreaElement) {
-    const m = TRIGGER.exec(el.value.slice(0, el.selectionStart));
-    const next = m && el.selectionStart === el.selectionEnd ? m[1].toLowerCase() : null;
-    if (next !== query) {
-      setQuery(next);
+    const typed = el.selectionStart === el.selectionEnd ? typedMention(el.value.slice(0, el.selectionStart)) : null;
+    if (typed?.slug !== query?.slug || typed?.look !== query?.look) {
+      setQuery(typed && { slug: typed.slug, look: typed.look });
       setActive(0);
     }
   }
 
-  function pick(slug: string) {
+  /** Writes `@text` (a handle, or `handle:look`) over what's typed before the caret. */
+  function pick(text: string) {
     const el = ref.current;
     if (!el) return;
-    const caret = el.selectionStart;
-    const m = TRIGGER.exec(value.slice(0, caret));
-    if (!m) return;
-    const start = caret - m[1].length - 1;
-    const rest = value.slice(caret).replace(/^[A-Za-z0-9_-]*\s?/, "");
-    onChange(`${value.slice(0, start)}@${slug} ${rest}`);
+    const next = completeMention(value, el.selectionStart, text);
+    if (!next) return;
+    onChange(next.value);
     setQuery(null);
-    const pos = start + slug.length + 2;
     requestAnimationFrame(() => {
       el.focus();
-      el.setSelectionRange(pos, pos);
+      el.setSelectionRange(next.caret, next.caret);
     });
   }
 
@@ -141,7 +155,7 @@ export function PromptBox({
             }
             if (e.key === "Enter" || e.key === "Tab") {
               e.preventDefault();
-              pick(matches[active].slug);
+              pick(matches[active].text);
               return;
             }
             if (e.key === "Escape") {
@@ -163,33 +177,32 @@ export function PromptBox({
         <ul
           id={`${id}-mentions`}
           role="listbox"
-          aria-label="Characters, locations and props"
+          aria-label={query?.look != null ? "Looks" : "Characters, locations and props"}
           className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-[var(--radius-control)] border border-line bg-sheet py-1 shadow-lg shadow-black/40"
         >
-          {matches.map((e, i) => (
+          {matches.map((s, i) => (
             <li
-              key={e.id}
+              key={s.key}
               id={`${id}-m${i}`}
               role="option"
               aria-selected={i === active}
               onMouseDown={(ev) => {
                 ev.preventDefault(); // keep focus and caret in the textarea
-                pick(e.slug);
+                pick(s.text);
               }}
               onMouseEnter={() => setActive(i)}
               className={cn("flex cursor-pointer items-center gap-3 px-2 py-1.5", i === active && "bg-raised")}
             >
               <span className="size-8 shrink-0 overflow-hidden rounded-[4px] bg-bay">
-                {e.cover && (
+                {s.cover && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={mediaUrl(e.cover.thumb_url ?? e.cover.url)} alt="" className="size-full object-cover" />
+                  <img src={mediaUrl(s.cover.thumb_url ?? s.cover.url)} alt="" className="size-full object-cover" />
                 )}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-chalk">{e.name}</span>
+                <span className="block truncate text-sm text-chalk">{s.name}</span>
                 <span className="block truncate text-2xs text-faint">
-                  <span className="text-tungsten">{e.handle}</span>, {KIND_LABEL[e.kind].toLowerCase()}
-                  {e.images.length ? "" : ", no images"}
+                  <span className="text-tungsten">{s.handle}</span>, {s.note}
                 </span>
               </span>
             </li>
