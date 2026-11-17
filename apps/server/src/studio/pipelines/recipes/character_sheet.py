@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from studio.db.models import StepKind
 from studio.director.library import get_library
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
-from studio.pipelines.recipes.common import with_param
+from studio.pipelines.recipes.common import mention_refs, with_param
 from studio.pipelines.recipes.vlog import SLUG, frame_mode
 from studio.registry.loader import Registry
 
@@ -98,8 +98,7 @@ class CharacterSheetRecipe(Recipe):
 
     def jobs(self, inp: CharacterSheetInput, reg: Registry) -> list[PlannedJob]:
         model_id, mode_id, params = self._job(inp, reg)
-        role = (reg.models[model_id].elements or {}).get("ref_role", "image_references")
-        return [PlannedJob(model_id, mode_id, params, (role,))]
+        return [PlannedJob(model_id, mode_id, params, mention_refs(reg.models[model_id], mode_id, characters=1))]
 
     def plan(self, inp: CharacterSheetInput, settled: Settled, reg: Registry) -> list[StepSpec]:
         model_id, mode_id, params = self._job(inp, reg)

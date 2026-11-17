@@ -233,3 +233,48 @@ def test_another_style_names_the_style_and_lets_the_medium_go():
         CharacterLookInput(character="maya", look="Winter Coat", name="Winter", outfit="a coat")
     with pytest.raises(ValidationError):
         CharacterLookInput(character="maya", look="winter", name="Winter", outfit="a coat", count=5)
+
+
+def test_a_take_is_priced_with_the_pictures_its_mentions_attach():
+    """A character's two main pictures and a saved style's two, within the mode's reference slot: a model that
+    charges per input picture (GPT Image 2.5) isn't quoted for one."""
+    from studio.pipelines.recipes.common import mention_refs
+    from studio.pipelines.recipes.compare import CompareInput
+
+    reg = get_registry()
+    gpt, ref = reg.models["gpt-image-2.5"], "image_references"
+    look = CharacterLookInput(
+        character="maya",
+        element_id=uuid.uuid4(),
+        look="winter",
+        name="Winter",
+        outfit="a coat",
+        model_id="gpt-image-2.5",
+        count=2,
+    )
+    recipe = get_recipe("character_look")
+    assert [j.roles for j in recipe.jobs(look, reg)] == [(ref,) * 2] * 2
+    assert recipe.jobs(look.model_copy(update={"style": "@inky"}), reg)[0].roles == (ref,) * 4
+    catalog = get_library().styles[0].id  # a catalog style is words only
+    assert recipe.jobs(look.model_copy(update={"style": catalog}), reg)[0].roles == (ref,) * 2
+
+    sheet = CharacterSheetInput(element_id=uuid.uuid4(), slug="maya", image_model_id="gpt-image-2.5")
+    assert get_recipe("character_sheet").jobs(sheet, reg)[0].roles == (ref,) * 2
+    photos = get_recipe("character_photos")
+    assert (
+        photos.jobs(photos.Input(element_id=uuid.uuid4(), slug="maya", count=1), reg)[0].roles == (ref,) * 2
+    )
+
+    # never past the slot, and nothing on a mode without references
+    assert mention_refs(gpt, "edit", characters=1, style="@inky", have=[ref] * 15) == (ref,)
+    assert mention_refs(gpt, "t2i", characters=1, style="@inky") == ()
+    # compare adds a saved style's pictures to the ones given
+    both = CompareInput(
+        prompt="a lighthouse",
+        media=[{"role": ref, "asset_id": str(uuid.uuid4())}],
+        entries=[
+            {"model_id": "gpt-image-2.5", "mode": "edit", "direction": {"style": "@inky"}},
+            {"model_id": "gpt-image-2.5", "mode": "edit"},
+        ],
+    )
+    assert [j.roles for j in get_recipe("compare").jobs(both, reg)] == [(ref,) * 3, (ref,)]

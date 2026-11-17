@@ -13,10 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import StepKind
 from studio.director.compiler import ShotDirection
-from studio.director.elements import IMAGES_PER_KIND, style_slug, unknown_styles
+from studio.director.elements import style_slug, unknown_styles
 from studio.director.library import get_library
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
-from studio.pipelines.recipes.common import mode_for
+from studio.pipelines.recipes.common import mention_refs, mode_for
 from studio.registry.loader import Registry
 
 
@@ -121,13 +121,9 @@ class CompareRecipe(Recipe):
             mode = self._mode(inp, reg, e)
             assert mode is not None
             roles = [m["role"] for m in self._media(inp, reg, e, mode)]
-            # a saved style's pictures attach where the mode takes references (up to two, if there's room): priced
-            # like pictures of yours, so a model that charges per input picture isn't quoted short
-            spec, m = reg.models[e.model_id], reg.models[e.model_id].mode(mode)
-            ref = (spec.elements or {}).get("ref_role", "image_references")
-            slot = m.slot(ref) if m and (spec.elements or {}).get("strategy") == "refs_native" else None
-            if slot and style_slug((take_direction(inp, e) or {}).get("style")):
-                roles += [ref] * max(0, min(IMAGES_PER_KIND["style"], slot.max - roles.count(ref)))
+            # a saved style's pictures attach where the mode takes references, priced like pictures of yours
+            roles += mention_refs(reg.models[e.model_id], mode, style=(take_direction(inp, e) or {}).get("style"),
+                                  have=roles)
             out.append(PlannedJob(e.model_id, mode, e.params, tuple(roles)))
         return out
 

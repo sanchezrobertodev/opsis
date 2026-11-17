@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+from studio.director.elements import IMAGES_PER_KIND, style_slug
 from studio.registry.schema import Mode, ModelSpec
 from studio.registry.virtual import fit_duration
 
@@ -47,6 +50,21 @@ def with_param(spec: ModelSpec, mode_id: str, params: dict, name: str, value: ob
     return {**params, name: value}
 
 
+def mention_refs(spec: ModelSpec, mode_id: str, *, characters: int = 0, style: object = None,
+                 have: Sequence[str] = ()) -> tuple[str, ...]:
+    """The reference pictures a take's @mentions attach, as roles to estimate it with: up to two for each character
+    it mentions and two for a saved style (`@slug`), in what's left of the mode's reference slot after the roles it
+    `have`s, so a model that charges per input picture isn't quoted short. None on a mode that takes no references."""
+    elements = spec.elements or {}
+    ref = elements.get("ref_role", "image_references")
+    mode = spec.mode(mode_id)
+    slot = mode.slot(ref) if mode and elements.get("strategy") == "refs_native" else None
+    if slot is None:
+        return ()
+    want = IMAGES_PER_KIND["character"] * characters + (IMAGES_PER_KIND["style"] if style_slug(style) else 0)
+    return (ref,) * max(0, min(want, slot.max - list(have).count(ref)))
+
+
 def mode_with_op(spec: ModelSpec, op: str) -> Mode | None:
     """The first mode that does `op` (e.g. tts, music, t2i)."""
     return next((m for m in spec.modes if op in m.ops), None)
@@ -80,5 +98,5 @@ def edit_mode(spec: ModelSpec) -> Mode | None:
     return None
 
 
-__all__ = ["bridge_mode", "edit_mode", "fit_duration", "mode_for", "mode_with_op", "multi_shot_mode", "start_frame_mode",
-           "text_mode", "with_param"]
+__all__ = ["bridge_mode", "edit_mode", "fit_duration", "mention_refs", "mode_for", "mode_with_op", "multi_shot_mode",
+           "start_frame_mode", "text_mode", "with_param"]

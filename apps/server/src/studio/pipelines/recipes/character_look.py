@@ -14,7 +14,7 @@ from studio.director.elements import LOOK_SLUG, clip, style_slug, unknown_styles
 from studio.director.library import get_library
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.character_photos import ANGLES
-from studio.pipelines.recipes.common import with_param
+from studio.pipelines.recipes.common import mention_refs, with_param
 from studio.pipelines.recipes.vlog import SLUG, frame_mode
 from studio.registry.loader import Registry
 
@@ -101,8 +101,9 @@ class CharacterLookRecipe(Recipe):
 
     def jobs(self, inp: CharacterLookInput, reg: Registry) -> list[PlannedJob]:
         model_id, mode_id, params = self._job(inp, reg)
-        role = (reg.models[model_id].elements or {}).get("ref_role", "image_references")
-        return [PlannedJob(model_id, mode_id, params, (role,)) for _ in range(inp.count)]
+        # what the @mention attaches, and a saved style's pictures
+        roles = mention_refs(reg.models[model_id], mode_id, characters=1, style=inp.style)
+        return [PlannedJob(model_id, mode_id, params, roles) for _ in range(inp.count)]
 
     def plan(self, inp: CharacterLookInput, settled: Settled, reg: Registry) -> list[StepSpec]:
         model_id, mode_id, params = self._job(inp, reg)
