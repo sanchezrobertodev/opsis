@@ -27,11 +27,10 @@ const VIEWS: { value: ElementView; label: string }[] = [
   { value: "detail", label: "Detail" },
 ];
 
-/** The trait builder's portrait prompt carries the description; anything else is offered as-is. */
+/** The description in the trait builder's portrait prompt; any other prompt names a whole take, so none. */
 function descriptionFrom(prompt: string | undefined): string {
-  if (!prompt) return "";
-  const m = /character portrait of (.+?)\. (?:Waist-up|The whole body)/i.exec(prompt);
-  return (m ? m[1] : prompt).slice(0, 600);
+  const m = /character portrait of (.+?)\. (?:Waist-up|The whole body)/i.exec(prompt ?? "");
+  return m ? m[1].slice(0, 600) : "";
 }
 
 export function SaveAsElement({
@@ -73,7 +72,7 @@ function SaveForm({ asset, prompt, onDone }: { asset: Asset; prompt?: string; on
   function changeKind(k: ElementKind) {
     setKind(k);
     // the prompt names the take's subjects, not a look: a style starts from Claude's look or nothing, the others from
-    // the prompt, unless you've written your own
+    // the designer's description in the prompt or nothing, unless you've written your own
     if (!(typed.current.description && description.trim())) {
       setDescription(k === "style" ? (style?.look ?? "") : descriptionFrom(prompt));
     }
@@ -112,7 +111,7 @@ function SaveForm({ asset, prompt, onDone }: { asset: Asset; prompt?: string; on
           Save to
           <select value={target} onChange={(e) => setTarget(e.target.value)} className={`h-10 ${field}`}>
             <option value="new">A new character, location or prop</option>
-            {(elements ?? []).map((e) => (
+            {(elements ?? []).filter((e) => e.kind !== "voice").map((e) => (
               <option key={e.id} value={e.id}>
                 {e.name} ({KIND_LABEL[e.kind].toLowerCase()}, {e.images.length} image{e.images.length === 1 ? "" : "s"})
               </option>

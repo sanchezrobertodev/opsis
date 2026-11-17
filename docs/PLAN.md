@@ -296,7 +296,10 @@ dialect, and a broken style or vocabulary file no longer takes the routes down. 
 in 2-6 styles as a `compare` run (each entry its own direction and label), priced first, picked side by side. My
 styles: style Elements made from 1-4 pictures that Claude looks at and describes (`POST /llm/describe-style`, vision
 in `structured(images=)`), used as `direction.style: "@slug"` (the look phrased in, its pictures attached as
-references where the mode takes them).
+references where the mode takes them). Character designer: its vocabulary and eight starter characters are registry
+data (`registry/characters/`, `GET /characters/catalog`, checked on load), with new expression, accessory and colors
+traits; traits can be locked through Randomize, and Claude fills them in from a photo or a sentence
+(`POST /characters/draft`, saves nothing).
 - **Step 0 — Handoff:**
   1. Save the research reports to `docs/research/`.
   2. Write `CLAUDE.md` (conventions, "add a model" checklist), the plan copy, `.gitignore`, `git init`.

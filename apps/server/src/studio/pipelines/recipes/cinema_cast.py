@@ -17,8 +17,8 @@ from studio.pipelines.recipes.common import text_mode, with_param
 from studio.registry.loader import Registry
 from studio.registry.schema import Mode, ModelSpec
 
-PORTRAIT = ("Character reference portrait of @{slug}: front view, head and shoulders, neutral expression, looking at "
-            "the camera, plain light grey background, soft even light, sharp focus on the face.")
+PORTRAIT = ("Character reference portrait of @{slug}: front view, head and shoulders, {expression} expression, looking "
+            "at the camera, plain light grey background, soft even light, sharp focus on the face.")
 
 
 class CastRef(BaseModel):
@@ -26,6 +26,8 @@ class CastRef(BaseModel):
     slug: str = Field(min_length=1, max_length=40)
     style: str | None = Field(None, description="A picture style to draw it in (the designer's): a catalog id, or "
                                                  "@handle for a saved style")
+    # the designer's pick, which stays out of the description: a mention would fix the face for every shot
+    expression: str = Field("neutral", min_length=1, max_length=40, description="The face it makes, e.g. smiling")
 
 
 class CinemaCastInput(BaseModel):
@@ -77,7 +79,8 @@ class CinemaCastRecipe(Recipe):
             key = f"portrait[{c.slug}]"
             # not tagged with the film: a portrait isn't one of its takes
             specs.append(StepSpec(key, StepKind.generate, f"A portrait of @{c.slug}", {
-                "model_id": spec.id, "mode": mode.id, "prompt": PORTRAIT.format(slug=c.slug), "params": params,
+                "model_id": spec.id, "mode": mode.id, "prompt": PORTRAIT.format(slug=c.slug, expression=c.expression),
+                "params": params,
                 "media": [], "direction": {"style": c.style} if c.style else None}))
             if out := ok(settled, key):
                 specs.append(StepSpec(f"keep[{c.slug}]", StepKind.local, f"Keep it as @{c.slug}'s picture", {

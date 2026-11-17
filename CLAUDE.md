@@ -185,6 +185,29 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   `Styles: <prompt>`; on the cheapest provider and without the Avoid text, which compare doesn't carry). The
   designer's Style trait takes a `@slug` too (`designerStyle`).
 
+## Character designer
+- Its vocabulary is data in `registry/characters/` (`studio/characters/traits.py`, `GET /characters/catalog`; reloaded
+  when a file, the styles or the registry change; a broken file keeps the last good copy and fails `load_registry` like
+  a broken style, so `/health` reports it). `traits.yaml`: the presentations, then a person's and a creature's traits
+  in the designer's order, each with options (`by_presentation` adds a presentation's own, like
+  outfits; `multi` takes several, saved joined with ", ") and the wording descriptions use (`phrase`: `{o}` the option,
+  `{a}` it with a/an; per-option `overrides`). Characters keep the option strings in `attributes.traits`: never rename
+  one. Each option needs its tile in both sizes, `apps/web/public/designer/<set>/[full/]<key>-<slug>.webp` (a set per
+  presentation, the Presentation row's in `man/`; the slug is the option lowercased, other characters as `-`).
+  `starters.yaml`: starter characters (traits, a catalog style, a `voice_model` voice, a summary; portraits in
+  `apps/web/public/starters/characters/<id>.webp`); a pick, style or voice that doesn't exist fails the load.
+  `tests/unit/test_characters.py` checks the tiles, the portraits and that saved option strings stay.
+- The saved description leaves out the expression, so a mention leaves the face to each shot; the designer's own
+  pictures get it (`expressionOf`: Try in Create image's takes, and the portrait drawn on saving, `cinema_cast`'s
+  `expression`). A first mention carries up to `DESCRIPTION_LIMIT` (300, `director/elements.py`; the web's `LOOK_MAX`)
+  of a description, cut after its last whole phrase.
+- A locked trait (the lock in its legend) keeps its pick through Randomize (`lib/designer.ts:randomizeTraits`), a
+  draft and a starter; switching between a person and a creature keeps only the presentation's and style's locks
+  (`keptLocks`). `POST /characters/draft` (`characters/writer.py`; a picture or a sentence, saves nothing) has
+  Claude's fast model pick the traits, a name and a catalog style from what shows (never who it is, never heritage);
+  purposes `character.from_photo` and `character.from_text`. The mock answers a picture with a starter chosen by its
+  hash, a sentence with the options it names.
+
 ## Adding a template (guided stories)
 - The Templates page (`/templates`, formerly Presets) shows presets and guided templates. A template is one YAML in
   `registry/templates/<id>.yaml`: `recipe`, a fixed recipe `input` whose string values may hold `{key}` blanks from

@@ -53,6 +53,21 @@ def test_a_broken_style_file_is_rejected_like_a_broken_model(tmp_path):
     assert holder.last_error and "watercolor-chronicle.yaml" in holder.last_error[-1]
 
 
+def test_a_broken_character_file_is_rejected_like_a_broken_model(tmp_path):
+    """The designer's vocabulary and starters, so /health and the open pages hear of a mistake there too."""
+    root = tmp_path / "registry"
+    shutil.copytree(get_settings().resolve_registry_dir(), root)
+    holder = RegistryHolder(root, check_every=0)
+    good = holder.current
+    starters = root / "characters" / "starters.yaml"
+    starters.write_text(starters.read_text(encoding="utf-8").replace("voice_id: IKne3meq5aSn9XLyUdCD", "voice_id: x"),
+                        encoding="utf-8")
+    with pytest.raises(RegistryError, match=r"starter kai-mendes: 'x' isn't one of eleven-v4's voices"):
+        load_registry(root)
+    assert holder.current is good
+    assert holder.last_error and "kai-mendes" in holder.last_error[-1]
+
+
 def test_wording_for_a_dialect_no_model_uses_fails_the_load(tmp_path):
     root = tmp_path / "registry"
     shutil.copytree(get_settings().resolve_registry_dir(), root)

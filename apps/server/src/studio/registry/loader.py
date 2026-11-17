@@ -186,6 +186,12 @@ def load_registry(root: Path, user_dir: Path | None = None) -> Registry:
     except Exception as exc:  # a broken vocabulary or style file is rejected like a broken model
         raise RegistryError([*errors, f"director library: {exc}"]) from exc
     _fill_director_options(models, library, errors)
+    from studio.characters.traits import read_characters  # local import: the catalog reads the registry
+
+    try:  # the character designer's vocabulary and starters, with their styles and voices from here
+        read_characters(root, {s.id for s in library.styles}, models)
+    except ValueError as exc:
+        errors.append(str(exc))
 
     presets: dict[str, PresetSpec] = _load_specs(roots, "presets", PresetSpec, errors, warnings)
     templates: dict[str, TemplateSpec] = _load_specs(roots, "templates", TemplateSpec, errors, warnings)

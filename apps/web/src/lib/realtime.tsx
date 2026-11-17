@@ -81,9 +81,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       } else if (msg.type === "system.registry_reloaded") {
         qc.invalidateQueries({ queryKey: keys.registry });
         qc.invalidateQueries({ queryKey: ["model"] });
-        // the director's looks and the picture styles (Faceless offers some) are registry files too
+        // the director's looks, the picture styles (Faceless offers some) and the character designer's vocabulary
+        // are registry files too
         qc.invalidateQueries({ queryKey: ["director-library"] });
         qc.invalidateQueries({ queryKey: ["faceless", "catalog"] });
+        qc.invalidateQueries({ queryKey: ["characters", "catalog"] });
         toast("Model registry reloaded");
       } else if (msg.type === "system.registry_error") {
         toast.error("Registry change rejected. Keeping the last working version; check the API log.");

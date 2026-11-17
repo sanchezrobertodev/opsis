@@ -31,7 +31,22 @@ from studio.registry.schema import MediaSlot, ModelSpec
 MENTION = re.compile(r"(?<![\w@])@([A-Za-z0-9][A-Za-z0-9_-]{0,39})")
 KIND_ORDER = {"character": 0, "location": 1, "prop": 2, "style": 3, "voice": 4}
 IMAGES_PER_KIND = {"character": 2, "location": 1, "prop": 1, "style": 2}
-DESCRIPTION_LIMIT = 220
+# what a first mention says of an element: room for the character designer's longest description (about 255
+# characters for a person, 295 for a creature with every feature; web lib/designer.ts), mirrored by the web's LOOK_MAX
+DESCRIPTION_LIMIT = 300
+
+
+def clip(text: str, limit: int, *, at_comma: bool = False) -> str:
+    """One line of at most `limit` characters, cut at the last whole cue (`at_comma`) or word that fits, without
+    the trailing punctuation a cut leaves."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text.rstrip(" ,;")
+    head = text[: limit + 1]  # a comma or space right at the limit still counts as a boundary
+    cut = head.rfind(",") if at_comma else -1
+    if cut < limit // 2:
+        cut = head.rfind(" ")
+    return (head[:cut] if cut > 0 else text[:limit]).rstrip(" ,;.")
 
 
 def slugify(name: str) -> str:
@@ -231,7 +246,8 @@ async def resolve_mentions(
             other = next((m.label for m in spec.modes if voice_role and m.slot(voice_role)), None)
             res.warnings.append(f"{spec.name} {mode.label if mode else mode_id} speaks in its own voice, so "
                                 f"@{element.slug}'s voice isn't used" + (f" ({other} can take it)." if other else "."))
-        description = (element.description or "").strip()[:DESCRIPTION_LIMIT].rstrip(" .")
+        # a long one ends after its last whole phrase that fits, never mid-word
+        description = clip(element.description or "", DESCRIPTION_LIMIT, at_comma=True).rstrip(" .")
         first = f"{label}, {description}," if description else label
         replacements[element.slug] = (first, label)
         res.names[element.slug] = label
