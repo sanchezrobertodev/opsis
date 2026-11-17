@@ -16,6 +16,7 @@ from studio import keys as provider_keys
 from studio.api import mcp_tools
 from studio.api.routers import (
     assets,
+    characters,
     codex,
     director,
     elements,
@@ -153,6 +154,7 @@ async def _illegal(_: Request, exc: IllegalTransition) -> JSONResponse:
 app.include_router(registry.router)
 app.include_router(director.router)
 app.include_router(elements.router)
+app.include_router(characters.router)
 app.include_router(presets.router)
 app.include_router(templates.router)
 app.include_router(llm.router)

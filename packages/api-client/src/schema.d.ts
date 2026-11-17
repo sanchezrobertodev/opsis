@@ -187,6 +187,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/characters/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Catalog
+         * @description The designer's presentations, a person's and a creature's traits (registry/characters/traits.yaml) and the
+         *     starter characters (starters.yaml).
+         */
+        get: operations["catalog_characters_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/characters/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft
+         * @description Claude fills in the designer from a picture or a sentence: traits, a name and a style. Saves nothing. Billed to
+         *     your budget in live LLM mode.
+         */
+        post: operations["draft_characters_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/presets": {
         parameters: {
             query?: never;
@@ -1887,6 +1929,107 @@ export interface components {
             defaults?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** CharacterCatalog */
+        CharacterCatalog: {
+            /**
+             * Presentations
+             * @description 'non-human creature' takes the creature traits, the others a person's
+             */
+            presentations: string[];
+            /** Person */
+            person: components["schemas"]["CharacterTrait"][];
+            /** Creature */
+            creature: components["schemas"]["CharacterTrait"][];
+            /**
+             * Voice Model
+             * @description The model the starters' voices are from
+             */
+            voice_model: string;
+            /** Starters */
+            starters: components["schemas"]["StarterCharacter"][];
+        };
+        /** CharacterDraftIn */
+        CharacterDraftIn: {
+            /**
+             * Asset Id
+             * @description A picture of yours (a clip gives its middle frame)
+             */
+            asset_id?: string | null;
+            /**
+             * Text
+             * @description A sentence about the character
+             */
+            text?: string | null;
+        };
+        /** CharacterDraftOut */
+        CharacterDraftOut: {
+            /**
+             * Name
+             * @description A name for the character, invented unless the sentence gave one
+             */
+            name: string;
+            /**
+             * Traits
+             * @description The presentation and each of its traits, as the designer saves them: '' for Any, several picks joined with ', '
+             */
+            traits: {
+                [key: string]: string;
+            };
+            /**
+             * Style
+             * @description A catalog style id, or '' for none
+             */
+            style: string;
+            /** Model */
+            model: string;
+            /**
+             * Mock
+             * @description LLM_MODE=mock: a canned draft, nothing was billed
+             */
+            mock: boolean;
+            /** Cost Usd */
+            cost_usd: number;
+        };
+        /** CharacterTrait */
+        CharacterTrait: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Options
+             * @description Shown for every presentation
+             */
+            options: string[];
+            /**
+             * Multi
+             * @description Several picks, saved as one string joined with ', '
+             * @default false
+             */
+            multi: boolean;
+            /**
+             * By Presentation
+             * @description A presentation's own options, shown after the shared ones (the man's with none picked)
+             * @default {}
+             */
+            by_presentation: {
+                [key: string]: string[];
+            };
+            /**
+             * Phrase
+             * @description How a pick reads in a description: {o} is the option, {a} the option after a/an. Empty: worded together with other traits in code
+             * @default
+             */
+            phrase: string;
+            /**
+             * Overrides
+             * @description The wording of single options, instead of the phrase
+             * @default {}
+             */
+            overrides: {
+                [key: string]: string;
+            };
         };
         /** CheckpointAnswer */
         CheckpointAnswer: {
@@ -4391,6 +4534,35 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** StarterCharacter */
+        StarterCharacter: {
+            /**
+             * Id
+             * @description Its portrait is apps/web/public/starters/characters/<id>.webp
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Summary */
+            summary: string;
+            /**
+             * Traits
+             * @description Designer picks as saved in attributes.traits, presentation included
+             */
+            traits: {
+                [key: string]: string;
+            };
+            /**
+             * Style
+             * @description A catalog style id
+             */
+            style: string;
+            /**
+             * Voice Id
+             * @description A voice_id option of the catalog's voice_model
+             */
+            voice_id: string;
+        };
         /** StepOut */
         StepOut: {
             /** Key */
@@ -5212,6 +5384,78 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    catalog_characters_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterCatalog"];
+                };
+            };
+        };
+    };
+    draft_characters_draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CharacterDraftIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterDraftOut"];
+                };
+            };
+            /** @description Spending limit */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A picture that can't go */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Claude failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No Anthropic key */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from studio.director.elements import clip
 from studio.director.library import StyleCategory
 from studio.llm.client import LLMError, LLMResult, model_for, structured
 from studio.llm.images import load
@@ -75,19 +76,6 @@ MOCK_LOOKS = (
 
 def _mock(content_hash: str | None) -> StyleLook:
     return MOCK_LOOKS[sum(map(ord, content_hash or "")) % len(MOCK_LOOKS)].model_copy()
-
-
-def clip(text: str, limit: int, *, at_comma: bool = False) -> str:
-    """One line of at most `limit` characters, cut at the last whole cue (`at_comma`) or word that fits, without
-    the trailing punctuation a cut leaves."""
-    text = " ".join(text.split())
-    if len(text) <= limit:
-        return text.rstrip(" ,;")
-    head = text[: limit + 1]  # a comma or space right at the limit still counts as a boundary
-    cut = head.rfind(",") if at_comma else -1
-    if cut < limit // 2:
-        cut = head.rfind(" ")
-    return (head[:cut] if cut > 0 else text[:limit]).rstrip(" ,;.")
 
 
 async def describe_style(

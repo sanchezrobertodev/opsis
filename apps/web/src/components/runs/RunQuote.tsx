@@ -1,10 +1,12 @@
 "use client";
 
-import type { ModelSummary } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { ApiError, type ModelSummary } from "@/lib/api";
 import { usd } from "@/lib/cn";
 import { useDebounced } from "@/lib/hooks";
 import { useRegistry } from "@/lib/queries";
-import { type RunCreate, useEstimateRun } from "@/lib/runs";
+import { type RunCreate, useEstimateRun, useStartRun } from "@/lib/runs";
 import { Field, Select } from "@/components/ui/controls";
 
 export type Quote = {
@@ -74,4 +76,25 @@ export function ModelSelect({ id, label = "Model", models, recommended, value, o
       <Select id={id} value={value} onChange={onChange} options={options} />
     </Field>
   );
+}
+
+/** Starts a run whose price the button showed, so pressing it confirms that spend, then opens the run. */
+export function useStartQuoted(started: string) {
+  const router = useRouter();
+  const start = useStartRun();
+  async function go(body: RunCreate, quote: Quote) {
+    try {
+      const run = await start.mutateAsync({ ...body, confirm_cost_usd: quote.charged });
+      toast.success(started);
+      router.push(`/runs/${run.id}`);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const now = (err.body as { estimate_usd: number }).estimate_usd;
+        toast.error(`The price changed to about ${usd(now)}. Check it and press again.`);
+        return;
+      }
+      toast.error(err instanceof Error ? err.message : "Couldn't start it");
+    }
+  }
+  return { go, pending: start.isPending };
 }

@@ -140,7 +140,7 @@ test("a take saved as a style: Claude describes its picture in place of the prom
   await page.goto("/create/image");
   await page.getByRole("button", { name: "Save to Characters" }).click();
   const dialog = page.getByRole("dialog", { name: "Save to Characters" });
-  await expect(dialog.getByLabel("Description")).toHaveValue("A lighthouse at dusk");
+  await expect(dialog.getByLabel("Description")).toHaveValue(""); // a take's prompt names more than the subject
   await dialog.getByRole("radio", { name: "Style" }).click();
   await expect(dialog.getByLabel("Look")).toHaveValue(""); // the prompt's lighthouse isn't a look
   await expect(dialog.getByLabel("This image shows")).toHaveCount(0); // a style's picture shows its look

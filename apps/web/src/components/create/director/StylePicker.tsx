@@ -34,8 +34,9 @@ const TILE = "flex h-full w-full flex-col gap-1.5 rounded-[var(--radius-control)
 const tileTone = (on: boolean) => (on ? "border-tungsten/60 bg-raised" : "border-line-soft hover:border-tungsten/50");
 const NO_STYLE = "The prompt and the model decide the look.";
 const FIELD = "rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60";
-/** How much of a saved style's look reaches a prompt (the server's mention description limit). */
-export const LOOK_MAX = 220;
+/** How much of a saved style's look reaches a prompt (the server's mention description limit,
+ * `director/elements.py:DESCRIPTION_LIMIT`). */
+export const LOOK_MAX = 300;
 const STYLE_SLOT: MediaSlot = {
   role: "style_image", kinds: ["image"], label: "Pictures in the style", max: 4, min: 1, required: true, auto: false,
 };

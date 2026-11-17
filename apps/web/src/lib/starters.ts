@@ -1,18 +1,11 @@
 import type { ElementKind } from "./elements";
 
-/** Built-in styles and locations to start from: a picture in `public/starters/` and the words models without
- * reference images get. The name sets the @handle. */
-export type Starter = { file: string; kind: Extract<ElementKind, "style" | "location">; name: string; description: string };
+/** Built-in locations to start from: a picture in `public/starters/` and the words models without reference images
+ * get. The name sets the @handle. (Starter characters are registry data, `registry/characters/starters.yaml`; picture
+ * styles are the style catalog's.) */
+export type Starter = { file: string; kind: Extract<ElementKind, "location">; name: string; description: string };
 
 export const STARTERS: Starter[] = [
-  { file: "noir", kind: "style", name: "Noir",
-    description: "black-and-white film noir: hard shadows, rain-slicked streets, deep blacks, 1940s mood" },
-  { file: "watercolor", kind: "style", name: "Watercolor",
-    description: "soft watercolor storybook illustration: loose washes, paper texture, gentle pastels" },
-  { file: "neon-city", kind: "style", name: "Neon city",
-    description: "neon cyberpunk night: magenta and cyan neon, wet reflections, haze, high contrast" },
-  { file: "golden-film", kind: "style", name: "Golden film",
-    description: "35mm film in golden-hour light: warm amber and teal, soft grain, gentle halation" },
   { file: "harbour", kind: "location", name: "Harbour",
     description: "a small stone fishing harbour at dawn: mist, moored wooden boats, a lighthouse on the breakwater" },
   { file: "diner", kind: "location", name: "Desert diner",
