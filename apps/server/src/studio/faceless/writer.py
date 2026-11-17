@@ -130,11 +130,12 @@ async def suggest_topics(session: AsyncSession, user_id: uuid.UUID, *, theme: Th
 
 async def write_script(session: AsyncSession, user_id: uuid.UUID, *, topic: str, theme: Theme, minutes: float,
                        language: str = "English", notes: str = "", star: str = "", fmt: Format = "motion",
-                       wpm: float = WORDS_PER_MINUTE) -> LLMResult[Script]:
+                       wpm: float = WORDS_PER_MINUTE, star_profile: str = "") -> LLMResult[Script]:
     words = target_words(minutes, fmt, wpm)
     prompt = "\n".join(line for line in [
         f"Topic: {topic}",
         f"The video stars {star}; call it by that name." if star else "",
+        f"Keep {star} in character:\n{star_profile}" if star and star_profile else "",
         f"Theme guidance: {theme.script_guidance}",
         f"Length: {words} words at most, and not much fewer (it is read at about {round(wpm)} words a minute, and "
         f"the video must not run past {_duration(minutes)}).",

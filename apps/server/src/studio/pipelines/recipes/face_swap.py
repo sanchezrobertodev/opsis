@@ -18,10 +18,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import StepKind
-from studio.director.elements import UNATTACHED_VIEWS
+from studio.director.elements import SLUG, UNATTACHED_VIEWS
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import mode_with_op
-from studio.pipelines.recipes.vlog import SLUG
 from studio.registry.loader import Registry
 from studio.registry.schema import Mode, ModelSpec
 

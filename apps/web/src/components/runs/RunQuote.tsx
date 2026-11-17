@@ -1,8 +1,10 @@
 "use client";
 
+import type { Schemas } from "@opsis/api-client";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ApiError, type ModelSummary } from "@/lib/api";
+import { api, ApiError, type ModelSummary, unwrap } from "@/lib/api";
 import { usd } from "@/lib/cn";
 import { useDebounced } from "@/lib/hooks";
 import { useRegistry } from "@/lib/queries";
@@ -37,6 +39,25 @@ export function useRunQuote(body: RunCreate | null): Quote {
     mock,
     error: current && estimate.error instanceof Error ? estimate.error.message : null,
   };
+}
+
+/** What one take of a generation request costs where it would run now (mock mode: what it would cost live), as a
+ * run's quote: a preset's take, or a character placed somewhere. */
+export function useTakeQuote(req: Schemas["PresetRenderOut"] | null): Quote {
+  const est = useQuery({
+    queryKey: ["estimate", req],
+    queryFn: () => unwrap(api.POST("/registry/estimate", {
+      body: { ...req!, direction: req!.direction ?? null, route_policy: "cheapest_healthy" } })),
+    enabled: Boolean(req),
+    retry: false,
+  });
+  const d = req ? est.data : undefined;
+  const chosen = d?.candidates.find((c) => c.route_id === d.chosen_route_id);
+  const noRoute = d && !chosen ? (d.candidates.find((c) => !c.is_mock)?.reason ?? "No provider can run this right now.") : null;
+  const error = !req ? null : est.error instanceof Error ? est.error.message : noRoute;
+  const mock = chosen?.is_mock ?? false;
+  return { usd: chosen ? ((mock ? d?.live_reference?.estimate_usd : d?.estimate_usd) ?? null) : null,
+           claude: null, charged: d?.estimate_usd ?? null, count: chosen ? 1 : null, mock, error };
 }
 
 /** Whether two requests are the same, field for field (they're rebuilt on every render). */

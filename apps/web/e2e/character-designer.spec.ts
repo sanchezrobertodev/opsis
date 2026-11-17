@@ -81,7 +81,7 @@ async function studio(page: Page, draft: Record<string, unknown>) {
     const slug = body.name.toLowerCase().replace(/\s+/g, "-");
     const e = { id: `e${saved.length + 1}`, kind: body.kind, name: body.name, slug, handle: `@${slug}`, description: body.description,
                 attributes: body.attributes, voice: body.voice ?? null, lora: null, cover: null, images: [], looks: {}, members: [],
-                created_at: "2026-11-17T10:00:00Z" };
+                profile: { personality: "", backstory: "", catchphrases: [], speech: "" }, created_at: "2026-11-17T10:00:00Z" };
     saved.unshift(e);
     return route.fulfill({ status: 201, json: e });
   });

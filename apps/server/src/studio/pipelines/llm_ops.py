@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.budget.guard import BudgetBlocked
+from studio.characters.profile import profile_block
 from studio.db.models import Asset, Element, ElementAsset, ElementKind, Generation, PipelineRun, PipelineStep
 from studio.director.elements import UNATTACHED_VIEWS, worn
 from studio.domain.enums import AssetStatus
@@ -54,12 +55,13 @@ async def faceless_script(session: AsyncSession, run: PipelineRun, step: Pipelin
     if theme is None:
         raise StepFailed(f"unknown theme {inp['theme']!r}")
     # a starring character is checked before the paid script, so a bad handle fails early
-    star = (await _star(session, run, inp["character"])).name if inp.get("character") else ""
+    element = await _star(session, run, inp["character"]) if inp.get("character") else None
     wpm = await voice_pace(session, run.user_id, inp.get("voice_model", ""), inp.get("voice_id", ""))
     fmt = inp.get("format", "motion")
     res = await write_script(session, run.user_id, topic=inp["topic"], theme=theme, minutes=inp["minutes"],
-                             language=inp.get("language", "English"), notes=inp.get("notes", ""), star=star,
-                             fmt=fmt, wpm=wpm)
+                             language=inp.get("language", "English"), notes=inp.get("notes", ""),
+                             star=element.name if element else "", fmt=fmt, wpm=wpm,
+                             star_profile=profile_block(element.profile) if element else "")
     return {"title": res.output.title, "script": res.output.narration, "model": res.model,
             "cost_usd": float(res.cost_usd), "pace": pace(wpm, fmt)}
 
@@ -140,11 +142,12 @@ async def _star(session: AsyncSession, run: PipelineRun, slug: str) -> Element:
 
 async def vlog_script(session: AsyncSession, run: PipelineRun, step: PipelineStep) -> dict[str, Any]:
     inp = step.input
-    name = inp.get("name", "")
+    name, profile = inp.get("name", ""), ""
     if inp.get("character"):
-        name = name or (await _star(session, run, inp["character"])).name
+        star = await _star(session, run, inp["character"])
+        name, profile = name or star.name, profile_block(star.profile)
     res = await write_vlog(session, run.user_id, idea=inp["idea"], shots=inp["shots"], name=name,
-                           language=inp.get("language", "English"), notes=inp.get("notes", ""))
+                           language=inp.get("language", "English"), notes=inp.get("notes", ""), profile=profile)
     return {"title": res.output.title, "shots": [s.model_dump() for s in res.output.shots], "model": res.model,
             "cost_usd": float(res.cost_usd)}
 

@@ -20,6 +20,7 @@ from studio.api.deps import current_user, get_session
 from studio.api.schemas import AssetOut
 from studio.api.serializers import asset_out
 from studio.budget.guard import BudgetBlocked
+from studio.characters.profile import profile_block
 from studio.cinema.director_chat import DirectorTooLong, Turn, diff, revise
 from studio.cinema.document import MAX_CAST, CinemaDocument, Scene
 from studio.cinema.planner import MAX_SHOTS, ProposedCharacter, plan_shots
@@ -35,6 +36,7 @@ from studio.db.models import (
     SpendLedger,
     User,
 )
+from studio.director.compiler import handle_of
 from studio.director.elements import MENTION, unique_slug
 from studio.domain.enums import SPENT, AssetKind
 from studio.domain.fsm import preview_url
@@ -385,6 +387,18 @@ async def restore_revision(project_id: uuid.UUID, version: int, session: AsyncSe
 # ---------------------------------------------------------------- shot plan and takes
 
 
+async def _cast(session: AsyncSession, user: User, slugs: list[str]) -> list[tuple[str, str]]:
+    """The film's cast as Claude reads it where it writes their lines: each one's handle (a mention wearing a look
+    matches on the handle alone), name and description, and a character's profile under them."""
+    handles = list(dict.fromkeys(h for s in slugs if (h := handle_of("@" + s.strip().lstrip("@")))))
+    if not handles:
+        return []
+    rows = (await session.execute(select(Element).where(
+        Element.user_id == user.id, Element.slug.in_(handles), Element.deleted_at.is_(None)))).scalars().all()
+    return [(e.slug, "\n".join(x for x in (f"{e.name}. {e.description}".strip(), profile_block(
+        e.profile if e.kind == ElementKind.character else None)) if x)) for e in rows]
+
+
 @router.post("/{project_id}/plan", response_model=PlanOut,
              responses={402: {"description": "Spending limit"}, 502: {"description": "Claude failed"},
                         503: {"description": "No Anthropic key"}})
@@ -397,10 +411,7 @@ async def plan(project_id: uuid.UUID, body: PlanIn, session: AsyncSession = Depe
     slugs = doc.cast if body.cast is None else body.cast
     if not (script.strip() or logline.strip()):
         raise HTTPException(422, "write a script or a logline first")
-    cast_rows = (await session.execute(select(Element).where(
-        Element.user_id == user.id, Element.slug.in_(slugs), Element.deleted_at.is_(None)))).scalars().all() \
-        if slugs else []
-    cast = [(e.slug, f"{e.name}. {e.description}".strip()) for e in cast_rows]
+    cast = await _cast(session, user, slugs)
     try:
         result, scenes, characters, warnings = await plan_shots(session, user.id, script=script, logline=logline,
                                                                 cast=cast,
@@ -497,10 +508,7 @@ async def director(project_id: uuid.UUID, body: DirectorIn, session: AsyncSessio
         doc = CinemaDocument.model_validate(stored)
     except ValidationError as exc:
         raise HTTPException(422, f"the storyboard sent isn't valid: {exc.errors()[0]['msg']}") from exc
-    cast_rows = (await session.execute(select(Element).where(
-        Element.user_id == user.id, Element.slug.in_(doc.cast), Element.deleted_at.is_(None)))).scalars().all() \
-        if doc.cast else []
-    cast = [(e.slug, f"{e.name}. {e.description}".strip()) for e in cast_rows]
+    cast = await _cast(session, user, doc.cast)
     try:
         result, scenes, warnings = await revise(session, user.id, doc=doc, message=body.message,
                                                 history=body.history, cast=cast)

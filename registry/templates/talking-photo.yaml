@@ -3,7 +3,8 @@ name: Talking photo
 summary: Make a portrait speak your script, with lips, face and head moving to the voice.
 recipe: talking_shot
 inputs:
-  - {key: image_asset_id, kind: image, label: A portrait}
+  - {key: image_asset_id, kind: image, label: A portrait, alternative: true}
+  - {key: character, kind: character, label: Or one of your characters, alternative: true}
 fields:
   - key: script
     label: What they say

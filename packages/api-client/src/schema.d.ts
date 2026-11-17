@@ -217,6 +217,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/elements/{element_id}/profile/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Element Profile
+         * @description Claude drafts a character's profile from its name, description, traits and looks. Saves nothing: save it
+         *     with PATCH `profile`. Billed to your budget in live LLM mode.
+         */
+        post: operations["draft_element_profile_elements__element_id__profile_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/elements/{element_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Element Likeness
+         * @description Claude compares a picture or clip with the character's pictures (the look's, when the take mentioned
+         *     `@handle:look`) and says how alike they are and what differs. The answer is kept on the asset, in
+         *     `metadata.consistency[<character id>]`. Billed to your budget in live LLM mode.
+         */
+        post: operations["check_element_likeness_elements__element_id__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/characters/catalog": {
         parameters: {
             query?: never;
@@ -2293,6 +2336,19 @@ export interface components {
              */
             lip_synced: boolean;
         };
+        /** Difference */
+        Difference: {
+            /**
+             * Aspect
+             * @enum {string}
+             */
+            aspect: "face" | "hair" | "build" | "outfit" | "colors" | "marks" | "other";
+            /**
+             * Detail
+             * @description What the references show and what the checked picture shows instead, briefly
+             */
+            detail: string;
+        };
         /** DirectorIn */
         DirectorIn: {
             /** Message */
@@ -2417,6 +2473,8 @@ export interface components {
              * @description A cast (group)'s characters, 2-8, in order
              */
             members?: string[] | null;
+            /** @description A character's personality, backstory, catchphrases and how they talk */
+            profile?: components["schemas"]["ElementProfile"] | null;
         };
         /** ElementImageIn */
         ElementImageIn: {
@@ -2545,6 +2603,16 @@ export interface components {
              */
             members: components["schemas"]["ElementMemberOut"][];
             /**
+             * @description A character's personality, backstory, catchphrases and how they talk
+             * @default {
+             *       "personality": "",
+             *       "backstory": "",
+             *       "catchphrases": [],
+             *       "speech": ""
+             *     }
+             */
+            profile: components["schemas"]["ElementProfile"];
+            /**
              * Created At
              * Format: date-time
              */
@@ -2585,6 +2653,38 @@ export interface components {
              * @description A cast (group)'s characters, all of them, in order
              */
             members?: string[] | null;
+            /** @description A character's profile: the fields sent replace the saved ones, the others are kept */
+            profile?: components["schemas"]["ElementProfile"] | null;
+        };
+        /**
+         * ElementProfile
+         * @description Who a character is beyond their look, for the lines writers give them.
+         */
+        ElementProfile: {
+            /**
+             * Personality
+             * @description Their temperament and how it shows
+             * @default
+             */
+            personality: string;
+            /**
+             * Backstory
+             * @description Where they come from and what they want
+             * @default
+             */
+            backstory: string;
+            /**
+             * Catchphrases
+             * @description Lines they'd say, used now and then
+             * @default []
+             */
+            catchphrases: string[];
+            /**
+             * Speech
+             * @description How they talk: pace, words, quirks
+             * @default
+             */
+            speech: string;
         };
         /**
          * EmotionItem
@@ -3077,6 +3177,43 @@ export interface components {
              * @enum {string}
              */
             intensity: "dim" | "normal" | "bright";
+        };
+        /** LikenessIn */
+        LikenessIn: {
+            /**
+             * Asset Id
+             * Format: uuid
+             * @description A picture or a clip of yours (a clip is checked at its middle frame)
+             */
+            asset_id: string;
+        };
+        /** LikenessOut */
+        LikenessOut: {
+            /**
+             * Verdict
+             * @description match: the same character, nothing a viewer would notice; close: clearly them with small differences; different: a viewer would take them for someone else, or they aren't in the picture
+             * @enum {string}
+             */
+            verdict: "match" | "close" | "different";
+            /**
+             * Differences
+             * @description Each difference that matters, the biggest first; none for a match
+             */
+            differences: components["schemas"]["Difference"][];
+            /**
+             * Summary
+             * @description One short sentence for the user
+             */
+            summary: string;
+            /** Model */
+            model: string;
+            /**
+             * Mock
+             * @description LLM_MODE=mock: a canned answer, nothing was billed
+             */
+            mock: boolean;
+            /** Cost Usd */
+            cost_usd: number;
         };
         /** LineageEdge */
         LineageEdge: {
@@ -3678,6 +3815,19 @@ export interface components {
             /** Media */
             media: components["schemas"]["MediaInput"][];
             direction?: components["schemas"]["ShotDirection"] | null;
+        };
+        /** ProfileDraftOut */
+        ProfileDraftOut: {
+            profile: components["schemas"]["ElementProfile"];
+            /** Model */
+            model: string;
+            /**
+             * Mock
+             * @description LLM_MODE=mock: a canned draft, nothing was billed
+             */
+            mock: boolean;
+            /** Cost Usd */
+            cost_usd: number;
         };
         /** ProjectIn */
         ProjectIn: {
@@ -5591,6 +5741,112 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    draft_element_profile_elements__element_id__profile_draft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileDraftOut"];
+                };
+            };
+            /** @description Spending limit */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Claude failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No Anthropic key */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    check_element_likeness_elements__element_id__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                element_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LikenessIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LikenessOut"];
+                };
+            };
+            /** @description Spending limit */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a character, no pictures, or an asset that can't go */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Claude failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No Anthropic key */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

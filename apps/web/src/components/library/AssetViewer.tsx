@@ -1,10 +1,11 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { Download, FolderOpen, ImageUp, PersonStanding, Star, StepForward, Trash2, UserRoundPlus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { type Asset, mediaUrl } from "@/lib/api";
+import { api, type Asset, mediaUrl, unwrap } from "@/lib/api";
 import { cn, seconds } from "@/lib/cn";
 import { useDraft } from "@/lib/draft";
 import {
@@ -17,6 +18,7 @@ import {
   useRevealAsset,
 } from "@/lib/queries";
 import { Button } from "@/components/ui/controls";
+import { LikenessChecks } from "@/components/characters/Likeness";
 import { SaveAsElement } from "@/components/characters/SaveAsElement";
 
 const RELATION_LABEL: Record<string, string> = {
@@ -35,6 +37,16 @@ export function AssetViewer({ asset: initial, onClose }: { asset: Asset | null; 
   const { data: fresh } = useAsset(initial?.id);
   const asset = fresh ?? initial;
   const { data: lineage } = useLineage(asset?.id);
+  // which characters the take that made it mentioned: asked once (useGeneration polls until it has an answer, which a
+  // deleted take never gives)
+  const madeBy = asset?.generation_id;
+  const { data: made } = useQuery({
+    queryKey: ["generation-request", madeBy],
+    queryFn: () => unwrap(api.GET("/generations/{generation_id}", { params: { path: { generation_id: madeBy! } } })),
+    enabled: Boolean(madeBy),
+    staleTime: Infinity,
+    retry: false,
+  });
   const patch = usePatchAsset();
   const remove = useDeleteAsset();
   const reveal = useRevealAsset();
@@ -152,6 +164,8 @@ export function AssetViewer({ asset: initial, onClose }: { asset: Asset | null; 
                   {meta.original_filename && <FragmentRow label="File" value={meta.original_filename} />}
                 </dl>
               </section>
+
+              <LikenessChecks asset={asset} mentions={made?.request.mentions} title="Likeness" />
 
               {lineage && lineage.parents.length > 0 && (
                 <section>

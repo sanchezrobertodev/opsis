@@ -1,5 +1,6 @@
 """Characters, locations, props and styles (Elements), and casts: saved groups of characters. Mention one as
-`@handle` in any prompt, a character's look as `@handle:look`."""
+`@handle` in any prompt, a character's look as `@handle:look`. A character also has a profile (how they behave and
+talk, for the lines writers give them) and a likeness check (Claude compares a take with their pictures)."""
 
 from __future__ import annotations
 
@@ -18,10 +19,15 @@ from studio.api.deps import current_user, get_session
 from studio.api.schemas import AssetOut
 from studio.api.serializers import asset_out
 from studio.budget import modes
+from studio.budget.guard import BudgetBlocked
+from studio.characters.likeness import MAX_REFERENCES, Likeness, check_likeness
+from studio.characters.profile import ElementProfile, draft_profile
 from studio.config import get_settings
-from studio.db.models import Asset, Element, ElementAsset, ElementKind, ElementMember, User
+from studio.db.models import Asset, Element, ElementAsset, ElementKind, ElementMember, Generation, User
 from studio.director.elements import CAST_SIZE, LOOK_SLUG, UNATTACHED_VIEWS, cast_members, unique_slug
 from studio.domain.enums import AssetKind, AssetStatus
+from studio.llm.client import LLMError, LLMUnavailable
+from studio.llm.images import ImageError, load
 from studio.media.ffmpeg import ffmpeg
 from studio.providers import elevenlabs
 from studio.providers.base import ProviderError
@@ -109,6 +115,8 @@ class ElementCreate(BaseModel):
     images: list[ElementImageIn] = []
     voice: VoiceIn | None = None
     members: list[uuid.UUID] | None = Field(None, description="A cast (group)'s characters, 2-8, in order")
+    profile: ElementProfile | None = Field(None, description="A character's personality, backstory, catchphrases and "
+                                                             "how they talk")
 
 
 class ElementPatch(BaseModel):
@@ -123,6 +131,8 @@ class ElementPatch(BaseModel):
     clear_voice: bool = False
     clear_lora: bool = Field(False, description="Forget the trained identity (the LoRA files stay in the library)")
     members: list[uuid.UUID] | None = Field(None, description="A cast (group)'s characters, all of them, in order")
+    profile: ElementProfile | None = Field(None, description="A character's profile: the fields sent replace the "
+                                                             "saved ones, the others are kept")
 
 
 class ElementImagePatch(BaseModel):
@@ -161,6 +171,8 @@ class ElementOut(BaseModel):
     images: list[ElementImageOut]
     looks: dict[str, ElementLook] = Field({}, description="A character's looks by handle (`@handle:look`)")
     members: list[ElementMemberOut] = Field([], description="A cast (group)'s characters in order; none for other kinds")
+    profile: ElementProfile = Field(ElementProfile(),
+                                    description="A character's personality, backstory, catchphrases and how they talk")
     created_at: datetime
 
 
@@ -199,7 +211,8 @@ async def _out(session: AsyncSession, e: Element) -> ElementOut:
                for m in crew]
     return ElementOut(id=e.id, kind=e.kind.value, name=e.name, slug=e.slug, handle=f"@{e.slug}",
                       description=e.description, attributes=e.attributes or {}, voice=e.voice or None, lora=e.lora or None,
-                      cover=cover, images=images, looks=e.looks or {}, members=members, created_at=e.created_at)
+                      cover=cover, images=images, looks=e.looks or {}, members=members,
+                      profile=ElementProfile.model_validate(e.profile or {}), created_at=e.created_at)
 
 
 async def _get(session: AsyncSession, user: User, element_id: uuid.UUID, lock: bool = False) -> Element:
@@ -253,12 +266,15 @@ async def create_element(body: ElementCreate, session: AsyncSession = Depends(ge
         raise HTTPException(422, "a cast (group) needs its characters (members), and only a cast has them")
     if any(i.look for i in body.images):
         raise HTTPException(422, "a new character has no looks yet: add a look's pictures once it's made")
+    if body.profile is not None and body.kind != "character":
+        raise HTTPException(422, "only characters have a profile")
     members = await _members(session, user, body.members) if body.members is not None else []
     assets = await _owned_assets(session, user, [i.asset_id for i in body.images])
     await _check_sample(session, user, body.voice)
     e = Element(user_id=user.id, kind=ElementKind(body.kind), name=body.name.strip(),
                 slug=await unique_slug(session, user.id, body.name), description=body.description.strip(),
-                attributes=body.attributes, voice=_check_voice(body.voice) if body.voice else {})
+                attributes=body.attributes, voice=_check_voice(body.voice) if body.voice else {},
+                profile=body.profile.model_dump() if body.profile else {})
     session.add(e)
     await session.flush()
     _add_members(session, user, e, members)
@@ -344,6 +360,8 @@ async def patch_element(element_id: uuid.UUID, body: ElementPatch, session: Asyn
     e = await _get(session, user, element_id, lock=True)
     if body.kind is not None and (body.kind == "cast") != (e.kind == ElementKind.cast):
         raise HTTPException(422, "a cast (group) stays a cast, and nothing else becomes one")
+    if body.profile is not None and (body.kind or e.kind.value) != "character":
+        raise HTTPException(422, "only characters have a profile")
     if body.members is not None:
         if e.kind != ElementKind.cast:
             raise HTTPException(422, "only a cast (group) has members")
@@ -371,6 +389,8 @@ async def patch_element(element_id: uuid.UUID, body: ElementPatch, session: Asyn
         e.voice = {}
     if body.clear_lora:
         e.lora = {}
+    if body.profile is not None:
+        e.profile = {**(e.profile or {}), **body.profile.model_dump(exclude_unset=True)}
     await session.commit()
     return await _out(session, e)
 
@@ -490,3 +510,114 @@ async def delete_look(element_id: uuid.UUID, look: str = Path(pattern=LOOK_SLUG)
     e.updated_at = datetime.now(UTC)
     await session.commit()
     return await _out(session, e)
+
+
+# ---------------------------------------------------------------- a character's profile and likeness (Claude)
+
+CLAUDE_ERRORS: dict[int | str, dict[str, Any]] = {
+    402: {"description": "Spending limit"}, 502: {"description": "Claude failed"},
+    503: {"description": "No Anthropic key"}}
+
+
+class ProfileDraftOut(BaseModel):
+    profile: ElementProfile
+    model: str
+    mock: bool = Field(description="LLM_MODE=mock: a canned draft, nothing was billed")
+    cost_usd: float
+
+
+async def _character(session: AsyncSession, user: User, element_id: uuid.UUID, what: str) -> Element:
+    e = await _get(session, user, element_id)
+    if e.kind != ElementKind.character:
+        raise HTTPException(422, f"only characters have {what}")
+    return e
+
+
+@router.post("/{element_id}/profile/draft", response_model=ProfileDraftOut, responses=CLAUDE_ERRORS)
+async def draft_element_profile(element_id: uuid.UUID, session: AsyncSession = Depends(get_session),
+                                user: User = Depends(current_user)) -> ProfileDraftOut:
+    """Claude drafts a character's profile from its name, description, traits and looks. Saves nothing: save it
+    with PATCH `profile`. Billed to your budget in live LLM mode."""
+    e = await _character(session, user, element_id, "a profile")
+    try:
+        result = await draft_profile(session, user.id, e)
+    except BudgetBlocked as exc:
+        raise HTTPException(402, f"Asking Claude would go over your spending limit: {exc}") from exc
+    except LLMUnavailable as exc:
+        raise HTTPException(503, exc.message) from exc
+    except LLMError as exc:
+        await session.commit()  # a refusal or truncated answer was still billed
+        raise HTTPException(502, exc.message) from exc
+    await session.commit()
+    return ProfileDraftOut(profile=result.output, model=result.model, mock=result.mock,
+                           cost_usd=float(result.cost_usd))
+
+
+class LikenessIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    asset_id: uuid.UUID = Field(description="A picture or a clip of yours (a clip is checked at its middle frame)")
+
+
+class LikenessOut(Likeness):
+    model: str
+    mock: bool = Field(description="LLM_MODE=mock: a canned answer, nothing was billed")
+    cost_usd: float
+
+
+async def _references(session: AsyncSession, e: Element, look: str | None, checked: uuid.UUID) -> list[uuid.UUID]:
+    """What a take is compared with: the look's pictures when it wore one (up to MAX_REFERENCES), else the first two
+    main pictures, as a mention attaches them (never a grid sheet, never the checked picture itself)."""
+    rows = (await session.execute(
+        select(ElementAsset.asset_id, ElementAsset.look).join(Asset, Asset.id == ElementAsset.asset_id)
+        .where(ElementAsset.element_id == e.id, ElementAsset.asset_id != checked, Asset.kind == AssetKind.image,
+               Asset.status == AssetStatus.ready, Asset.deleted_at.is_(None),
+               ElementAsset.view.not_in(UNATTACHED_VIEWS))
+        .order_by(ElementAsset.is_primary.desc(), ElementAsset.sort, Asset.created_at))).all()
+    worn = [a for a, x in rows if look and x == look]
+    return worn[:MAX_REFERENCES] if worn else [a for a, x in rows if x is None][:2]
+
+
+@router.post("/{element_id}/check", response_model=LikenessOut,
+             responses={**CLAUDE_ERRORS, 422: {"description": "Not a character, no pictures, or an asset that can't go"}})
+async def check_element_likeness(element_id: uuid.UUID, body: LikenessIn, session: AsyncSession = Depends(get_session),
+                                 user: User = Depends(current_user)) -> LikenessOut:
+    """Claude compares a picture or clip with the character's pictures (the look's, when the take mentioned
+    `@handle:look`) and says how alike they are and what differs. The answer is kept on the asset, in
+    `metadata.consistency[<character id>]`. Billed to your budget in live LLM mode."""
+    e = await _character(session, user, element_id, "a likeness to check")
+    try:
+        asset = (await load(session, user.id, [body.asset_id]))[0]
+    except ImageError as exc:
+        raise HTTPException(422, exc.message) from exc
+    gen = await session.get(Generation, asset.generation_id) if asset.generation_id else None
+    request = (gen.request or {}) if gen is not None else {}
+    mention = next((m for m in request.get("mentions") or [] if isinstance(m, dict) and m.get("id") == str(e.id)),
+                   None)  # a cast's mention names the cast, so its members are checked against their main pictures
+    look = mention.get("look") if mention and mention.get("look") in (e.looks or {}) else None
+    refs = await _references(session, e, look, asset.id)
+    if not refs:
+        raise HTTPException(422, f"@{e.slug} has no pictures to compare with; add one first")
+    worn = (e.looks or {}).get(look) or {} if look else {}
+    try:
+        result = await check_likeness(
+            session, user.id, references=refs, asset_id=asset.id, name=e.name, prompt=str(request.get("prompt") or ""),
+            look=", ".join(x for x in (str(worn.get("name") or look or ""), str(worn.get("description") or "")) if x))
+    except ImageError as exc:
+        raise HTTPException(422, exc.message) from exc
+    except BudgetBlocked as exc:
+        raise HTTPException(402, f"Asking Claude would go over your spending limit: {exc}") from exc
+    except LLMUnavailable as exc:
+        raise HTTPException(503, exc.message) from exc
+    except LLMError as exc:
+        await session.commit()  # a refusal or truncated answer was still billed
+        raise HTTPException(502, exc.message) from exc
+    out = result.output
+    # kept on the take; locked only now, so nothing waits on the asset while Claude looks
+    await session.refresh(asset, ["metadata_"], with_for_update=True)
+    meta = dict(asset.metadata_ or {})
+    meta["consistency"] = {**(meta.get("consistency") or {}), str(e.id): {
+        **out.model_dump(mode="json"), "look": look, "model": result.model, "mock": result.mock,
+        "checked_at": datetime.now(UTC).isoformat()}}
+    asset.metadata_ = meta
+    await session.commit()
+    return LikenessOut(**out.model_dump(), model=result.model, mock=result.mock, cost_usd=float(result.cost_usd))

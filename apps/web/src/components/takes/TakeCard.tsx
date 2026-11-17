@@ -17,6 +17,7 @@ import {
   useResolveUnknown,
   useRevealAsset,
 } from "@/lib/queries";
+import { LikenessChecks } from "@/components/characters/Likeness";
 import { SaveAsElement } from "@/components/characters/SaveAsElement";
 import { Button, Dialog } from "@/components/ui/controls";
 import { SelectMark } from "@/components/ui/Selection";
@@ -497,6 +498,8 @@ function TakeFooter({
           </div>
         )}
       </dl>
+      {/* one picture or clip: a badge under several would read as covering them all; each is checked in the viewer */}
+      {gen.status === "succeeded" && assets.length === 1 && <LikenessChecks asset={first} mentions={gen.request.mentions} />}
       {first?.kind === "image" && (
         <SaveAsElement asset={first} prompt={prompt} open={saving} onClose={() => setSaving(false)} />
       )}

@@ -1,7 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { cn } from "@/lib/cn";
+import { useDraft } from "@/lib/draft";
 import type { Element } from "@/lib/elements";
 import { lookSlug, styleLook } from "@/lib/mentions";
 import type { RunCreate } from "@/lib/runs";
@@ -11,17 +14,39 @@ import { ModelSelect, quotePrice, quoteText, useRunQuote, useStartQuoted } from 
 import { Button, Segmented } from "@/components/ui/controls";
 
 // character_sheet's, character_photos' and character_look's own default
-export const REFS_MODEL = "nano-banana-pro";
+const REFS_MODEL = "nano-banana-pro";
 const REFS_TRADEOFF = "Nano Banana Pro keeps the face closest to the references; other models cost less or more but "
   + "can drift from the likeness.";
 const FIELD = "rounded-[var(--radius-control)] border border-line-soft bg-bay px-3 text-sm text-chalk outline-none placeholder:text-faint focus:border-tungsten/60";
 
 /** Models that draw from a character's pictures (their reference mode). */
-export function useRefModels() {
+function useRefModels() {
   return useModelsFor("multi_ref").filter((m) => m.output_type === "image");
 }
 
-function GeneratePanel({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+/** Opens Create image with a prompt drafted in a reference mode (Create's model when it has one, else REFS_MODEL), so
+ * the pictures of what it mentions come along. `model` and `mode` are the ones it uses, to price a take first. */
+export function useReferenceShot() {
+  const router = useRouter();
+  const current = useDraft((s) => s.image.modelId);
+  const setDraft = useDraft((s) => s.set);
+  const models = useRefModels();
+  const model = models.find((m) => m.id === current) ?? models.find((m) => m.id === REFS_MODEL) ?? models[0];
+  const mode = model?.modes.find((m) => m.ops.includes("multi_ref"));
+  function open(prompt: string, note: string) {
+    if (!model || !mode) {
+      toast.error("No image model here can draw from reference pictures.");
+      return;
+    }
+    // the mentions bring the pictures, so earlier references would only take their room
+    setDraft("image", { modelId: model.id, mode: mode.id, media: {}, prompt });
+    router.push("/create/image");
+    toast(note);
+  }
+  return { model, mode, open };
+}
+
+export function GeneratePanel({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   const ref = useRef<HTMLElement>(null);
   // it opens under both columns, which the button that opened it may be far above
   useEffect(() => { ref.current?.scrollIntoView({ block: "nearest" }); }, []);

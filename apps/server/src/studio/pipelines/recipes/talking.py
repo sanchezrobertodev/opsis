@@ -1,10 +1,12 @@
-"""Talking shot: a picture or a clip speaks a script (or recorded speech).
+"""Talking shot: a picture, a saved character or a clip speaks a script (or recorded speech).
 
   voice (TTS, when there's a script) -> sync[i:model] (each chosen lipsync model) -> pick (if several)
 
 Lipsync models are picked by what they do, never by id: the `lipsync` op on a mode that takes speech
 (`input_audio`) plus a picture (`character_image`) or a clip (`input_video`). Editing the script redoes the voice
-and the lipsync and nothing else. A Cinema shot's run names its project and shot, so each result is a take.
+and the lipsync and nothing else. A Cinema shot's run names its project and shot, so each result is a take. A
+character (`@handle`) speaks from their main picture, in their saved voice when none is picked; both are written into
+the input before it's priced and stored.
 """
 
 from __future__ import annotations
@@ -13,8 +15,11 @@ import uuid
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from studio.db.models import StepKind
+from studio.director.elements import SLUG, UNATTACHED_VIEWS
 from studio.media.speech import CHARS_PER_SECOND
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.common import mode_with_op
@@ -48,6 +53,9 @@ class LipsyncChoice(BaseModel):
 
 class TalkingShotInput(BaseModel):
     image_asset_id: uuid.UUID | None = Field(None, description="A portrait, picture or character still to animate")
+    character: str | None = Field(None, pattern=SLUG, description="Or a saved character's handle: their main picture "
+                                  "speaks, in their saved voice unless `voice` is given")
+    resolved_for: str | None = Field(None, description="Filled in: the handle the picture and voice were taken for")
     video_asset_id: uuid.UUID | None = Field(None, description="Or a clip whose mouth is re-timed to the speech")
     script: str = Field("", max_length=5000, description="What they say, voiced with `voice`")
     audio_asset_id: uuid.UUID | None = Field(None, description="Or recorded speech instead of a script")
@@ -60,15 +68,16 @@ class TalkingShotInput(BaseModel):
 
     @model_validator(mode="after")
     def _one_of_each(self) -> TalkingShotInput:
-        if (self.image_asset_id is None) == (self.video_asset_id is None):
-            raise ValueError("give a picture or a clip, not both")
+        # a character comes with its picture once resolved: a stored input holds both
+        if (self.image_asset_id is None and not self.character) == (self.video_asset_id is None):
+            raise ValueError("give a picture (or a saved character) or a clip, not both")
         if bool(self.script.strip()) == (self.audio_asset_id is not None):
             raise ValueError("give a script or recorded speech, not both")
         return self
 
     @property
     def source(self) -> Literal["image", "video"]:
-        return "image" if self.image_asset_id else "video"
+        return "video" if self.video_asset_id else "image"
 
     @property
     def source_id(self) -> str:
@@ -87,10 +96,50 @@ class TalkingShotRecipe(Recipe):
 
     def title(self, inp: TalkingShotInput) -> str:
         words = inp.script.strip() or "recorded speech"
-        return f"Talking shot: {words[:70]}"
+        return f"Talking shot: {f'@{inp.character}: ' if inp.character else ''}{words[:70]}"
+
+    async def resolve(self, session: AsyncSession, user_id: uuid.UUID, inp: TalkingShotInput,
+                      reg: Registry) -> TalkingShotInput:
+        """A saved character's main picture (the first a mention attaches, a reference sheet after their other
+        pictures, since several views on one picture can't speak) and, for a script with no voice picked, their saved
+        voice, written into the input so the estimate and the run use them. A stored input keeps what was filled in for
+        its character, even once that one is renamed or deleted; naming another character takes theirs instead."""
+        if not inp.character:
+            return inp
+        from studio.db.models import Asset, ElementAsset  # models import nothing from recipes
+        from studio.domain.enums import AssetStatus
+        from studio.domain.generations import GenerationRequestError
+        from studio.pipelines.llm_ops import find_star  # local: llm_ops imports the recipes
+
+        filled = inp.resolved_for == inp.character
+        if inp.resolved_for and not filled:  # filled in for someone else: their picture and voice go
+            inp = inp.model_copy(update={"image_asset_id": None, "voice": {}})
+        element, problem = await find_star(session, user_id, inp.character)
+        if element is None:
+            if filled:  # its run still revises with what it has
+                return inp
+            raise GenerationRequestError([problem or f"@{inp.character} can't speak"])
+        update: dict[str, Any] = {"resolved_for": inp.character}
+        if inp.image_asset_id is None and inp.video_asset_id is None:
+            update["image_asset_id"] = (await session.execute(
+                select(ElementAsset.asset_id).join(Asset, Asset.id == ElementAsset.asset_id).where(
+                    ElementAsset.element_id == element.id, ElementAsset.look.is_(None),  # never a look's or a grid
+                    ElementAsset.view.not_in(UNATTACHED_VIEWS), Asset.kind == "image",
+                    Asset.status == AssetStatus.ready, Asset.deleted_at.is_(None))
+                .order_by(ElementAsset.is_primary.desc(), (ElementAsset.view == "sheet").asc(), ElementAsset.sort,
+                          Asset.created_at).limit(1)
+            )).scalar_one()  # find_star found one
+        saved = element.voice or {}
+        spec = reg.model(saved.get("model_id", ""))
+        if inp.script.strip() and not inp.voice and saved.get("params") and spec and mode_with_op(spec, "tts"):
+            update |= {"voice_model": spec.id, "voice": dict(saved["params"])}
+        return inp.model_copy(update=update)
 
     def validate(self, inp: TalkingShotInput, reg: Registry) -> list[str]:
         errors = []
+        if inp.character and inp.image_asset_id is None and inp.video_asset_id is None:
+            errors.append(f"@{inp.character} has no picture to speak from; add one on the Characters page, or give a "
+                          "picture")
         if inp.script.strip():
             voice = reg.model(inp.voice_model)
             if voice is None or mode_with_op(voice, "tts") is None:

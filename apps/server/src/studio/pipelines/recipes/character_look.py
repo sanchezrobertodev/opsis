@@ -10,12 +10,12 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from studio.db.models import StepKind
-from studio.director.elements import LOOK_SLUG, clip, style_slug, unknown_styles
+from studio.director.elements import LOOK_SLUG, SLUG, clip, style_slug, unknown_styles
 from studio.director.library import get_library
 from studio.pipelines.recipe import PlannedJob, Recipe, Settled, StepSpec, ok
 from studio.pipelines.recipes.character_photos import ANGLES
 from studio.pipelines.recipes.common import mention_refs, with_param
-from studio.pipelines.recipes.vlog import SLUG, frame_mode
+from studio.pipelines.recipes.vlog import frame_mode
 from studio.registry.loader import Registry
 
 PICTURE = (

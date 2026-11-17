@@ -38,6 +38,8 @@ class Element(IdMixin, TimestampMixin, Base):
     lora: Mapped[dict[str, Any]] = mapped_column(default=dict)
     # a character's looks, `@slug:look`: {look: {name, description}}; their pictures are links with that `look`
     looks: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=text("'{}'::jsonb"))
+    # a character's personality, backstory, catchphrases and how they talk (characters/profile.py:ElementProfile)
+    profile: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=text("'{}'::jsonb"))
     cover_asset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("assets.id"))
     # set only when the clone endpoint made this voice on ElevenLabs: deleting the element removes exactly that voice
     cloned_voice_id: Mapped[str | None] = mapped_column(String(80))
