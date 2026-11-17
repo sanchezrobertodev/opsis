@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from studio.director.library import DirectorLibrary, get_library
+from studio.director.library import DirectorLibrary, StyleItem, get_library
 from studio.registry.schema import ModelSpec
 
 MAX_MOVES = 3
@@ -22,7 +22,7 @@ MAX_CAST_EMOTIONS = 6
 MAX_LINES = 12
 # ShotDirection fields that each pick one item from a look list (studio.director.library.FIELD_SECTIONS)
 LOOK_FIELDS = ("shot_size", "angle", "lens", "focal_length", "aperture", "camera_body", "era", "lighting", "palette",
-               "genre", "pacing", "emotion")
+               "genre", "pacing", "emotion", "style")
 
 
 class MoveChoice(BaseModel):
@@ -80,6 +80,7 @@ class ShotDirection(BaseModel):
     palette: str | None = None
     genre: str | None = None
     pacing: str | None = None
+    style: str | None = Field(None, description="A picture style from the style catalog (registry/styles/)")
     emotion: str | None = Field(None, description="How the subject feels")
     cast_emotions: list[CastEmotion] = Field(default_factory=list, max_length=MAX_CAST_EMOTIONS,
                                              description="How each @mentioned cast member feels")
@@ -130,9 +131,11 @@ class Parts:
     lights: list[str] = field(default_factory=list)  # the lighting console
     performance: list[str] = field(default_factory=list)  # the subject's and each cast member's emotion
     speech: list[str] = field(default_factory=list)  # dialogue, for models that voice it; never shed
+    style: list[str] = field(default_factory=list)  # the picture style, without its full stop; never shed
 
 
-# What goes first when a prompt is over the model's limit: the softest cues. Never the prompt or camera moves.
+# What goes first when a prompt is over the model's limit: the softest cues. Never the prompt, camera moves, speech
+# or style.
 SHED_ORDER = (("mood",), ("light", "lights"), ("optics",), ("performance",), ("framing",))
 
 
@@ -257,10 +260,10 @@ def _render(dialect: str, prompt: str, p: Parts, is_image: bool) -> str:
     prompt = prompt.strip()
     if dialect in ("kling", "wan"):
         cues = [*p.framing, *p.performance, *p.speech, *([f"camera: {_join_moves(p.moves)}"] if p.moves else []), *p.optics,
-                *p.lights, *p.light, *p.mood]
+                *p.lights, *p.light, *p.mood, *p.style]
         return ", ".join(x for x in [prompt.rstrip(".,"), *cues] if x)
     if dialect == "seedance":
-        lines = [_sentence(prompt)]
+        lines = [_sentence(prompt), *(f"Style: {x}." for x in p.style)]
         if p.moves:
             lines.append(f"Camera: {_join_moves(p.moves)}.")
         if p.framing or p.optics:
@@ -275,8 +278,8 @@ def _render(dialect: str, prompt: str, p: Parts, is_image: bool) -> str:
         if p.mood:
             lines.append(f"Mood: {', '.join(p.mood)}.")
         return "\n".join(lines)
-    # veo, image models and the default: full sentences, subject first, then composition and style.
-    sentences = [_sentence(prompt)]
+    # veo, image models and the default: full sentences, subject first, then the picture style, composition and look.
+    sentences = [_sentence(prompt), *(_sentence(x) for x in p.style)]
     if p.framing:
         sentences.append(_sentence(", ".join(p.framing)))
     sentences += [_sentence(x) for x in p.performance]
@@ -330,12 +333,17 @@ def compile_prompt(spec: ModelSpec, prompt: str, direction: ShotDirection | None
         lights=_phrase_lights(lib, direction, dialect, subject, warnings),
         performance=look("emotions", direction.emotion) + _phrase_cast(lib, direction, dialect, names, warnings),
         speech=_phrase_speech(direction, names) if spec.prompt.dialogue and not is_image else [],
+        style=[x.strip().rstrip(".") for x in look("styles", direction.style)],
     )
     if direction.dialogue and not parts.speech:
         warnings.append(f"{spec.name} doesn't voice dialogue, so the lines were left out of the prompt")
+    style = lib.look("styles", direction.style)
+    if parts.optics and isinstance(style, StyleItem) and not style.photographic:
+        warnings.append(f"lens and camera choices don't apply to the {style.label} style and were left out")
+        parts.optics = []
     text = _render(dialect, prompt, parts, is_image)
 
-    # Over the model's limit: drop the softest cues first, never the user's prompt or camera moves.
+    # Over the model's limit: drop the softest cues first, never the user's prompt, camera moves or the style.
     limit = spec.prompt.max_chars
     for buckets in SHED_ORDER:
         if len(text) <= limit:

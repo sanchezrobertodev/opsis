@@ -16,6 +16,7 @@ import { CompareDialog } from "./CompareDialog";
 import { CostPanel } from "./CostPanel";
 import { KeyframeHint } from "./KeyframeHint";
 import { type Direction, DirectorPanel, mentionSlugs } from "./DirectorPanel";
+import { StylePicker } from "./director/StylePicker";
 import { MediaSlotField } from "./MediaSlots";
 import { defaultModel, ModelPicker } from "./ModelPicker";
 import { MotionPathsField } from "./MotionPathsField";
@@ -233,6 +234,13 @@ export function CreatePanel({ studio, models, ops = KINDS[studio].ops }: {
             onChange={(prompt) => setDraft(studio, { prompt })}
             onSubmit={() => void submit()}
             placeholder={PLACEHOLDER[studio]}
+          />
+        )}
+
+        {studio === "image" && mode.prompt !== "none" && (
+          <StylePicker
+            value={draft.direction.style as string | null | undefined}
+            onChange={(style) => setDraft(studio, { direction: { ...draft.direction, style } })}
           />
         )}
 

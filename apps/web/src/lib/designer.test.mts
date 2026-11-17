@@ -29,9 +29,9 @@ test("a new presentation clears an outfit it doesn't offer", () => {
   assert.ok(!outfitsFor("man").includes("evening dress"));
 });
 
-test("changing between a person and a creature keeps only the style", () => {
-  const person = { presentation: "woman", style: "anime", hair: "braided", outfit: "spacesuit" };
-  assert.deepEqual(pickTrait(person, "presentation", "non-human creature"), { presentation: "non-human creature", style: "anime" });
+test("changing between a person and a creature keeps only the style (a catalog id)", () => {
+  const person = { presentation: "woman", style: "comic-book", hair: "braided", outfit: "spacesuit" };
+  assert.deepEqual(pickTrait(person, "presentation", "non-human creature"), { presentation: "non-human creature", style: "comic-book" });
   const creature = { presentation: "non-human creature", body: "winged", features: "horns" };
   assert.deepEqual(pickTrait(creature, "presentation", ""), { presentation: "", style: "" });
 });

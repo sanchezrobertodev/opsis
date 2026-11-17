@@ -1,0 +1,10 @@
+id: watercolor-chronicle
+label: Watercolor chronicle
+category: painting
+summary: Soft historical watercolors on textured paper.
+photographic: false
+prompt: >-
+  watercolor illustration, soft bleeding pigments, visible cold-press paper texture, muted historical palette,
+  chronicle illustration
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Georgia, size: 58, bold: false, color: '#FFFDF7', outline: '#3D3A33', highlight: '#D4A373'}

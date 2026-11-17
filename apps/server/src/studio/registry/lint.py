@@ -12,6 +12,7 @@ from studio.registry.schema import EnumParam, FloatParam, IntParam, ModelSpec, R
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from studio.director.library import DirectorLibrary
     from studio.registry.loader import Registry
 
 
@@ -182,6 +183,17 @@ def lint(reg: Registry) -> tuple[list[str], list[str]]:
                 warnings.append(f"provider {provider.id}: GPU prices last checked {provider.gpu_verified} ({age} days ago)")
 
     return errors, warnings
+
+
+def lint_dialects(reg: Registry, lib: DirectorLibrary) -> list[str]:
+    """Wording for one model family (`dialects` on a move, look or style) must name a dialect some model's prompt uses
+    (or `default`), so a misspelt one isn't silently never read."""
+    from studio.director.library import LOOK_SECTIONS
+
+    used = {"default", *(s.prompt.dialect for s in reg.models.values())}
+    return [f"director {section} {item.id}: dialect {d!r} isn't one any model's prompt uses"
+            for section in ("moves", *LOOK_SECTIONS) for item in getattr(lib, section) for d in item.dialects
+            if d not in used]
 
 
 def _age(verified: date) -> int | None:

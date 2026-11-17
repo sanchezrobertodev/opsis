@@ -1,0 +1,10 @@
+id: pastel-flat-2d
+label: Pastel flat 2D
+category: illustration
+summary: Calm pastel shapes with picture-book clarity.
+photographic: false
+prompt: >-
+  flat 2D illustration in soft pastel colors, simple rounded shapes, gentle gradients, friendly and calm,
+  picture-book clarity
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Verdana, size: 56, bold: true, color: '#FFFFFF', outline: '#5E548E', highlight: '#FFC6FF'}

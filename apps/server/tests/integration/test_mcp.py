@@ -49,6 +49,9 @@ async def _template_run(mcp, in_memory_queue):
     assert templates["history-short"]["fields"][0]["key"] == "topic"
     assert any(r["id"] == "faceless" for r in await call(mcp, "catalog", kind="recipes"))
     assert any(m["id"] == "veo-3.1" for m in await call(mcp, "catalog", kind="models"))
+    styles = {s["id"]: s for s in await call(mcp, "catalog", kind="styles")}
+    assert set(styles["watercolor"]) == {"id", "label", "category", "summary"}  # what a direction's `style` takes
+    assert styles["watercolor"]["category"] == "painting"
 
     args = {"template_id": "history-short", "fields": {"topic": "the night the Titanic's band kept playing"}}
     est = await call(mcp, "estimate_run", **args)

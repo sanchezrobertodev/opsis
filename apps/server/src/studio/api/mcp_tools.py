@@ -144,7 +144,7 @@ async def _run_body(template_id: str | None, fields: dict[str, str] | None, inpu
 
 
 @server.tool()
-async def catalog(kind: Literal["templates", "recipes", "models"] = "templates") -> list[dict[str, Any]]:
+async def catalog(kind: Literal["templates", "recipes", "models", "styles"] = "templates") -> list[dict[str, Any]]:
     """What the studio can make.
 
     templates: the easy way in, a recipe with most choices made. Each asks for `fields` (answers; a field with
@@ -152,12 +152,16 @@ async def catalog(kind: Literal["templates", "recipes", "models"] = "templates")
     character; `optional` ones may be left out, and of `alternative` ones give exactly one).
     recipes: the run types, with the JSON schema of their input, for runs no template covers.
     models: what runs render with (id, what it makes, its modes).
+    styles: picture styles; a `direction` takes one by its id as `style`.
     """
     if kind == "templates":
         return [{k: t[k] for k in ("id", "name", "summary", "makes", "fields", "inputs")}
                 for t in await _api("GET", "/templates")]
     if kind == "recipes":
         return await _api("GET", "/pipelines/recipes")
+    if kind == "styles":
+        return [{k: s[k] for k in ("id", "label", "category", "summary")}
+                for s in (await _api("GET", "/director/library"))["styles"]]
     reg = await _api("GET", "/registry")
     return [{"id": m["id"], "name": m["name"], "makes": m["output_type"], "status": m["status"],
              "runnable": m["runnable"], "from_price_usd": m["from_price_usd"],

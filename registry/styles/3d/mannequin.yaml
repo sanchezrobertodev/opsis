@@ -1,0 +1,10 @@
+id: mannequin
+label: Mannequin
+category: 3d
+summary: Wooden artist's mannequins acting out the story.
+photographic: true
+prompt: >-
+  featureless wooden artist's mannequins acting out the scene, minimal studio set, soft key light, muted neutral
+  palette, calm and sculptural
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Arial, size: 56, bold: true, color: '#F5F1EA', outline: '#2E2A26', highlight: '#C9A27E'}

@@ -1,0 +1,10 @@
+id: editorial-motion-graphics
+label: Editorial motion graphics
+category: illustration
+summary: Clean magazine infographics with bold shapes.
+photographic: false
+prompt: >-
+  clean editorial motion-graphics illustration, flat vector shapes, bold geometric layout, limited palette of deep
+  navy, off-white and signal orange, subtle paper grain, magazine infographic style
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Arial, size: 58, bold: true, color: '#FFFFFF', outline: '#0B1F3A', highlight: '#FF7A1A'}

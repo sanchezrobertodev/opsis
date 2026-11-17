@@ -1,0 +1,7 @@
+id: pixel-art
+label: Pixel art
+category: retro
+summary: 16-bit pixels from a limited palette.
+photographic: false
+prompt: >-
+  16-bit pixel art, a limited palette, crisp visible square pixels, no anti-aliasing.

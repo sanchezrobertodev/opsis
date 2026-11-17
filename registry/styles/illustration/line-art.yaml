@@ -1,0 +1,7 @@
+id: line-art
+label: Line art
+category: illustration
+summary: One clean black line, no shading.
+photographic: false
+prompt: >-
+  Minimal line drawing, a single confident black line weight on white, no shading, no color.

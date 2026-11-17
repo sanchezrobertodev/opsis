@@ -1,0 +1,10 @@
+id: stickman-cartoon
+label: Stickman cartoon
+category: illustration
+summary: Simple stick figures with a whiteboard-explainer feel.
+photographic: false
+prompt: >-
+  simple black stick-figure cartoon on a plain off-white background, thick hand-drawn marker lines, minimal props,
+  expressive poses, whiteboard explainer style
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Comic Sans MS, size: 60, bold: true, color: '#111111', outline: '#FFFFFF', highlight: '#E53935'}

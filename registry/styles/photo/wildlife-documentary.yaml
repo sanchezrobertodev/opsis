@@ -1,0 +1,11 @@
+id: wildlife-documentary
+label: Wildlife documentary
+category: photo
+summary: Photoreal nature-film footage, shot up close with a long lens.
+photographic: true
+prompt: >-
+  photorealistic wildlife documentary footage, shot on a cinema camera with a long telephoto lens from a hidden
+  position, natural light, shallow depth of field, fine natural detail and texture, true-to-life colour,
+  observational nature film cinematography
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Arial, size: 54, bold: true, color: '#FFFFFF', outline: '#14180F', highlight: '#E9C46A'}

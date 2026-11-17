@@ -1,0 +1,11 @@
+# seedance-2.5 (dialect seedance, 421/3000 characters)
+Nova (@Image1) climbs the lighthouse stairs as the storm hits.
+Style: watercolor illustration, soft bleeding pigments, visible cold-press paper texture, muted historical palette, chronicle illustration.
+Camera: crane shot rising up and away from Nova.
+Shot: medium wide shot from the knees up, low angle looking up.
+Look: shafts of light cutting through haze, cold steel-blue color grade.
+Mood: suspenseful thriller tone.
+--- warnings
+lens and camera choices don't apply to the Watercolor chronicle style and were left out
+--- native params
+{}

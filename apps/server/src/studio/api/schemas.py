@@ -9,7 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from studio.director.compiler import ShotDirection
-from studio.director.library import CameraMove, EmotionItem, LookItem
+from studio.director.library import CameraMove, EmotionItem, LookItem, StyleItem
 from studio.registry.schema import (
     DurationSpec,
     MediaSlot,
@@ -166,6 +166,8 @@ class DirectorLibraryOut(ApiModel):
     genres: list[LookItem]
     pacing: list[LookItem]
     emotions: list[EmotionItem]
+    styles: list[StyleItem] = Field(description="Picture styles by category (photo, illustration, 3d, painting, retro), "
+                                                "then label")
 
 
 class CompileIn(ApiModel):

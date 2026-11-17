@@ -1,0 +1,7 @@
+id: product-studio
+label: Studio product shot
+category: photo
+summary: A clean commercial shot on a seamless backdrop.
+photographic: true
+prompt: >-
+  Commercial studio photograph, seamless backdrop, large softbox lighting, crisp highlights and clean reflections.

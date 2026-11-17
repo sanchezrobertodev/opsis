@@ -1,0 +1,8 @@
+id: cinematic-still
+label: Cinematic still
+category: photo
+summary: "A frame from a film: graded, dramatic, shallow focus."
+photographic: true
+prompt: >-
+  Cinematic film still, widescreen framing, motivated dramatic lighting, shallow depth of field, subtle film grain,
+  color-graded.

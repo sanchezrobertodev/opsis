@@ -1,0 +1,9 @@
+id: hand-drawn
+label: Hand-drawn
+category: illustration
+summary: Pencil and ink sketches with a light wash.
+photographic: false
+prompt: >-
+  hand-drawn pencil and ink sketch, loose cross-hatching, sketchbook paper texture, light watercolor wash accents
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Georgia, size: 58, bold: false, color: '#FFFFFF', outline: '#222222', highlight: '#7FB3D5'}

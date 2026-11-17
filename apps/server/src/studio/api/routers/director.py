@@ -16,7 +16,7 @@ router = APIRouter(prefix="/director", tags=["director"])
 
 @router.get("/library", response_model=DirectorLibraryOut)
 async def library() -> DirectorLibraryOut:
-    """Camera moves and cinema looks for the director panel."""
+    """Camera moves and cinema looks for the director panel, and the picture styles for the style gallery."""
     return DirectorLibraryOut.model_validate(get_library().model_dump())
 
 

@@ -95,8 +95,8 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
   picture is expected. Outputs of `output_type: mask` models are stored with those kinds.
 - Ops for audio and selection: `tts`, `sfx`, `music`, `segment`, `track`. Edit modes that can change one object in a
   clip carry `object_replace`; the Object swap recipe picks models by it.
-- Enum params with `director: <list>` (e.g. `director: palettes`) get their options and labels from
-  `registry/director/looks.yaml` when the registry loads.
+- Enum params with `director: <list>` (e.g. `director: palettes`, `director: styles`) get their options and labels
+  from the director library (`registry/director/*.yaml` and `registry/styles/`) when the registry loads.
 - `type: shots` params are multi-shot takes (`[{prompt, duration, direction?}]`, op `multi_shot`, mode `prompt: none`).
   The plan compiles each shot's prompt with the take's direction under the shot's own and sets `duration` to the total.
   Routes send them with the `shot_list` transform (Kling `multi_prompt`) or `timed_prompt` (Seedance, one prompt that
@@ -138,9 +138,29 @@ model APIs (fal.ai, Google, Runway, ElevenLabs…), open models on RunPod, and a
 ## Adding a preset (effects gallery)
 - One YAML per preset in `registry/presets/<category>/<id>.yaml`: `model_id`, `mode`, a `prompt` template with
   `{key}` blanks declared in `fields`, `params`, optional `direction` (camera moves and look ids from
-  `registry/director/`), and `inputs` (media roles the user must bring). The registry lint rejects unknown
-  models/modes/params/moves, undeclared or unused blanks, and missing required inputs.
+  `registry/director/`, a `style` from `registry/styles/`), and `inputs` (media roles the user must bring). The
+  registry lint rejects unknown models/modes/params/moves, undeclared or unused blanks, and missing required inputs.
 - Rendering returns an ordinary generation request, so presets get the same routing and spend guard.
+
+## Styles
+- One YAML per picture style in `registry/styles/<category>/<id>.yaml` (`photo`, `illustration`, `3d`, `painting`,
+  `retro`; `director/library.py:StyleItem`): `id` (the file's name), `label`, `category` (its folder), `summary`,
+  `photographic`, `prompt`, optional `dialects` and `caption`. The library refuses an id or category that isn't the
+  file's name or folder, a duplicate id and lettering words (text, caption, logo, watermark) in a prompt; a broken
+  file fails the registry load like a broken model, and running processes keep the last good library. Each style
+  needs six samples, `apps/web/public/styles/<id>-{person,place,object}.webp` (256 px) and the same under
+  `full/` (768 px); `tests/unit/test_styles.py` checks them.
+- A shot's `direction.style` (an id; `GET /director/library` lists `styles`) compiles as a sentence right after the
+  prompt (veo, runway, image models, default), a `Style:` line after the prompt line (seedance) or the last cue (kling,
+  wan), and is never shed (a multi-shot shot it takes past `max_shot_chars` is refused, saying so). A style that isn't
+  `photographic` drops the lens, focal length, aperture and camera body, with a warning. Enhance is told a known style
+  is handled, so Claude names no other medium.
+- Create image's style gallery (`StylePicker`) and the character designer's Style trait (an id in
+  `attributes.traits.style`, never in the description; its portrait is drawn in it, `cinema_cast`'s
+  `characters[].style`) pick from all of them. A new category needs `StyleCategory` in `director/library.py`, its
+  label in `web/src/lib/styles.ts` and `pnpm gen`. Faceless Studio offers the ones with a `caption` (the look of its
+  burned-in captions); a caption font must ship with Windows and have an alias in `infra/server/fonts.conf` (libass
+  on a Linux server finds an open stand-in).
 
 ## Adding a template (guided stories)
 - The Templates page (`/templates`, formerly Presets) shows presets and guided templates. A template is one YAML in
@@ -384,9 +404,10 @@ uv run python scripts/fetch_provider_schemas.py    # provider schema + price rep
   as `metadata.alignment.words` (`[{text, start, end}]`); the mock times words at a reading pace instead.
 
 ## Faceless Studio and Object Swap
-- Themes and styles are data in `registry/faceless/` (`studio/faceless/catalog.py`, reloaded on change); each style
-  has a caption look. Channels (`channels` table) keep a series' theme, style, notes and episode defaults; episodes
-  are `faceless` runs whose input names the channel (`GET /pipelines?channel_id=`).
+- Themes are data in `registry/faceless/themes.yaml` (`studio/faceless/catalog.py`, reloaded on change); its styles
+  are the catalog's styles with a caption look (see Styles). Channels (`channels` table) keep a series' theme,
+  style, notes and episode defaults; episodes are `faceless` runs whose input names the channel
+  (`GET /pipelines?channel_id=`).
 - Assembly is `media/assemble.py` (Ken Burns stills, clips fitted to their narration, ducked music, -14 LUFS) and
   captions `media/captions.py` (cues from word timings, SRT + ASS burned in with libass). ffmpeg 5's scheduler
   deadlocks on concat -> asplit -> sidechaincompress in one graph, so the voice track is rendered to a WAV first.

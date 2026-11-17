@@ -1,0 +1,8 @@
+id: photoreal
+label: Photoreal
+category: photo
+summary: True-to-life photograph in natural light.
+photographic: true
+prompt: >-
+  Photorealistic photograph, natural light, true-to-life skin, fabric and materials, sharp detail, shot on a
+  full-frame camera.

@@ -7,7 +7,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 from pydantic import ValidationError
@@ -25,6 +25,9 @@ from studio.registry.schema import (
     RouteMode,
     TemplateSpec,
 )
+
+if TYPE_CHECKING:
+    from studio.director.library import DirectorLibrary
 
 log = logging.getLogger(__name__)
 
@@ -79,19 +82,8 @@ def mock_route(spec: ModelSpec) -> Route:
     )
 
 
-def _fill_director_options(models: dict[str, ModelSpec], root: Path, errors: list[str]) -> None:
+def _fill_director_options(models: dict[str, ModelSpec], lib: DirectorLibrary, errors: list[str]) -> None:
     """Enum params with `director: <list>` take their options and labels from the director vocabulary."""
-    if not any(isinstance(p, EnumParam) and p.director for s in models.values() for p in s.parameters):
-        return
-    from studio.director.library import (
-        load_library,  # local import: the director package imports the registry
-    )
-
-    try:
-        lib = load_library(root / "director")
-    except Exception as exc:  # a broken vocabulary file is reported like any other registry error
-        errors.append(f"director: {exc}")
-        return
     for spec in models.values():
         for p in spec.parameters:
             if isinstance(p, EnumParam) and p.director:
@@ -186,20 +178,28 @@ def load_registry(root: Path, user_dir: Path | None = None) -> Registry:
         # a virtual model runs on its engines' routes (mock included), never its own
         if spec.kind != "virtual" and not any(r.provider == MOCK_PROVIDER for r in spec.routes):
             spec.routes.append(mock_route(spec))
-    _fill_director_options(models, root, errors)
+    # local import: the director package imports the registry
+    from studio.director.library import load_library
+
+    try:
+        library = load_library(root)
+    except Exception as exc:  # a broken vocabulary or style file is rejected like a broken model
+        raise RegistryError([*errors, f"director library: {exc}"]) from exc
+    _fill_director_options(models, library, errors)
 
     presets: dict[str, PresetSpec] = _load_specs(roots, "presets", PresetSpec, errors, warnings)
     templates: dict[str, TemplateSpec] = _load_specs(roots, "templates", TemplateSpec, errors, warnings)
 
     _fill_field_choices(models, [*presets.values(), *templates.values()], errors)
 
-    from studio.registry.lint import lint  # local import: lint depends on Registry
+    from studio.registry.lint import lint, lint_dialects  # local import: lint depends on Registry
     from studio.registry.presets import lint_presets, lint_templates
 
     reg = Registry(models=models, providers=providers, hash=_digest(roots), presets=presets, templates=templates,
                    user_files=user_dir is not None)
     lint_errors, lint_warnings = lint(reg)
-    reg.errors = errors + lint_errors + lint_presets(reg) + lint_templates(reg)
+    reg.errors = (errors + lint_errors + lint_dialects(reg, library) + lint_presets(reg, library)
+                  + lint_templates(reg))
     reg.warnings = warnings + lint_warnings
     if reg.errors:
         raise RegistryError(reg.errors)
@@ -257,13 +257,17 @@ class RegistryHolder:
         return self._current
 
     def reload(self) -> bool:
-        self._stamp = self._files()
         self.reloads += 1
         try:
+            self._stamp = self._files()
             self._current = load_registry(self.root, self.user_dir)
         except RegistryError as exc:
             self.last_error = exc.errors
             log.error("registry reload failed; keeping last good registry:\n%s", exc)
+            return False
+        except Exception as exc:  # a bug, or a file gone mid-read: the last good registry still serves
+            self.last_error = [f"registry reload failed: {exc!r}"]
+            log.exception("registry reload failed; keeping last good registry")
             return False
         self.last_error = None
         log.info("registry reloaded (hash %s, %d models)", self._current.hash, len(self._current.models))

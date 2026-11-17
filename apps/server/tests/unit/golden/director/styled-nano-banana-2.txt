@@ -1,0 +1,7 @@
+# nano-banana-2 (dialect nano-banana, 347/4000 characters)
+Nova (@Image1) climbs the lighthouse stairs as the storm hits. Watercolor illustration, soft bleeding pigments, visible cold-press paper texture, muted historical palette, chronicle illustration. Medium wide shot from the knees up, low angle looking up. Shafts of light cutting through haze, cold steel-blue color grade. Suspenseful thriller tone.
+--- warnings
+camera moves don't apply to still images and were left out
+lens and camera choices don't apply to the Watercolor chronicle style and were left out
+--- native params
+{}

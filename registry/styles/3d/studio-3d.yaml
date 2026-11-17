@@ -1,0 +1,10 @@
+id: studio-3d
+label: Studio 3D
+category: 3d
+summary: Polished product-shot 3D on a seamless backdrop.
+photographic: true
+prompt: >-
+  polished studio 3D render, clean product-shot lighting, seamless backdrop, realistic materials, shallow depth of
+  field
+# Faceless Studio offers styles with a caption look (size is for a 1080-pixel-tall frame).
+caption: {font: Arial, size: 56, bold: true, color: '#FFFFFF', outline: '#111111', highlight: '#4CC9F0'}
